@@ -110,23 +110,25 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         ))}
       </div>
 
-      {/* Products Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 flex-1">
+      {/* Products Grid — 1col mobile, 2col tablet/totem, 3-4col desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 flex-1 max-w-[1200px] mx-auto w-full">
         {filtered.map(product => {
           const isUrl = product.image.startsWith('http') || product.image.startsWith('/');
           return (
             <button
               key={product.id}
               onClick={() => setSelectedProduct(product)}
-              className="kiosk-card flex flex-col items-center p-4 gap-3 active:scale-95"
+              className="kiosk-card flex flex-row sm:flex-col items-center p-4 gap-4 sm:gap-3 active:scale-95"
             >
               {isUrl ? (
-                <img src={product.image} alt={product.name} className="w-16 h-16 object-cover rounded-xl" />
+                <img src={product.image} alt={product.name} className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover rounded-xl flex-shrink-0" />
               ) : (
-                <span className="text-5xl">{product.image}</span>
+                <span className="text-5xl flex-shrink-0">{product.image}</span>
               )}
-              <span className="font-bold text-sm text-center leading-tight">{product.name}</span>
-              <span className="text-primary font-black text-lg">{formatCurrency(product.price)}</span>
+              <div className="flex flex-col sm:items-center gap-1 min-w-0">
+                <span className="font-bold text-sm sm:text-center leading-tight">{product.name}</span>
+                <span className="text-primary font-black text-lg">{formatCurrency(product.price)}</span>
+              </div>
             </button>
           );
         })}

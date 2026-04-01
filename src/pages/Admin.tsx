@@ -118,6 +118,12 @@ const AdminPage = () => {
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">
             Entrar
           </button>
+          <a
+            href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin&body=Olá, esqueci a senha do painel administrativo. Por favor, envie a senha de acesso."
+            className="text-primary text-sm text-center block hover:underline"
+          >
+            Esqueceu a senha?
+          </a>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
       </div>

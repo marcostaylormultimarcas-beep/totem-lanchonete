@@ -74,7 +74,9 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
   };
 
   return (
-    <div className="min-h-screen flex flex-col pb-24">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col pb-24 lg:pb-0">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">

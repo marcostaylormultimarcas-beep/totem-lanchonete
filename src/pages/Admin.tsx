@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Product, getProducts, saveProducts, getSettings, saveSettings, formatCurrency } from '@/data/store';
+import { Product, BannerItem, getProducts, saveProducts, getSettings, saveSettings, formatCurrency } from '@/data/store';
 
 const CATEGORIES: Product['category'][] = ['hamburgueres', 'pizzas', 'bebidas'];
 const CATEGORY_LABELS = { hamburgueres: '🍔 Hambúrgueres', pizzas: '🍕 Pizzas', bebidas: '🥤 Bebidas' };
+const BADGE_COLORS: BannerItem['badgeColor'][] = ['primary', 'secondary', 'accent'];
+const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho', accent: '🟡 Amarelo' };
 
 const AdminPage = () => {
   const [authenticated, setAuthenticated] = useState(false);
@@ -14,7 +16,7 @@ const AdminPage = () => {
   const [settings, setSettings] = useState(getSettings());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'products' | 'settings'>('products');
+  const [tab, setTab] = useState<'products' | 'settings' | 'banners'>('products');
 
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],
@@ -143,18 +145,24 @@ const AdminPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 p-4">
+      <div className="flex gap-2 p-4 overflow-x-auto">
         <button
           onClick={() => setTab('products')}
-          className={`touch-btn px-6 py-3 rounded-xl text-sm ${tab === 'products' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'products' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
           Produtos
         </button>
         <button
-          onClick={() => setTab('settings')}
-          className={`touch-btn px-6 py-3 rounded-xl text-sm ${tab === 'settings' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          onClick={() => setTab('banners')}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'banners' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
-          <Settings className="w-4 h-4 inline mr-1" /> Configurações
+          <Megaphone className="w-4 h-4 inline mr-1" /> Banners
+        </button>
+        <button
+          onClick={() => setTab('settings')}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'settings' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+        >
+          <Settings className="w-4 h-4 inline mr-1" /> Config
         </button>
       </div>
 
@@ -300,6 +308,130 @@ const AdminPage = () => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tab === 'banners' && (
+        <div className="px-4 space-y-4">
+          <p className="text-xs text-muted-foreground">Banners promocionais exibidos na tela inicial. Arraste para reordenar.</p>
+
+          {(settings.banners || []).map((banner, idx) => (
+            <div key={banner.id} className="kiosk-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-bold text-sm">Banner #{idx + 1}</h4>
+                <button
+                  onClick={() => {
+                    const updated = { ...settings, banners: settings.banners.filter(b => b.id !== banner.id) };
+                    setSettings(updated);
+                    saveSettings(updated);
+                  }}
+                  className="p-1 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Título</label>
+                <input
+                  value={banner.title}
+                  onChange={e => {
+                    const banners = [...settings.banners];
+                    banners[idx] = { ...banners[idx], title: e.target.value };
+                    setSettings({ ...settings, banners });
+                  }}
+                  className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                  maxLength={50}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Subtítulo / Descrição</label>
+                <input
+                  value={banner.subtitle}
+                  onChange={e => {
+                    const banners = [...settings.banners];
+                    banners[idx] = { ...banners[idx], subtitle: e.target.value };
+                    setSettings({ ...settings, banners });
+                  }}
+                  className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                  maxLength={100}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Imagem (Emoji ou URL)</label>
+                <input
+                  value={banner.image}
+                  onChange={e => {
+                    const banners = [...settings.banners];
+                    banners[idx] = { ...banners[idx], image: e.target.value };
+                    setSettings({ ...settings, banners });
+                  }}
+                  className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                  placeholder="🍔🍟 ou https://..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Texto do Badge</label>
+                  <input
+                    value={banner.badgeText}
+                    onChange={e => {
+                      const banners = [...settings.banners];
+                      banners[idx] = { ...banners[idx], badgeText: e.target.value };
+                      setSettings({ ...settings, banners });
+                    }}
+                    className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    placeholder="🔥 PROMO"
+                    maxLength={20}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">Cor do Badge</label>
+                  <select
+                    value={banner.badgeColor}
+                    onChange={e => {
+                      const banners = [...settings.banners];
+                      banners[idx] = { ...banners[idx], badgeColor: e.target.value as BannerItem['badgeColor'] };
+                      setSettings({ ...settings, banners });
+                    }}
+                    className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    {BADGE_COLORS.map(c => (
+                      <option key={c} value={c}>{BADGE_COLOR_LABELS[c]}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button
+            onClick={() => {
+              const newBanner: BannerItem = {
+                id: crypto.randomUUID(),
+                title: 'Novo Banner',
+                subtitle: 'Descrição da promoção',
+                image: '🎉',
+                badgeText: '🔥 NOVO',
+                badgeColor: 'primary',
+              };
+              const updated = { ...settings, banners: [...(settings.banners || []), newBanner] };
+              setSettings(updated);
+            }}
+            className="touch-btn w-full bg-muted text-muted-foreground py-3 rounded-xl flex items-center justify-center gap-2 border-2 border-dashed border-border"
+          >
+            <Plus className="w-5 h-5" /> Adicionar Banner
+          </button>
+
+          <button
+            onClick={() => { saveSettings(settings); alert('Banners salvos!'); }}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"
+          >
+            <Save className="w-4 h-4" /> Salvar Banners
+          </button>
         </div>
       )}
 

@@ -24,11 +24,21 @@ export interface ComboSettings {
   emoji: string;
 }
 
+export interface BannerItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  image: string;
+  badgeText: string;
+  badgeColor: 'primary' | 'secondary' | 'accent';
+}
+
 export interface StoreSettings {
   whatsappNumber: string;
   storeName: string;
   coverImage: string;
   combo: ComboSettings;
+  banners: BannerItem[];
 }
 
 const ORDER_COUNT_KEY = 'visionmidia_order_count';
@@ -113,13 +123,19 @@ export function saveProducts(products: Product[]) {
 
 const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' };
 
+const DEFAULT_BANNERS: BannerItem[] = [
+  { id: '1', title: 'Combo do Dia', subtitle: 'Hambúrguer + Batata + Refri por R$29,90', image: '🍔🍟🥤', badgeText: '🔥 PROMO', badgeColor: 'secondary' },
+  { id: '2', title: 'Frete Grátis', subtitle: 'Pedidos acima de R$50 não pagam entrega!', image: '🛵💨', badgeText: '✨ GRÁTIS', badgeColor: 'accent' },
+  { id: '3', title: 'Pizza em Dobro', subtitle: 'Às terças, leve 2 e pague 1!', image: '🍕🍕', badgeText: '🎉 2x1', badgeColor: 'primary' },
+];
+
 export function getSettings(): StoreSettings {
   const saved = localStorage.getItem(SETTINGS_KEY);
   if (saved) {
     const parsed = JSON.parse(saved);
-    return { combo: DEFAULT_COMBO, coverImage: '', ...parsed };
+    return { combo: DEFAULT_COMBO, coverImage: '', banners: DEFAULT_BANNERS, ...parsed };
   }
-  const defaults: StoreSettings = { whatsappNumber: '5562994995768', storeName: 'Vision Mídia', coverImage: '', combo: DEFAULT_COMBO };
+  const defaults: StoreSettings = { whatsappNumber: '5562994995768', storeName: 'Vision Mídia', coverImage: '', combo: DEFAULT_COMBO, banners: DEFAULT_BANNERS };
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaults));
   return defaults;
 }

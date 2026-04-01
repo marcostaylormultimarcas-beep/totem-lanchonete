@@ -24,11 +24,21 @@ export interface ComboSettings {
   emoji: string;
 }
 
+export interface BannerItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  image: string;
+  badgeText: string;
+  badgeColor: 'primary' | 'secondary' | 'accent';
+}
+
 export interface StoreSettings {
   whatsappNumber: string;
   storeName: string;
   coverImage: string;
   combo: ComboSettings;
+  banners: BannerItem[];
 }
 
 const ORDER_COUNT_KEY = 'visionmidia_order_count';

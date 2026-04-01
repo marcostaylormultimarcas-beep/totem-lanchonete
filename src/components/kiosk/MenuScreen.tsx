@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
-import { getProducts, getSettings, CartItem, Product } from '@/data/store';
+import { getProducts, getSettings, getItemTotal, CartItem, Product } from '@/data/store';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -74,7 +74,9 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
   };
 
   return (
-    <div className="min-h-screen flex flex-col pb-24">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Main content area */}
+      <div className="flex-1 flex flex-col pb-24 lg:pb-0">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
@@ -108,39 +110,74 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         ))}
       </div>
 
-      {/* Products Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 flex-1">
+      {/* Products Grid — 1col mobile, 2col tablet/totem, 3-4col desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 flex-1 max-w-[1200px] mx-auto w-full">
         {filtered.map(product => {
           const isUrl = product.image.startsWith('http') || product.image.startsWith('/');
           return (
             <button
               key={product.id}
               onClick={() => setSelectedProduct(product)}
-              className="kiosk-card flex flex-col items-center p-4 gap-3 active:scale-95"
+              className="kiosk-card flex flex-row sm:flex-col items-center p-4 gap-4 sm:gap-3 active:scale-95"
             >
               {isUrl ? (
-                <img src={product.image} alt={product.name} className="w-16 h-16 object-cover rounded-xl" />
+                <img src={product.image} alt={product.name} className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover rounded-xl flex-shrink-0" />
               ) : (
-                <span className="text-5xl">{product.image}</span>
+                <span className="text-5xl flex-shrink-0">{product.image}</span>
               )}
-              <span className="font-bold text-sm text-center leading-tight">{product.name}</span>
-              <span className="text-primary font-black text-lg">{formatCurrency(product.price)}</span>
+              <div className="flex flex-col sm:items-center gap-1 min-w-0">
+                <span className="font-bold text-sm sm:text-center leading-tight">{product.name}</span>
+                <span className="text-primary font-black text-lg">{formatCurrency(product.price)}</span>
+              </div>
             </button>
           );
         })}
       </div>
 
-      {/* Cart Footer */}
+      </div>{/* end main content */}
+
+      {/* Cart — fixed bottom bar on mobile, sidebar on desktop */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">
-          <button
-            onClick={onGoToCart}
-            className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
-          >
-            <ShoppingCart className="w-5 h-5" />
-            Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
-          </button>
-        </div>
+        <>
+          {/* Mobile/Tablet: fixed bottom bar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 lg:hidden z-30">
+            <button
+              onClick={onGoToCart}
+              className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
+            </button>
+          </div>
+
+          {/* Desktop: sidebar */}
+          <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-border bg-card p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-primary" />
+              Carrinho ({cart.length})
+            </h3>
+            <div className="flex-1 space-y-2 overflow-y-auto">
+              {cart.map(item => (
+                <div key={item.id} className="bg-muted rounded-xl p-3 text-sm">
+                  <p className="font-semibold">{item.quantity}x {item.product.name}</p>
+                  <p className="text-primary font-bold">{formatCurrency(getItemTotal(item))}</p>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-border pt-3 space-y-2">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span className="text-primary">{formatCurrency(cartTotal)}</span>
+              </div>
+              <button
+                onClick={onGoToCart}
+                className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
+              >
+                Finalizar Pedido
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Product Modal */}

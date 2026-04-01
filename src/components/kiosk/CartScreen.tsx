@@ -12,7 +12,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack }: CartScreenProps) => 
   const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   return (
-    <div className="min-h-screen flex flex-col pb-28">
+    <div className="min-h-screen flex flex-col pb-28 max-w-[1200px] mx-auto">
       <div className="flex items-center gap-4 p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-7 h-7" />

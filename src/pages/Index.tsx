@@ -39,7 +39,7 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background max-w-[1200px] mx-auto">
+    <div className="min-h-screen bg-background">
       {step === 'start' && <StartScreen onStart={() => setStep('location')} />}
       {step === 'location' && (
         <LocationSelect

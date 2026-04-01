@@ -134,17 +134,50 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         })}
       </div>
 
-      {/* Cart Footer */}
+      </div>{/* end main content */}
+
+      {/* Cart — fixed bottom bar on mobile, sidebar on desktop */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4">
-          <button
-            onClick={onGoToCart}
-            className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
-          >
-            <ShoppingCart className="w-5 h-5" />
-            Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
-          </button>
-        </div>
+        <>
+          {/* Mobile/Tablet: fixed bottom bar */}
+          <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 lg:hidden z-30">
+            <button
+              onClick={onGoToCart}
+              className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
+            >
+              <ShoppingCart className="w-5 h-5" />
+              Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
+            </button>
+          </div>
+
+          {/* Desktop: sidebar */}
+          <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-border bg-card p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
+            <h3 className="text-lg font-bold flex items-center gap-2">
+              <ShoppingCart className="w-5 h-5 text-primary" />
+              Carrinho ({cart.length})
+            </h3>
+            <div className="flex-1 space-y-2 overflow-y-auto">
+              {cart.map(item => (
+                <div key={item.id} className="bg-muted rounded-xl p-3 text-sm">
+                  <p className="font-semibold">{item.quantity}x {item.product.name}</p>
+                  <p className="text-primary font-bold">{formatCurrency(getItemTotal(item))}</p>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-border pt-3 space-y-2">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span className="text-primary">{formatCurrency(cartTotal)}</span>
+              </div>
+              <button
+                onClick={onGoToCart}
+                className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
+              >
+                Finalizar Pedido
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Product Modal */}

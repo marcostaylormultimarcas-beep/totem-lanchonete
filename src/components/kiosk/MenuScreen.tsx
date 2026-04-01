@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
-import { getProducts, getSettings, CartItem, Product } from '@/data/store';
+import { getProducts, getSettings, getItemTotal, CartItem, Product } from '@/data/store';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';

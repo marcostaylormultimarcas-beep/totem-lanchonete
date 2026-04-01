@@ -145,18 +145,24 @@ const AdminPage = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 p-4">
+      <div className="flex gap-2 p-4 overflow-x-auto">
         <button
           onClick={() => setTab('products')}
-          className={`touch-btn px-6 py-3 rounded-xl text-sm ${tab === 'products' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'products' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
           Produtos
         </button>
         <button
-          onClick={() => setTab('settings')}
-          className={`touch-btn px-6 py-3 rounded-xl text-sm ${tab === 'settings' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          onClick={() => setTab('banners')}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'banners' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
         >
-          <Settings className="w-4 h-4 inline mr-1" /> Configurações
+          <Megaphone className="w-4 h-4 inline mr-1" /> Banners
+        </button>
+        <button
+          onClick={() => setTab('settings')}
+          className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap ${tab === 'settings' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+        >
+          <Settings className="w-4 h-4 inline mr-1" /> Config
         </button>
       </div>
 

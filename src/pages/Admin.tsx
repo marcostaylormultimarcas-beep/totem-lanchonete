@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Product, getProducts, saveProducts, getSettings, saveSettings, formatCurrency } from '@/data/store';
+import { Product, BannerItem, getProducts, saveProducts, getSettings, saveSettings, formatCurrency } from '@/data/store';
 
 const CATEGORIES: Product['category'][] = ['hamburgueres', 'pizzas', 'bebidas'];
 const CATEGORY_LABELS = { hamburgueres: '🍔 Hambúrgueres', pizzas: '🍕 Pizzas', bebidas: '🥤 Bebidas' };
+const BADGE_COLORS: BannerItem['badgeColor'][] = ['primary', 'secondary', 'accent'];
+const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho', accent: '🟡 Amarelo' };
 
 const AdminPage = () => {
   const [authenticated, setAuthenticated] = useState(false);

@@ -16,7 +16,7 @@ const AdminPage = () => {
   const [settings, setSettings] = useState(getSettings());
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'products' | 'settings'>('products');
+  const [tab, setTab] = useState<'products' | 'settings' | 'banners'>('products');
 
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],

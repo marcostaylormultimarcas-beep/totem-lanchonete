@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, getSettings, getNextOrderNumber } from '@/data/store';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -11,7 +12,7 @@ interface PaymentScreenProps {
   deliveryReference?: string;
   deliveryRecipient?: string;
   onBack: () => void;
-  onDone: () => void;
+  onDone: (orderId?: string) => void;
 }
 
 const PIX_KEY = 'pagamento@visionmidia.com';
@@ -21,6 +22,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
+  const [saving, setSaving] = useState(false);
   const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const handleCopy = () => {
@@ -35,30 +37,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
     msg += `🔢 *SENHA DO PEDIDO: #${generatedNumber}*\n\n`;
     msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
     msg += `📍 *LOCAL:* ${orderType === 'local' ? 'Comer no Local (Mesa)' : 'Para Viagem (Entrega)'}\n`;
-
     if (orderType === 'viagem' && deliveryAddress) {
       msg += `🏠 *ENDEREÇO:* ${deliveryAddress}\n`;
       if (deliveryReference) msg += `📌 *REFERÊNCIA:* ${deliveryReference}\n`;
       if (deliveryRecipient) msg += `👤 *RECEBEDOR:* ${deliveryRecipient}\n`;
     }
-
-    msg += `\n📋 *PEDIDO:*\n`;
-    msg += `─────────────────\n`;
-
+    msg += `\n📋 *PEDIDO:*\n─────────────────\n`;
     cart.forEach((item, i) => {
       msg += `${i + 1}. ${item.quantity}x ${item.product.name} — ${formatCurrency(getItemTotal(item))}\n`;
-      if (item.removedIngredients.length > 0) {
-        msg += `   ❌ Sem: ${item.removedIngredients.join(', ')}\n`;
-      }
-      if (item.selectedExtras.length > 0) {
-        msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
-      }
+      if (item.removedIngredients.length > 0) msg += `   ❌ Sem: ${item.removedIngredients.join(', ')}\n`;
+      if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
-
-    msg += `─────────────────\n`;
-    msg += `💳 *PAGAMENTO:* Pix - Aguardando Conferência\n`;
-    msg += `💰 *TOTAL: ${formatCurrency(total)}*`;
-
+    msg += `─────────────────\n💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
   };
 
@@ -69,20 +59,57 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
     onDone();
   };
 
-  const handleConfirmPayment = () => {
+  const handleConfirmPayment = async () => {
+    setSaving(true);
     const num = getNextOrderNumber();
     setGeneratedNumber(num);
-    setConfirmed(true);
+
+    // Save order to Supabase
+    try {
+      const orderItems = cart.map(item => ({
+        name: item.product.name,
+        quantity: item.quantity,
+        price: item.product.price,
+        total: getItemTotal(item),
+        removedIngredients: item.removedIngredients,
+        extras: item.selectedExtras.map(e => e.name),
+      }));
+
+      const { data, error } = await supabase.from('orders').insert({
+        order_number: num,
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        order_type: orderType,
+        delivery_address: deliveryAddress || '',
+        delivery_reference: deliveryReference || '',
+        delivery_recipient: deliveryRecipient || '',
+        items: orderItems,
+        total,
+        status: 'pending',
+      }).select('id').single();
+
+      if (error) throw error;
+      setConfirmed(true);
+      // Store orderId for tracking
+      if (data) {
+        localStorage.setItem('current_order_id', data.id);
+      }
+    } catch (err) {
+      console.error('Error saving order:', err);
+      // Still confirm even if DB save fails
+      setConfirmed(true);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // Success / Summary screen after confirming payment
   if (confirmed) {
+    const currentOrderId = localStorage.getItem('current_order_id');
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
         <div className="w-20 h-20 rounded-full bg-success/20 flex items-center justify-center">
           <CheckCircle2 className="w-12 h-12 text-success" />
         </div>
-
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-bold text-success">Pagamento Confirmado!</h2>
           <div className="flex items-center justify-center gap-2 mt-3">
@@ -92,7 +119,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
           <p className="text-muted-foreground text-sm">Guarde sua senha para retirar o pedido</p>
         </div>
 
-        {/* Order Summary */}
         <div className="w-full kiosk-card p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">👤 Cliente</p>
@@ -106,8 +132,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">🏠 Endereço</p>
               <p className="font-bold text-sm">{deliveryAddress}</p>
-              {deliveryReference && <p className="text-xs text-muted-foreground">📌 Ref: {deliveryReference}</p>}
-              {deliveryRecipient && <p className="text-xs text-muted-foreground">👤 Recebedor: {deliveryRecipient}</p>}
             </div>
           )}
           <hr className="border-border" />
@@ -116,75 +140,52 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
             {cart.map((item, i) => (
               <div key={item.id} className="text-sm space-y-0.5">
                 <p className="font-semibold">{i + 1}. {item.quantity}x {item.product.name} — {formatCurrency(getItemTotal(item))}</p>
-                {item.removedIngredients.length > 0 && (
-                  <p className="text-destructive text-xs">❌ Sem: {item.removedIngredients.join(', ')}</p>
-                )}
-                {item.selectedExtras.length > 0 && (
-                  <p className="text-success text-xs">✅ Extras: {item.selectedExtras.map(e => e.name).join(', ')}</p>
-                )}
+                {item.removedIngredients.length > 0 && <p className="text-destructive text-xs">❌ Sem: {item.removedIngredients.join(', ')}</p>}
+                {item.selectedExtras.length > 0 && <p className="text-success text-xs">✅ Extras: {item.selectedExtras.map(e => e.name).join(', ')}</p>}
               </div>
             ))}
           </div>
           <hr className="border-border" />
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">💳 Pagamento</span>
-            <span className="font-semibold text-sm">Pix — Aguardando Conferência</span>
-          </div>
           <div className="flex justify-between items-center">
             <span className="font-bold text-lg">TOTAL</span>
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>
           </div>
         </div>
 
-        <button
-          onClick={handleSendToKitchen}
-          className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3"
-        >
-          <MessageCircle className="w-7 h-7" />
-          ENVIAR PEDIDO PARA A COZINHA
+        <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">
+          <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
         </button>
+
+        {currentOrderId && (
+          <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+            📍 Acompanhar Pedido
+          </button>
+        )}
       </div>
     );
   }
 
-  // PIX payment screen
   return (
     <div className="min-h-screen flex flex-col">
       <div className="flex items-center gap-4 p-4 border-b border-border">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-7 h-7" />
-        </button>
+        <button onClick={onBack} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-7 h-7" /></button>
         <h2 className="text-xl font-bold">Pagamento <span className="text-primary">PIX</span></h2>
       </div>
-
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
         <p className="text-muted-foreground text-sm">Escaneie o QR Code ou copie a chave</p>
-
         <div className="bg-foreground rounded-2xl p-4">
           <img src={QR_URL} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
         </div>
-
         <div className="w-full">
           <p className="text-sm text-muted-foreground text-center mb-2">Chave PIX (copia e cola):</p>
-          <button
-            onClick={handleCopy}
-            className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95"
-          >
+          <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
             {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
             <span className="font-mono text-sm">{PIX_KEY}</span>
           </button>
         </div>
-
-        <div className="text-center">
-          <p className="text-2xl font-black text-primary">{formatCurrency(total)}</p>
-        </div>
-
-        <button
-          onClick={handleConfirmPayment}
-          className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3"
-        >
-          <Check className="w-6 h-6" />
-          Já Realizei o Pagamento
+        <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
+        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
         </button>
       </div>
     </div>

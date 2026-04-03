@@ -17,7 +17,7 @@ const CATEGORIES = [
   { key: 'bebidas' as const, label: 'Bebidas', emoji: '🥤' },
 ];
 
-const StartScreen = ({ onStart, onAddToCart, cartCount = 0 }: StartScreenProps) => {
+const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
   const settings = getSettings();
   const products = getProducts();
   const storeName = settings.storeName || 'Vision Mídia';

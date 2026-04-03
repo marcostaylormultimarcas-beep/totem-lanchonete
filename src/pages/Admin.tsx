@@ -289,8 +289,27 @@ const AdminPage = () => {
                 <input value={banner.subtitle} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], subtitle: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Imagem (Emoji ou URL)</label>
-                <input value={banner.image} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], image: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🍔🍟 ou https://..." />
+                <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
+                  <Image className="w-3 h-3" /> Imagem do Banner
+                </label>
+                <div className="flex gap-2">
+                  <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingBannerIdx === idx ? 'opacity-50 pointer-events-none' : ''}`}>
+                    {uploadingBannerIdx === idx ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                    <span className="text-sm">{uploadingBannerIdx === idx ? 'Enviando...' : 'Subir Foto'}</span>
+                    <input type="file" accept="image/*" onChange={e => handleBannerImageUpload(e, idx)} className="hidden" disabled={uploadingBannerIdx === idx} />
+                  </label>
+                  <input placeholder="Ou emoji" value={isImageUrl(banner.image) ? '' : banner.image} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], image: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
+                </div>
+                {banner.image && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Preview:</span>
+                    {isImageUrl(banner.image) ? (
+                      <img src={banner.image} alt="Preview" className="w-16 h-16 object-cover rounded-lg" />
+                    ) : (
+                      <span className="text-3xl">{banner.image}</span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -7,6 +7,7 @@ import ProductModal from './ProductModal';
 interface StartScreenProps {
   onStart: () => void;
   onAddToCart?: (item: CartItem) => void;
+  onGoToCart?: () => void;
   cartCount?: number;
 }
 

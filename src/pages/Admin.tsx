@@ -20,7 +20,26 @@ const AdminPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [tab, setTab] = useState<'products' | 'settings' | 'banners' | 'orders'>('orders');
   const [uploading, setUploading] = useState(false);
+  const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 
+  const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBannerIdx(idx);
+    try {
+      const url = await uploadProductImage(file);
+      const banners = [...settings.banners];
+      banners[idx] = { ...banners[idx], image: url };
+      const updated = { ...settings, banners };
+      setSettings(updated);
+      saveSettings(updated);
+    } catch (err) {
+      alert('Erro ao enviar imagem do banner. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingBannerIdx(null);
+    }
+  };
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],
     image: '🍔', removableIngredients: '', extras: '',

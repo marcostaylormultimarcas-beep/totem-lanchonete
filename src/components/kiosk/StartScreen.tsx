@@ -67,7 +67,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
         </h1>
         <div className="flex items-center gap-2">
           {cartCount > 0 && (
-            <button onClick={onStart} className="relative p-2 rounded-full bg-primary text-primary-foreground" title="Ver Carrinho">
+            <button onClick={onGoToCart || onStart} className="relative p-2 rounded-full bg-primary text-primary-foreground" title="Ver Carrinho">
               <ShoppingCart className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-secondary text-secondary-foreground rounded-full text-xs font-bold flex items-center justify-center">
                 {cartCount}

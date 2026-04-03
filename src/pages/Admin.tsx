@@ -254,7 +254,7 @@ const AdminPage = () => {
 
       {tab === 'banners' && (
         <div className="px-4 space-y-4">
-          <p className="text-xs text-muted-foreground">Banners promocionais exibidos na tela inicial.</p>
+          <p className="text-xs text-muted-foreground">Banners promocionais exibidos na tela inicial. As alterações são salvas automaticamente.</p>
           {(settings.banners || []).map((banner, idx) => (
             <div key={banner.id} className="kiosk-card p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -263,24 +263,24 @@ const AdminPage = () => {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Título</label>
-                <input value={banner.title} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], title: e.target.value }; setSettings({ ...settings, banners }); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+                <input value={banner.title} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], title: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Subtítulo</label>
-                <input value={banner.subtitle} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], subtitle: e.target.value }; setSettings({ ...settings, banners }); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
+                <input value={banner.subtitle} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], subtitle: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Imagem (Emoji ou URL)</label>
-                <input value={banner.image} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], image: e.target.value }; setSettings({ ...settings, banners }); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🍔🍟 ou https://..." />
+                <input value={banner.image} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], image: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🍔🍟 ou https://..." />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Texto Badge</label>
-                  <input value={banner.badgeText} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeText: e.target.value }; setSettings({ ...settings, banners }); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🔥 PROMO" maxLength={20} />
+                  <input value={banner.badgeText} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeText: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🔥 PROMO" maxLength={20} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Cor Badge</label>
-                  <select value={banner.badgeColor} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeColor: e.target.value as BannerItem['badgeColor'] }; setSettings({ ...settings, banners }); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+                  <select value={banner.badgeColor} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeColor: e.target.value as BannerItem['badgeColor'] }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
                     {BADGE_COLORS.map(c => <option key={c} value={c}>{BADGE_COLOR_LABELS[c]}</option>)}
                   </select>
                 </div>
@@ -290,13 +290,11 @@ const AdminPage = () => {
 
           <button onClick={() => {
             const newBanner: BannerItem = { id: crypto.randomUUID(), title: 'Novo Banner', subtitle: 'Descrição da promoção', image: '🎉', badgeText: '🔥 NOVO', badgeColor: 'primary' };
-            setSettings({ ...settings, banners: [...(settings.banners || []), newBanner] });
+            const updated = { ...settings, banners: [...(settings.banners || []), newBanner] };
+            setSettings(updated);
+            saveSettings(updated);
           }} className="touch-btn w-full bg-muted text-muted-foreground py-3 rounded-xl flex items-center justify-center gap-2 border-2 border-dashed border-border">
             <Plus className="w-5 h-5" /> Adicionar Banner
-          </button>
-
-          <button onClick={() => { saveSettings(settings); alert('Banners salvos!'); }} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
-            <Save className="w-4 h-4" /> Salvar Banners
           </button>
         </div>
       )}

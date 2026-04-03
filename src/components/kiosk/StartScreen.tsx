@@ -7,6 +7,7 @@ import ProductModal from './ProductModal';
 interface StartScreenProps {
   onStart: () => void;
   onAddToCart?: (item: CartItem) => void;
+  onGoToCart?: () => void;
   cartCount?: number;
 }
 
@@ -16,7 +17,7 @@ const CATEGORIES = [
   { key: 'bebidas' as const, label: 'Bebidas', emoji: '🥤' },
 ];
 
-const StartScreen = ({ onStart, onAddToCart, cartCount = 0 }: StartScreenProps) => {
+const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
   const settings = getSettings();
   const products = getProducts();
   const storeName = settings.storeName || 'Vision Mídia';
@@ -66,7 +67,7 @@ const StartScreen = ({ onStart, onAddToCart, cartCount = 0 }: StartScreenProps) 
         </h1>
         <div className="flex items-center gap-2">
           {cartCount > 0 && (
-            <button onClick={onStart} className="relative p-2 rounded-full bg-primary text-primary-foreground" title="Ver Carrinho">
+            <button onClick={onGoToCart || onStart} className="relative p-2 rounded-full bg-primary text-primary-foreground" title="Ver Carrinho">
               <ShoppingCart className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-secondary text-secondary-foreground rounded-full text-xs font-bold flex items-center justify-center">
                 {cartCount}

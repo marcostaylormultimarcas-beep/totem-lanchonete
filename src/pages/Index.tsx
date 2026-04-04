@@ -53,6 +53,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
       {step === 'start' && <StartScreen onStart={() => setStep('location')} onAddToCart={addToCart} onGoToCart={() => setStep('cart')} cartCount={cart.length} />}
       {step === 'location' && (
         <LocationSelect onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => setStep('start')} />

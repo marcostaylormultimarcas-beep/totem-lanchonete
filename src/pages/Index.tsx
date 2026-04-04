@@ -31,7 +31,7 @@ const Index = () => {
   };
 
   const resetOrder = () => {
-    setStep('start');
+    setStep('landing');
     setOrderType('local');
     setCart([]);
     setCustomerName('');

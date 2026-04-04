@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Product, BannerItem, getProducts, saveProducts, getSettings, saveSettings, formatCurrency } from '@/data/store';
+import { Product, BannerItem, StoreSettings, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
+import { supabase } from '@/integrations/supabase/client';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 
 const CATEGORIES: Product['category'][] = ['hamburgueres', 'pizzas', 'bebidas'];
@@ -14,13 +15,68 @@ const AdminPage = () => {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [products, setProducts] = useState<Product[]>(getProducts());
-  const [settings, setSettings] = useState(getSettings());
+  const [products, setProducts] = useState<Product[]>([]);
+  const [settings, setSettings] = useState<StoreSettings>({
+    whatsappNumber: '', storeName: 'Vision Mídia', coverImage: '',
+    combo: { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
+    banners: [],
+  });
+  const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [tab, setTab] = useState<'products' | 'settings' | 'banners' | 'orders'>('orders');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
+
+  // Load products from Supabase
+  useEffect(() => {
+    const fetch = async () => {
+      const { data } = await supabase.from('products').select('*');
+      if (data) {
+        setProducts(data.map((p: any) => ({
+          id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
+          image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
+          extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
+        })));
+      }
+    };
+    fetch();
+  }, []);
+
+  // Load settings from Supabase
+  useEffect(() => {
+    const fetch = async () => {
+      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      if (data) {
+        setSettingsId(data.id);
+        setSettings({
+          storeName: data.store_name || 'Vision Mídia',
+          whatsappNumber: data.whatsapp_number || '',
+          coverImage: data.cover_image || '',
+          combo: (data.combo as any) || { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
+          banners: (data.banners as unknown as BannerItem[]) || [],
+        });
+      }
+    };
+    fetch();
+  }, []);
+
+  // Save settings to Supabase
+  const saveSettingsToDb = async (s: StoreSettings) => {
+    const payload = {
+      store_name: s.storeName,
+      whatsapp_number: s.whatsappNumber,
+      cover_image: s.coverImage,
+      combo: s.combo as any,
+      banners: s.banners as any,
+    };
+    if (settingsId) {
+      await supabase.from('settings').update(payload).eq('id', settingsId);
+    } else {
+      const { data } = await supabase.from('settings').insert(payload).select().maybeSingle();
+      if (data) setSettingsId(data.id);
+    }
+  };
 
   const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
     const file = e.target.files?.[0];
@@ -32,7 +88,7 @@ const AdminPage = () => {
       banners[idx] = { ...banners[idx], image: url };
       const updated = { ...settings, banners };
       setSettings(updated);
-      saveSettings(updated);
+      await saveSettingsToDb(updated);
     } catch (err) {
       alert('Erro ao enviar imagem do banner. Tente novamente.');
       console.error(err);
@@ -40,6 +96,7 @@ const AdminPage = () => {
       setUploadingBannerIdx(null);
     }
   };
+
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],
     image: '🍔', removableIngredients: '', extras: '',
@@ -85,40 +142,60 @@ const AdminPage = () => {
     }
   };
 
-  const saveProduct = () => {
+  const saveProduct = async () => {
     if (!form.name.trim() || !form.price) return;
     const parsedExtras = form.extras.split(',').map(s => s.trim()).filter(Boolean).map(s => {
       const [name, price] = s.split(':');
       return { name: name?.trim() || '', price: parseFloat(price) || 0 };
     });
-    const newProduct: Product = {
-      id: editingProduct?.id || crypto.randomUUID(),
-      name: form.name.trim(), price: parseFloat(form.price) || 0,
-      category: form.category, image: form.image.trim() || '🍔',
-      removableIngredients: form.removableIngredients.split(',').map(s => s.trim()).filter(Boolean),
+    const removable = form.removableIngredients.split(',').map(s => s.trim()).filter(Boolean);
+
+    const dbPayload = {
+      name: form.name.trim(),
+      price: parseFloat(form.price) || 0,
+      category: form.category,
+      image: form.image.trim() || '🍔',
+      removable_ingredients: removable,
       extras: parsedExtras,
     };
-    let updated: Product[];
+
     if (editingProduct) {
-      updated = products.map(p => p.id === editingProduct.id ? newProduct : p);
+      await supabase.from('products').update(dbPayload).eq('id', editingProduct.id);
+      setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
+        ...p, ...dbPayload, removableIngredients: removable,
+      } as Product : p));
     } else {
-      updated = [...products, newProduct];
+      const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
+      if (data) {
+        setProducts(prev => [...prev, {
+          id: data.id, name: data.name, price: Number(data.price),
+          category: data.category as Product['category'], image: data.image,
+          removableIngredients: (data.removable_ingredients as string[]) || [],
+          extras: (data.extras as { name: string; price: number }[]) || [],
+          isCombo: data.is_combo || false,
+        }]);
+      }
     }
-    setProducts(updated);
-    saveProducts(updated);
     resetForm();
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;
-    const updated = products.filter(p => p.id !== id);
-    setProducts(updated);
-    saveProducts(updated);
+    await supabase.from('products').delete().eq('id', id);
+    setProducts(prev => prev.filter(p => p.id !== id));
   };
 
-  const saveSettingsHandler = () => {
-    saveSettings(settings);
+  const saveSettingsHandler = async () => {
+    await saveSettingsToDb(settings);
     alert('Configurações salvas com sucesso!');
+  };
+
+  const updateBannerField = async (idx: number, field: string, value: any) => {
+    const banners = [...settings.banners];
+    banners[idx] = { ...banners[idx], [field]: value };
+    const updated = { ...settings, banners };
+    setSettings(updated);
+    await saveSettingsToDb(updated);
   };
 
   const isImageUrl = (str: string) => str.startsWith('http') || str.startsWith('/');
@@ -131,13 +208,9 @@ const AdminPage = () => {
         </div>
         <h1 className="text-2xl font-bold">Painel Administrativo</h1>
         <div className="w-full max-w-xs space-y-3">
-          <input
-            type="password" placeholder="Senha de acesso" value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center"
-            maxLength={20}
-          />
+          <input type="password" placeholder="Senha de acesso" value={password}
+            onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={20} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
           <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin&body=Olá, esqueci a senha do painel administrativo. Por favor, envie a senha de acesso." className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
@@ -182,24 +255,20 @@ const AdminPage = () => {
           {showForm && (
             <div className="kiosk-card p-4 space-y-3">
               <h3 className="font-bold text-lg">{editingProduct ? '✏️ Editar Produto' : '➕ Novo Produto'}</h3>
-
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Nome do Produto</label>
                 <input placeholder="Ex: X-Burguer Especial" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
               </div>
-
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Preço (R$)</label>
                 <input placeholder="Ex: 25.90" type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
               </div>
-
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>
                 <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value as Product['category'] })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
                   {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
                 </select>
               </div>
-
               {/* Image Upload */}
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
@@ -224,17 +293,14 @@ const AdminPage = () => {
                   </div>
                 )}
               </div>
-
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Ingredientes Removíveis (separados por vírgula)</label>
                 <input placeholder="Ex: Cebola, Alface, Tomate" value={form.removableIngredients} onChange={e => setForm({ ...form, removableIngredients: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
               </div>
-
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Adicionais (formato: Nome:Preço)</label>
                 <input placeholder="Ex: Bacon:5, Queijo:4, Ovo:3" value={form.extras} onChange={e => setForm({ ...form, extras: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
               </div>
-
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>
@@ -273,20 +339,20 @@ const AdminPage = () => {
 
       {tab === 'banners' && (
         <div className="px-4 space-y-4">
-          <p className="text-xs text-muted-foreground">Banners promocionais exibidos na tela inicial. As alterações são salvas automaticamente.</p>
+          <p className="text-xs text-muted-foreground">Banners promocionais exibidos na tela inicial. As alterações são salvas automaticamente no banco de dados.</p>
           {(settings.banners || []).map((banner, idx) => (
             <div key={banner.id} className="kiosk-card p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-sm">Banner #{idx + 1}</h4>
-                <button onClick={() => { const updated = { ...settings, banners: settings.banners.filter(b => b.id !== banner.id) }; setSettings(updated); saveSettings(updated); }} className="p-1 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={async () => { const updated = { ...settings, banners: settings.banners.filter(b => b.id !== banner.id) }; setSettings(updated); await saveSettingsToDb(updated); }} className="p-1 text-muted-foreground hover:text-destructive"><Trash2 className="w-4 h-4" /></button>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Título</label>
-                <input value={banner.title} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], title: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+                <input value={banner.title} onChange={e => updateBannerField(idx, 'title', e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Subtítulo</label>
-                <input value={banner.subtitle} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], subtitle: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
+                <input value={banner.subtitle} onChange={e => updateBannerField(idx, 'subtitle', e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
@@ -298,7 +364,7 @@ const AdminPage = () => {
                     <span className="text-sm">{uploadingBannerIdx === idx ? 'Enviando...' : 'Subir Foto'}</span>
                     <input type="file" accept="image/*" onChange={e => handleBannerImageUpload(e, idx)} className="hidden" disabled={uploadingBannerIdx === idx} />
                   </label>
-                  <input placeholder="Ou emoji" value={isImageUrl(banner.image) ? '' : banner.image} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], image: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
+                  <input placeholder="Ou emoji" value={isImageUrl(banner.image) ? '' : banner.image} onChange={e => updateBannerField(idx, 'image', e.target.value)} className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
                 </div>
                 {banner.image && (
                   <div className="mt-2 flex items-center gap-2">
@@ -314,11 +380,11 @@ const AdminPage = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Texto Badge</label>
-                  <input value={banner.badgeText} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeText: e.target.value }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🔥 PROMO" maxLength={20} />
+                  <input value={banner.badgeText} onChange={e => updateBannerField(idx, 'badgeText', e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" placeholder="🔥 PROMO" maxLength={20} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Cor Badge</label>
-                  <select value={banner.badgeColor} onChange={e => { const banners = [...settings.banners]; banners[idx] = { ...banners[idx], badgeColor: e.target.value as BannerItem['badgeColor'] }; const updated = { ...settings, banners }; setSettings(updated); saveSettings(updated); }} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+                  <select value={banner.badgeColor} onChange={e => updateBannerField(idx, 'badgeColor', e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
                     {BADGE_COLORS.map(c => <option key={c} value={c}>{BADGE_COLOR_LABELS[c]}</option>)}
                   </select>
                 </div>
@@ -326,11 +392,11 @@ const AdminPage = () => {
             </div>
           ))}
 
-          <button onClick={() => {
+          <button onClick={async () => {
             const newBanner: BannerItem = { id: crypto.randomUUID(), title: 'Novo Banner', subtitle: 'Descrição da promoção', image: '🎉', badgeText: '🔥 NOVO', badgeColor: 'primary' };
             const updated = { ...settings, banners: [...(settings.banners || []), newBanner] };
             setSettings(updated);
-            saveSettings(updated);
+            await saveSettingsToDb(updated);
           }} className="touch-btn w-full bg-muted text-muted-foreground py-3 rounded-xl flex items-center justify-center gap-2 border-2 border-dashed border-border">
             <Plus className="w-5 h-5" /> Adicionar Banner
           </button>

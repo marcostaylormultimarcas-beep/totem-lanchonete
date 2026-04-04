@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart } from 'lucide-react';
-import { getSettings, getProducts, formatCurrency, Product, CartItem } from '@/data/store';
+import { formatCurrency, Product, CartItem, BannerItem } from '@/data/store';
+import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
 
 interface StartScreenProps {
@@ -18,12 +19,87 @@ const CATEGORIES = [
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
-  const settings = getSettings();
-  const products = getProducts();
-  const storeName = settings.storeName || 'Vision Mídia';
-  const banners = settings.banners || [];
+  const [storeName, setStoreName] = useState('Vision Mídia');
+  const [banners, setBanners] = useState<BannerItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [activeBanner, setActiveBanner] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch settings from Supabase
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      if (data) {
+        setStoreName(data.store_name || 'Vision Mídia');
+        setBanners((data.banners as unknown as BannerItem[]) || []);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // Fetch products from Supabase
+  useEffect(() => {
+    const fetchProducts = async () => {
+      const { data } = await supabase.from('products').select('*');
+      if (data) {
+        const mapped: Product[] = data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          category: p.category as Product['category'],
+          image: p.image,
+          removableIngredients: (p.removable_ingredients as string[]) || [],
+          extras: (p.extras as { name: string; price: number }[]) || [],
+          isCombo: p.is_combo || false,
+        }));
+        setProducts(mapped);
+      }
+      setLoading(false);
+    };
+    fetchProducts();
+  }, []);
+
+  // Realtime subscription for settings changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('settings-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload: any) => {
+        const data = payload.new;
+        if (data) {
+          setStoreName(data.store_name || 'Vision Mídia');
+          setBanners((data.banners as unknown as BannerItem[]) || []);
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  // Realtime subscription for products changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('products-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
+        // Re-fetch all products on any change
+        supabase.from('products').select('*').then(({ data }) => {
+          if (data) {
+            const mapped: Product[] = data.map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              price: Number(p.price),
+              category: p.category as Product['category'],
+              image: p.image,
+              removableIngredients: (p.removable_ingredients as string[]) || [],
+              extras: (p.extras as { name: string; price: number }[]) || [],
+              isCombo: p.is_combo || false,
+            }));
+            setProducts(mapped);
+          }
+        });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const topProducts = products
     .filter(p => p.category === 'hamburgueres' || p.category === 'pizzas')
@@ -56,6 +132,17 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
   };
 
   const isUrl = (str: string) => str.startsWith('http') || str.startsWith('/');
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-muted-foreground text-sm">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

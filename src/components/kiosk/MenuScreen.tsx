@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
-import { getProducts, getSettings, getItemTotal, CartItem, Product } from '@/data/store';
+import { getItemTotal, CartItem, Product } from '@/data/store';
+import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -23,7 +24,26 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showUpsell, setShowUpsell] = useState(false);
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
-  const products = getProducts();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      const [{ data: prods }, { data: settingsData }] = await Promise.all([
+        supabase.from('products').select('*'),
+        supabase.from('settings').select('combo').limit(1).maybeSingle(),
+      ]);
+      if (prods) {
+        setProducts(prods.map((p: any) => ({
+          id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
+          image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
+          extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
+        })));
+      }
+      if (settingsData?.combo) setCombo(settingsData.combo as any);
+    };
+    fetchData();
+  }, []);
 
   const filtered = products.filter(p => p.category === activeCategory);
   const cartTotal = cart.reduce((sum, item) => {
@@ -44,7 +64,6 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
   const handleUpsellAccept = () => {
     if (pendingItem) {
       onAddToCart(pendingItem);
-      const { combo } = getSettings();
       const comboItem: CartItem = {
         id: crypto.randomUUID(),
         product: {
@@ -110,7 +129,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         ))}
       </div>
 
-      {/* Products Grid — 1col mobile, 2col tablet/totem, 3-4col desktop */}
+      {/* Products Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 flex-1 max-w-[1200px] mx-auto w-full">
         {filtered.map(product => {
           const isUrl = product.image.startsWith('http') || product.image.startsWith('/');
@@ -134,27 +153,20 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         })}
       </div>
 
-      </div>{/* end main content */}
+      </div>
 
-      {/* Cart — fixed bottom bar on mobile, sidebar on desktop */}
+      {/* Cart */}
       {cart.length > 0 && (
         <>
-          {/* Mobile/Tablet: fixed bottom bar */}
           <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 lg:hidden z-30">
-            <button
-              onClick={onGoToCart}
-              className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
-            >
+            <button onClick={onGoToCart} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3">
               <ShoppingCart className="w-5 h-5" />
               Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
             </button>
           </div>
-
-          {/* Desktop: sidebar */}
           <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-border bg-card p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
             <h3 className="text-lg font-bold flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-primary" />
-              Carrinho ({cart.length})
+              <ShoppingCart className="w-5 h-5 text-primary" /> Carrinho ({cart.length})
             </h3>
             <div className="flex-1 space-y-2 overflow-y-auto">
               {cart.map(item => (
@@ -169,10 +181,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
                 <span>Total</span>
                 <span className="text-primary">{formatCurrency(cartTotal)}</span>
               </div>
-              <button
-                onClick={onGoToCart}
-                className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3"
-              >
+              <button onClick={onGoToCart} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3">
                 Finalizar Pedido
               </button>
             </div>
@@ -180,16 +189,9 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
         </>
       )}
 
-      {/* Product Modal */}
       {selectedProduct && (
-        <ProductModal
-          product={selectedProduct}
-          onAdd={handleAddItem}
-          onClose={() => setSelectedProduct(null)}
-        />
+        <ProductModal product={selectedProduct} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
-
-      {/* Upsell */}
       {showUpsell && (
         <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />
       )}

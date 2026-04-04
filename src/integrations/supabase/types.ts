@@ -62,6 +62,78 @@ export type Database = {
         }
         Relationships: []
       }
+      products: {
+        Row: {
+          category: string
+          created_at: string
+          extras: Json
+          id: string
+          image: string
+          is_combo: boolean | null
+          name: string
+          price: number
+          removable_ingredients: Json
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          extras?: Json
+          id?: string
+          image?: string
+          is_combo?: boolean | null
+          name: string
+          price?: number
+          removable_ingredients?: Json
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          extras?: Json
+          id?: string
+          image?: string
+          is_combo?: boolean | null
+          name?: string
+          price?: number
+          removable_ingredients?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      settings: {
+        Row: {
+          banners: Json
+          combo: Json
+          cover_image: string | null
+          created_at: string
+          id: string
+          store_name: string
+          updated_at: string
+          whatsapp_number: string
+        }
+        Insert: {
+          banners?: Json
+          combo?: Json
+          cover_image?: string | null
+          created_at?: string
+          id?: string
+          store_name?: string
+          updated_at?: string
+          whatsapp_number?: string
+        }
+        Update: {
+          banners?: Json
+          combo?: Json
+          cover_image?: string | null
+          created_at?: string
+          id?: string
+          store_name?: string
+          updated_at?: string
+          whatsapp_number?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -6,12 +6,13 @@ import CartScreen from '@/components/kiosk/CartScreen';
 import CheckoutScreen from '@/components/kiosk/CheckoutScreen';
 import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import OrderTracking from '@/components/kiosk/OrderTracking';
+import LandingScreen from '@/components/kiosk/LandingScreen';
 import { CartItem } from '@/data/store';
 
-type Step = 'start' | 'location' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const Index = () => {
-  const [step, setStep] = useState<Step>('start');
+  const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
@@ -30,7 +31,7 @@ const Index = () => {
   };
 
   const resetOrder = () => {
-    setStep('start');
+    setStep('landing');
     setOrderType('local');
     setCart([]);
     setCustomerName('');
@@ -52,6 +53,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
       {step === 'start' && <StartScreen onStart={() => setStep('location')} onAddToCart={addToCart} onGoToCart={() => setStep('cart')} cartCount={cart.length} />}
       {step === 'location' && (
         <LocationSelect onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => setStep('start')} />

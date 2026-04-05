@@ -50,7 +50,11 @@ const ProductModal = ({ product, onAdd, onClose }: ProductModalProps) => {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border">
           <div className="flex items-center gap-3">
-            <span className="text-4xl">{product.image}</span>
+            {product.image.startsWith('http') || product.image.startsWith('/') ? (
+              <img src={product.image} alt={product.name} className="w-14 h-14 object-cover rounded-xl" />
+            ) : (
+              <span className="text-4xl">{product.image}</span>
+            )}
             <div>
               <h3 className="font-bold text-lg">{product.name}</h3>
               <p className="text-primary font-black">{formatCurrency(product.price)}</p>

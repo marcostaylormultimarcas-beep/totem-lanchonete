@@ -1,11 +1,20 @@
-import { getSettings } from '@/data/store';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LandingScreenProps {
   onStart: () => void;
 }
 
 const LandingScreen = ({ onStart }: LandingScreenProps) => {
-  const settings = getSettings();
+  const [storeName, setStoreName] = useState('Vision Mídia');
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase.from('settings').select('store_name').limit(1).maybeSingle();
+      if (data?.store_name) setStoreName(data.store_name);
+    };
+    fetchSettings();
+  }, []);
 
   return (
     <div
@@ -24,7 +33,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
       <div className="relative z-10 flex flex-col items-center gap-8 md:gap-12 px-6 text-center">
         {/* Store name */}
         <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-primary-foreground drop-shadow-lg">
-          {settings.storeName || 'BurgerBox'}
+          {storeName || 'BurgerBox'}
         </h1>
 
         {/* Pulsing CTA */}

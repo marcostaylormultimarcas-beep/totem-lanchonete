@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'lucide-react';
-import { CartItem, getItemTotal, formatCurrency, getSettings, getNextOrderNumber } from '@/data/store';
+import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 
 interface PaymentScreenProps {
@@ -23,7 +23,19 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string }>({ storeName: 'Vision Mídia', whatsappNumber: '' });
   const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const { data } = await supabase.from('settings').select('store_name, whatsapp_number').limit(1).maybeSingle();
+      if (data) {
+        setStoreSettings({ storeName: data.store_name || 'Vision Mídia', whatsappNumber: data.whatsapp_number || '' });
+      }
+    };
+    fetchSettings();
+  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(PIX_KEY);
@@ -32,8 +44,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   };
 
   const buildWhatsAppMessage = () => {
-    const settings = getSettings();
-    let msg = `🧾 *NOVO PEDIDO - ${settings.storeName || 'Vision Mídia'}*\n\n`;
+    let msg = `🧾 *NOVO PEDIDO - ${storeSettings.storeName}*\n\n`;
     msg += `🔢 *SENHA DO PEDIDO: #${generatedNumber}*\n\n`;
     msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
     msg += `📍 *LOCAL:* ${orderType === 'local' ? 'Comer no Local (Mesa)' : 'Para Viagem (Entrega)'}\n`;
@@ -53,19 +64,20 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   };
 
   const handleSendToKitchen = () => {
-    const settings = getSettings();
-    const whatsappUrl = `https://wa.me/${settings.whatsappNumber}?text=${buildWhatsAppMessage()}`;
+    const whatsappUrl = `https://wa.me/${storeSettings.whatsappNumber}?text=${buildWhatsAppMessage()}`;
     window.open(whatsappUrl, '_blank');
     onDone();
   };
 
   const handleConfirmPayment = async () => {
     setSaving(true);
-    const num = getNextOrderNumber();
-    setGeneratedNumber(num);
 
-    // Save order to Supabase
     try {
+      // Get next order number from DB count
+      const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true });
+      const num = ((count || 0) + 1).toString().padStart(3, '0');
+      setGeneratedNumber(num);
+
       const orderItems = cart.map(item => ({
         name: item.product.name,
         quantity: item.quantity,
@@ -90,13 +102,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
 
       if (error) throw error;
       setConfirmed(true);
-      // Store orderId for tracking
-      if (data) {
-        localStorage.setItem('current_order_id', data.id);
-      }
+      if (data) setCurrentOrderId(data.id);
     } catch (err) {
       console.error('Error saving order:', err);
-      // Still confirm even if DB save fails
       setConfirmed(true);
     } finally {
       setSaving(false);
@@ -104,7 +112,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   };
 
   if (confirmed) {
-    const currentOrderId = localStorage.getItem('current_order_id');
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
         <div className="w-20 h-20 rounded-full bg-success/20 flex items-center justify-center">

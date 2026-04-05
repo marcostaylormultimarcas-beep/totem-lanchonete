@@ -1,12 +1,24 @@
-import { getSettings } from '@/data/store';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { ComboSettings } from '@/data/store';
 
 interface UpsellPopupProps {
   onAccept: () => void;
   onDecline: () => void;
 }
 
+const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' };
+
 const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
-  const { combo } = getSettings();
+  const [combo, setCombo] = useState<ComboSettings>(DEFAULT_COMBO);
+
+  useEffect(() => {
+    const fetchCombo = async () => {
+      const { data } = await supabase.from('settings').select('combo').limit(1).maybeSingle();
+      if (data?.combo) setCombo(data.combo as unknown as ComboSettings);
+    };
+    fetchCombo();
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-6">

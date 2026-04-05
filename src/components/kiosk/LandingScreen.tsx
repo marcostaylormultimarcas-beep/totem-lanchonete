@@ -33,7 +33,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
       <div className="relative z-10 flex flex-col items-center gap-8 md:gap-12 px-6 text-center">
         {/* Store name */}
         <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-primary-foreground drop-shadow-lg">
-          {settings.storeName || 'BurgerBox'}
+          {storeName || 'BurgerBox'}
         </h1>
 
         {/* Pulsing CTA */}

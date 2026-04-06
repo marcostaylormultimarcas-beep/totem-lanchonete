@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Plus, ChevronRight, ShoppingCart } from 'lucide-react';
+import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';

@@ -87,6 +87,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         extras: item.selectedExtras.map(e => e.name),
       }));
 
+      // Get current user if logged in
+      const { data: { session } } = await supabase.auth.getSession();
+
       const { data, error } = await supabase.from('orders').insert({
         order_number: num,
         customer_name: customerName,
@@ -98,6 +101,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         items: orderItems,
         total,
         status: 'pending',
+        user_id: session?.user?.id || null,
       }).select('id').single();
 
       if (error) throw error;

@@ -173,36 +173,29 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
       {/* Banner Carousel */}
       {banners.length > 0 && (
         <div className="px-4 mb-5">
-          <div className="relative overflow-hidden rounded-2xl h-36 sm:h-44">
+          <div className="relative overflow-hidden rounded-2xl h-40 sm:h-48 md:h-56">
             {banners.map((banner, i) => (
               <div key={banner.id}
-                className={`absolute inset-0 flex items-center justify-between px-5 transition-all duration-700 ease-in-out ${
+                className={`absolute inset-0 transition-all duration-700 ease-in-out ${
                   i === activeBanner ? 'opacity-100 translate-x-0' : i < activeBanner ? 'opacity-0 -translate-x-full' : 'opacity-0 translate-x-full'
-                }`}
-                style={{
-                  background: i % 3 === 0
-                    ? 'linear-gradient(135deg, hsl(25 95% 53% / 0.9), hsl(0 72% 51% / 0.8))'
-                    : i % 3 === 1
-                    ? 'linear-gradient(135deg, hsl(45 93% 47% / 0.9), hsl(25 95% 53% / 0.8))'
-                    : 'linear-gradient(135deg, hsl(0 72% 51% / 0.9), hsl(25 95% 53% / 0.8))',
-                }}>
-                <div className="flex-1 space-y-2 z-10">
-                  <span className={`text-xs font-bold px-2 py-1 rounded-full ${badgeColorMap[banner.badgeColor] || badgeColorMap.primary}`}>{banner.badgeText}</span>
-                  <h3 className="text-lg sm:text-xl font-black text-white leading-tight">{banner.title}</h3>
-                  <p className="text-white/80 text-xs sm:text-sm leading-snug">{banner.subtitle}</p>
-                </div>
-                <div className="text-5xl sm:text-6xl flex-shrink-0 ml-3">
-                  {isUrl(banner.image) ? (
-                    <img src={banner.image} alt={banner.title} className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-xl" />
-                  ) : banner.image}
-                </div>
+                }`}>
+                {isUrl(banner.image) ? (
+                  <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-6xl"
+                    style={{
+                      background: 'linear-gradient(135deg, hsl(25 95% 53% / 0.9), hsl(0 72% 51% / 0.8))',
+                    }}>
+                    {banner.image}
+                  </div>
+                )}
               </div>
             ))}
             {banners.length > 1 && (
               <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-20">
                 {banners.map((_, i) => (
                   <button key={i} onClick={() => setActiveBanner(i)}
-                    className={`w-2 h-2 rounded-full transition-all duration-300 ${i === activeBanner ? 'bg-white w-5' : 'bg-white/40'}`} />
+                    className={`w-2 h-2 rounded-full transition-all duration-300 ${i === activeBanner ? 'bg-white w-5 shadow-md' : 'bg-white/50'}`} />
                 ))}
               </div>
             )}

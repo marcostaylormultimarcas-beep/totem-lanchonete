@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Plus, ChevronRight, ShoppingCart } from 'lucide-react';
+import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
@@ -153,6 +153,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
           <span className="text-foreground">{storeName.split(' ').slice(1).join(' ')}</span>
         </h1>
         <div className="flex items-center gap-2">
+          <Link to="/meus-pedidos" className="p-2 rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Meus Pedidos">
+            <ClipboardList className="w-5 h-5" />
+          </Link>
           {cartCount > 0 && (
             <button onClick={onGoToCart || onStart} className="relative p-2 rounded-full bg-primary text-primary-foreground" title="Ver Carrinho">
               <ShoppingCart className="w-5 h-5" />

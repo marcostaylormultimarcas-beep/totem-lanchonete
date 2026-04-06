@@ -255,17 +255,6 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
         </div>
       </div>
 
-      {/* CTA */}
-      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background to-transparent z-30">
-        <button onClick={onStart} className="touch-btn w-full bg-primary text-primary-foreground py-5 text-xl font-black rounded-2xl pulse-glow relative">
-          FAZER PEDIDO
-          {cartCount > 0 && (
-            <span className="absolute top-2 right-4 bg-secondary text-secondary-foreground px-2 py-0.5 rounded-full text-xs font-bold">
-              {cartCount} item{cartCount > 1 ? 's' : ''}
-            </span>
-          )}
-        </button>
-      </div>
 
       {/* Product Modal */}
       {selectedProduct && (

@@ -6,7 +6,7 @@ import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
 import CheckoutScreen from '@/components/kiosk/CheckoutScreen';
 import PaymentScreen from '@/components/kiosk/PaymentScreen';
-import OrderTracking from '@/components/kiosk/OrderTracking';
+import TotemSuccess from '@/components/kiosk/TotemSuccess';
 import LandingScreen from '@/components/kiosk/LandingScreen';
 import { CartItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
@@ -169,7 +169,10 @@ const Index = () => {
         />
       )}
       {step === 'tracking' && trackingOrderId && (
-        <OrderTracking orderId={trackingOrderId} onClose={resetOrder} />
+        <TotemSuccess orderId={trackingOrderId} onRelease={async () => {
+          await supabase.auth.signOut();
+          resetOrder();
+        }} />
       )}
     </div>
   );

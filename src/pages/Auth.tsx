@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,12 +13,14 @@ const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get('returnTo') || '/';
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate('/');
+      if (session) navigate(returnTo);
     });
-  }, [navigate]);
+  }, [navigate, returnTo]);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -27,7 +29,7 @@ const Auth = () => {
       toast.error(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
     } else {
       toast.success('Login realizado!');
-      navigate('/');
+      navigate(returnTo);
     }
     setLoading(false);
   };
@@ -48,7 +50,7 @@ const Auth = () => {
         await supabase.from('profiles').update({ display_name: name, phone }).eq('user_id', data.user.id);
       }
       toast.success('Conta criada com sucesso!');
-      navigate('/');
+      navigate(returnTo);
     }
     setLoading(false);
   };

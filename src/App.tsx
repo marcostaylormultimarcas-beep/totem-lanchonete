@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound.tsx";
 import Admin from "./pages/Admin.tsx";
 import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
+import TrackOrder from "./pages/TrackOrder.tsx";
 
 const APP_VERSION = "1.0.1";
 
@@ -38,6 +39,7 @@ const App = () => {
             <Route path="/admin" element={<Admin />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/meus-pedidos" element={<OrderHistory />} />
+            <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

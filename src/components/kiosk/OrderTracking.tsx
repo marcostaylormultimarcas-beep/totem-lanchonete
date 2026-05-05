@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle2, Clock, Truck, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, Truck, UtensilsCrossed, X } from 'lucide-react';
 
 interface OrderTrackingProps {
   orderId: string;
@@ -71,9 +71,15 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
       <div className="kiosk-card p-6 max-w-sm w-full space-y-6">
-        <div className="text-center">
+        <div className="flex items-center justify-between gap-3">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Voltar para a página inicial">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="text-center flex-1">
           <h2 className="text-xl font-bold">Acompanhe seu Pedido</h2>
           <p className="text-primary font-black text-2xl mt-1">#{orderNumber}</p>
+          </div>
+          <div className="w-5" aria-hidden="true" />
         </div>
 
         {showDeliveryAlert && (

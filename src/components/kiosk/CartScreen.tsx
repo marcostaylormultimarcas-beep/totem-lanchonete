@@ -6,10 +6,12 @@ interface CartScreenProps {
   onRemove: (id: string) => void;
   onCheckout: () => void;
   onBack: () => void;
+  isAuthenticated?: boolean;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack }: CartScreenProps) => {
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false }: CartScreenProps) => {
   const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const isImageUrl = (value: string) => value.startsWith('http') || value.startsWith('/');
 
   return (
     <div className="min-h-screen flex flex-col pb-28 max-w-[1200px] mx-auto">
@@ -32,7 +34,15 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack }: CartScreenProps) => 
         <div className="flex-1 p-4 space-y-3">
           {cart.map(item => (
             <div key={item.id} className="kiosk-card p-4 flex items-start gap-4">
-              <span className="text-3xl">{item.product.image}</span>
+              {isImageUrl(item.product.image) ? (
+                <img
+                  src={item.product.image}
+                  alt={item.product.name}
+                  className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
+                />
+              ) : (
+                <span className="text-3xl w-16 h-16 flex items-center justify-center flex-shrink-0">{item.product.image}</span>
+              )}
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-sm">{item.quantity}x {item.product.name}</h4>
                 {item.removedIngredients.length > 0 && (
@@ -65,7 +75,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack }: CartScreenProps) => 
             onClick={onCheckout}
             className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg"
           >
-            Finalizar Pedido
+            {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
           </button>
         </div>
       )}

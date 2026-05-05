@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
@@ -8,10 +9,26 @@ import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import OrderTracking from '@/components/kiosk/OrderTracking';
 import LandingScreen from '@/components/kiosk/LandingScreen';
 import { CartItem } from '@/data/store';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 type Step = 'landing' | 'start' | 'location' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
+const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
+
+interface PendingOrderState {
+  step: Step;
+  orderType: 'local' | 'viagem';
+  cart: CartItem[];
+  customerName: string;
+  customerPhone: string;
+  deliveryAddress: string;
+  deliveryReference: string;
+  deliveryRecipient: string;
+}
+
 const Index = () => {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -21,6 +38,50 @@ const Index = () => {
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');
   const [trackingOrderId, setTrackingOrderId] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncAuthAndRestoreOrder = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isMounted) return;
+
+      setIsAuthenticated(Boolean(session));
+
+      const pendingOrder = sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY);
+      if (!session || !pendingOrder) return;
+
+      try {
+        const parsed = JSON.parse(pendingOrder) as PendingOrderState;
+        setOrderType(parsed.orderType);
+        setCart(parsed.cart || []);
+        setCustomerName(parsed.customerName || '');
+        setCustomerPhone(parsed.customerPhone || '');
+        setDeliveryAddress(parsed.deliveryAddress || '');
+        setDeliveryReference(parsed.deliveryReference || '');
+        setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setStep(parsed.step || 'checkout');
+        toast.success('Login realizado. Continue seu pedido.');
+      } catch (error) {
+        console.error('Erro ao restaurar pedido pendente:', error);
+      } finally {
+        sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      setIsAuthenticated(Boolean(session));
+    });
+
+    syncAuthAndRestoreOrder();
+
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
@@ -31,6 +92,7 @@ const Index = () => {
   };
 
   const resetOrder = () => {
+    sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
     setStep('landing');
     setOrderType('local');
     setCart([]);
@@ -51,6 +113,30 @@ const Index = () => {
     }
   };
 
+  const handleCheckout = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session) {
+      setStep('checkout');
+      return;
+    }
+
+    const pendingOrder: PendingOrderState = {
+      step: 'checkout',
+      orderType,
+      cart,
+      customerName,
+      customerPhone,
+      deliveryAddress,
+      deliveryReference,
+      deliveryRecipient,
+    };
+
+    sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
+    toast.info('Faça login para finalizar e acompanhar seu pedido.');
+    navigate('/auth?returnTo=/');
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
@@ -62,7 +148,7 @@ const Index = () => {
         <MenuScreen cart={cart} onAddToCart={addToCart} onGoToCart={() => setStep('cart')} onBack={() => setStep('location')} />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={() => setStep('checkout')} onBack={() => setStep('menu')} />
+        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} />
       )}
       {step === 'checkout' && (
         <CheckoutScreen

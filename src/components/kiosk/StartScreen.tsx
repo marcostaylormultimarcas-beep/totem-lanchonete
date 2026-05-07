@@ -245,7 +245,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {topProducts.map(product => (
             <div key={product.id} className="kiosk-card group relative overflow-hidden">
-              <button onClick={() => setSelectedProduct(product)} className="w-full flex flex-col items-stretch text-left">
+              <button onClick={() => onSelectProduct ? onSelectProduct(product) : setSelectedProduct(product)} className="w-full flex flex-col items-stretch text-left">
                 <div className="w-full aspect-square bg-muted overflow-hidden">
                   {isUrl(product.image) ? (
                     <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />

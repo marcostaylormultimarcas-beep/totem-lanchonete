@@ -211,14 +211,21 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
       <div className="px-4 mb-6">
         <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
         <div className="flex gap-4 justify-center">
-          {CATEGORIES.map(cat => (
-            <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90">
-                {cat.emoji}
-              </div>
-              <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
-            </button>
-          ))}
+          {CATEGORIES.map(cat => {
+            const icon = categoryIcons[cat.key] || '';
+            return (
+              <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90 overflow-hidden">
+                  {isUrl(icon) ? (
+                    <img src={icon} alt={cat.label} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{icon}</span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

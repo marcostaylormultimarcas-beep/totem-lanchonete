@@ -9,6 +9,7 @@ interface StartScreenProps {
   onStart: () => void;
   onAddToCart?: (item: CartItem) => void;
   onGoToCart?: () => void;
+  onSelectProduct?: (product: Product) => void;
   cartCount?: number;
 }
 

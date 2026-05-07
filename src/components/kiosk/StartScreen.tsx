@@ -20,7 +20,7 @@ const CATEGORIES = [
   { key: 'bebidas' as const, label: 'Bebidas' },
 ];
 
-const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
+const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {
   const [storeName, setStoreName] = useState('Vision Mídia');
   const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_ICONS);
   const [banners, setBanners] = useState<BannerItem[]>([]);
@@ -119,6 +119,10 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
   }, [banners.length]);
 
   const handleQuickAdd = (product: Product) => {
+    if (onSelectProduct) {
+      onSelectProduct(product);
+      return;
+    }
     if (onAddToCart) {
       const item: CartItem = {
         id: crypto.randomUUID(), product, quantity: 1,

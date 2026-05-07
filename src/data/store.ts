@@ -33,12 +33,19 @@ export interface BannerItem {
   badgeColor: 'primary' | 'secondary' | 'accent';
 }
 
+export interface CategoryIcons {
+  hamburgueres: string;
+  pizzas: string;
+  bebidas: string;
+}
+
 export interface StoreSettings {
   whatsappNumber: string;
   storeName: string;
   coverImage: string;
   combo: ComboSettings;
   banners: BannerItem[];
+  categoryIcons: CategoryIcons;
 }
 
 // localStorage functions removed — all data now lives in Supabase

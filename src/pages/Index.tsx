@@ -8,7 +8,7 @@ import CheckoutScreen from '@/components/kiosk/CheckoutScreen';
 import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import TotemSuccess from '@/components/kiosk/TotemSuccess';
 import LandingScreen from '@/components/kiosk/LandingScreen';
-import { CartItem } from '@/data/store';
+import { CartItem, Product } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -38,6 +38,7 @@ const Index = () => {
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');
   const [trackingOrderId, setTrackingOrderId] = useState('');
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
@@ -140,12 +141,26 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
-      {step === 'start' && <StartScreen onStart={() => setStep('location')} onAddToCart={addToCart} onGoToCart={() => setStep('cart')} cartCount={cart.length} />}
+      {step === 'start' && (
+        <StartScreen
+          onStart={() => setStep('location')}
+          onSelectProduct={(p) => { setPendingProduct(p); setStep('location'); }}
+          onGoToCart={() => setStep('cart')}
+          cartCount={cart.length}
+        />
+      )}
       {step === 'location' && (
-        <LocationSelect onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => setStep('start')} />
+        <LocationSelect onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
       )}
       {step === 'menu' && (
-        <MenuScreen cart={cart} onAddToCart={addToCart} onGoToCart={() => setStep('cart')} onBack={() => setStep('location')} />
+        <MenuScreen
+          cart={cart}
+          onAddToCart={addToCart}
+          onGoToCart={() => setStep('cart')}
+          onBack={() => setStep('location')}
+          initialProduct={pendingProduct}
+          onInitialProductHandled={() => setPendingProduct(null)}
+        />
       )}
       {step === 'cart' && (
         <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} />

@@ -11,6 +11,8 @@ interface MenuScreenProps {
   onAddToCart: (item: CartItem) => void;
   onGoToCart: () => void;
   onBack: () => void;
+  initialProduct?: Product | null;
+  onInitialProductHandled?: () => void;
 }
 
 const CATEGORIES = [
@@ -19,7 +21,7 @@ const CATEGORIES = [
   { key: 'bebidas' as const, label: '🥤 Bebidas' },
 ];
 
-const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) => {
+const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled }: MenuScreenProps) => {
   const [activeCategory, setActiveCategory] = useState<'hamburgueres' | 'pizzas' | 'bebidas'>('hamburgueres');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showUpsell, setShowUpsell] = useState(false);
@@ -44,6 +46,14 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack }: MenuScreenProps) 
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (initialProduct) {
+      setActiveCategory(initialProduct.category);
+      setSelectedProduct(initialProduct);
+      onInitialProductHandled?.();
+    }
+  }, [initialProduct, onInitialProductHandled]);
 
   const filtered = products.filter(p => p.category === activeCategory);
   const cartTotal = cart.reduce((sum, item) => {

@@ -12,14 +12,16 @@ interface StartScreenProps {
   cartCount?: number;
 }
 
+const DEFAULT_CATEGORY_ICONS = { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' };
 const CATEGORIES = [
-  { key: 'hamburgueres' as const, label: 'Hambúrgueres', emoji: '🍔' },
-  { key: 'pizzas' as const, label: 'Pizzas', emoji: '🍕' },
-  { key: 'bebidas' as const, label: 'Bebidas', emoji: '🥤' },
+  { key: 'hamburgueres' as const, label: 'Hambúrgueres' },
+  { key: 'pizzas' as const, label: 'Pizzas' },
+  { key: 'bebidas' as const, label: 'Bebidas' },
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
   const [storeName, setStoreName] = useState('Vision Mídia');
+  const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_ICONS);
   const [banners, setBanners] = useState<BannerItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeBanner, setActiveBanner] = useState(0);

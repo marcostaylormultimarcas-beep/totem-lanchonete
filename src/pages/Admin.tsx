@@ -20,6 +20,7 @@ const AdminPage = () => {
     whatsappNumber: '', storeName: 'Vision Mídia', coverImage: '',
     combo: { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
     banners: [],
+    categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -55,6 +56,7 @@ const AdminPage = () => {
           coverImage: data.cover_image || '',
           combo: (data.combo as any) || { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
           banners: (data.banners as unknown as BannerItem[]) || [],
+          categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
         });
       }
     };
@@ -63,12 +65,13 @@ const AdminPage = () => {
 
   // Save settings to Supabase
   const saveSettingsToDb = async (s: StoreSettings) => {
-    const payload = {
+    const payload: any = {
       store_name: s.storeName,
       whatsapp_number: s.whatsappNumber,
       cover_image: s.coverImage,
       combo: s.combo as any,
       banners: s.banners as any,
+      category_icons: s.categoryIcons as any,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

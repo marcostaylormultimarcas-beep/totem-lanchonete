@@ -134,6 +134,7 @@ export type Database = {
       settings: {
         Row: {
           banners: Json
+          category_icons: Json
           combo: Json
           cover_image: string | null
           created_at: string
@@ -144,6 +145,7 @@ export type Database = {
         }
         Insert: {
           banners?: Json
+          category_icons?: Json
           combo?: Json
           cover_image?: string | null
           created_at?: string
@@ -154,6 +156,7 @@ export type Database = {
         }
         Update: {
           banners?: Json
+          category_icons?: Json
           combo?: Json
           cover_image?: string | null
           created_at?: string

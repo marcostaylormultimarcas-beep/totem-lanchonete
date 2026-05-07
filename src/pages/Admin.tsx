@@ -20,6 +20,7 @@ const AdminPage = () => {
     whatsappNumber: '', storeName: 'Vision Mídia', coverImage: '',
     combo: { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
     banners: [],
+    categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -55,6 +56,7 @@ const AdminPage = () => {
           coverImage: data.cover_image || '',
           combo: (data.combo as any) || { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
           banners: (data.banners as unknown as BannerItem[]) || [],
+          categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
         });
       }
     };
@@ -63,12 +65,13 @@ const AdminPage = () => {
 
   // Save settings to Supabase
   const saveSettingsToDb = async (s: StoreSettings) => {
-    const payload = {
+    const payload: any = {
       store_name: s.storeName,
       whatsapp_number: s.whatsappNumber,
       cover_image: s.coverImage,
       combo: s.combo as any,
       banners: s.banners as any,
+      category_icons: s.categoryIcons as any,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);
@@ -94,6 +97,25 @@ const AdminPage = () => {
       console.error(err);
     } finally {
       setUploadingBannerIdx(null);
+    }
+  };
+
+  const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState<keyof StoreSettings['categoryIcons'] | null>(null);
+
+  const handleCategoryIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: keyof StoreSettings['categoryIcons']) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCategoryIcon(key);
+    try {
+      const url = await uploadProductImage(file);
+      const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: url } };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert('Erro ao enviar ícone. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingCategoryIcon(null);
     }
   };
 
@@ -408,6 +430,45 @@ const AdminPage = () => {
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Store className="w-5 h-5 text-primary" /> Nome do Restaurante</h3>
             <input placeholder="Ex: Vision Mídia" value={settings.storeName} onChange={e => setSettings({ ...settings, storeName: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+          </div>
+
+          <div className="kiosk-card p-4 space-y-4">
+            <h3 className="font-bold flex items-center gap-2"><Image className="w-5 h-5 text-primary" /> Ícones das Categorias</h3>
+            <p className="text-xs text-muted-foreground">Suba uma foto ou use um emoji para cada categoria exibida na tela inicial.</p>
+            {(['hamburgueres','pizzas','bebidas'] as const).map(key => {
+              const value = settings.categoryIcons?.[key] || '';
+              const label = key === 'hamburgueres' ? 'Hambúrgueres' : key === 'pizzas' ? 'Pizzas' : 'Bebidas';
+              return (
+                <div key={key} className="space-y-2">
+                  <label className="text-xs text-muted-foreground block font-semibold">{label}</label>
+                  <div className="flex gap-2 items-center">
+                    <div className="w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {isImageUrl(value) ? (
+                        <img src={value} alt={label} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-3xl">{value || '❓'}</span>
+                      )}
+                    </div>
+                    <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingCategoryIcon === key ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {uploadingCategoryIcon === key ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                      <span className="text-sm">{uploadingCategoryIcon === key ? 'Enviando...' : 'Subir Foto'}</span>
+                      <input type="file" accept="image/*" onChange={e => handleCategoryIconUpload(e, key)} className="hidden" disabled={uploadingCategoryIcon === key} />
+                    </label>
+                    <input
+                      placeholder="Emoji"
+                      value={isImageUrl(value) ? '' : value}
+                      onChange={e => {
+                        const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: e.target.value } };
+                        setSettings(updated);
+                        saveSettingsToDb(updated);
+                      }}
+                      className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl"
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="kiosk-card p-4 space-y-4">

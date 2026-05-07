@@ -1,0 +1,1 @@
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS category_icons jsonb NOT NULL DEFAULT '{"hamburgueres":"🍔","pizzas":"🍕","bebidas":"🥤"}'::jsonb;

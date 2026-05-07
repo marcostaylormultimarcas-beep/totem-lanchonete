@@ -12,14 +12,16 @@ interface StartScreenProps {
   cartCount?: number;
 }
 
+const DEFAULT_CATEGORY_ICONS = { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' };
 const CATEGORIES = [
-  { key: 'hamburgueres' as const, label: 'Hambúrgueres', emoji: '🍔' },
-  { key: 'pizzas' as const, label: 'Pizzas', emoji: '🍕' },
-  { key: 'bebidas' as const, label: 'Bebidas', emoji: '🥤' },
+  { key: 'hamburgueres' as const, label: 'Hambúrgueres' },
+  { key: 'pizzas' as const, label: 'Pizzas' },
+  { key: 'bebidas' as const, label: 'Bebidas' },
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartScreenProps) => {
   const [storeName, setStoreName] = useState('Vision Mídia');
+  const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_ICONS);
   const [banners, setBanners] = useState<BannerItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeBanner, setActiveBanner] = useState(0);
@@ -33,6 +35,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
+        if ((data as any).category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...((data as any).category_icons as any) });
       }
     };
     fetchSettings();
@@ -69,6 +72,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
           setBanners((data.banners as unknown as BannerItem[]) || []);
+          if (data.category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...data.category_icons });
         }
       })
       .subscribe();
@@ -207,14 +211,21 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
       <div className="px-4 mb-6">
         <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
         <div className="flex gap-4 justify-center">
-          {CATEGORIES.map(cat => (
-            <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90">
-                {cat.emoji}
-              </div>
-              <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
-            </button>
-          ))}
+          {CATEGORIES.map(cat => {
+            const icon = categoryIcons[cat.key] || '';
+            return (
+              <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90 overflow-hidden">
+                  {isUrl(icon) ? (
+                    <img src={icon} alt={cat.label} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{icon}</span>
+                  )}
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -226,22 +237,26 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
             Ver tudo <ChevronRight className="w-3 h-3" />
           </button>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {topProducts.map(product => (
-            <div key={product.id} className="kiosk-card group relative">
-              <button onClick={() => setSelectedProduct(product)} className="w-full flex flex-col items-center p-3 sm:p-4 gap-2 text-center">
-                {isUrl(product.image) ? (
-                  <img src={product.image} alt={product.name} className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-xl" />
-                ) : (
-                  <span className="text-4xl sm:text-5xl">{product.image}</span>
-                )}
-                <span className="font-bold text-xs sm:text-sm leading-tight line-clamp-2">{product.name}</span>
-                <span className="text-primary font-black text-sm sm:text-base">{formatCurrency(product.price)}</span>
+            <div key={product.id} className="kiosk-card group relative overflow-hidden">
+              <button onClick={() => setSelectedProduct(product)} className="w-full flex flex-col items-stretch text-left">
+                <div className="w-full aspect-square bg-muted overflow-hidden">
+                  {isUrl(product.image) ? (
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>
+                  )}
+                </div>
+                <div className="p-3 flex flex-col gap-1">
+                  <span className="font-bold text-sm sm:text-base leading-tight line-clamp-2">{product.name}</span>
+                  <span className="text-primary font-black text-base sm:text-lg">{formatCurrency(product.price)}</span>
+                </div>
               </button>
               <button onClick={(e) => { e.stopPropagation(); handleQuickAdd(product); }}
-                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 active:scale-90 sm:opacity-100"
+                className="absolute top-2 right-2 w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg active:scale-90"
                 title="Adicionar rápido">
-                <Plus className="w-4 h-4" />
+                <Plus className="w-5 h-5" />
               </button>
             </div>
           ))}

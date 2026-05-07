@@ -433,6 +433,45 @@ const AdminPage = () => {
           </div>
 
           <div className="kiosk-card p-4 space-y-4">
+            <h3 className="font-bold flex items-center gap-2"><Image className="w-5 h-5 text-primary" /> Ícones das Categorias</h3>
+            <p className="text-xs text-muted-foreground">Suba uma foto ou use um emoji para cada categoria exibida na tela inicial.</p>
+            {(['hamburgueres','pizzas','bebidas'] as const).map(key => {
+              const value = settings.categoryIcons?.[key] || '';
+              const label = key === 'hamburgueres' ? 'Hambúrgueres' : key === 'pizzas' ? 'Pizzas' : 'Bebidas';
+              return (
+                <div key={key} className="space-y-2">
+                  <label className="text-xs text-muted-foreground block font-semibold">{label}</label>
+                  <div className="flex gap-2 items-center">
+                    <div className="w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
+                      {isImageUrl(value) ? (
+                        <img src={value} alt={label} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-3xl">{value || '❓'}</span>
+                      )}
+                    </div>
+                    <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingCategoryIcon === key ? 'opacity-50 pointer-events-none' : ''}`}>
+                      {uploadingCategoryIcon === key ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                      <span className="text-sm">{uploadingCategoryIcon === key ? 'Enviando...' : 'Subir Foto'}</span>
+                      <input type="file" accept="image/*" onChange={e => handleCategoryIconUpload(e, key)} className="hidden" disabled={uploadingCategoryIcon === key} />
+                    </label>
+                    <input
+                      placeholder="Emoji"
+                      value={isImageUrl(value) ? '' : value}
+                      onChange={e => {
+                        const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: e.target.value } };
+                        setSettings(updated);
+                        saveSettingsToDb(updated);
+                      }}
+                      className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl"
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Image className="w-5 h-5 text-primary" /> URL da Imagem de Capa</h3>
             <input placeholder="Cole aqui o link da imagem de fundo do totem" value={settings.coverImage || ''} onChange={e => setSettings({ ...settings, coverImage: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
             {settings.coverImage && (

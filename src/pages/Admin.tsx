@@ -100,6 +100,25 @@ const AdminPage = () => {
     }
   };
 
+  const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState<keyof StoreSettings['categoryIcons'] | null>(null);
+
+  const handleCategoryIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: keyof StoreSettings['categoryIcons']) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCategoryIcon(key);
+    try {
+      const url = await uploadProductImage(file);
+      const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: url } };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert('Erro ao enviar ícone. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingCategoryIcon(null);
+    }
+  };
+
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],
     image: '🍔', removableIngredients: '', extras: '',

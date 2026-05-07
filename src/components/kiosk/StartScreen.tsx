@@ -35,6 +35,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
+        if ((data as any).category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...((data as any).category_icons as any) });
       }
     };
     fetchSettings();
@@ -71,6 +72,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, cartCount = 0 }: StartS
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
           setBanners((data.banners as unknown as BannerItem[]) || []);
+          if (data.category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...data.category_icons });
         }
       })
       .subscribe();

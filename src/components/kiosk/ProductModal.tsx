@@ -88,8 +88,8 @@ const ProductModal = ({ product, onAdd, onClose }: ProductModalProps) => {
               <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">{product.description}</p>
             </div>
           )}
-
-
+          {/* Remove Ingredients */}
+          {product.removableIngredients.length > 0 && (
             <div>
               <h4 className="font-semibold text-sm text-muted-foreground mb-3">REMOVER INGREDIENTES</h4>
               <div className="space-y-2">

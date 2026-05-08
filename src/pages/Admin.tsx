@@ -38,6 +38,7 @@ const AdminPage = () => {
           id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
+          ingredients: (p.ingredients as string[]) || [], description: p.description || '',
         })));
       }
     };

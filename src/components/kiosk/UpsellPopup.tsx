@@ -7,7 +7,7 @@ interface UpsellPopupProps {
   onDecline: () => void;
 }
 
-const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' };
+const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' };
 
 const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
   const [combo, setCombo] = useState<ComboSettings>(DEFAULT_COMBO);
@@ -20,10 +20,16 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
     fetchCombo();
   }, []);
 
+  const isUrl = (s: string) => !!s && (s.startsWith('http') || s.startsWith('/'));
+
   return (
     <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-sm flex items-center justify-center p-6">
       <div className="bg-card rounded-3xl border border-border p-8 max-w-sm w-full text-center space-y-6 animate-scale-in">
-        <div className="text-6xl">{combo.emoji}</div>
+        {isUrl(combo.image || '') ? (
+          <img src={combo.image} alt={combo.name} className="w-32 h-32 mx-auto object-cover rounded-2xl" />
+        ) : (
+          <div className="text-6xl">{combo.emoji}</div>
+        )}
         <h3 className="text-2xl font-bold">Que tal um combo?</h3>
         <p className="text-muted-foreground">
           Adicione <span className="text-primary font-bold">{combo.description}</span> por apenas

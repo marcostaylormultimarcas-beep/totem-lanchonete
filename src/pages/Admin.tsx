@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Product, BannerItem, StoreSettings, formatCurrency } from '@/data/store';
+import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 
-const CATEGORIES: Product['category'][] = ['hamburgueres', 'pizzas', 'bebidas'];
-const CATEGORY_LABELS = { hamburgueres: '🍔 Hambúrgueres', pizzas: '🍕 Pizzas', bebidas: '🥤 Bebidas' };
+const DEFAULT_CATEGORIES: CategoryItem[] = [
+  { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
+  { key: 'pizzas', label: 'Pizzas', icon: '🍕' },
+  { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
+];
 const BADGE_COLORS: BannerItem['badgeColor'][] = ['primary', 'secondary', 'accent'];
 const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho', accent: '🟡 Amarelo' };
 

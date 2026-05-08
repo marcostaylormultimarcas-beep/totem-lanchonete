@@ -9,7 +9,9 @@ interface Order {
   customer_name: string;
   customer_phone: string;
   order_type: string;
-  delivery_address: string;
+  delivery_address: string | null;
+  delivery_reference: string | null;
+  delivery_recipient: string | null;
   items: any[];
   total: number;
   status: string;

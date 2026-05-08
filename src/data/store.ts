@@ -39,6 +39,21 @@ export interface CategoryIcons {
   hamburgueres: string;
   pizzas: string;
   bebidas: string;
+  [key: string]: string;
+}
+
+export interface CategoryItem {
+  key: string;
+  label: string;
+  icon: string;
+}
+
+export interface ComboSettings {
+  name: string;
+  description: string;
+  price: number;
+  emoji: string;
+  image?: string;
 }
 
 export interface StoreSettings {
@@ -48,6 +63,7 @@ export interface StoreSettings {
   combo: ComboSettings;
   banners: BannerItem[];
   categoryIcons: CategoryIcons;
+  categories: CategoryItem[];
 }
 
 // localStorage functions removed — all data now lives in Supabase

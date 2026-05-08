@@ -119,9 +119,29 @@ const AdminPage = () => {
     }
   };
 
+  const [uploadingCover, setUploadingCover] = useState(false);
+
+  const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCover(true);
+    try {
+      const url = await uploadProductImage(file);
+      const updated = { ...settings, coverImage: url };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert('Erro ao enviar imagem de capa. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
   const [form, setForm] = useState({
     name: '', price: '', category: 'hamburgueres' as Product['category'],
     image: '🍔', removableIngredients: '', extras: '',
+    ingredients: '', description: '',
   });
 
   const handleLogin = () => {
@@ -134,7 +154,7 @@ const AdminPage = () => {
   };
 
   const resetForm = () => {
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '' });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -144,6 +164,8 @@ const AdminPage = () => {
       name: p.name, price: p.price.toString(), category: p.category,
       image: p.image, removableIngredients: p.removableIngredients.join(', '),
       extras: p.extras.map(e => `${e.name}:${e.price}`).join(', '),
+      ingredients: (p.ingredients || []).join('\n'),
+      description: p.description || '',
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -172,19 +194,23 @@ const AdminPage = () => {
     });
     const removable = form.removableIngredients.split(',').map(s => s.trim()).filter(Boolean);
 
-    const dbPayload = {
+    const ingredientsList = form.ingredients.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
+
+    const dbPayload: any = {
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
       category: form.category,
       image: form.image.trim() || '🍔',
       removable_ingredients: removable,
       extras: parsedExtras,
+      ingredients: ingredientsList,
+      description: form.description.trim(),
     };
 
     if (editingProduct) {
       await supabase.from('products').update(dbPayload).eq('id', editingProduct.id);
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
-        ...p, ...dbPayload, removableIngredients: removable,
+        ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -195,6 +221,8 @@ const AdminPage = () => {
           removableIngredients: (data.removable_ingredients as string[]) || [],
           extras: (data.extras as { name: string; price: number }[]) || [],
           isCombo: data.is_combo || false,
+          ingredients: ((data as any).ingredients as string[]) || [],
+          description: (data as any).description || '',
         }]);
       }
     }

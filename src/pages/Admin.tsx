@@ -188,7 +188,7 @@ const AdminPage = () => {
   };
 
   const [form, setForm] = useState({
-    name: '', price: '', category: 'hamburgueres' as Product['category'],
+    name: '', price: '', category: 'hamburgueres' as string,
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
   });

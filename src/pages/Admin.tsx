@@ -59,9 +59,10 @@ const AdminPage = () => {
           storeName: data.store_name || 'Vision Mídia',
           whatsappNumber: data.whatsapp_number || '',
           coverImage: data.cover_image || '',
-          combo: (data.combo as any) || { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
+          combo: (data.combo as any) || { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' },
           banners: (data.banners as unknown as BannerItem[]) || [],
           categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
+          categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
         });
       }
     };

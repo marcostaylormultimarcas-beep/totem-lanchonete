@@ -352,6 +352,26 @@ const AdminPage = () => {
                 <label className="text-xs text-muted-foreground mb-1 block">Adicionais (formato: Nome:Preço)</label>
                 <input placeholder="Ex: Bacon:5, Queijo:4, Ovo:3" value={form.extras} onChange={e => setForm({ ...form, extras: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
               </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Ingredientes do Produto (um por linha)</label>
+                <textarea
+                  placeholder={'Ex:\nPão Brioche selado na manteiga\nBlend de Carne Bovina Artesanal (150g)\nQueijo Mussarela derretido'}
+                  value={form.ingredients}
+                  onChange={e => setForm({ ...form, ingredients: e.target.value })}
+                  rows={6}
+                  className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary resize-y"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">Descrição do Produto</label>
+                <textarea
+                  placeholder="Insira aqui o texto de marketing ou detalhes adicionais sobre o preparo deste sanduíche."
+                  value={form.description}
+                  onChange={e => setForm({ ...form, description: e.target.value })}
+                  rows={4}
+                  className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary resize-y"
+                />
+              </div>
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>

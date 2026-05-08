@@ -35,7 +35,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
-        if ((data as any).category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...((data as any).category_icons as any) });
+        const cats = (data as any).categories as CategoryItem[] | undefined;
+        if (cats && cats.length > 0) setCategories(cats);
+        else if ((data as any).category_icons) {
+          const icons = (data as any).category_icons as Record<string, string>;
+          setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+        }
       }
     };
     fetchSettings();

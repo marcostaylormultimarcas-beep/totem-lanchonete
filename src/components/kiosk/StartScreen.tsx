@@ -56,6 +56,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [],
           isCombo: p.is_combo || false,
+          ingredients: (p.ingredients as string[]) || [],
+          description: p.description || '',
         }));
         setProducts(mapped);
       }
@@ -97,6 +99,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
               removableIngredients: (p.removable_ingredients as string[]) || [],
               extras: (p.extras as { name: string; price: number }[]) || [],
               isCombo: p.is_combo || false,
+              ingredients: (p.ingredients as string[]) || [],
+              description: p.description || '',
             }));
             setProducts(mapped);
           }

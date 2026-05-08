@@ -7,13 +7,25 @@ interface LandingScreenProps {
 
 const LandingScreen = ({ onStart }: LandingScreenProps) => {
   const [storeName, setStoreName] = useState('Vision Mídia');
+  const [coverImage, setCoverImage] = useState('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1920&q=80');
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('store_name, cover_image').limit(1).maybeSingle();
       if (data?.store_name) setStoreName(data.store_name);
+      if (data?.cover_image) setCoverImage(data.cover_image);
     };
     fetchSettings();
+
+    const channel = supabase
+      .channel('landing-settings-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload: any) => {
+        const d = payload.new;
+        if (d?.store_name) setStoreName(d.store_name);
+        if (d?.cover_image) setCoverImage(d.cover_image);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   return (
@@ -21,7 +33,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
       className="min-h-screen w-full flex flex-col items-center justify-center relative cursor-pointer select-none"
       onClick={onStart}
       style={{
-        backgroundImage: `url('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1920&q=80')`,
+        backgroundImage: `url('${coverImage}')`,
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}

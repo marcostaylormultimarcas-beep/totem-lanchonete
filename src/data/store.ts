@@ -7,6 +7,8 @@ export interface Product {
   removableIngredients: string[];
   extras: { name: string; price: number }[];
   isCombo?: boolean;
+  ingredients?: string[];
+  description?: string;
 }
 
 export interface CartItem {

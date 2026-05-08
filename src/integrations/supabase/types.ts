@@ -69,9 +69,11 @@ export type Database = {
         Row: {
           category: string
           created_at: string
+          description: string
           extras: Json
           id: string
           image: string
+          ingredients: Json
           is_combo: boolean | null
           name: string
           price: number
@@ -81,9 +83,11 @@ export type Database = {
         Insert: {
           category?: string
           created_at?: string
+          description?: string
           extras?: Json
           id?: string
           image?: string
+          ingredients?: Json
           is_combo?: boolean | null
           name: string
           price?: number
@@ -93,9 +97,11 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string
+          description?: string
           extras?: Json
           id?: string
           image?: string
+          ingredients?: Json
           is_combo?: boolean | null
           name?: string
           price?: number

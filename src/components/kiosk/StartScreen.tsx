@@ -228,9 +228,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       {/* Categories */}
       <div className="px-4 mb-6">
         <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
-        <div className="flex gap-4 justify-center">
-          {CATEGORIES.map(cat => {
-            const icon = categoryIcons[cat.key] || '';
+        <div className="flex gap-4 justify-center flex-wrap">
+          {categories.map(cat => {
+            const icon = cat.icon || '';
             return (
               <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90 overflow-hidden">
@@ -240,7 +240,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                     <span>{icon}</span>
                   )}
                 </div>
-                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
+                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors text-center max-w-[6rem] truncate">{cat.label}</span>
               </button>
             );
           })}

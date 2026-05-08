@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList } from 'lucide-react';
-import { formatCurrency, Product, CartItem, BannerItem } from '@/data/store';
+import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
 
@@ -13,11 +13,10 @@ interface StartScreenProps {
   cartCount?: number;
 }
 
-const DEFAULT_CATEGORY_ICONS = { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' };
-const CATEGORIES = [
-  { key: 'hamburgueres' as const, label: 'Hambúrgueres' },
-  { key: 'pizzas' as const, label: 'Pizzas' },
-  { key: 'bebidas' as const, label: 'Bebidas' },
+const DEFAULT_CATEGORIES: CategoryItem[] = [
+  { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
+  { key: 'pizzas', label: 'Pizzas', icon: '🍕' },
+  { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {

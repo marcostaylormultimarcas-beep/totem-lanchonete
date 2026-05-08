@@ -66,8 +66,30 @@ const ProductModal = ({ product, onAdd, onClose }: ProductModalProps) => {
         </div>
 
         <div className="p-5 space-y-6">
-          {/* Remove Ingredients */}
-          {product.removableIngredients.length > 0 && (
+          {/* Ingredients list */}
+          {product.ingredients && product.ingredients.length > 0 && (
+            <div>
+              <h4 className="font-semibold text-sm text-primary mb-3 uppercase tracking-wider">Ingredientes</h4>
+              <ul className="space-y-1.5">
+                {product.ingredients.map((ing, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-foreground/90">
+                    <span className="text-primary mt-1">•</span>
+                    <span>{ing}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Marketing description */}
+          {product.description && product.description.trim() && (
+            <div className="rounded-xl bg-primary/5 border border-primary/20 p-4">
+              <h4 className="font-semibold text-xs text-primary mb-2 uppercase tracking-wider">Sobre este produto</h4>
+              <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">{product.description}</p>
+            </div>
+          )}
+
+
             <div>
               <h4 className="font-semibold text-sm text-muted-foreground mb-3">REMOVER INGREDIENTES</h4>
               <div className="space-y-2">

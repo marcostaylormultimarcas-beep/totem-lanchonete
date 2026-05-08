@@ -107,15 +107,16 @@ const AdminPage = () => {
     }
   };
 
-  const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState<keyof StoreSettings['categoryIcons'] | null>(null);
+  const [uploadingCategoryIcon, setUploadingCategoryIcon] = useState<string | null>(null);
 
-  const handleCategoryIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: keyof StoreSettings['categoryIcons']) => {
+  const handleCategoryIconUpload = async (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingCategoryIcon(key);
     try {
       const url = await uploadProductImage(file);
-      const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: url } };
+      const cats = (settings.categories || DEFAULT_CATEGORIES).map(c => c.key === key ? { ...c, icon: url } : c);
+      const updated = { ...settings, categories: cats, categoryIcons: { ...settings.categoryIcons, [key]: url } };
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
@@ -124,6 +125,47 @@ const AdminPage = () => {
     } finally {
       setUploadingCategoryIcon(null);
     }
+  };
+
+  const [uploadingComboImage, setUploadingComboImage] = useState(false);
+  const handleComboImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingComboImage(true);
+    try {
+      const url = await uploadProductImage(file);
+      const updated = { ...settings, combo: { ...settings.combo, image: url } };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert('Erro ao enviar imagem do combo. Tente novamente.');
+    } finally {
+      setUploadingComboImage(false);
+    }
+  };
+
+  const updateCategory = async (idx: number, field: 'label' | 'icon' | 'key', value: string) => {
+    const cats = [...(settings.categories || DEFAULT_CATEGORIES)];
+    cats[idx] = { ...cats[idx], [field]: value };
+    const updated = { ...settings, categories: cats };
+    setSettings(updated);
+    await saveSettingsToDb(updated);
+  };
+
+  const addCategory = async () => {
+    const key = 'cat_' + Math.random().toString(36).slice(2, 8);
+    const cats = [...(settings.categories || DEFAULT_CATEGORIES), { key, label: 'Nova Categoria', icon: '🍽️' }];
+    const updated = { ...settings, categories: cats };
+    setSettings(updated);
+    await saveSettingsToDb(updated);
+  };
+
+  const removeCategory = async (key: string) => {
+    if (!confirm('Remover esta categoria? Os produtos vinculados a ela ficarão sem categoria visível.')) return;
+    const cats = (settings.categories || DEFAULT_CATEGORIES).filter(c => c.key !== key);
+    const updated = { ...settings, categories: cats };
+    setSettings(updated);
+    await saveSettingsToDb(updated);
   };
 
   const [uploadingCover, setUploadingCover] = useState(false);

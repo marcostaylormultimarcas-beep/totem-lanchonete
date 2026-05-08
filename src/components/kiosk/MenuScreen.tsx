@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
-import { getItemTotal, CartItem, Product } from '@/data/store';
+import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
@@ -15,14 +15,15 @@ interface MenuScreenProps {
   onInitialProductHandled?: () => void;
 }
 
-const CATEGORIES = [
-  { key: 'hamburgueres' as const, label: '🍔 Hambúrgueres' },
-  { key: 'pizzas' as const, label: '🍕 Pizzas' },
-  { key: 'bebidas' as const, label: '🥤 Bebidas' },
+const DEFAULT_CATEGORIES: CategoryItem[] = [
+  { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
+  { key: 'pizzas', label: 'Pizzas', icon: '🍕' },
+  { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
 const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled }: MenuScreenProps) => {
-  const [activeCategory, setActiveCategory] = useState<'hamburgueres' | 'pizzas' | 'bebidas'>('hamburgueres');
+  const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
+  const [activeCategory, setActiveCategory] = useState<string>('hamburgueres');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showUpsell, setShowUpsell] = useState(false);
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
@@ -33,17 +34,22 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
     const fetchData = async () => {
       const [{ data: prods }, { data: settingsData }] = await Promise.all([
         supabase.from('products').select('*'),
-        supabase.from('settings').select('combo').limit(1).maybeSingle(),
+        supabase.from('settings').select('combo, categories').limit(1).maybeSingle(),
       ]);
       if (prods) {
         setProducts(prods.map((p: any) => ({
-          id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
+          id: p.id, name: p.name, price: Number(p.price), category: p.category,
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);
+      const cats = (settingsData as any)?.categories as CategoryItem[] | undefined;
+      if (cats && cats.length > 0) {
+        setCategories(cats);
+        setActiveCategory(prev => cats.find(c => c.key === prev) ? prev : cats[0].key);
+      }
     };
     fetchData();
   }, []);
@@ -82,7 +88,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           name: `Combo: ${combo.name}`,
           price: combo.price,
           category: 'bebidas',
-          image: combo.emoji,
+          image: (combo as any).image || combo.emoji,
           removableIngredients: [],
           extras: [],
           isCombo: true,
@@ -102,6 +108,8 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
     setShowUpsell(false);
     setPendingItem(null);
   };
+
+  const isUrl = (s: string) => s.startsWith('http') || s.startsWith('/');
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
@@ -125,16 +133,19 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
       {/* Categories */}
       <div className="flex gap-2 p-4 overflow-x-auto">
-        {CATEGORIES.map(cat => (
+        {categories.map(cat => (
           <button
             key={cat.key}
             onClick={() => setActiveCategory(cat.key)}
-            className={`touch-btn px-6 py-3 rounded-xl whitespace-nowrap text-base font-semibold transition-all ${
+            className={`touch-btn px-6 py-3 rounded-xl whitespace-nowrap text-base font-semibold transition-all flex items-center gap-2 ${
               activeCategory === cat.key
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground'
             }`}
           >
+            {cat.icon && (isUrl(cat.icon)
+              ? <img src={cat.icon} alt="" className="w-6 h-6 rounded-full object-cover" />
+              : <span>{cat.icon}</span>)}
             {cat.label}
           </button>
         ))}
@@ -143,7 +154,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       {/* Products Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 flex-1 max-w-[1200px] mx-auto w-full">
         {filtered.map(product => {
-          const isUrl = product.image.startsWith('http') || product.image.startsWith('/');
+          const isUrlImg = product.image.startsWith('http') || product.image.startsWith('/');
           return (
             <button
               key={product.id}
@@ -151,7 +162,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
               className="kiosk-card overflow-hidden flex flex-col text-left active:scale-95 transition-transform group"
             >
               <div className="w-full aspect-square bg-muted overflow-hidden">
-                {isUrl ? (
+                {isUrlImg ? (
                   <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                 ) : (
                   <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>

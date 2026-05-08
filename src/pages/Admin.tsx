@@ -21,9 +21,10 @@ const AdminPage = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [settings, setSettings] = useState<StoreSettings>({
     whatsappNumber: '', storeName: 'Vision Mídia', coverImage: '',
-    combo: { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' },
+    combo: { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' },
     banners: [],
     categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
+    categories: DEFAULT_CATEGORIES,
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);

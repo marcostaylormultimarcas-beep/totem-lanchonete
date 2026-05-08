@@ -530,42 +530,53 @@ const AdminPage = () => {
           </div>
 
           <div className="kiosk-card p-4 space-y-4">
-            <h3 className="font-bold flex items-center gap-2"><Image className="w-5 h-5 text-primary" /> Ícones das Categorias</h3>
-            <p className="text-xs text-muted-foreground">Suba uma foto ou use um emoji para cada categoria exibida na tela inicial.</p>
-            {(['hamburgueres','pizzas','bebidas'] as const).map(key => {
-              const value = settings.categoryIcons?.[key] || '';
-              const label = key === 'hamburgueres' ? 'Hambúrgueres' : key === 'pizzas' ? 'Pizzas' : 'Bebidas';
-              return (
-                <div key={key} className="space-y-2">
-                  <label className="text-xs text-muted-foreground block font-semibold">{label}</label>
-                  <div className="flex gap-2 items-center">
-                    <div className="w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {isImageUrl(value) ? (
-                        <img src={value} alt={label} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-3xl">{value || '❓'}</span>
-                      )}
-                    </div>
-                    <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingCategoryIcon === key ? 'opacity-50 pointer-events-none' : ''}`}>
-                      {uploadingCategoryIcon === key ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                      <span className="text-sm">{uploadingCategoryIcon === key ? 'Enviando...' : 'Subir Foto'}</span>
-                      <input type="file" accept="image/*" onChange={e => handleCategoryIconUpload(e, key)} className="hidden" disabled={uploadingCategoryIcon === key} />
-                    </label>
+            <h3 className="font-bold flex items-center gap-2"><Image className="w-5 h-5 text-primary" /> Categorias</h3>
+            <p className="text-xs text-muted-foreground">Adicione, edite ou remova categorias. As alterações são salvas automaticamente.</p>
+            {(settings.categories || DEFAULT_CATEGORIES).map((cat, idx) => (
+              <div key={cat.key} className="space-y-2 border border-border rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-semibold">Categoria #{idx + 1}</span>
+                  <button onClick={() => removeCategory(cat.key)} className="p-1 text-muted-foreground hover:text-destructive">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <div className="w-16 h-16 rounded-full bg-muted border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
+                    {isImageUrl(cat.icon) ? (
+                      <img src={cat.icon} alt={cat.label} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-3xl">{cat.icon || '❓'}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2">
                     <input
-                      placeholder="Emoji"
-                      value={isImageUrl(value) ? '' : value}
-                      onChange={e => {
-                        const updated = { ...settings, categoryIcons: { ...settings.categoryIcons, [key]: e.target.value } };
-                        setSettings(updated);
-                        saveSettingsToDb(updated);
-                      }}
-                      className="w-20 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl"
-                      maxLength={4}
+                      placeholder="Nome da categoria"
+                      value={cat.label}
+                      onChange={e => updateCategory(idx, 'label', e.target.value)}
+                      className="w-full px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm"
+                      maxLength={30}
                     />
+                    <div className="flex gap-2">
+                      <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-2 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors text-xs ${uploadingCategoryIcon === cat.key ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {uploadingCategoryIcon === cat.key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        <span>{uploadingCategoryIcon === cat.key ? 'Enviando...' : 'Subir Foto'}</span>
+                        <input type="file" accept="image/*" onChange={e => handleCategoryIconUpload(e, cat.key)} className="hidden" disabled={uploadingCategoryIcon === cat.key} />
+                      </label>
+                      <input
+                        placeholder="Emoji"
+                        value={isImageUrl(cat.icon) ? '' : cat.icon}
+                        onChange={e => updateCategory(idx, 'icon', e.target.value)}
+                        className="w-16 px-2 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-xl"
+                        maxLength={4}
+                      />
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
+            <button onClick={addCategory} className="touch-btn w-full bg-muted text-muted-foreground py-3 rounded-xl flex items-center justify-center gap-2 border-2 border-dashed border-border">
+              <Plus className="w-5 h-5" /> Adicionar Categoria
+            </button>
           </div>
 
           <div className="kiosk-card p-4 space-y-4">

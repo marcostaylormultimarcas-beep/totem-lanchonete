@@ -2,7 +2,7 @@ export interface Product {
   id: string;
   name: string;
   price: number;
-  category: 'hamburgueres' | 'pizzas' | 'bebidas';
+  category: string;
   image: string;
   removableIngredients: string[];
   extras: { name: string; price: number }[];

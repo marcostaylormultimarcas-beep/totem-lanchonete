@@ -385,12 +385,12 @@ const AdminPage = () => {
             </div>
           )}
 
-          {CATEGORIES.map(cat => {
-            const catProducts = products.filter(p => p.category === cat);
+          {(settings.categories || DEFAULT_CATEGORIES).map(cat => {
+            const catProducts = products.filter(p => p.category === cat.key);
             if (catProducts.length === 0) return null;
             return (
-              <div key={cat}>
-                <h3 className="font-bold text-sm text-muted-foreground mb-2">{CATEGORY_LABELS[cat]}</h3>
+              <div key={cat.key}>
+                <h3 className="font-bold text-sm text-muted-foreground mb-2">{cat.icon} {cat.label}</h3>
                 <div className="space-y-2">
                   {catProducts.map(p => (
                     <div key={p.id} className="kiosk-card p-3 flex items-center gap-3">

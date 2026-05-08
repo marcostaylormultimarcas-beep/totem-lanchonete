@@ -9,7 +9,9 @@ interface Order {
   customer_name: string;
   customer_phone: string;
   order_type: string;
-  delivery_address: string;
+  delivery_address: string | null;
+  delivery_reference: string | null;
+  delivery_recipient: string | null;
   items: any[];
   total: number;
   status: string;
@@ -99,7 +101,18 @@ const OrdersPanel = () => {
 
             <div className="text-sm space-y-1">
               <p>👤 <span className="font-semibold">{order.customer_name}</span> — {order.customer_phone}</p>
-              <p>📍 {order.order_type === 'local' ? 'Comer no Local' : `Entrega: ${order.delivery_address}`}</p>
+              {order.order_type === 'local' ? (
+                <p>📍 Comer no Local</p>
+              ) : (
+                <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 space-y-0.5 mt-1">
+                  <p className="text-blue-400 font-bold text-xs uppercase tracking-wide flex items-center gap-1">
+                    <Truck className="w-3 h-3" /> Entrega
+                  </p>
+                  {order.delivery_address && <p>📌 <span className="font-semibold">Endereço:</span> {order.delivery_address}</p>}
+                  {order.delivery_reference && <p>🧭 <span className="font-semibold">Referência:</span> {order.delivery_reference}</p>}
+                  {order.delivery_recipient && <p>👥 <span className="font-semibold">Recebe:</span> {order.delivery_recipient}</p>}
+                </div>
+              )}
             </div>
 
             <div className="text-xs space-y-0.5 bg-muted/50 rounded-lg p-2">

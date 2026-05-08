@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList } from 'lucide-react';
-import { formatCurrency, Product, CartItem, BannerItem } from '@/data/store';
+import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
 
@@ -13,16 +13,15 @@ interface StartScreenProps {
   cartCount?: number;
 }
 
-const DEFAULT_CATEGORY_ICONS = { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' };
-const CATEGORIES = [
-  { key: 'hamburgueres' as const, label: 'Hambúrgueres' },
-  { key: 'pizzas' as const, label: 'Pizzas' },
-  { key: 'bebidas' as const, label: 'Bebidas' },
+const DEFAULT_CATEGORIES: CategoryItem[] = [
+  { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
+  { key: 'pizzas', label: 'Pizzas', icon: '🍕' },
+  { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {
   const [storeName, setStoreName] = useState('Vision Mídia');
-  const [categoryIcons, setCategoryIcons] = useState<Record<string, string>>(DEFAULT_CATEGORY_ICONS);
+  const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<BannerItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [activeBanner, setActiveBanner] = useState(0);
@@ -36,7 +35,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
-        if ((data as any).category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...((data as any).category_icons as any) });
+        const cats = (data as any).categories as CategoryItem[] | undefined;
+        if (cats && cats.length > 0) setCategories(cats);
+        else if ((data as any).category_icons) {
+          const icons = (data as any).category_icons as Record<string, string>;
+          setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+        }
       }
     };
     fetchSettings();
@@ -75,7 +79,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
           setBanners((data.banners as unknown as BannerItem[]) || []);
-          if (data.category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...data.category_icons });
+          const cats = data.categories as CategoryItem[] | undefined;
+          if (cats && cats.length > 0) setCategories(cats);
+          else if (data.category_icons) {
+            const icons = data.category_icons as Record<string, string>;
+            setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+          }
         }
       })
       .subscribe();
@@ -219,9 +228,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       {/* Categories */}
       <div className="px-4 mb-6">
         <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
-        <div className="flex gap-4 justify-center">
-          {CATEGORIES.map(cat => {
-            const icon = categoryIcons[cat.key] || '';
+        <div className="flex gap-4 justify-center flex-wrap">
+          {categories.map(cat => {
+            const icon = cat.icon || '';
             return (
               <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90 overflow-hidden">
@@ -231,7 +240,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                     <span>{icon}</span>
                   )}
                 </div>
-                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors">{cat.label}</span>
+                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground transition-colors text-center max-w-[6rem] truncate">{cat.label}</span>
               </button>
             );
           })}

@@ -78,6 +78,7 @@ const AdminPage = () => {
       combo: s.combo as any,
       banners: s.banners as any,
       category_icons: s.categoryIcons as any,
+      categories: s.categories as any,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

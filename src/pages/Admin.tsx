@@ -322,8 +322,8 @@ const AdminPage = () => {
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>
-                <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value as Product['category'] })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+                  {(settings.categories || DEFAULT_CATEGORIES).map(c => <option key={c.key} value={c.key}>{c.icon} {c.label}</option>)}
                 </select>
               </div>
               {/* Image Upload */}

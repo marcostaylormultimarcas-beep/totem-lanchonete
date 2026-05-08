@@ -79,7 +79,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
           setBanners((data.banners as unknown as BannerItem[]) || []);
-          if (data.category_icons) setCategoryIcons({ ...DEFAULT_CATEGORY_ICONS, ...data.category_icons });
+          const cats = data.categories as CategoryItem[] | undefined;
+          if (cats && cats.length > 0) setCategories(cats);
+          else if (data.category_icons) {
+            const icons = data.category_icons as Record<string, string>;
+            setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+          }
         }
       })
       .subscribe();

@@ -670,6 +670,13 @@ const AdminPage = () => {
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold">📱 WhatsApp da Cozinha</h3>
             <input placeholder="Número com código do país (ex: 5562994995768)" value={settings.whatsappNumber} onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
+            <p className="text-xs text-muted-foreground">Este número também é usado no ícone do WhatsApp do rodapé do totem.</p>
+          </div>
+
+          <div className="kiosk-card p-4 space-y-4">
+            <h3 className="font-bold">📷 Link do Instagram (rodapé)</h3>
+            <input placeholder="https://instagram.com/seuperfil" value={settings.instagramUrl || ''} onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={200} />
+            <p className="text-xs text-muted-foreground">Cole o link completo do perfil. Aparecerá no rodapé da tela inicial.</p>
           </div>
 
           <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">

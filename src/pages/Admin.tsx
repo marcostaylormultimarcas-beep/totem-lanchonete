@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';

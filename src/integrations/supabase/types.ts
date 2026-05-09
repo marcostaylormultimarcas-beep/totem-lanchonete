@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admins: {
+        Row: {
+          created_at: string
+          id: string
+          is_master: boolean
+          password: string
+          paused: boolean
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_master?: boolean
+          password: string
+          paused?: boolean
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_master?: boolean
+          password?: string
+          paused?: boolean
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string

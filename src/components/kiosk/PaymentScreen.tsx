@@ -172,6 +172,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
             📍 Acompanhar Pedido
           </button>
         )}
+
+        <button onClick={() => onDone()} className="touch-btn w-full bg-primary/10 border-2 border-primary text-primary py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+          🏠 Voltar ao Menu Inicial
+        </button>
       </div>
     );
   }

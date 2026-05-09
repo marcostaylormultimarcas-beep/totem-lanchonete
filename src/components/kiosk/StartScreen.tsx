@@ -225,14 +225,14 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         </div>
       )}
 
-      {/* Categories */}
-      <div className="px-4 mb-6">
-        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
-        <div className="flex gap-4 justify-center flex-wrap">
+      {/* Categories Carousel */}
+      <div className="mb-6">
+        <h2 className="px-4 text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3">Categorias</h2>
+        <div className="flex gap-4 overflow-x-auto px-4 pb-2 snap-x snap-mandatory scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
           {categories.map(cat => {
             const icon = cat.icon || '';
             return (
-              <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group">
+              <button key={cat.key} onClick={onStart} className="flex flex-col items-center gap-2 group flex-shrink-0 snap-start">
                 <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-muted border-2 border-border group-hover:border-primary flex items-center justify-center text-3xl sm:text-4xl transition-all duration-200 group-active:scale-90 overflow-hidden">
                   {isUrl(icon) ? (
                     <img src={icon} alt={cat.label} className="w-full h-full object-cover" />

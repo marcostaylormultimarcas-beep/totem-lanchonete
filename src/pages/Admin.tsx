@@ -14,8 +14,18 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 const BADGE_COLORS: BannerItem['badgeColor'][] = ['primary', 'secondary', 'accent'];
 const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho', accent: '🟡 Amarelo' };
 
+interface AdminUser {
+  id: string;
+  username: string;
+  password: string;
+  is_master: boolean;
+  paused: boolean;
+}
+
 const AdminPage = () => {
   const [authenticated, setAuthenticated] = useState(false);
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
+  const [loginUser, setLoginUser] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -25,11 +35,12 @@ const AdminPage = () => {
     banners: [],
     categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
     categories: DEFAULT_CATEGORIES,
+    instagramUrl: '',
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'products' | 'settings' | 'banners' | 'orders'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 
@@ -63,6 +74,7 @@ const AdminPage = () => {
           banners: (data.banners as unknown as BannerItem[]) || [],
           categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
+          instagramUrl: (data as any).instagram_url || '',
         });
       }
     };
@@ -79,6 +91,7 @@ const AdminPage = () => {
       banners: s.banners as any,
       category_icons: s.categoryIcons as any,
       categories: s.categories as any,
+      instagram_url: s.instagramUrl || '',
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

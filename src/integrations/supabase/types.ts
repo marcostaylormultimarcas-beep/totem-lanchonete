@@ -176,6 +176,7 @@ export type Database = {
           cover_image: string | null
           created_at: string
           id: string
+          instagram_url: string
           store_name: string
           updated_at: string
           whatsapp_number: string
@@ -188,6 +189,7 @@ export type Database = {
           cover_image?: string | null
           created_at?: string
           id?: string
+          instagram_url?: string
           store_name?: string
           updated_at?: string
           whatsapp_number?: string
@@ -200,6 +202,7 @@ export type Database = {
           cover_image?: string | null
           created_at?: string
           id?: string
+          instagram_url?: string
           store_name?: string
           updated_at?: string
           whatsapp_number?: string

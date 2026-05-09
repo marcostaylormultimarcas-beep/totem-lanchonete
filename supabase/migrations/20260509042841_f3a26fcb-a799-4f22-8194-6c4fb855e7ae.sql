@@ -1,0 +1,1 @@
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS instagram_url TEXT NOT NULL DEFAULT '';

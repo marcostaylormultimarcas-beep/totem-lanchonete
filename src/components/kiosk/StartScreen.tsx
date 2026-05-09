@@ -254,7 +254,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       </div>
 
       {/* Most Ordered */}
-      <div className="px-4 flex-1 pb-28">
+      <div className="px-4 flex-1 pb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">🔥 Mais Pedidos</h2>
           <button onClick={onStart} className="text-primary text-xs font-bold flex items-center gap-0.5 hover:underline">

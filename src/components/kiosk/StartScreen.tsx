@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList } from 'lucide-react';
+import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList, Instagram, MessageCircle } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import ProductModal from './ProductModal';
@@ -27,6 +27,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [activeBanner, setActiveBanner] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [instagramUrl, setInstagramUrl] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
 
   // Fetch settings from Supabase
   useEffect(() => {
@@ -35,6 +37,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
+        setInstagramUrl((data as any).instagram_url || '');
+        setWhatsappNumber(data.whatsapp_number || '');
         const cats = (data as any).categories as CategoryItem[] | undefined;
         if (cats && cats.length > 0) setCategories(cats);
         else if ((data as any).category_icons) {

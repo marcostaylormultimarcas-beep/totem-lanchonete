@@ -330,12 +330,16 @@ const AdminPage = () => {
         </div>
         <h1 className="text-2xl font-bold">Painel Administrativo</h1>
         <div className="w-full max-w-xs space-y-3">
-          <input type="password" placeholder="Senha de acesso" value={password}
+          <input type="text" placeholder="Usuário" value={loginUser}
+            onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={30} />
+          <input type="password" placeholder="Senha" value={password}
             onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={20} />
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
-          <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin&body=Olá, esqueci a senha do painel administrativo. Por favor, envie a senha de acesso." className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
+          <p className="text-xs text-muted-foreground text-center">Master padrão: <span className="font-mono">master / 1234</span></p>
+          <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin" className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
       </div>
@@ -348,17 +352,27 @@ const AdminPage = () => {
         <div className="flex items-center gap-3">
           <Link to="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
           <h1 className="text-xl font-bold">Painel Admin</h1>
+          {currentAdmin && (
+            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
+              {currentAdmin.is_master ? '👑 ' : ''}{currentAdmin.username}
+            </span>
+          )}
         </div>
+        <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-sm">
+          <LogOut className="w-4 h-4" /> Sair
+        </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList },
-          { key: 'products' as const, label: 'Produtos', icon: null },
-          { key: 'banners' as const, label: 'Banners', icon: Megaphone },
-          { key: 'settings' as const, label: 'Config', icon: Settings },
-        ].map(t => (
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, master: false },
+          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
+          { key: 'products' as const, label: 'Produtos', icon: null, master: false },
+          { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
+          { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
+          { key: 'admins' as const, label: 'Admins', icon: Shield, master: true },
+        ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}

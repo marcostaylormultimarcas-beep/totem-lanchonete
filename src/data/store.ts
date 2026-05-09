@@ -64,6 +64,7 @@ export interface StoreSettings {
   banners: BannerItem[];
   categoryIcons: CategoryIcons;
   categories: CategoryItem[];
+  instagramUrl?: string;
 }
 
 // localStorage functions removed — all data now lives in Supabase

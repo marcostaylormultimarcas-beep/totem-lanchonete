@@ -5,6 +5,8 @@ import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import OrdersPanel from '@/components/admin/OrdersPanel';
+import DashboardPanel from '@/components/admin/DashboardPanel';
+import AdminsPanel from '@/components/admin/AdminsPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -14,8 +16,18 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 const BADGE_COLORS: BannerItem['badgeColor'][] = ['primary', 'secondary', 'accent'];
 const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho', accent: '🟡 Amarelo' };
 
+interface AdminUser {
+  id: string;
+  username: string;
+  password: string;
+  is_master: boolean;
+  paused: boolean;
+}
+
 const AdminPage = () => {
   const [authenticated, setAuthenticated] = useState(false);
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
+  const [loginUser, setLoginUser] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -25,11 +37,12 @@ const AdminPage = () => {
     banners: [],
     categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
     categories: DEFAULT_CATEGORIES,
+    instagramUrl: '',
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'products' | 'settings' | 'banners' | 'orders'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 
@@ -63,6 +76,7 @@ const AdminPage = () => {
           banners: (data.banners as unknown as BannerItem[]) || [],
           categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
+          instagramUrl: (data as any).instagram_url || '',
         });
       }
     };
@@ -79,6 +93,7 @@ const AdminPage = () => {
       banners: s.banners as any,
       category_icons: s.categoryIcons as any,
       categories: s.categories as any,
+      instagram_url: s.instagramUrl || '',
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);
@@ -193,13 +208,23 @@ const AdminPage = () => {
     ingredients: '', description: '',
   });
 
-  const handleLogin = () => {
-    if (password === '1234') {
-      setAuthenticated(true);
-      setError('');
-    } else {
-      setError('Senha incorreta');
-    }
+  const handleLogin = async () => {
+    const u = loginUser.trim().toLowerCase();
+    const p = password;
+    if (!u || !p) { setError('Informe usuário e senha'); return; }
+    const { data } = await supabase.from('admins').select('*').eq('username', u).maybeSingle();
+    if (!data || data.password !== p) { setError('Usuário ou senha incorretos'); return; }
+    if (data.paused) { setError('Este admin está pausado. Contate o master.'); return; }
+    setCurrentAdmin(data as AdminUser);
+    setAuthenticated(true);
+    setError('');
+  };
+
+  const handleLogout = () => {
+    setAuthenticated(false);
+    setCurrentAdmin(null);
+    setLoginUser('');
+    setPassword('');
   };
 
   const resetForm = () => {
@@ -307,12 +332,16 @@ const AdminPage = () => {
         </div>
         <h1 className="text-2xl font-bold">Painel Administrativo</h1>
         <div className="w-full max-w-xs space-y-3">
-          <input type="password" placeholder="Senha de acesso" value={password}
+          <input type="text" placeholder="Usuário" value={loginUser}
+            onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={30} />
+          <input type="password" placeholder="Senha" value={password}
             onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={20} />
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
-          <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin&body=Olá, esqueci a senha do painel administrativo. Por favor, envie a senha de acesso." className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
+          <p className="text-xs text-muted-foreground text-center">Master padrão: <span className="font-mono">master / 1234</span></p>
+          <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin" className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
       </div>
@@ -325,17 +354,27 @@ const AdminPage = () => {
         <div className="flex items-center gap-3">
           <Link to="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
           <h1 className="text-xl font-bold">Painel Admin</h1>
+          {currentAdmin && (
+            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
+              {currentAdmin.is_master ? '👑 ' : ''}{currentAdmin.username}
+            </span>
+          )}
         </div>
+        <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-sm">
+          <LogOut className="w-4 h-4" /> Sair
+        </button>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList },
-          { key: 'products' as const, label: 'Produtos', icon: null },
-          { key: 'banners' as const, label: 'Banners', icon: Megaphone },
-          { key: 'settings' as const, label: 'Config', icon: Settings },
-        ].map(t => (
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, master: false },
+          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
+          { key: 'products' as const, label: 'Produtos', icon: null, master: false },
+          { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
+          { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
+          { key: 'admins' as const, label: 'Admins', icon: Shield, master: true },
+        ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
@@ -344,6 +383,9 @@ const AdminPage = () => {
       </div>
 
       {tab === 'orders' && <OrdersPanel />}
+      {tab === 'dashboard' && <DashboardPanel />}
+      {tab === 'admins' && currentAdmin?.is_master && <AdminsPanel currentAdminId={currentAdmin.id} />}
+
 
       {tab === 'products' && (
         <div className="px-4 space-y-4">
@@ -628,6 +670,13 @@ const AdminPage = () => {
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold">📱 WhatsApp da Cozinha</h3>
             <input placeholder="Número com código do país (ex: 5562994995768)" value={settings.whatsappNumber} onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
+            <p className="text-xs text-muted-foreground">Este número também é usado no ícone do WhatsApp do rodapé do totem.</p>
+          </div>
+
+          <div className="kiosk-card p-4 space-y-4">
+            <h3 className="font-bold">📷 Link do Instagram (rodapé)</h3>
+            <input placeholder="https://instagram.com/seuperfil" value={settings.instagramUrl || ''} onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={200} />
+            <p className="text-xs text-muted-foreground">Cole o link completo do perfil. Aparecerá no rodapé da tela inicial.</p>
           </div>
 
           <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">

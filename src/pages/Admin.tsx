@@ -206,13 +206,23 @@ const AdminPage = () => {
     ingredients: '', description: '',
   });
 
-  const handleLogin = () => {
-    if (password === '1234') {
-      setAuthenticated(true);
-      setError('');
-    } else {
-      setError('Senha incorreta');
-    }
+  const handleLogin = async () => {
+    const u = loginUser.trim().toLowerCase();
+    const p = password;
+    if (!u || !p) { setError('Informe usuário e senha'); return; }
+    const { data } = await supabase.from('admins').select('*').eq('username', u).maybeSingle();
+    if (!data || data.password !== p) { setError('Usuário ou senha incorretos'); return; }
+    if (data.paused) { setError('Este admin está pausado. Contate o master.'); return; }
+    setCurrentAdmin(data as AdminUser);
+    setAuthenticated(true);
+    setError('');
+  };
+
+  const handleLogout = () => {
+    setAuthenticated(false);
+    setCurrentAdmin(null);
+    setLoginUser('');
+    setPassword('');
   };
 
   const resetForm = () => {

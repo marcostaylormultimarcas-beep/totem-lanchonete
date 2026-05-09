@@ -5,6 +5,8 @@ import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import OrdersPanel from '@/components/admin/OrdersPanel';
+import DashboardPanel from '@/components/admin/DashboardPanel';
+import AdminsPanel from '@/components/admin/AdminsPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -381,6 +383,9 @@ const AdminPage = () => {
       </div>
 
       {tab === 'orders' && <OrdersPanel />}
+      {tab === 'dashboard' && <DashboardPanel />}
+      {tab === 'admins' && currentAdmin?.is_master && <AdminsPanel currentAdminId={currentAdmin.id} />}
+
 
       {tab === 'products' && (
         <div className="px-4 space-y-4">

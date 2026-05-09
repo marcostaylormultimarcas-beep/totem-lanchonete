@@ -83,6 +83,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
           setBanners((data.banners as unknown as BannerItem[]) || []);
+          setInstagramUrl(data.instagram_url || '');
+          setWhatsappNumber(data.whatsapp_number || '');
           const cats = data.categories as CategoryItem[] | undefined;
           if (cats && cats.length > 0) setCategories(cats);
           else if (data.category_icons) {
@@ -285,6 +287,29 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         </div>
       </div>
 
+
+      {/* Footer with social icons */}
+      {(instagramUrl || whatsappNumber) && (
+        <footer className="border-t border-border mt-4 px-4 py-5 flex flex-col items-center gap-3">
+          <div className="flex gap-3">
+            {instagramUrl && (
+              <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
+                className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
+                title="Instagram" aria-label="Instagram">
+                <Instagram className="w-6 h-6" />
+              </a>
+            )}
+            {whatsappNumber && (
+              <a href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
+                className="w-12 h-12 rounded-full bg-[#25D366] flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
+                title="WhatsApp" aria-label="WhatsApp">
+                <MessageCircle className="w-6 h-6" />
+              </a>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground">© {new Date().getFullYear()} {storeName}</p>
+        </footer>
+      )}
 
       {/* Product Modal */}
       {selectedProduct && (

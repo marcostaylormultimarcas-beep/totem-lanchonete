@@ -10,6 +10,7 @@ import Admin from "./pages/Admin.tsx";
 import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 
 const APP_VERSION = "1.0.1";
 

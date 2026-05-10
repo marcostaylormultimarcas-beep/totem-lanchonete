@@ -356,10 +356,10 @@ const AdminPage = () => {
             className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
-          <p className="text-xs text-muted-foreground text-center">Master padrão: <span className="font-mono">master / 1234</span></p>
           <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin" className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
+        <p className="text-[11px] text-muted-foreground mt-4">Desenvolvido by VisionTek</p>
       </div>
     );
   }

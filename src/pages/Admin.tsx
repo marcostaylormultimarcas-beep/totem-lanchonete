@@ -720,6 +720,7 @@ const AdminPage = () => {
           </button>
         </div>
       )}
+      <footer className="mt-8 pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
     </div>
   );
 };

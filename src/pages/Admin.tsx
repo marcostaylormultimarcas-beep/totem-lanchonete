@@ -228,6 +228,19 @@ const AdminPage = () => {
     setCurrentAdmin(null);
     setLoginUser('');
     setPassword('');
+    setMasterUnlocked(false);
+    setMasterPassword('');
+  };
+
+  const unlockMaster = async () => {
+    if (!currentAdmin) return;
+    // Re-validate against DB to ensure latest password (and master flag)
+    const { data } = await supabase.from('admins').select('*').eq('id', currentAdmin.id).maybeSingle();
+    if (!data || !data.is_master) { setMasterError('Acesso restrito ao Master.'); return; }
+    if (data.password !== masterPassword) { setMasterError('Senha Master incorreta.'); return; }
+    setMasterUnlocked(true);
+    setMasterPassword('');
+    setMasterError('');
   };
 
   const resetForm = () => {

@@ -289,8 +289,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
 
       {/* Footer with social icons */}
-      {(instagramUrl || whatsappNumber) && (
-        <footer className="border-t border-border mt-4 px-4 py-5 flex flex-col items-center gap-3">
+      <footer className="border-t border-border mt-4 px-4 py-5 flex flex-col items-center gap-3">
+        {(instagramUrl || whatsappNumber) && (
           <div className="flex gap-3">
             {instagramUrl && (
               <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
@@ -307,9 +307,10 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
               </a>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">© {new Date().getFullYear()} {storeName}</p>
-        </footer>
-      )}
+        )}
+        <p className="text-[11px] text-muted-foreground">© {new Date().getFullYear()} {storeName}</p>
+        <p className="text-[11px] text-muted-foreground">Desenvolvido by VisionTek</p>
+      </footer>
 
       {/* Product Modal */}
       {selectedProduct && (

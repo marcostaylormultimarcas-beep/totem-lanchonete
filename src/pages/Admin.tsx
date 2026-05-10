@@ -389,7 +389,7 @@ const AdminPage = () => {
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
-          { key: 'admins' as const, label: 'Admins', icon: Shield, master: true },
+          { key: 'admins' as const, label: 'Painel Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
@@ -400,7 +400,27 @@ const AdminPage = () => {
 
       {tab === 'orders' && <OrdersPanel />}
       {tab === 'dashboard' && <DashboardPanel />}
-      {tab === 'admins' && currentAdmin?.is_master && <AdminsPanel currentAdminId={currentAdmin.id} />}
+      {tab === 'admins' && currentAdmin?.is_master && (
+        masterUnlocked ? (
+          <AdminsPanel currentAdminId={currentAdmin.id} />
+        ) : (
+          <div className="px-4">
+            <div className="kiosk-card p-6 max-w-sm mx-auto space-y-4 text-center">
+              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+                <Shield className="w-7 h-7 text-primary" />
+              </div>
+              <h2 className="font-bold text-lg">Acesso Master</h2>
+              <p className="text-xs text-muted-foreground">Confirme sua senha Master para acessar esta área restrita.</p>
+              <input type="password" autoComplete="new-password" placeholder="Senha Master"
+                value={masterPassword} onChange={e => setMasterPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && unlockMaster()}
+                className="w-full px-4 py-3 bg-muted rounded-xl outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
+              {masterError && <p className="text-secondary text-sm">{masterError}</p>}
+              <button onClick={unlockMaster} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl">Desbloquear</button>
+            </div>
+          </div>
+        )
+      )}
 
 
       {tab === 'products' && (

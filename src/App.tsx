@@ -10,6 +10,7 @@ import Admin from "./pages/Admin.tsx";
 import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 
 const APP_VERSION = "1.0.1";
 
@@ -40,6 +41,7 @@ const App = () => {
             <Route path="/auth" element={<Auth />} />
             <Route path="/meus-pedidos" element={<OrderHistory />} />
             <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

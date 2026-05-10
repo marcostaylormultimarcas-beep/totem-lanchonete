@@ -43,6 +43,9 @@ const AdminPage = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
+  const [masterUnlocked, setMasterUnlocked] = useState(false);
+  const [masterPassword, setMasterPassword] = useState('');
+  const [masterError, setMasterError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 

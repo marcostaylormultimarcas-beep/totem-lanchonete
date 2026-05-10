@@ -67,11 +67,11 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
     <div className="px-4 space-y-4">
       <div className="kiosk-card p-4 space-y-3">
         <h3 className="font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4 text-primary" /> Novo Admin</h3>
-        <input placeholder="Usuário" value={newUser} onChange={e => setNewUser(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
-        <input placeholder="Senha" type="text" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+        <input placeholder="Usuário" value={newUser} onChange={e => setNewUser(e.target.value)} autoComplete="off" className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
+        <input placeholder="Senha" type="password" autoComplete="new-password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={newMaster} onChange={e => setNewMaster(e.target.checked)} className="w-4 h-4 accent-primary" />
-          <Shield className="w-4 h-4 text-primary" /> Admin Master (pode gerenciar outros admins)
+          <Shield className="w-4 h-4 text-primary" /> Permissão Master (pode gerenciar outros admins)
         </label>
         <button onClick={addAdmin} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Adicionar

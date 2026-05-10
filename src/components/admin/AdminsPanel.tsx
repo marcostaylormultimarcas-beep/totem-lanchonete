@@ -100,10 +100,15 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
                 </button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <input type="text" defaultValue={a.password} placeholder="Nova senha"
-                onBlur={e => { if (e.target.value !== a.password) updatePassword(a, e.target.value); }}
-                className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs font-mono" maxLength={50} />
+            <div className="flex gap-2 items-center">
+              <input type="password" defaultValue="" placeholder="Definir nova senha" autoComplete="new-password"
+                onBlur={e => { if (e.target.value) { updatePassword(a, e.target.value); e.target.value = ''; } }}
+                className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs" maxLength={50} />
+              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer whitespace-nowrap">
+                <input type="checkbox" checked={a.is_master} disabled={a.id === currentAdminId}
+                  onChange={async e => { await supabase.from('admins').update({ is_master: e.target.checked }).eq('id', a.id); await load(); }}
+                  className="w-3.5 h-3.5 accent-primary" /> Master
+              </label>
             </div>
           </div>
         ))}

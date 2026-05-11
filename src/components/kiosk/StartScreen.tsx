@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList, Instagram, MessageCircle } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 
 interface StartScreenProps {

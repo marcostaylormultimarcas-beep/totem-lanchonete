@@ -232,7 +232,21 @@ const AdminPage = () => {
     const { data } = await supabase.from('admins').select('*').eq('username', u).maybeSingle();
     if (!data || data.password !== p) { setError('Usuário ou senha incorretos'); return; }
     if (data.paused) { setError('Este admin está pausado. Contate o master.'); return; }
-    setCurrentAdmin(data as AdminUser);
+    const admin = data as AdminUser;
+    setCurrentAdmin(admin);
+    // Determine active org: admin's own org, or fallback to ctx for masters with no org
+    let initialOrg = admin.organization_id;
+    if (!initialOrg) {
+      const { data: firstOrg } = await supabase.from('organizations').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle();
+      initialOrg = firstOrg?.id || null;
+    }
+    setActiveOrgId(initialOrg);
+    if (initialOrg) await setOrgId(initialOrg);
+    // For master, load all orgs for the switcher
+    if (admin.is_master) {
+      const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
+      setAllOrgs((orgs as any) || []);
+    }
     setAuthenticated(true);
     setError('');
   };
@@ -240,10 +254,22 @@ const AdminPage = () => {
   const handleLogout = () => {
     setAuthenticated(false);
     setCurrentAdmin(null);
+    setActiveOrgId(null);
+    setAllOrgs([]);
     setLoginUser('');
     setPassword('');
     setMasterUnlocked(false);
     setMasterPassword('');
+  };
+
+  const switchOrg = async (newOrgId: string) => {
+    setActiveOrgId(newOrgId);
+    await setOrgId(newOrgId);
+  };
+
+  const refreshOrgList = async () => {
+    const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
+    setAllOrgs((orgs as any) || []);
   };
 
   const unlockMaster = async () => {
@@ -256,6 +282,7 @@ const AdminPage = () => {
     setMasterPassword('');
     setMasterError('');
   };
+
 
   const resetForm = () => {
     setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '' });

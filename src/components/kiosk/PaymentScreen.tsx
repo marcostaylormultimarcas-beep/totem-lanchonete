@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -19,6 +20,7 @@ const PIX_KEY = 'pagamento@visionmidia.com';
 const QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
 const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, onBack, onDone }: PaymentScreenProps) => {
+  const orgId = useOrgId();
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
@@ -28,14 +30,16 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   useEffect(() => {
+    if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name, whatsapp_number').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('store_name, whatsapp_number').eq('organization_id', orgId).maybeSingle();
       if (data) {
         setStoreSettings({ storeName: data.store_name || 'Vision Mídia', whatsappNumber: data.whatsapp_number || '' });
       }
     };
     fetchSettings();
-  }, []);
+  }, [orgId]);
+
 
   const handleCopy = () => {
     navigator.clipboard.writeText(PIX_KEY);
@@ -74,7 +78,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
 
     try {
       // Get next order number from DB count
-      const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true });
+      const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('organization_id', orgId);
       const num = ((count || 0) + 1).toString().padStart(3, '0');
       setGeneratedNumber(num);
 
@@ -91,6 +95,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
       const { data: { session } } = await supabase.auth.getSession();
 
       const { data, error } = await supabase.from('orders').insert({
+        organization_id: orgId,
         order_number: num,
         customer_name: customerName,
         customer_phone: customerPhone,

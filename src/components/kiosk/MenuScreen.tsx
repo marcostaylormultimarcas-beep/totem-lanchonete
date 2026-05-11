@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, ShoppingCart } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -22,6 +23,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 ];
 
 const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled }: MenuScreenProps) => {
+  const orgId = useOrgId();
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [activeCategory, setActiveCategory] = useState<string>('hamburgueres');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -31,10 +33,11 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
 
   useEffect(() => {
+    if (!orgId) return;
     const fetchData = async () => {
       const [{ data: prods }, { data: settingsData }] = await Promise.all([
-        supabase.from('products').select('*'),
-        supabase.from('settings').select('combo, categories').limit(1).maybeSingle(),
+        supabase.from('products').select('*').eq('organization_id', orgId),
+        supabase.from('settings').select('combo, categories').eq('organization_id', orgId).maybeSingle(),
       ]);
       if (prods) {
         setProducts(prods.map((p: any) => ({
@@ -52,7 +55,8 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       }
     };
     fetchData();
-  }, []);
+  }, [orgId]);
+
 
   useEffect(() => {
     if (initialProduct) {

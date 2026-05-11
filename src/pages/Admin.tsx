@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrg } from '@/contexts/OrgContext';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
+import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -22,11 +24,16 @@ interface AdminUser {
   password: string;
   is_master: boolean;
   paused: boolean;
+  organization_id: string | null;
 }
 
 const AdminPage = () => {
+  const { orgId: ctxOrgId, setOrgId, org } = useOrg();
   const [authenticated, setAuthenticated] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
+  // For Master: selected org (defaults to ctx). For regular admin: their own org.
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const [allOrgs, setAllOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([]);
   const [loginUser, setLoginUser] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -42,17 +49,18 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins' | 'organizations'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 
-  // Load products from Supabase
+  // Load products from Supabase (scoped by activeOrgId)
   useEffect(() => {
+    if (!activeOrgId) { setProducts([]); return; }
     const fetch = async () => {
-      const { data } = await supabase.from('products').select('*');
+      const { data } = await supabase.from('products').select('*').eq('organization_id', activeOrgId);
       if (data) {
         setProducts(data.map((p: any) => ({
           id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
@@ -63,12 +71,13 @@ const AdminPage = () => {
       }
     };
     fetch();
-  }, []);
+  }, [activeOrgId]);
 
-  // Load settings from Supabase
+  // Load settings from Supabase (scoped by activeOrgId)
   useEffect(() => {
+    if (!activeOrgId) return;
     const fetch = async () => {
-      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle();
       if (data) {
         setSettingsId(data.id);
         setSettings({
@@ -81,14 +90,18 @@ const AdminPage = () => {
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
         });
+      } else {
+        setSettingsId(null);
       }
     };
     fetch();
-  }, []);
+  }, [activeOrgId]);
 
-  // Save settings to Supabase
+  // Save settings to Supabase (scoped by activeOrgId)
   const saveSettingsToDb = async (s: StoreSettings) => {
+    if (!activeOrgId) return;
     const payload: any = {
+      organization_id: activeOrgId,
       store_name: s.storeName,
       whatsapp_number: s.whatsappNumber,
       cover_image: s.coverImage,
@@ -105,6 +118,7 @@ const AdminPage = () => {
       if (data) setSettingsId(data.id);
     }
   };
+
 
   const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
     const file = e.target.files?.[0];
@@ -218,7 +232,21 @@ const AdminPage = () => {
     const { data } = await supabase.from('admins').select('*').eq('username', u).maybeSingle();
     if (!data || data.password !== p) { setError('Usuário ou senha incorretos'); return; }
     if (data.paused) { setError('Este admin está pausado. Contate o master.'); return; }
-    setCurrentAdmin(data as AdminUser);
+    const admin = data as AdminUser;
+    setCurrentAdmin(admin);
+    // Determine active org: admin's own org, or fallback to ctx for masters with no org
+    let initialOrg = admin.organization_id;
+    if (!initialOrg) {
+      const { data: firstOrg } = await supabase.from('organizations').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle();
+      initialOrg = firstOrg?.id || null;
+    }
+    setActiveOrgId(initialOrg);
+    if (initialOrg) await setOrgId(initialOrg);
+    // For master, load all orgs for the switcher
+    if (admin.is_master) {
+      const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
+      setAllOrgs((orgs as any) || []);
+    }
     setAuthenticated(true);
     setError('');
   };
@@ -226,10 +254,22 @@ const AdminPage = () => {
   const handleLogout = () => {
     setAuthenticated(false);
     setCurrentAdmin(null);
+    setActiveOrgId(null);
+    setAllOrgs([]);
     setLoginUser('');
     setPassword('');
     setMasterUnlocked(false);
     setMasterPassword('');
+  };
+
+  const switchOrg = async (newOrgId: string) => {
+    setActiveOrgId(newOrgId);
+    await setOrgId(newOrgId);
+  };
+
+  const refreshOrgList = async () => {
+    const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
+    setAllOrgs((orgs as any) || []);
   };
 
   const unlockMaster = async () => {
@@ -242,6 +282,7 @@ const AdminPage = () => {
     setMasterPassword('');
     setMasterError('');
   };
+
 
   const resetForm = () => {
     setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '' });
@@ -278,6 +319,7 @@ const AdminPage = () => {
 
   const saveProduct = async () => {
     if (!form.name.trim() || !form.price) return;
+    if (!activeOrgId) { alert('Selecione uma loja primeiro.'); return; }
     const parsedExtras = form.extras.split(',').map(s => s.trim()).filter(Boolean).map(s => {
       const [name, price] = s.split(':');
       return { name: name?.trim() || '', price: parseFloat(price) || 0 };
@@ -287,6 +329,7 @@ const AdminPage = () => {
     const ingredientsList = form.ingredients.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
 
     const dbPayload: any = {
+      organization_id: activeOrgId,
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
       category: form.category,
@@ -367,7 +410,7 @@ const AdminPage = () => {
   return (
     <div className="min-h-screen pb-8">
       <div className="flex items-center justify-between p-4 border-b border-border">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Link to="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
           <h1 className="text-xl font-bold">Painel Admin</h1>
           {currentAdmin && (
@@ -381,6 +424,19 @@ const AdminPage = () => {
         </button>
       </div>
 
+      {/* Active org indicator + switcher (Master only) */}
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+        {currentAdmin?.is_master ? (
+          <select value={activeOrgId || ''} onChange={e => switchOrg(e.target.value)}
+            className="bg-muted px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary flex-1 max-w-xs">
+            {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        ) : (
+          <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
+        )}
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
@@ -389,6 +445,7 @@ const AdminPage = () => {
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
+          { key: 'organizations' as const, label: 'Lojas', icon: Building2, master: true },
           { key: 'admins' as const, label: 'Painel Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -398,27 +455,20 @@ const AdminPage = () => {
         ))}
       </div>
 
-      {tab === 'orders' && <OrdersPanel />}
-      {tab === 'dashboard' && <DashboardPanel />}
+      {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
+      {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'organizations' && currentAdmin?.is_master && (
+        masterUnlocked ? (
+          <OrganizationsPanel />
+        ) : (
+          <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
+        )
+      )}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
-          <AdminsPanel currentAdminId={currentAdmin.id} />
+          <AdminsPanel currentAdminId={currentAdmin.id} allOrgs={allOrgs} onOrgsChanged={refreshOrgList} />
         ) : (
-          <div className="px-4">
-            <div className="kiosk-card p-6 max-w-sm mx-auto space-y-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
-                <Shield className="w-7 h-7 text-primary" />
-              </div>
-              <h2 className="font-bold text-lg">Acesso Master</h2>
-              <p className="text-xs text-muted-foreground">Confirme sua senha Master para acessar esta área restrita.</p>
-              <input type="password" autoComplete="new-password" placeholder="Senha Master"
-                value={masterPassword} onChange={e => setMasterPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && unlockMaster()}
-                className="w-full px-4 py-3 bg-muted rounded-xl outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
-              {masterError && <p className="text-secondary text-sm">{masterError}</p>}
-              <button onClick={unlockMaster} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl">Desbloquear</button>
-            </div>
-          </div>
+          <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )
       )}
 
@@ -725,4 +775,23 @@ const AdminPage = () => {
   );
 };
 
+const MasterUnlockGate = ({ masterPassword, setMasterPassword, masterError, unlockMaster }: { masterPassword: string; setMasterPassword: (v: string) => void; masterError: string; unlockMaster: () => void; }) => (
+  <div className="px-4">
+    <div className="kiosk-card p-6 max-w-sm mx-auto space-y-4 text-center">
+      <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
+        <Shield className="w-7 h-7 text-primary" />
+      </div>
+      <h2 className="font-bold text-lg">Acesso Master</h2>
+      <p className="text-xs text-muted-foreground">Confirme sua senha Master para acessar esta área restrita.</p>
+      <input type="password" autoComplete="new-password" placeholder="Senha Master"
+        value={masterPassword} onChange={e => setMasterPassword(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && unlockMaster()}
+        className="w-full px-4 py-3 bg-muted rounded-xl outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
+      {masterError && <p className="text-secondary text-sm">{masterError}</p>}
+      <button onClick={unlockMaster} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl">Desbloquear</button>
+    </div>
+  </div>
+);
+
 export default AdminPage;
+

@@ -1,32 +1,36 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 
 interface LandingScreenProps {
   onStart: () => void;
 }
 
 const LandingScreen = ({ onStart }: LandingScreenProps) => {
+  const orgId = useOrgId();
   const [storeName, setStoreName] = useState('Vision Mídia');
   const [coverImage, setCoverImage] = useState('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1920&q=80');
 
   useEffect(() => {
+    if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name, cover_image').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('store_name, cover_image').eq('organization_id', orgId).maybeSingle();
       if (data?.store_name) setStoreName(data.store_name);
       if (data?.cover_image) setCoverImage(data.cover_image);
     };
     fetchSettings();
 
     const channel = supabase
-      .channel('landing-settings-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload: any) => {
+      .channel('landing-settings-' + orgId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
         const d = payload.new;
         if (d?.store_name) setStoreName(d.store_name);
         if (d?.cover_image) setCoverImage(d.cover_image);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [orgId]);
+
 
   return (
     <div

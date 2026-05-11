@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList, Instagram, MessageCircle } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 
 interface StartScreenProps {
@@ -20,6 +21,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 ];
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {
+  const orgId = useOrgId();
   const [storeName, setStoreName] = useState('Vision Mídia');
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<BannerItem[]>([]);
@@ -30,10 +32,11 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [instagramUrl, setInstagramUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
 
-  // Fetch settings from Supabase
+  // Fetch settings from Supabase (scoped by orgId)
   useEffect(() => {
+    if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('*').eq('organization_id', orgId).maybeSingle();
       if (data) {
         setStoreName(data.store_name || 'Vision Mídia');
         setBanners((data.banners as unknown as BannerItem[]) || []);
@@ -48,12 +51,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       }
     };
     fetchSettings();
-  }, []);
+  }, [orgId]);
 
-  // Fetch products from Supabase
+  // Fetch products from Supabase (scoped by orgId)
   useEffect(() => {
+    if (!orgId) { setLoading(false); return; }
     const fetchProducts = async () => {
-      const { data } = await supabase.from('products').select('*');
+      const { data } = await supabase.from('products').select('*').eq('organization_id', orgId);
       if (data) {
         const mapped: Product[] = data.map((p: any) => ({
           id: p.id,
@@ -72,13 +76,14 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       setLoading(false);
     };
     fetchProducts();
-  }, []);
+  }, [orgId]);
 
-  // Realtime subscription for settings changes
+  // Realtime subscription for settings changes (scoped)
   useEffect(() => {
+    if (!orgId) return;
     const channel = supabase
-      .channel('settings-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, (payload: any) => {
+      .channel('settings-changes-' + orgId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
         const data = payload.new;
         if (data) {
           setStoreName(data.store_name || 'Vision Mídia');
@@ -95,15 +100,15 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [orgId]);
 
-  // Realtime subscription for products changes
+  // Realtime subscription for products changes (scoped)
   useEffect(() => {
+    if (!orgId) return;
     const channel = supabase
-      .channel('products-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => {
-        // Re-fetch all products on any change
-        supabase.from('products').select('*').then(({ data }) => {
+      .channel('products-changes-' + orgId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `organization_id=eq.${orgId}` }, () => {
+        supabase.from('products').select('*').eq('organization_id', orgId).then(({ data }) => {
           if (data) {
             const mapped: Product[] = data.map((p: any) => ({
               id: p.id,
@@ -123,7 +128,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [orgId]);
 
   const topProducts = products
     .filter(p => p.category === 'hamburgueres' || p.category === 'pizzas')

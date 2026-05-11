@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
 import { ComboSettings } from '@/data/store';
 
 interface UpsellPopupProps {
@@ -10,15 +11,18 @@ interface UpsellPopupProps {
 const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' };
 
 const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
+  const orgId = useOrgId();
   const [combo, setCombo] = useState<ComboSettings>(DEFAULT_COMBO);
 
   useEffect(() => {
+    if (!orgId) return;
     const fetchCombo = async () => {
-      const { data } = await supabase.from('settings').select('combo').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('combo').eq('organization_id', orgId).maybeSingle();
       if (data?.combo) setCombo(data.combo as unknown as ComboSettings);
     };
     fetchCombo();
-  }, []);
+  }, [orgId]);
+
 
   const isUrl = (s: string) => !!s && (s.startsWith('http') || s.startsWith('/'));
 

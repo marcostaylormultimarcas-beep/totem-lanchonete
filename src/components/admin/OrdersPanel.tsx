@@ -26,12 +26,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   cancelled: { label: '❌ Cancelado', color: 'text-destructive', bg: 'bg-destructive/20' },
 };
 
-const OrdersPanel = () => {
+const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<'active' | 'all'>('active');
 
   const fetchOrders = async () => {
-    let query = supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (!organizationId) { setOrders([]); return; }
+    let query = supabase.from('orders').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false });
     if (filter === 'active') {
       query = query.in('status', ['pending', 'preparing', 'out_for_delivery']);
     }
@@ -41,16 +42,17 @@ const OrdersPanel = () => {
 
   useEffect(() => {
     fetchOrders();
+    if (!organizationId) return;
 
     const channel = supabase
-      .channel('admin-orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+      .channel('admin-orders-' + organizationId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `organization_id=eq.${organizationId}` }, () => {
         fetchOrders();
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [filter]);
+  }, [filter, organizationId]);
 
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);

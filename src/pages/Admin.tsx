@@ -24,9 +24,16 @@ interface AdminUser {
   password: string;
   is_master: boolean;
   paused: boolean;
+  organization_id: string | null;
 }
 
 const AdminPage = () => {
+  const { orgId: ctxOrgId, setOrgId, org } = useOrg();
+  const [authenticated, setAuthenticated] = useState(false);
+  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
+  // For Master: selected org (defaults to ctx). For regular admin: their own org.
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const [allOrgs, setAllOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([]);
   const [authenticated, setAuthenticated] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
   const [loginUser, setLoginUser] = useState('');

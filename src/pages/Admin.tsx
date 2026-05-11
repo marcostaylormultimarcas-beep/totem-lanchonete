@@ -472,8 +472,6 @@ const AdminPage = () => {
         )
       )}
 
-      )}
-
 
       {tab === 'products' && (
         <div className="px-4 space-y-4">

@@ -56,10 +56,11 @@ const AdminPage = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
 
-  // Load products from Supabase
+  // Load products from Supabase (scoped by activeOrgId)
   useEffect(() => {
+    if (!activeOrgId) { setProducts([]); return; }
     const fetch = async () => {
-      const { data } = await supabase.from('products').select('*');
+      const { data } = await supabase.from('products').select('*').eq('organization_id', activeOrgId);
       if (data) {
         setProducts(data.map((p: any) => ({
           id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
@@ -70,12 +71,13 @@ const AdminPage = () => {
       }
     };
     fetch();
-  }, []);
+  }, [activeOrgId]);
 
-  // Load settings from Supabase
+  // Load settings from Supabase (scoped by activeOrgId)
   useEffect(() => {
+    if (!activeOrgId) return;
     const fetch = async () => {
-      const { data } = await supabase.from('settings').select('*').limit(1).maybeSingle();
+      const { data } = await supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle();
       if (data) {
         setSettingsId(data.id);
         setSettings({
@@ -88,14 +90,18 @@ const AdminPage = () => {
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
         });
+      } else {
+        setSettingsId(null);
       }
     };
     fetch();
-  }, []);
+  }, [activeOrgId]);
 
-  // Save settings to Supabase
+  // Save settings to Supabase (scoped by activeOrgId)
   const saveSettingsToDb = async (s: StoreSettings) => {
+    if (!activeOrgId) return;
     const payload: any = {
+      organization_id: activeOrgId,
       store_name: s.storeName,
       whatsapp_number: s.whatsappNumber,
       cover_image: s.coverImage,
@@ -112,6 +118,7 @@ const AdminPage = () => {
       if (data) setSettingsId(data.id);
     }
   };
+
 
   const handleBannerImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
     const file = e.target.files?.[0];

@@ -34,8 +34,6 @@ const AdminPage = () => {
   // For Master: selected org (defaults to ctx). For regular admin: their own org.
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [allOrgs, setAllOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([]);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
   const [loginUser, setLoginUser] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

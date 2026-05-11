@@ -410,7 +410,7 @@ const AdminPage = () => {
   return (
     <div className="min-h-screen pb-8">
       <div className="flex items-center justify-between p-4 border-b border-border">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <Link to="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
           <h1 className="text-xl font-bold">Painel Admin</h1>
           {currentAdmin && (
@@ -424,6 +424,19 @@ const AdminPage = () => {
         </button>
       </div>
 
+      {/* Active org indicator + switcher (Master only) */}
+      <div className="flex items-center gap-2 px-4 pt-3">
+        <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+        {currentAdmin?.is_master ? (
+          <select value={activeOrgId || ''} onChange={e => switchOrg(e.target.value)}
+            className="bg-muted px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary flex-1 max-w-xs">
+            {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        ) : (
+          <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
+        )}
+      </div>
+
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
@@ -432,6 +445,7 @@ const AdminPage = () => {
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
+          { key: 'organizations' as const, label: 'Lojas', icon: Building2, master: true },
           { key: 'admins' as const, label: 'Painel Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
@@ -441,28 +455,23 @@ const AdminPage = () => {
         ))}
       </div>
 
-      {tab === 'orders' && <OrdersPanel />}
-      {tab === 'dashboard' && <DashboardPanel />}
+      {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
+      {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'organizations' && currentAdmin?.is_master && (
+        masterUnlocked ? (
+          <OrganizationsPanel />
+        ) : (
+          <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
+        )
+      )}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
-          <AdminsPanel currentAdminId={currentAdmin.id} />
+          <AdminsPanel currentAdminId={currentAdmin.id} allOrgs={allOrgs} onOrgsChanged={refreshOrgList} />
         ) : (
-          <div className="px-4">
-            <div className="kiosk-card p-6 max-w-sm mx-auto space-y-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center mx-auto">
-                <Shield className="w-7 h-7 text-primary" />
-              </div>
-              <h2 className="font-bold text-lg">Acesso Master</h2>
-              <p className="text-xs text-muted-foreground">Confirme sua senha Master para acessar esta área restrita.</p>
-              <input type="password" autoComplete="new-password" placeholder="Senha Master"
-                value={masterPassword} onChange={e => setMasterPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && unlockMaster()}
-                className="w-full px-4 py-3 bg-muted rounded-xl outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
-              {masterError && <p className="text-secondary text-sm">{masterError}</p>}
-              <button onClick={unlockMaster} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl">Desbloquear</button>
-            </div>
-          </div>
+          <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )
+      )}
+
       )}
 
 

@@ -19,6 +19,7 @@ export type Database = {
           created_at: string
           id: string
           is_master: boolean
+          organization_id: string | null
           password: string
           paused: boolean
           updated_at: string
@@ -28,6 +29,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_master?: boolean
+          organization_id?: string | null
           password: string
           paused?: boolean
           updated_at?: string
@@ -37,12 +39,21 @@ export type Database = {
           created_at?: string
           id?: string
           is_master?: boolean
+          organization_id?: string | null
           password?: string
           paused?: boolean
           updated_at?: string
           username?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "admins_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       orders: {
         Row: {
@@ -56,6 +67,7 @@ export type Database = {
           items: Json
           order_number: string
           order_type: string
+          organization_id: string | null
           status: string
           total: number
           updated_at: string
@@ -72,6 +84,7 @@ export type Database = {
           items?: Json
           order_number: string
           order_type?: string
+          organization_id?: string | null
           status?: string
           total?: number
           updated_at?: string
@@ -88,10 +101,46 @@ export type Database = {
           items?: Json
           order_number?: string
           order_type?: string
+          organization_id?: string | null
           status?: string
           total?: number
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organizations: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          paused: boolean
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          paused?: boolean
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          paused?: boolean
+          slug?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -106,6 +155,7 @@ export type Database = {
           ingredients: Json
           is_combo: boolean | null
           name: string
+          organization_id: string | null
           price: number
           removable_ingredients: Json
           updated_at: string
@@ -120,6 +170,7 @@ export type Database = {
           ingredients?: Json
           is_combo?: boolean | null
           name: string
+          organization_id?: string | null
           price?: number
           removable_ingredients?: Json
           updated_at?: string
@@ -134,11 +185,20 @@ export type Database = {
           ingredients?: Json
           is_combo?: boolean | null
           name?: string
+          organization_id?: string | null
           price?: number
           removable_ingredients?: Json
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -177,6 +237,7 @@ export type Database = {
           created_at: string
           id: string
           instagram_url: string
+          organization_id: string | null
           store_name: string
           updated_at: string
           whatsapp_number: string
@@ -190,6 +251,7 @@ export type Database = {
           created_at?: string
           id?: string
           instagram_url?: string
+          organization_id?: string | null
           store_name?: string
           updated_at?: string
           whatsapp_number?: string
@@ -203,11 +265,20 @@ export type Database = {
           created_at?: string
           id?: string
           instagram_url?: string
+          organization_id?: string | null
           store_name?: string
           updated_at?: string
           whatsapp_number?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

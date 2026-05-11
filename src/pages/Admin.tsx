@@ -319,6 +319,7 @@ const AdminPage = () => {
 
   const saveProduct = async () => {
     if (!form.name.trim() || !form.price) return;
+    if (!activeOrgId) { alert('Selecione uma loja primeiro.'); return; }
     const parsedExtras = form.extras.split(',').map(s => s.trim()).filter(Boolean).map(s => {
       const [name, price] = s.split(':');
       return { name: name?.trim() || '', price: parseFloat(price) || 0 };
@@ -328,6 +329,7 @@ const AdminPage = () => {
     const ingredientsList = form.ingredients.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
 
     const dbPayload: any = {
+      organization_id: activeOrgId,
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
       category: form.category,

@@ -11,6 +11,7 @@ import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
+import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 
 const APP_VERSION = "1.0.1";
 
@@ -35,16 +36,19 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/meus-pedidos" element={<OrderHistory />} />
-            <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <OrgProvider>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
+              <Route path="/admin" element={<Admin />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/meus-pedidos" element={<OrderHistory />} />
+              <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </OrgProvider>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

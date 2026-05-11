@@ -17,19 +17,21 @@ const daysAgoISO = (days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
-const DashboardPanel = () => {
+const DashboardPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [from, setFrom] = useState(daysAgoISO(30));
   const [to, setTo] = useState(todayISO());
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
+    if (!organizationId) { setOrders([]); return; }
     setLoading(true);
     const fromDate = new Date(from + 'T00:00:00').toISOString();
     const toDate = new Date(to + 'T23:59:59').toISOString();
     const { data } = await supabase
       .from('orders')
       .select('id, total, created_at, items')
+      .eq('organization_id', organizationId)
       .gte('created_at', fromDate)
       .lte('created_at', toDate)
       .order('created_at', { ascending: false });
@@ -37,7 +39,7 @@ const DashboardPanel = () => {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [from, to]);
+  useEffect(() => { load(); }, [from, to, organizationId]);
 
   const stats = useMemo(() => {
     const totalRevenue = orders.reduce((s, o) => s + Number(o.total || 0), 0);

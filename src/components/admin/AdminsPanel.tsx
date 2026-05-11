@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Pause, Play, Save, Loader2, Shield } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Shield, Building2 } from 'lucide-react';
 
 interface AdminUser {
   id: string;
@@ -8,14 +8,18 @@ interface AdminUser {
   password: string;
   is_master: boolean;
   paused: boolean;
+  organization_id: string | null;
 }
 
-const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
+interface OrgRef { id: string; name: string; slug: string; }
+
+const AdminsPanel = ({ currentAdminId, allOrgs = [], onOrgsChanged }: { currentAdminId?: string; allOrgs?: OrgRef[]; onOrgsChanged?: () => void }) => {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState('');
   const [newPass, setNewPass] = useState('');
   const [newMaster, setNewMaster] = useState(false);
+  const [newOrgId, setNewOrgId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -26,12 +30,19 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (!newOrgId && allOrgs.length) setNewOrgId(allOrgs[0].id); }, [allOrgs]);
+
+  const orgName = (id: string | null) => allOrgs.find(o => o.id === id)?.name || (id ? '—' : 'Sem loja');
 
   const addAdmin = async () => {
     const u = newUser.trim().toLowerCase();
     if (!u || !newPass) { alert('Preencha usuário e senha'); return; }
+    if (!newMaster && !newOrgId) { alert('Selecione a loja deste admin.'); return; }
     setSaving(true);
-    const { error } = await supabase.from('admins').insert({ username: u, password: newPass, is_master: newMaster, paused: false });
+    const payload: any = { username: u, password: newPass, is_master: newMaster, paused: false };
+    // Master is global; non-master must be tied to an organization
+    payload.organization_id = newMaster ? null : newOrgId;
+    const { error } = await supabase.from('admins').insert(payload);
     if (error) {
       alert(error.message.includes('duplicate') ? 'Esse usuário já existe.' : 'Erro: ' + error.message);
     } else {
@@ -52,6 +63,11 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
     await load();
   };
 
+  const updateOrg = async (a: AdminUser, orgId: string) => {
+    await supabase.from('admins').update({ organization_id: orgId || null }).eq('id', a.id);
+    await load();
+  };
+
   const removeAdmin = async (a: AdminUser) => {
     if (a.id === currentAdminId) { alert('Você não pode remover sua própria conta.'); return; }
     if (a.is_master && admins.filter(x => x.is_master).length <= 1) {
@@ -69,9 +85,17 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
         <h3 className="font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4 text-primary" /> Novo Admin</h3>
         <input placeholder="Usuário" value={newUser} onChange={e => setNewUser(e.target.value)} autoComplete="off" className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
         <input placeholder="Senha" type="password" autoComplete="new-password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+        {!newMaster && (
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1"><Building2 className="w-3 h-3" /> Loja deste admin</label>
+            <select value={newOrgId} onChange={e => setNewOrgId(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+              {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={newMaster} onChange={e => setNewMaster(e.target.checked)} className="w-4 h-4 accent-primary" />
-          <Shield className="w-4 h-4 text-primary" /> Permissão Master (pode gerenciar outros admins)
+          <Shield className="w-4 h-4 text-primary" /> Permissão Master (acesso global a todas as lojas)
         </label>
         <button onClick={addAdmin} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Adicionar
@@ -100,13 +124,23 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
                 </button>
               </div>
             </div>
+            {!a.is_master && (
+              <div className="flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <select value={a.organization_id || ''} onChange={e => updateOrg(a, e.target.value)}
+                  className="flex-1 px-2 py-1.5 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs">
+                  <option value="">— Sem loja —</option>
+                  {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="flex gap-2 items-center">
               <input type="password" defaultValue="" placeholder="Definir nova senha" autoComplete="new-password"
                 onBlur={e => { if (e.target.value) { updatePassword(a, e.target.value); e.target.value = ''; } }}
                 className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs" maxLength={50} />
               <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer whitespace-nowrap">
                 <input type="checkbox" checked={a.is_master} disabled={a.id === currentAdminId}
-                  onChange={async e => { await supabase.from('admins').update({ is_master: e.target.checked }).eq('id', a.id); await load(); }}
+                  onChange={async e => { await supabase.from('admins').update({ is_master: e.target.checked, organization_id: e.target.checked ? null : a.organization_id }).eq('id', a.id); await load(); }}
                   className="w-3.5 h-3.5 accent-primary" /> Master
               </label>
             </div>

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
+import { useOrg } from '@/contexts/OrgContext';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
+import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

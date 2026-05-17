@@ -102,6 +102,7 @@ const Index = () => {
     setDeliveryRecipient('');
     setTrackingOrderId('');
     setPendingProduct(null);
+    setAppliedCoupon(null);
     setStep('landing');
   }, [orgId]);
 

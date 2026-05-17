@@ -91,3 +91,63 @@
     opacity: 0.85;
   }
 }
+
+/* ============ Cupom térmico de impressão ============ */
+.print-receipt {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+  html, body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  #print-receipt-area,
+  #print-receipt-area * {
+    visibility: visible !important;
+  }
+  #print-receipt-area {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm;
+    padding: 4mm 3mm;
+    color: #000;
+    background: #fff;
+    font-family: 'Courier New', ui-monospace, monospace;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .print-receipt p { margin: 0; padding: 0; }
+  .print-receipt .pr-header { text-align: center; }
+  .print-receipt .pr-header h1 {
+    font-size: 16px; font-weight: 900; margin: 0 0 2px; text-transform: uppercase;
+  }
+  .print-receipt .pr-order-num { font-weight: 900; font-size: 14px; margin-top: 2px; }
+  .print-receipt .pr-divider {
+    border-top: 1px dashed #000; margin: 6px 0;
+  }
+  .print-receipt .pr-section-title {
+    font-weight: 900; text-align: center; letter-spacing: 2px; margin-bottom: 4px;
+  }
+  .print-receipt .pr-item { margin-bottom: 4px; }
+  .print-receipt .pr-item-row {
+    display: flex; justify-content: space-between; gap: 6px;
+  }
+  .print-receipt .pr-obs {
+    font-style: italic; font-size: 11px; padding-left: 8px;
+  }
+  .print-receipt .pr-total { font-size: 14px; font-weight: 900; margin-top: 4px; }
+  .print-receipt .pr-payment { margin-top: 6px; }
+  .print-receipt .pr-footer { text-align: center; font-size: 11px; margin-top: 6px; }
+  .print-receipt .pr-delivery { margin-top: 4px; }
+}

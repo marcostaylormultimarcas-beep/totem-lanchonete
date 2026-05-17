@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer } from 'lucide-react';
+import OrderPrintReceipt from './OrderPrintReceipt';
 
 interface Order {
   id: string;
@@ -29,6 +30,22 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<'active' | 'all'>('active');
+  const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  const [storeName, setStoreName] = useState<string>('');
+
+  useEffect(() => {
+    if (!organizationId) { setStoreName(''); return; }
+    supabase.from('settings').select('store_name').eq('organization_id', organizationId).maybeSingle()
+      .then(({ data }) => setStoreName((data as any)?.store_name || ''));
+  }, [organizationId]);
+
+  const handlePrint = (order: Order) => {
+    setPrintOrder(order);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintOrder(null), 300);
+    }, 50);
+  };
 
   const fetchOrders = async () => {
     if (!organizationId) { setOrders([]); return; }
@@ -123,8 +140,14 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
               ))}
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-black text-primary">{formatCurrency(order.total)}</span>
+              <button
+                onClick={() => handlePrint(order)}
+                className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
+              >
+                <Printer className="w-4 h-4" /> Imprimir
+              </button>
             </div>
 
             {/* Action buttons */}
@@ -165,6 +188,8 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
           </div>
         );
       })}
+
+      <OrderPrintReceipt order={printOrder} storeName={storeName} />
     </div>
   );
 };

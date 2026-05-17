@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import {
   UtensilsCrossed, QrCode, ChefHat, ArrowRight, CheckCircle2, Sparkles,
   Zap, BarChart3, Headphones, X, MessageCircle

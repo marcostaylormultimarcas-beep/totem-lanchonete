@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,17 +18,6 @@ import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 const APP_VERSION = "1.0.1";
 
 const queryClient = new QueryClient();
-
-const StoreLandingRedirect = () => {
-  const { username } = useParams<{ username?: string }>();
-  const normalizedUsername = username?.trim().toLowerCase();
-
-  if (!normalizedUsername) {
-    return <Navigate to="/" replace />;
-  }
-
-  return <Navigate to={`/loja/${normalizedUsername}/home`} replace />;
-};
 
 const App = () => {
   useEffect(() => {
@@ -53,7 +42,8 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Login />} />
               {/* Landing institucional dinâmica — busca whatsapp_number pelo :username */}
-              <Route path="/loja/:username" element={<StoreLandingRedirect />} />
+              {/* Landing institucional dinâmica — renderiza direto sem redirect; Home resolve whatsapp_number pelo :username */}
+              <Route path="/loja/:username" element={<Home />} />
               <Route path="/loja/:username/home" element={<Home />} />
               {/* Totem público (kiosk de autoatendimento) — agora em /cardapio/:slug */}
               <Route path="/cardapio/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />

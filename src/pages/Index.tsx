@@ -88,6 +88,21 @@ const Index = () => {
     };
   }, []);
 
+  // Reseta carrinho/estado ao trocar de loja (orgId muda)
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    setCart([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setDeliveryAddress('');
+    setDeliveryReference('');
+    setDeliveryRecipient('');
+    setTrackingOrderId('');
+    setPendingProduct(null);
+    setStep('landing');
+  }, [orgId]);
+
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
   };

@@ -265,7 +265,7 @@ const AdminPage = () => {
 
     // Bloqueia acesso de contas que não são ADM nem Master (ex.: clientes via Google)
     if (!isMaster && !isAdmin) {
-      await signOutCompletely();
+      await supabase.auth.signOut();
       setAuthenticated(false);
       setCurrentAdmin(null);
       setActiveOrgId(null);

@@ -119,7 +119,9 @@ const useReveal = () => {
 
 const Home = () => {
   const ref = useReveal();
-  const waLink = useWhatsappLink();
+  const { username } = useParams<{ username?: string }>();
+  const waLink = useWhatsappLink(username);
+  const demoUrl = `/loja/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
   const [demoOpen, setDemoOpen] = useState(false);
 
   useEffect(() => {

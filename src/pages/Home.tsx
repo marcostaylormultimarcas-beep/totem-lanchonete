@@ -3,9 +3,14 @@ import { Link } from 'react-router-dom';
 import {
   Zap, ShieldCheck, Cloud, Smartphone, Monitor, QrCode, ChefHat,
   Printer, UtensilsCrossed, ArrowRight, CheckCircle2, Sparkles,
-  Database, Lock, Gauge, Tablet
+  Database, Lock, Gauge, Tablet, X
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+
+/** URL do Simulador Interativo carregado no iframe do modal de demonstração.
+ *  O parâmetro `?modo=demo` ativa o isolamento: o app não grava pedidos
+ *  no banco e não notifica o KDS — apenas simula o fluxo visualmente. */
+const DEMO_URL = '/loja/principal?modo=demo';
 
 /** Número padrão (Super ADM Master) usado quando ninguém está logado ou sem WhatsApp configurado. */
 const DEFAULT_WHATSAPP = '5511999999999';

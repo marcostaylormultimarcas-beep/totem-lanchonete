@@ -16,6 +16,8 @@ const DEFAULT_DEMO_SLUG = 'principal';
 
 /** Fallback de WhatsApp (Super ADM Master) usado sem login ou sem número configurado. */
 const DEFAULT_WHATSAPP = '5511999999999';
+const normalizeUsername = (value?: string | null) => decodeURIComponent(value || '').trim().toLowerCase();
+
 const toWaLink = (raw?: string | null) => {
   const digits = (raw || '').replace(/\D/g, '');
   const num = digits.length >= 10 ? digits : DEFAULT_WHATSAPP;
@@ -45,55 +47,27 @@ const useWhatsappLink = (username?: string) => {
     };
 
     const resolveByUsername = async (rawUsername: string) => {
-      const slug = rawUsername.trim().toLowerCase();
+      const slug = normalizeUsername(rawUsername);
       console.log('[Home/WA] resolvendo username:', slug);
 
-      // 1) Match exato por slug
-      let { data: org, error: orgErr } = await supabase
+      const { data: org, error: orgErr } = await supabase
         .from('organizations')
-        .select('id, owner_id, slug, name')
-        .eq('slug', slug)
+        .select('id, slug, name')
+        .ilike('slug', slug)
+        .limit(1)
         .maybeSingle();
       if (orgErr) console.warn('[Home/WA] org by slug error', orgErr);
 
-      // 2) Match parcial em slug ou name (case-insensitive)
       if (!org?.id) {
-        const { data: orgs } = await supabase
-          .from('organizations')
-          .select('id, owner_id, slug, name')
-          .or(`slug.ilike.%${slug}%,name.ilike.%${slug}%`)
-          .limit(1);
-        org = orgs?.[0] || null;
-        if (org) console.log('[Home/WA] match parcial em organizations:', org);
-      }
-
-      // 3) Match por profile (display_name) → pega org owned por esse user
-      if (!org?.id) {
-        const { data: profs } = await supabase
-          .from('profiles')
-          .select('user_id, display_name')
-          .ilike('display_name', `%${slug}%`)
-          .limit(1);
-        const uid = profs?.[0]?.user_id;
-        if (uid) {
-          const { data: ownedOrg } = await supabase
-            .from('organizations')
-            .select('id, owner_id, slug, name')
-            .eq('owner_id', uid)
-            .maybeSingle();
-          if (ownedOrg) {
-            org = ownedOrg;
-            console.log('[Home/WA] match via profile/owner:', org);
-          }
-        }
-      }
-
-      if (!org?.id) {
-        console.warn('[Home/WA] nenhum admin encontrado para username:', slug, '— usando fallback');
+        console.warn('[Home/WA] nenhuma organização encontrada para slug:', slug, '— usando fallback');
         return null;
       }
 
       const phone = await fetchWaFromOrg(org.id);
+      if (!phone) {
+        console.warn('[Home/WA] organização encontrada sem whatsapp_number:', org.slug, '— usando fallback');
+        return null;
+      }
       console.log('[Home/WA] WhatsApp encontrado:', phone, 'para org:', org.slug);
       return phone;
     };
@@ -178,9 +152,10 @@ const useReveal = () => {
 const Home = () => {
   const ref = useReveal();
   const { username: rawUsername } = useParams<{ username?: string }>();
-  const username = rawUsername?.trim().toLowerCase() || undefined;
+  const username = normalizeUsername(rawUsername) || undefined;
   const waLink = useWhatsappLink(username);
   const demoUrl = `/cardapio/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
+  const landingPath = username ? `/loja/${username}/home` : '/';
   const [demoOpen, setDemoOpen] = useState(false);
 
   useEffect(() => {
@@ -231,7 +206,7 @@ const Home = () => {
       {/* === NAV === */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-black/50 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between">
-          <Link to="/home" className="flex items-center gap-2 font-black tracking-tight">
+          <Link to={landingPath} className="flex items-center gap-2 font-black tracking-tight">
             <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center neon-orange">
               <UtensilsCrossed className="w-4 h-4 text-black" />
             </span>

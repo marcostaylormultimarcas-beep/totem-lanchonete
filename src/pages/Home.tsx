@@ -102,6 +102,20 @@ const useReveal = () => {
 const Home = () => {
   const ref = useReveal();
   const waLink = useWhatsappLink();
+  const [demoOpen, setDemoOpen] = useState(false);
+
+  // Bloqueia scroll do body quando o modal está aberto
+  useEffect(() => {
+    if (!demoOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDemoOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [demoOpen]);
 
   return (
     <div ref={ref} className="min-h-screen bg-[#0b0b0d] text-foreground overflow-x-hidden">

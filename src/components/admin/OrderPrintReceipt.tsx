@@ -15,7 +15,7 @@ const OrderPrintReceipt = ({ order, storeName }: Props) => {
   const discount = Math.max(0, subtotal - total);
   const created = new Date(order.created_at);
 
-  return (
+  const content = (
     <div id="print-receipt-area" className="print-receipt">
       <div className="pr-header">
         <h1>{storeName || 'Pedido'}</h1>

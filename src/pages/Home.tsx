@@ -11,9 +11,8 @@ import cardPix from '@/assets/home-card-pix.jpg';
 import cardKds from '@/assets/home-card-kds.jpg';
 import ecosystemImg from '@/assets/home-ecosystem.jpg';
 
-/** URL do Simulador Interativo carregado no iframe do modal de demonstração.
- *  `?modo=demo` ativa o isolamento — sem gravar no banco e sem notificar o KDS. */
-const DEMO_URL = '/loja/principal?modo=demo';
+/** URL base do Simulador Interativo (`?modo=demo` ativa isolamento — sem gravar nem alertar KDS). */
+const DEFAULT_DEMO_SLUG = 'principal';
 
 /** Fallback de WhatsApp (Super ADM Master) usado sem login ou sem número configurado. */
 const DEFAULT_WHATSAPP = '5511999999999';
@@ -23,46 +22,78 @@ const toWaLink = (raw?: string | null) => {
   return `https://wa.me/${num}`;
 };
 
-/** Resolve WhatsApp do usuário logado conforme hierarquia de roles. */
-const useWhatsappLink = () => {
+/**
+ * Resolve WhatsApp:
+ *  1. Se houver `:username` na URL → busca a organização por slug e usa o `whatsapp_number` dela.
+ *  2. Caso contrário → usa o usuário logado (owner ou master) conforme hierarquia.
+ *  3. Fallback final → DEFAULT_WHATSAPP.
+ */
+const useWhatsappLink = (username?: string) => {
   const [waLink, setWaLink] = useState<string>(toWaLink(null));
 
   useEffect(() => {
     let cancelled = false;
-    const resolve = async () => {
+
+    const resolveByUsername = async (slug: string) => {
+      // slug da loja = username público (ex.: rufinomachado)
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('id, owner_id')
+        .eq('slug', slug)
+        .maybeSingle();
+      if (!org?.id) return null;
+
+      const { data: cfg } = await supabase
+        .from('settings')
+        .select('whatsapp_number')
+        .eq('organization_id', org.id)
+        .maybeSingle();
+      return cfg?.whatsapp_number || null;
+    };
+
+    const resolveByAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const ownedOrg = await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle();
+      const [rolesRes, ownedSettingsRes, masterOrgRes] = await Promise.all([
+        supabase.from('user_roles' as any).select('role').eq('user_id', user.id),
+        ownedOrg.data?.id
+          ? supabase.from('settings').select('whatsapp_number').eq('organization_id', ownedOrg.data.id).maybeSingle()
+          : Promise.resolve({ data: null } as any),
+        supabase.from('organizations').select('id').eq('master_id', user.id).limit(1).maybeSingle(),
+      ]);
+
+      const roles = (rolesRes.data || []).map((r: any) => r.role);
+      let phone: string | null = ownedSettingsRes.data?.whatsapp_number || null;
+
+      if (!phone && (roles.includes('master_admin') || roles.includes('super_admin')) && masterOrgRes.data?.id) {
+        const { data } = await supabase
+          .from('settings').select('whatsapp_number')
+          .eq('organization_id', masterOrgRes.data.id).maybeSingle();
+        phone = data?.whatsapp_number || null;
+      }
+      return phone;
+    };
+
+    (async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        const ownedOrg = await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle();
-        const [rolesRes, ownedSettingsRes, masterOrgRes] = await Promise.all([
-          supabase.from('user_roles' as any).select('role').eq('user_id', user.id),
-          ownedOrg.data?.id
-            ? supabase.from('settings').select('whatsapp_number').eq('organization_id', ownedOrg.data.id).maybeSingle()
-            : Promise.resolve({ data: null } as any),
-          supabase.from('organizations').select('id').eq('master_id', user.id).limit(1).maybeSingle(),
-        ]);
-
-        const roles = (rolesRes.data || []).map((r: any) => r.role);
-        let phone: string | null = ownedSettingsRes.data?.whatsapp_number || null;
-
-        if (!phone && (roles.includes('master_admin') || roles.includes('super_admin')) && masterOrgRes.data?.id) {
-          const { data } = await supabase
-            .from('settings').select('whatsapp_number')
-            .eq('organization_id', masterOrgRes.data.id).maybeSingle();
-          phone = data?.whatsapp_number || null;
-        }
-
-        if (!cancelled && phone) setWaLink(toWaLink(phone));
+        const phone = username
+          ? await resolveByUsername(username)
+          : await resolveByAuth();
+        if (!cancelled) setWaLink(toWaLink(phone));
       } catch (e) {
         console.warn('[Home] WhatsApp resolve falhou, usando fallback', e);
       }
-    };
+    })();
 
-    resolve();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => resolve());
+    const { data: sub } = supabase.auth.onAuthStateChange(async () => {
+      if (username) return; // URL com username é determinística
+      const phone = await resolveByAuth();
+      if (!cancelled) setWaLink(toWaLink(phone));
+    });
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
-  }, []);
+  }, [username]);
 
   return waLink;
 };

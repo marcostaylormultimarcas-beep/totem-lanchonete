@@ -70,7 +70,10 @@ Deno.serve(async (req) => {
         email,
         password,
         email_confirm: true,
-        user_metadata: { display_name: store_name || email.split("@")[0] },
+        user_metadata: {
+          display_name: store_name || email.split("@")[0],
+          account_type: "admin",
+        },
       });
       if (error) throw error;
       if (is_master && data.user) {

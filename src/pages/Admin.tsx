@@ -11,6 +11,7 @@ import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
 import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
+import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -705,6 +706,7 @@ const AdminPage = () => {
 
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
+          <ChangePasswordCard />
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Store className="w-5 h-5 text-primary" /> Nome do Restaurante</h3>
             <input placeholder="Ex: Vision Mídia" value={settings.storeName} onChange={e => setSettings({ ...settings, storeName: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />

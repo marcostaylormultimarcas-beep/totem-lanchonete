@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Ticket, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Ticket, Loader2, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -9,11 +9,18 @@ interface Cupom {
   tipo: 'porcentagem' | 'valor_fixo';
   valor: number;
   status: 'ativo' | 'inativo';
+  data_inicio: string | null;
+  data_fim: string | null;
 }
 
 interface Props {
   organizationId: string | null;
 }
+
+const formatBR = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
 
 const CouponsPanel = ({ organizationId }: Props) => {
   const [cupons, setCupons] = useState<Cupom[]>([]);
@@ -22,6 +29,8 @@ const CouponsPanel = ({ organizationId }: Props) => {
   const [tipo, setTipo] = useState<'porcentagem' | 'valor_fixo'>('porcentagem');
   const [valor, setValor] = useState('');
   const [ativo, setAtivo] = useState(true);
+  const [dataInicio, setDataInicio] = useState('');
+  const [dataFim, setDataFim] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
@@ -46,6 +55,10 @@ const CouponsPanel = ({ organizationId }: Props) => {
       toast.error('Preencha código e valor válidos.');
       return;
     }
+    if (dataInicio && dataFim && new Date(dataInicio) >= new Date(dataFim)) {
+      toast.error('A data de início deve ser anterior à data de expiração.');
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from('cupons' as any).insert({
       organization_id: organizationId,
@@ -53,6 +66,8 @@ const CouponsPanel = ({ organizationId }: Props) => {
       tipo,
       valor: v,
       status: ativo ? 'ativo' : 'inativo',
+      data_inicio: dataInicio ? new Date(dataInicio).toISOString() : null,
+      data_fim: dataFim ? new Date(dataFim).toISOString() : null,
     });
     setSaving(false);
     if (error) {
@@ -61,6 +76,7 @@ const CouponsPanel = ({ organizationId }: Props) => {
     }
     toast.success('Cupom criado!');
     setCodigo(''); setValor(''); setAtivo(true); setTipo('porcentagem');
+    setDataInicio(''); setDataFim('');
     load();
   };
 
@@ -102,6 +118,18 @@ const CouponsPanel = ({ organizationId }: Props) => {
               className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
           </div>
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Válido a partir de (opcional)</label>
+            <input type="datetime-local" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Válido até (opcional)</label>
+            <input type="datetime-local" value={dataFim} onChange={e => setDataFim(e.target.value)}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+          </div>
+        </div>
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-5 h-5 accent-primary" />
           <span className="text-sm">Ativo</span>
@@ -125,6 +153,14 @@ const CouponsPanel = ({ organizationId }: Props) => {
               <p className="text-xs text-muted-foreground">
                 {c.tipo === 'porcentagem' ? `${c.valor}% de desconto` : `R$ ${Number(c.valor).toFixed(2)} fixo`}
               </p>
+              {(c.data_inicio || c.data_fim) && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Calendar className="w-3 h-3" />
+                  {c.data_inicio && !c.data_fim && `Inicia em: ${formatBR(c.data_inicio)}`}
+                  {!c.data_inicio && c.data_fim && `Expira em: ${formatBR(c.data_fim)}`}
+                  {c.data_inicio && c.data_fim && `${formatBR(c.data_inicio)} → ${formatBR(c.data_fim)}`}
+                </p>
+              )}
             </div>
             <button onClick={() => toggleStatus(c)}
               className={`text-xs px-3 py-1.5 rounded-full font-semibold ${c.status === 'ativo' ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>

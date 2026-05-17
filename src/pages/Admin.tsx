@@ -10,6 +10,7 @@ import { signOutCompletely } from '@/lib/auth';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import MasterPanel from '@/components/admin/MasterPanel';
+import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';

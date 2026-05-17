@@ -96,6 +96,7 @@ const useReveal = () => {
 
 const Home = () => {
   const ref = useReveal();
+  const waLink = useWhatsappLink();
 
   return (
     <div ref={ref} className="min-h-screen bg-[#0b0b0d] text-foreground overflow-x-hidden">

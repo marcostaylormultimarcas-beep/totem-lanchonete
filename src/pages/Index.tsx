@@ -186,7 +186,7 @@ const Index = () => {
         />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} />
+        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} />
       )}
       {step === 'checkout' && (
         <CheckoutScreen

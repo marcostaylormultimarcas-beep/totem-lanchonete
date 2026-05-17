@@ -123,14 +123,25 @@ const useWhatsappLink = (username?: string) => {
       return phone;
     };
 
+    const resolveFallback = async () => {
+      const { data: org } = await supabase
+        .from('organizations').select('id').eq('slug', DEFAULT_DEMO_SLUG).maybeSingle();
+      if (!org?.id) return null;
+      return fetchWaFromOrg(org.id);
+    };
+
     (async () => {
       try {
-        const phone = username
+        let phone = username
           ? await resolveByUsername(username)
           : await resolveByAuth();
+        if (!phone) {
+          phone = await resolveFallback();
+          console.log('[Home/WA] usando fallback Super ADM:', phone);
+        }
         if (!cancelled) setWaLink(toWaLink(phone));
       } catch (e) {
-        console.warn('[Home] WhatsApp resolve falhou, usando fallback', e);
+        console.warn('[Home/WA] resolve falhou, usando fallback fixo', e);
       }
     })();
 

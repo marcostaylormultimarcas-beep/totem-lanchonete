@@ -66,7 +66,10 @@ Deno.serve(async (req) => {
     if (req.method === "POST" && action === "create") {
       const { email, password, is_master, store_name } = await req.json();
       if (!email || !password) return json({ error: "email/password required" }, 400);
-      const { data, error } = await admin.auth.admin.createUser({
+
+      // Tenta criar; se já existe, busca o usuário e atualiza senha/metadata
+      let userId: string | null = null;
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -75,11 +78,90 @@ Deno.serve(async (req) => {
           account_type: "admin",
         },
       });
-      if (error) throw error;
-      if (is_master && data.user) {
-        await admin.from("user_roles").upsert({ user_id: data.user.id, role: "master" });
+
+      if (createErr) {
+        const isDuplicate =
+          (createErr as any).code === "email_exists" ||
+          /already been registered|already exists/i.test(createErr.message || "");
+        if (!isDuplicate) throw createErr;
+
+        // Localiza usuário existente
+        const { data: list, error: listErr } = await admin.auth.admin.listUsers({ perPage: 200 });
+        if (listErr) throw listErr;
+        const existing = list.users.find(
+          (u) => (u.email || "").toLowerCase() === String(email).toLowerCase()
+        );
+        if (!existing) throw new Error("Usuário existe mas não foi possível localizá-lo.");
+        userId = existing.id;
+
+        // Atualiza senha e marca como admin
+        const { error: updErr } = await admin.auth.admin.updateUserById(userId, {
+          password,
+          email_confirm: true,
+          user_metadata: {
+            ...(existing.user_metadata || {}),
+            display_name: store_name || existing.user_metadata?.display_name || email.split("@")[0],
+            account_type: "admin",
+          },
+        } as any);
+        if (updErr) throw updErr;
+      } else {
+        userId = created.user?.id ?? null;
       }
-      return json({ user: data.user });
+
+      if (!userId) throw new Error("Falha ao obter ID do usuário.");
+
+      // Garante role admin
+      await admin.from("user_roles").upsert(
+        { user_id: userId, role: "admin" },
+        { onConflict: "user_id,role" } as any
+      );
+
+      // Garante organização (trigger não roda em update de usuário já existente)
+      const { data: existingOrg } = await admin
+        .from("organizations")
+        .select("id")
+        .eq("owner_id", userId)
+        .maybeSingle();
+
+      if (!existingOrg) {
+        const base = (email.split("@")[0] || "loja")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || `loja-${userId.slice(0, 8)}`;
+        let slug = base;
+        let i = 0;
+        // garante slug único
+        while (true) {
+          const { data: clash } = await admin
+            .from("organizations").select("id").eq("slug", slug).maybeSingle();
+          if (!clash) break;
+          i++;
+          slug = `${base}-${i}`;
+        }
+        const { data: newOrg, error: orgErr } = await admin
+          .from("organizations")
+          .insert({ name: store_name || base, slug, owner_id: userId })
+          .select().maybeSingle();
+        if (orgErr) throw orgErr;
+        if (newOrg) {
+          await admin.from("settings").insert({
+            organization_id: newOrg.id,
+            store_name: store_name || base,
+            whatsapp_number: "",
+            instagram_url: "",
+          });
+        }
+      }
+
+      if (is_master) {
+        await admin.from("user_roles").upsert(
+          { user_id: userId, role: "master" },
+          { onConflict: "user_id,role" } as any
+        );
+      }
+
+      return json({ user: { id: userId, email } });
     }
 
     if (req.method === "POST" && (action === "pause" || action === "unpause")) {

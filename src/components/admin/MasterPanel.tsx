@@ -109,7 +109,7 @@ const MasterPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const totemUrl = (s: string) => `${window.location.origin}/loja/${s}`;
+  const totemUrl = (s: string) => `${window.location.origin}/cardapio/${s}`;
 
   return (
     <div className="px-4 space-y-5">

@@ -3,9 +3,14 @@ import { Link } from 'react-router-dom';
 import {
   Zap, ShieldCheck, Cloud, Smartphone, Monitor, QrCode, ChefHat,
   Printer, UtensilsCrossed, ArrowRight, CheckCircle2, Sparkles,
-  Database, Lock, Gauge, Tablet
+  Database, Lock, Gauge, Tablet, X
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+
+/** URL do Simulador Interativo carregado no iframe do modal de demonstração.
+ *  O parâmetro `?modo=demo` ativa o isolamento: o app não grava pedidos
+ *  no banco e não notifica o KDS — apenas simula o fluxo visualmente. */
+const DEMO_URL = '/loja/principal?modo=demo';
 
 /** Número padrão (Super ADM Master) usado quando ninguém está logado ou sem WhatsApp configurado. */
 const DEFAULT_WHATSAPP = '5511999999999';
@@ -97,6 +102,20 @@ const useReveal = () => {
 const Home = () => {
   const ref = useReveal();
   const waLink = useWhatsappLink();
+  const [demoOpen, setDemoOpen] = useState(false);
+
+  // Bloqueia scroll do body quando o modal está aberto
+  useEffect(() => {
+    if (!demoOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDemoOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [demoOpen]);
 
   return (
     <div ref={ref} className="min-h-screen bg-[#0b0b0d] text-foreground overflow-x-hidden">
@@ -163,10 +182,10 @@ const Home = () => {
               ecossistema completo, intuitivo e com sincronização instantânea em tempo real.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <a href="#ecossistema"
+              <button type="button" onClick={() => setDemoOpen(true)}
                 className="neon-orange bg-orange text-black font-bold px-6 py-4 rounded-xl inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
                 Ver Demonstração <ArrowRight className="w-4 h-4" />
-              </a>
+              </button>
               <a href={waLink} target="_blank" rel="noreferrer"
                 className="bg-white/5 border border-white/10 text-white font-semibold px-6 py-4 rounded-xl hover:bg-white/10 transition inline-flex items-center justify-center gap-2">
                 Falar com Consultor
@@ -431,6 +450,57 @@ const Home = () => {
           <div>© {new Date().getFullYear()} Vision Mídia · Autoatendimento Inteligente</div>
         </div>
       </footer>
+
+      {/* === MODAL: Simulador Interativo === */}
+      {demoOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="demo-title"
+          onClick={() => setDemoOpen(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[440px] flex flex-col"
+            style={{ maxHeight: 'calc(100vh - 2rem)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-2xl glass border-b border-white/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald animate-pulse shrink-0" />
+                <h3 id="demo-title" className="text-sm md:text-base font-semibold text-white truncate">
+                  Simulador Interativo: Faça um pedido teste
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDemoOpen(false)}
+                aria-label="Fechar simulador"
+                className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-orange hover:text-black border border-white/10 grid place-items-center text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Iframe vertical (totem / smartphone) */}
+            <div className="relative bg-black rounded-b-2xl overflow-hidden border-x border-b border-white/10 neon-orange">
+              <iframe
+                src={DEMO_URL}
+                title="Simulador Vision Mídia"
+                className="block w-full bg-black"
+                style={{ height: 'min(700px, calc(100vh - 8rem))', border: 0 }}
+                allow="clipboard-write"
+              />
+            </div>
+
+            <p className="mt-3 text-center text-xs text-white/50">
+              Modo demonstração ativo — nenhum pedido é gravado no sistema real.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

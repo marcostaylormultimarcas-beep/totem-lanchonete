@@ -3,6 +3,7 @@ import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'luc
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import { isDemoMode } from '@/lib/demoMode';
 import type { AppliedCoupon } from './CartScreen';
 
 interface PaymentScreenProps {
@@ -85,6 +86,17 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
     setSaving(true);
 
     try {
+      // === MODO DEMO ===
+      // Simulador da Landing Page: não grava no banco, não notifica KDS.
+      if (isDemoMode()) {
+        const num = Math.floor(Math.random() * 900 + 100).toString();
+        setGeneratedNumber(num);
+        await new Promise((r) => setTimeout(r, 600));
+        setConfirmed(true);
+        setSaving(false);
+        return;
+      }
+
       // Get next order number from DB count
       const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('organization_id', orgId);
       const num = ((count || 0) + 1).toString().padStart(3, '0');

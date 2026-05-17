@@ -13,6 +13,7 @@ interface PaymentScreenProps {
   deliveryAddress?: string;
   deliveryReference?: string;
   deliveryRecipient?: string;
+  appliedCoupon?: AppliedCoupon | null;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }

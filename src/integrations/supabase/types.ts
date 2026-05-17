@@ -162,6 +162,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          master_id: string | null
           name: string
           owner_id: string | null
           paused: boolean
@@ -171,6 +172,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          master_id?: string | null
           name: string
           owner_id?: string | null
           paused?: boolean
@@ -180,6 +182,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          master_id?: string | null
           name?: string
           owner_id?: string | null
           paused?: boolean
@@ -357,9 +360,11 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_master_admin: { Args: { _uid: string }; Returns: boolean }
+      is_super_admin: { Args: { _uid: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "master" | "admin"
+      app_role: "master" | "admin" | "super_admin" | "master_admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -487,7 +492,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["master", "admin"],
+      app_role: ["master", "admin", "super_admin", "master_admin"],
     },
   },
 } as const

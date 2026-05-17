@@ -10,6 +10,7 @@ import { signOutCompletely } from '@/lib/auth';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import MasterPanel from '@/components/admin/MasterPanel';
+import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';
@@ -25,7 +26,7 @@ const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho'
 interface AdminUser {
   id: string;
   username: string; // email
-  is_master: boolean;
+  tier: 'super' | 'master' | 'admin';
   organization_id: string | null;
 }
 
@@ -53,7 +54,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'settings' | 'admins'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'settings' | 'admins' | 'super'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -241,54 +242,61 @@ const AdminPage = () => {
       setAuthLoading(false);
       return;
     }
-    // Verifica role master
-    const { data: masterRow } = await supabase
+    // Carrega todas as roles do usuário e determina o tier
+    const { data: rolesData } = await supabase
       .from('user_roles' as any)
       .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'master')
-      .maybeSingle();
-    const isMaster = !!masterRow;
-    // Verifica role admin
-    const { data: adminRow } = await supabase
-      .from('user_roles' as any)
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .maybeSingle();
-    const isAdmin = !!adminRow;
-    // Org do usuário
+      .eq('user_id', user.id);
+    const roleList = (rolesData || []).map((r: any) => r.role);
+    const isSuper = roleList.includes('super_admin') || roleList.includes('master');
+    const isMasterAdmin = roleList.includes('master_admin');
+    const isAdminLojista = roleList.includes('admin');
+    const tier: 'super' | 'master' | 'admin' | null =
+      isSuper ? 'super' : isMasterAdmin ? 'master' : isAdminLojista ? 'admin' : null;
+
+    // Org do usuário (lojista tem sua própria)
     const { data: ownOrg } = await supabase
       .from('organizations')
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle();
 
-    // Bloqueia acesso de contas que não são ADM nem Master (ex.: clientes via Google)
-    if (!isMaster && !isAdmin) {
+    if (!tier) {
       await supabase.auth.signOut();
       setAuthenticated(false);
       setCurrentAdmin(null);
       setActiveOrgId(null);
       setAuthLoading(false);
-      setError('Esta conta não tem permissão de administrador. Peça ao Master para criar seu acesso.');
+      setError('Esta conta não tem permissão de administrador.');
       return;
     }
 
     const adminCtx: AdminUser = {
       id: user.id,
       username: user.email || '',
-      is_master: isMaster,
+      tier,
       organization_id: ownOrg?.id ?? null,
     };
     setCurrentAdmin(adminCtx);
-    const initialOrg = ownOrg?.id ?? null;
-    setActiveOrgId(initialOrg);
-    if (initialOrg) await setOrgId(initialOrg);
-    if (isMaster) {
+
+    // Lista de lojas disponíveis conforme o tier
+    let initialOrg: string | null = ownOrg?.id ?? null;
+    if (tier === 'super') {
       const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
       setAllOrgs((orgs as any) || []);
+      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+    } else if (tier === 'master') {
+      const { data: orgs } = await supabase
+        .from('organizations').select('id, name, slug')
+        .eq('master_id', user.id).order('name');
+      setAllOrgs((orgs as any) || []);
+      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+    } else {
+      setAllOrgs(ownOrg ? [{ id: ownOrg.id, name: ownOrg.name, slug: ownOrg.slug }] : []);
     }
+
+    setActiveOrgId(initialOrg);
+    if (initialOrg) await setOrgId(initialOrg);
     setAuthenticated(true);
     setAuthLoading(false);
   };
@@ -336,8 +344,9 @@ const AdminPage = () => {
 
   const unlockMaster = async () => {
     if (!currentAdmin) return;
-    if (!currentAdmin.is_master) { setMasterError('Acesso restrito ao Master.'); return; }
-    // Re-valida com a senha atual do usuário
+    if (currentAdmin.tier !== 'super' && currentAdmin.tier !== 'master') {
+      setMasterError('Acesso restrito.'); return;
+    }
     const { error: err } = await supabase.auth.signInWithPassword({
       email: currentAdmin.username,
       password: masterPassword,
@@ -491,7 +500,7 @@ const AdminPage = () => {
           <h1 className="text-xl font-bold">Painel Admin</h1>
           {currentAdmin && (
             <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-              {currentAdmin.is_master ? '👑 ' : ''}{currentAdmin.username}
+              {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
             </span>
           )}
         </div>
@@ -500,9 +509,9 @@ const AdminPage = () => {
         </button>
       </div>
 
-      {/* Active org indicator + switcher (Master only) */}
+      {/* Active org indicator + switcher (Super/Master) */}
       <div className="flex items-center gap-2 px-4 pt-3">
-        {currentAdmin?.is_master ? (
+        {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
           <>
@@ -515,14 +524,21 @@ const AdminPage = () => {
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, master: false },
-          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
-          { key: 'products' as const, label: 'Produtos', icon: null, master: false },
-          { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
-          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, master: false },
-          { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
-          { key: 'admins' as const, label: 'Master', icon: Shield, master: true },
-        ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
+          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
+          { key: 'products' as const, label: 'Produtos', icon: null, requires: 'admin' as const },
+          { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
+          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
+          { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
+          { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+          { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
+        ].filter(t => {
+          const tier = currentAdmin?.tier;
+          if (t.requires === 'admin') return true; // todos veem
+          if (t.requires === 'master') return tier === 'super' || tier === 'master';
+          if (t.requires === 'super') return tier === 'super';
+          return false;
+        }).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
@@ -533,7 +549,10 @@ const AdminPage = () => {
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
-      {tab === 'admins' && currentAdmin?.is_master && (
+      {tab === 'super' && currentAdmin?.tier === 'super' && (
+        <SuperAdminPanel currentUserId={currentAdmin.id} />
+      )}
+      {tab === 'admins' && (currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') && (
         masterUnlocked ? (
           <MasterPanel currentAdminId={currentAdmin.id} />
         ) : (

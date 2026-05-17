@@ -59,6 +59,8 @@ export type Database = {
         Row: {
           codigo: string
           created_at: string
+          data_fim: string | null
+          data_inicio: string | null
           id: string
           organization_id: string
           status: string
@@ -69,6 +71,8 @@ export type Database = {
         Insert: {
           codigo: string
           created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
           id?: string
           organization_id: string
           status?: string
@@ -79,6 +83,8 @@ export type Database = {
         Update: {
           codigo?: string
           created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
           id?: string
           organization_id?: string
           status?: string

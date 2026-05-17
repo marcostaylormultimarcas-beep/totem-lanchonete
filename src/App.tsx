@@ -42,7 +42,8 @@ const App = () => {
             <Routes>
               <Route path="/" element={<Login />} />
               {/* Landing institucional dinâmica — busca whatsapp_number pelo :username */}
-              <Route path="/loja/:username" element={<StoreLandingRedirect />} />
+              {/* Landing institucional dinâmica — renderiza direto sem redirect; Home resolve whatsapp_number pelo :username */}
+              <Route path="/loja/:username" element={<Home />} />
               <Route path="/loja/:username/home" element={<Home />} />
               {/* Totem público (kiosk de autoatendimento) — agora em /cardapio/:slug */}
               <Route path="/cardapio/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />

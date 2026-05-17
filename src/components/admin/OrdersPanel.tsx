@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff } from 'lucide-react';
 import OrderPrintReceipt from './OrderPrintReceipt';
+import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
 
 interface Order {
   id: string;
@@ -75,9 +76,36 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     await supabase.from('orders').update({ status }).eq('id', id);
   };
 
+  const hasPending = orders.some(o => o.status === 'pending');
+  const { needsUnlock, muted, setMuted, unlock } = useOrderAlertSound(hasPending);
+
   return (
     <div className="px-4 space-y-4">
-      <div className="flex gap-2">
+      {needsUnlock && hasPending && (
+        <button
+          onClick={unlock}
+          className="w-full bg-accent/15 border border-accent/40 text-accent rounded-lg px-3 py-2 text-sm font-semibold animate-pulse"
+        >
+          🔔 Clique em qualquer lugar da tela para ativar os alertas sonoros de novos pedidos
+        </button>
+      )}
+
+      <div className="flex gap-2 items-center">
+        <button
+          onClick={() => setMuted(m => !m)}
+          className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${
+            muted
+              ? 'bg-muted text-muted-foreground border-border'
+              : hasPending
+                ? 'bg-accent/20 text-accent border-accent/40 animate-pulse'
+                : 'bg-foreground/5 text-foreground border-border'
+          }`}
+          title={muted ? 'Reativar alertas' : 'Silenciar alertas'}
+        >
+          {muted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+          <span className="hidden sm:inline">{muted ? 'Mutado' : 'Alertas'}</span>
+        </button>
+        <div className="flex gap-2">
         <button
           onClick={() => setFilter('active')}
           className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}

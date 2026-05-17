@@ -16,7 +16,7 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || '/';
+  const returnTo = searchParams.get('returnTo') || getKioskHomePath();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -79,16 +79,24 @@ const Auth = () => {
     try {
       sessionStorage.setItem('post_login_return_to', returnTo);
     } catch {}
-    const result = await lovable.auth.signInWithOAuth('google', {
-      redirect_uri: window.location.origin,
-    });
-    if (result.error) {
-      toast.error('Não foi possível entrar com o Google');
+    try {
+      const result = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: window.location.origin,
+        extraParams: { prompt: 'select_account' },
+      });
+      if (result.error) {
+        const msg = result.error.message || 'Não foi possível entrar com o Google';
+        toast.error(msg);
+        setLoading(false);
+        return;
+      }
+      if (result.redirected) return;
+      toast.success('Login realizado!');
+      navigate(returnTo);
+    } catch (e: any) {
+      toast.error(e?.message || 'Falha ao iniciar login com Google');
       setLoading(false);
-      return;
     }
-    if (result.redirected) return;
-    navigate(returnTo);
   };
 
   const handleSubmit = (e: React.FormEvent) => {

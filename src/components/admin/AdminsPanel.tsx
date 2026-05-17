@@ -1,151 +1,179 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Pause, Play, Loader2, Shield, Building2 } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Shield, KeyRound, Mail } from 'lucide-react';
+import { toast } from 'sonner';
 
-interface AdminUser {
+interface AuthUser {
   id: string;
-  username: string;
-  password: string;
-  is_master: boolean;
-  paused: boolean;
-  organization_id: string | null;
+  email: string;
+  created_at: string;
+  banned_until: string | null;
+  org: { id: string; name: string; slug: string; paused: boolean } | null;
+  roles: string[];
 }
 
-interface OrgRef { id: string; name: string; slug: string; }
+const callAdminFn = async (
+  action: string,
+  body?: Record<string, unknown>,
+  method: 'GET' | 'POST' | 'DELETE' = 'POST',
+) => {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  const url = `https://upwstbeimnlgohbqogzz.supabase.co/functions/v1/admin-users?action=${action}`;
+  const res = await fetch(url, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Erro na operação');
+  return json;
+};
 
-const AdminsPanel = ({ currentAdminId, allOrgs = [], onOrgsChanged }: { currentAdminId?: string; allOrgs?: OrgRef[]; onOrgsChanged?: () => void }) => {
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
+const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
+  const [users, setUsers] = useState<AuthUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newUser, setNewUser] = useState('');
+  const [newEmail, setNewEmail] = useState('');
   const [newPass, setNewPass] = useState('');
+  const [newStoreName, setNewStoreName] = useState('');
   const [newMaster, setNewMaster] = useState(false);
-  const [newOrgId, setNewOrgId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('admins').select('*').order('created_at', { ascending: true });
-    setAdmins((data as any) || []);
+    try {
+      const res = await callAdminFn('list', undefined, 'GET');
+      setUsers(res.users || []);
+    } catch (e: any) {
+      toast.error(e.message);
+    }
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
-  useEffect(() => { if (!newOrgId && allOrgs.length) setNewOrgId(allOrgs[0].id); }, [allOrgs]);
 
-  const orgName = (id: string | null) => allOrgs.find(o => o.id === id)?.name || (id ? '—' : 'Sem loja');
-
-  const addAdmin = async () => {
-    const u = newUser.trim().toLowerCase();
-    if (!u || !newPass) { alert('Preencha usuário e senha'); return; }
-    if (!newMaster && !newOrgId) { alert('Selecione a loja deste admin.'); return; }
+  const addUser = async () => {
+    if (!newEmail.trim() || !newPass) { toast.error('Preencha email e senha'); return; }
     setSaving(true);
-    const payload: any = { username: u, password: newPass, is_master: newMaster, paused: false };
-    // Master is global; non-master must be tied to an organization
-    payload.organization_id = newMaster ? null : newOrgId;
-    const { error } = await supabase.from('admins').insert(payload);
-    if (error) {
-      alert(error.message.includes('duplicate') ? 'Esse usuário já existe.' : 'Erro: ' + error.message);
-    } else {
-      setNewUser(''); setNewPass(''); setNewMaster(false);
+    try {
+      await callAdminFn('create', {
+        email: newEmail.trim().toLowerCase(),
+        password: newPass,
+        is_master: newMaster,
+        store_name: newStoreName.trim() || undefined,
+      });
+      toast.success('Usuário criado!');
+      setNewEmail(''); setNewPass(''); setNewStoreName(''); setNewMaster(false);
       await load();
+    } catch (e: any) {
+      toast.error(e.message);
     }
     setSaving(false);
   };
 
-  const togglePause = async (a: AdminUser) => {
-    await supabase.from('admins').update({ paused: !a.paused }).eq('id', a.id);
-    await load();
+  const togglePause = async (u: AuthUser) => {
+    const paused = !!u.banned_until && new Date(u.banned_until) > new Date();
+    try {
+      await callAdminFn(paused ? 'unpause' : 'pause', { user_id: u.id });
+      toast.success(paused ? 'Usuário reativado' : 'Usuário pausado');
+      await load();
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const updatePassword = async (a: AdminUser, newPassword: string) => {
-    if (!newPassword) return;
-    await supabase.from('admins').update({ password: newPassword }).eq('id', a.id);
-    await load();
+  const setPassword = async (u: AuthUser, password: string) => {
+    if (!password) return;
+    try {
+      await callAdminFn('set_password', { user_id: u.id, password });
+      toast.success('Senha alterada');
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const updateOrg = async (a: AdminUser, orgId: string) => {
-    await supabase.from('admins').update({ organization_id: orgId || null }).eq('id', a.id);
-    await load();
+  const setMaster = async (u: AuthUser, is_master: boolean) => {
+    try {
+      await callAdminFn('set_master', { user_id: u.id, is_master });
+      toast.success(is_master ? 'Promovido a Master' : 'Master removido');
+      await load();
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const removeAdmin = async (a: AdminUser) => {
-    if (a.id === currentAdminId) { alert('Você não pode remover sua própria conta.'); return; }
-    if (a.is_master && admins.filter(x => x.is_master).length <= 1) {
-      alert('É necessário pelo menos 1 admin master.');
-      return;
-    }
-    if (!confirm(`Remover admin "${a.username}"?`)) return;
-    await supabase.from('admins').delete().eq('id', a.id);
-    await load();
+  const removeUser = async (u: AuthUser) => {
+    if (u.id === currentAdminId) { toast.error('Não pode excluir você mesmo.'); return; }
+    if (!confirm(`Excluir definitivamente "${u.email}"? Isso apaga a loja, produtos e pedidos.`)) return;
+    try {
+      await callAdminFn('delete', { user_id: u.id }, 'DELETE');
+      toast.success('Usuário excluído');
+      await load();
+    } catch (e: any) { toast.error(e.message); }
   };
 
   return (
     <div className="px-4 space-y-4">
       <div className="kiosk-card p-4 space-y-3">
-        <h3 className="font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4 text-primary" /> Novo Admin</h3>
-        <input placeholder="Usuário" value={newUser} onChange={e => setNewUser(e.target.value)} autoComplete="off" className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
-        <input placeholder="Senha" type="password" autoComplete="new-password" value={newPass} onChange={e => setNewPass(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
-        {!newMaster && (
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1"><Building2 className="w-3 h-3" /> Loja deste admin</label>
-            <select value={newOrgId} onChange={e => setNewOrgId(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-              {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-            </select>
-          </div>
-        )}
+        <h3 className="font-bold text-sm flex items-center gap-2"><Plus className="w-4 h-4 text-primary" /> Novo Usuário</h3>
+        <input placeholder="Email" type="email" autoComplete="off" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+          className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+        <input placeholder="Senha (mín. 6)" type="password" autoComplete="new-password" value={newPass} onChange={e => setNewPass(e.target.value)}
+          className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" minLength={6} />
+        <input placeholder="Nome da loja (opcional)" value={newStoreName} onChange={e => setNewStoreName(e.target.value)}
+          className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={newMaster} onChange={e => setNewMaster(e.target.checked)} className="w-4 h-4 accent-primary" />
-          <Shield className="w-4 h-4 text-primary" /> Permissão Master (acesso global a todas as lojas)
+          <Shield className="w-4 h-4 text-primary" /> Permissão Master
         </label>
-        <button onClick={addAdmin} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Adicionar
+        <p className="text-[11px] text-muted-foreground">Cada usuário recebe automaticamente sua própria loja isolada. As alterações de uma conta não afetam as outras.</p>
+        <button onClick={addUser} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar conta
         </button>
       </div>
 
       <div className="space-y-2">
-        <h3 className="font-bold text-sm text-muted-foreground">Admins cadastrados</h3>
+        <h3 className="font-bold text-sm text-muted-foreground">Usuários cadastrados</h3>
         {loading ? (
           <div className="flex justify-center py-6"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
-        ) : admins.map(a => (
-          <div key={a.id} className={`kiosk-card p-3 space-y-2 ${a.paused ? 'opacity-60' : ''}`}>
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                {a.is_master && <span title="Master">👑</span>}
-                <p className="font-bold truncate">{a.username}</p>
-                {a.paused && <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/20 text-destructive">Pausado</span>}
-                {a.id === currentAdminId && <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">Você</span>}
+        ) : users.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">Nenhum usuário ainda.</p>
+        ) : users.map(u => {
+          const paused = !!u.banned_until && new Date(u.banned_until) > new Date();
+          const isMaster = u.roles.includes('master');
+          return (
+            <div key={u.id} className={`kiosk-card p-3 space-y-2 ${paused ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {isMaster && <span title="Master">👑</span>}
+                  <Mail className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                  <p className="font-bold truncate text-sm">{u.email}</p>
+                  {paused && <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/20 text-destructive">Pausado</span>}
+                  {u.id === currentAdminId && <span className="text-xs px-2 py-0.5 rounded-full bg-primary/20 text-primary">Você</span>}
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => togglePause(u)} className="p-2 text-muted-foreground hover:text-primary" title={paused ? 'Reativar' : 'Pausar'}>
+                    {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => removeUser(u)} className="p-2 text-muted-foreground hover:text-destructive" title="Excluir">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-1">
-                <button onClick={() => togglePause(a)} className="p-2 text-muted-foreground hover:text-primary" title={a.paused ? 'Reativar' : 'Pausar'}>
-                  {a.paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-                </button>
-                <button onClick={() => removeAdmin(a)} className="p-2 text-muted-foreground hover:text-destructive" title="Remover">
-                  <Trash2 className="w-4 h-4" />
-                </button>
+              {u.org && (
+                <p className="text-xs text-muted-foreground pl-5">Loja: <span className="text-foreground font-semibold">{u.org.name}</span> · <code className="text-[10px]">/loja/{u.org.slug}</code></p>
+              )}
+              <div className="flex gap-2 items-center">
+                <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />
+                <input type="password" defaultValue="" placeholder="Nova senha" autoComplete="new-password"
+                  onBlur={e => { if (e.target.value) { setPassword(u, e.target.value); e.target.value = ''; } }}
+                  className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs" />
+                <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer whitespace-nowrap">
+                  <input type="checkbox" checked={isMaster} disabled={u.id === currentAdminId}
+                    onChange={e => setMaster(u, e.target.checked)}
+                    className="w-3.5 h-3.5 accent-primary" /> Master
+                </label>
               </div>
             </div>
-            {!a.is_master && (
-              <div className="flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                <select value={a.organization_id || ''} onChange={e => updateOrg(a, e.target.value)}
-                  className="flex-1 px-2 py-1.5 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs">
-                  <option value="">— Sem loja —</option>
-                  {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="flex gap-2 items-center">
-              <input type="password" defaultValue="" placeholder="Definir nova senha" autoComplete="new-password"
-                onBlur={e => { if (e.target.value) { updatePassword(a, e.target.value); e.target.value = ''; } }}
-                className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-xs" maxLength={50} />
-              <label className="flex items-center gap-1 text-[11px] text-muted-foreground cursor-pointer whitespace-nowrap">
-                <input type="checkbox" checked={a.is_master} disabled={a.id === currentAdminId}
-                  onChange={async e => { await supabase.from('admins').update({ is_master: e.target.checked, organization_id: e.target.checked ? null : a.organization_id }).eq('id', a.id); await load(); }}
-                  className="w-3.5 h-3.5 accent-primary" /> Master
-              </label>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

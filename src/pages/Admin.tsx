@@ -248,12 +248,32 @@ const AdminPage = () => {
       .eq('role', 'master')
       .maybeSingle();
     const isMaster = !!masterRow;
+    // Verifica role admin
+    const { data: adminRow } = await supabase
+      .from('user_roles' as any)
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle();
+    const isAdmin = !!adminRow;
     // Org do usuário
     const { data: ownOrg } = await supabase
       .from('organizations')
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle();
+
+    // Bloqueia acesso de contas que não são ADM nem Master (ex.: clientes via Google)
+    if (!isMaster && !isAdmin) {
+      await signOutCompletely();
+      setAuthenticated(false);
+      setCurrentAdmin(null);
+      setActiveOrgId(null);
+      setAuthLoading(false);
+      setError('Esta conta não tem permissão de administrador. Peça ao Master para criar seu acesso.');
+      return;
+    }
+
     const adminCtx: AdminUser = {
       id: user.id,
       username: user.email || '',

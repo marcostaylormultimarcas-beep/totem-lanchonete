@@ -1,3 +1,4 @@
+import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -104,7 +105,7 @@ const Auth = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <div className="flex items-center gap-4 p-4 border-b border-border">
-        <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground">
+        <button onClick={() => navigate(getKioskHomePath())} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">{titleMap[mode]}</h1>

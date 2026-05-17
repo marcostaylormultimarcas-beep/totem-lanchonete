@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
@@ -29,6 +30,9 @@ interface PendingOrderState {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+  const orgId = useOrgId();
+  const homePath = slug ? `/loja/${slug}` : '/';
   const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -84,6 +88,21 @@ const Index = () => {
     };
   }, []);
 
+  // Reseta carrinho/estado ao trocar de loja (orgId muda)
+  useEffect(() => {
+    if (!orgId) return;
+    sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    setCart([]);
+    setCustomerName('');
+    setCustomerPhone('');
+    setDeliveryAddress('');
+    setDeliveryReference('');
+    setDeliveryRecipient('');
+    setTrackingOrderId('');
+    setPendingProduct(null);
+    setStep('landing');
+  }, [orgId]);
+
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
   };
@@ -135,7 +154,7 @@ const Index = () => {
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
     toast.info('Faça login para finalizar e acompanhar seu pedido.');
-    navigate('/auth?returnTo=/');
+    navigate(`/auth?returnTo=${encodeURIComponent(homePath)}`);
   };
 
   return (

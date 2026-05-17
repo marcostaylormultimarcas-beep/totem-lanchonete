@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -14,7 +14,9 @@ interface OrgContextValue {
   orgId: string | null;
   org: Organization | null;
   loading: boolean;
+  lockedSlug: string | null;
   setOrgId: (id: string) => Promise<void>;
+  lockToSlug: (slug: string | null) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -24,7 +26,9 @@ const OrgContext = createContext<OrgContextValue>({
   orgId: null,
   org: null,
   loading: true,
+  lockedSlug: null,
   setOrgId: async () => {},
+  lockToSlug: async () => {},
   refresh: async () => {},
 });
 
@@ -35,21 +39,47 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
   const [orgId, setOrgIdState] = useState<string | null>(null);
   const [org, setOrg] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lockedSlug, setLockedSlug] = useState<string | null>(null);
+  const lockedSlugRef = useRef<string | null>(null);
 
-  const loadOrg = async (id: string) => {
-    const { data } = await supabase.from('organizations').select('*').eq('id', id).maybeSingle();
-    if (data) setOrg(data as Organization);
+  const applyOrg = (data: Organization) => {
+    setOrgIdState(data.id);
+    setOrg(data);
   };
 
   const setOrgId = async (id: string) => {
     localStorage.setItem(STORAGE_KEY, id);
-    setOrgIdState(id);
-    await loadOrg(id);
+    const { data } = await supabase.from('organizations').select('*').eq('id', id).maybeSingle();
+    if (data) applyOrg(data as Organization);
+  };
+
+  const lockToSlug = async (slug: string | null) => {
+    lockedSlugRef.current = slug;
+    setLockedSlug(slug);
+    if (!slug) return;
+    localStorage.setItem('kiosk_slug', slug);
+    const { data } = await supabase.from('organizations').select('*').eq('slug', slug).maybeSingle();
+    if (data) {
+      localStorage.setItem(STORAGE_KEY, data.id);
+      applyOrg(data as Organization);
+    }
   };
 
   const resolve = async () => {
     setLoading(true);
-    // 1. Se autenticado, prioriza a org do dono (auth.uid)
+
+    // 0. Slug travado pela URL /loja/:slug sempre vence
+    if (lockedSlugRef.current) {
+      const { data } = await supabase.from('organizations').select('*').eq('slug', lockedSlugRef.current).maybeSingle();
+      if (data) {
+        localStorage.setItem(STORAGE_KEY, data.id);
+        applyOrg(data as Organization);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // 1. Usuário autenticado: org do dono
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: ownOrg } = await supabase
@@ -59,8 +89,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
         .maybeSingle();
       if (ownOrg) {
         localStorage.setItem(STORAGE_KEY, ownOrg.id);
-        setOrgIdState(ownOrg.id);
-        setOrg(ownOrg as Organization);
+        applyOrg(ownOrg as Organization);
         setLoading(false);
         return;
       }
@@ -70,8 +99,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     if (stored) {
       const { data } = await supabase.from('organizations').select('*').eq('id', stored).maybeSingle();
       if (data) {
-        setOrgIdState(data.id);
-        setOrg(data as Organization);
+        applyOrg(data as Organization);
         setLoading(false);
         return;
       }
@@ -80,8 +108,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);
-      setOrgIdState(data.id);
-      setOrg(data as Organization);
+      applyOrg(data as Organization);
     }
     setLoading(false);
   };
@@ -95,7 +122,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   return (
-    <OrgContext.Provider value={{ orgId, org, loading, setOrgId, refresh: resolve }}>
+    <OrgContext.Provider value={{ orgId, org, loading, lockedSlug, setOrgId, lockToSlug, refresh: resolve }}>
       {children}
     </OrgContext.Provider>
   );
@@ -103,19 +130,23 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 
 export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const { slug } = useParams<{ slug: string }>();
-  const { setOrgId } = useOrg();
+  const { lockToSlug, orgId } = useOrg();
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const sync = async () => {
-      if (!slug) { setReady(true); return; }
-      const { data } = await supabase.from('organizations').select('*').eq('slug', slug).maybeSingle();
-      if (data) await setOrgId(data.id);
+      setReady(false);
+      await lockToSlug(slug || null);
       setReady(true);
     };
     sync();
+    return () => {
+      // Ao desmontar (sair da rota /loja/:slug), libera o lock
+      lockToSlug(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
-  if (!ready) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
+  if (!ready || !orgId) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
   return <>{children}</>;
 };

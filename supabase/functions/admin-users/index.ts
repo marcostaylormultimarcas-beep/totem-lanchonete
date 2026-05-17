@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     }
 
     if (req.method === "POST" && action === "create") {
-      const { email, password, is_master, store_name } = await req.json();
+      const { email, password, is_master, store_name, slug: requestedSlug } = await req.json();
       if (!email || !password) return json({ error: "email/password required" }, 400);
 
       // Tenta criar; se já existe, busca o usuário e atualiza senha/metadata

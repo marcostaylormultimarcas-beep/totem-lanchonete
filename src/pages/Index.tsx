@@ -125,6 +125,7 @@ const Index = () => {
     setDeliveryReference('');
     setDeliveryRecipient('');
     setTrackingOrderId('');
+    setAppliedCoupon(null);
   };
 
   const handlePaymentDone = (orderId?: string) => {

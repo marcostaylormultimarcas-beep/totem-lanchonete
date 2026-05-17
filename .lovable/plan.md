@@ -1,73 +1,56 @@
-## Hierarquia de 3 Níveis: Super Admin → Master Admin → Admin Loja
 
-### 1. Migração no Banco
+## Diagnóstico
 
-**Enum `app_role`:** adicionar `super_admin` e `master_admin`. Manter `admin` (= lojista) e `master` (legado, mapeado como super_admin durante a transição).
+A tela preta no Netlify **não** é causada pelas tabelas — elas já existem. A causa é o cliente Supabase falhando na inicialização porque as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` **não existem no build do Netlify**.
 
-**Tabela `organizations`:** adicionar coluna `master_id UUID` (nullable) — referencia o usuário Master que cadastrou a loja. Lojas criadas pelo Super Admin ficam com `master_id = NULL`.
+No Lovable o arquivo `.env` é gerado automaticamente. No Netlify ele **não existe** — o Vite faz o build sem essas variáveis, então:
 
-**Função `has_role`:** já existe e funciona com o novo enum.
+```ts
+// src/integrations/supabase/client.ts
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;          // undefined
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY; // undefined
+createClient(undefined, undefined) // 💥 throw → React não monta → tela preta
+```
 
-**Nova função `is_super_admin(uid)`:** retorna true se `user_roles` tem `super_admin` OU `master` (legado).
+Como o `client.ts` é arquivo gerado (não devo editar), a correção precisa ser feita de duas formas:
 
-**Migração de dados:**
-- Todo usuário com role `master` hoje vira `super_admin` (é você, dono).
-- Usuários com role `admin` continuam como `admin` (lojistas).
+## Plano
 
-**RLS atualizada:**
-- `organizations`: 
-  - SELECT: público (totem precisa ler por slug).
-  - INSERT: `super_admin` (sem restrição) OU `master_admin` (apenas se `master_id = auth.uid()`) OU dono criando a própria.
-  - UPDATE/DELETE: `super_admin`, OU `master_admin` se `master_id = auth.uid()`, OU owner.
-- `user_roles`: 
-  - SELECT: próprio usuário OU `super_admin` OU `master_admin` (para listar seus admins).
-  - ALL: `super_admin`. Master pode INSERT/DELETE apenas role `admin` (para criar lojistas dele).
-- `cupons`, `products`, `settings`, `orders`: adicionar `super_admin` e (via join em organizations) `master_admin` do master_id correspondente nas policies de owner.
+### 1. Configurar as variáveis no Netlify (ação do usuário — instruções claras)
+No painel do Netlify: **Site settings → Environment variables → Add variable**, adicionar:
 
-### 2. Edge Function `admin-users`
+- `VITE_SUPABASE_URL` = `https://upwstbeimnlgohbqogzz.supabase.co`
+- `VITE_SUPABASE_PUBLISHABLE_KEY` = (a anon key do projeto)
+- `VITE_SUPABASE_PROJECT_ID` = `upwstbeimnlgohbqogzz`
 
-Refatorar para suportar contexto hierárquico:
-- Identificar caller: `super_admin`, `master_admin`, ou negar.
-- `super_admin`: pode CRUD usuários `master_admin` E `admin`.
-- `master_admin`: pode CRUD apenas usuários `admin` cujo `organizations.master_id = master_admin.id`.
-- Ação `create`: aceita `role` (`master_admin` | `admin`) e, quando admin criado por master, grava `organizations.master_id` automaticamente.
-- Ação `list`: filtra resultados conforme o role do caller.
+Depois clicar em **Deploys → Trigger deploy → Clear cache and deploy site**.
 
-### 3. Frontend
+### 2. Adicionar tela de erro amigável (em vez de tela preta) quando faltar env
+Criar um guard em `src/main.tsx` que detecta env ausentes e renderiza uma mensagem clara em vez de deixar o app crashar silenciosamente. Assim, se algo der errado no futuro, o usuário vê o que está faltando em vez de tela preta.
 
-**`src/pages/Login.tsx`:** após login, ler roles e rotear:
-- `super_admin` (ou legado `master`) → `/admin` (mostra aba Super)
-- `master_admin` → `/admin` (mostra aba Master + suas lojas)
-- `admin` → `/admin` (vê apenas sua loja)
-- nenhum → erro + signOut
+```tsx
+// src/main.tsx
+const hasEnv = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+if (!hasEnv) {
+  root.render(<MissingEnvScreen />); // tela explicativa com instruções
+} else {
+  root.render(<App />);
+}
+```
 
-**`src/pages/Admin.tsx`:** controlar abas pela role:
-- Super Admin vê aba **"Super"** (gerencia Masters) + **"Master"** (gerencia lojas globalmente) + lojas.
-- Master Admin vê aba **"Master"** (gerencia apenas suas lojas e seus lojistas).
-- Admin loja vê apenas painel da própria loja (sem abas Master/Super).
+### 3. Adicionar ErrorBoundary no topo do App
+Captura qualquer erro de runtime (ex: RLS bloqueando, query falhando no boot) e mostra mensagem em vez de tela preta.
 
-**Novo componente `src/components/admin/SuperAdminPanel.tsx`:**
-- Formulário "Cadastrar novo Master Admin" (email, senha, nome).
-- Lista de Masters com email, contagem de lojas, botões pausar/excluir.
+### 4. Verificar `public/_redirects` para SPA fallback no Netlify
+Garantir que existe `/* /index.html 200` para rotas como `/loja/:slug` não retornarem 404.
 
-**Atualizar `src/components/admin/AdminsPanel.tsx`** (renderizado para Master):
-- Renomear contexto para "Meus Lojistas".
-- Ao criar lojista, edge function vincula `organizations.master_id = currentUserId`.
-- Lista filtra apenas lojistas vinculados.
+### 5. Publish
+Após as mudanças, publicar para atualizar o site Lovable. **O Netlify é deploy separado** — o usuário precisa fazer o redeploy no painel do Netlify depois de configurar as env vars (passo 1).
 
-**Atualizar `src/lib/auth.ts`:** adicionar `getCurrentUserRoleTier()` retornando `'super' | 'master' | 'admin' | null`.
+## Observação importante
 
-### 4. Memória
+Não consigo configurar as variáveis do Netlify por você — isso é feito no painel do Netlify. Mas as mudanças de código (passos 2, 3, 4) vão fazer o app mostrar uma mensagem clara explicando o que falta, em vez de tela preta.
 
-Atualizar `mem://auth/admin` e índice para refletir a hierarquia de 3 níveis.
+## Pergunta antes de implementar
 
-### Arquivos afetados
-- migration nova (enum + coluna + RLS + dados)
-- `supabase/functions/admin-users/index.ts`
-- `src/pages/Login.tsx`, `src/pages/Admin.tsx`
-- `src/components/admin/SuperAdminPanel.tsx` (novo)
-- `src/components/admin/AdminsPanel.tsx`, `MasterPanel.tsx`
-- `src/lib/auth.ts`
-- `mem://auth/admin`, `mem://index.md`
-
-Após aprovar o plano, começo pela migração (precisa da sua confirmação) e sigo com o código.
+Você quer que eu siga com o plano acima (guard + ErrorBoundary + checar _redirects), ou prefere que eu apenas confirme as instruções para configurar as variáveis no Netlify sem mexer no código?

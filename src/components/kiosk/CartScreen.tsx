@@ -130,17 +130,17 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                 </button>
               </div>
             ) : (
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
                 <input
                   value={couponCode}
                   onChange={e => setCouponCode(e.target.value.toUpperCase())}
                   onKeyDown={e => e.key === 'Enter' && applyCoupon()}
                   placeholder="DIGITE SEU CUPOM"
-                  className="flex-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary uppercase text-sm"
+                  className="w-full sm:flex-1 min-w-0 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary uppercase text-sm"
                   maxLength={30}
                 />
                 <button onClick={applyCoupon} disabled={validating || !couponCode.trim()}
-                  className="touch-btn bg-primary text-primary-foreground px-5 rounded-lg text-sm disabled:opacity-50 flex items-center gap-2">
+                  className="touch-btn w-full sm:w-auto bg-primary text-primary-foreground px-5 py-3 rounded-lg text-sm disabled:opacity-50 flex items-center justify-center gap-2 shrink-0">
                   {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aplicar'}
                 </button>
               </div>

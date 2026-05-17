@@ -76,8 +76,11 @@ const Auth = () => {
 
   const handleGoogle = async () => {
     setLoading(true);
+    try {
+      sessionStorage.setItem('post_login_return_to', returnTo);
+    } catch {}
     const result = await lovable.auth.signInWithOAuth('google', {
-      redirect_uri: window.location.origin + '/auth' + (returnTo !== '/' ? `?returnTo=${encodeURIComponent(returnTo)}` : ''),
+      redirect_uri: window.location.origin,
     });
     if (result.error) {
       toast.error('Não foi possível entrar com o Google');

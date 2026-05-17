@@ -519,6 +519,7 @@ const AdminPage = () => {
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
+          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
           { key: 'admins' as const, label: 'Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (

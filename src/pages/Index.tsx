@@ -203,6 +203,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          appliedCoupon={appliedCoupon}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}

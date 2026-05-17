@@ -41,6 +41,7 @@ const App = () => {
           <OrgProvider>
             <Routes>
               <Route path="/" element={<Login />} />
+              <Route path="/home" element={<Home />} />
               <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/auth" element={<Auth />} />

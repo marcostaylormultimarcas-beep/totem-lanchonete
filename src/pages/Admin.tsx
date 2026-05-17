@@ -10,6 +10,7 @@ import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
 import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
+import OrgSwitcher from '@/components/admin/OrgSwitcher';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -479,14 +480,13 @@ const AdminPage = () => {
 
       {/* Active org indicator + switcher (Master only) */}
       <div className="flex items-center gap-2 px-4 pt-3">
-        <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
         {currentAdmin?.is_master ? (
-          <select value={activeOrgId || ''} onChange={e => switchOrg(e.target.value)}
-            className="bg-muted px-3 py-2 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary flex-1 max-w-xs">
-            {allOrgs.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
+          <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
-          <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
+          <>
+            <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+            <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
+          </>
         )}
       </div>
 

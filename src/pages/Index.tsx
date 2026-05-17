@@ -30,6 +30,9 @@ interface PendingOrderState {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+  const orgId = useOrgId();
+  const homePath = slug ? `/loja/${slug}` : '/';
   const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);

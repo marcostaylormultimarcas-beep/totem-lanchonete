@@ -740,6 +740,7 @@ const AdminPage = () => {
 
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
+          <StorageUsageCard organizationId={activeOrgId} />
           <ChangePasswordCard />
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Store className="w-5 h-5 text-primary" /> Nome do Restaurante</h3>

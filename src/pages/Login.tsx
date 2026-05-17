@@ -21,17 +21,22 @@ const Login = () => {
     const isMasterAdmin = list.includes('master_admin');
     const isAdmin = list.includes('admin');
 
-    if (isSuper || isMasterAdmin) {
-      // Super Admin → painel global; Master Admin → painel regional (mesmo /admin, abas filtradas)
+    let returnTo: string | null = null;
+    try { returnTo = sessionStorage.getItem('post_login_return_to'); } catch {}
+    if (returnTo) {
+      try { sessionStorage.removeItem('post_login_return_to'); } catch {}
+    }
+
+    if (isSuper || isMasterAdmin || isAdmin) {
       navigate('/admin');
       return;
     }
-    if (isAdmin) {
-      // Lojista → painel da sua loja
-      navigate('/admin');
+    // Cliente sem papel administrativo → volta para o totem/kiosk
+    if (returnTo && returnTo !== '/') {
+      navigate(returnTo);
       return;
     }
-    toast.error('Sua conta não tem acesso ao sistema.');
+    toast.error('Sua conta não tem acesso ao painel administrativo.');
     await supabase.auth.signOut();
   };
 

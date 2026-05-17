@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -14,6 +14,7 @@ import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';
+import LoyaltyPanel from '@/components/admin/LoyaltyPanel';
 import StorageUsageCard from '@/components/admin/StorageUsageCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -56,7 +57,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'settings' | 'admins' | 'super'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'settings' | 'admins' | 'super'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -533,6 +534,7 @@ const AdminPage = () => {
           { key: 'products' as const, label: 'Produtos', icon: null, requires: 'admin' as const },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
+          { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
@@ -553,6 +555,7 @@ const AdminPage = () => {
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
+      {tab === 'loyalty' && <LoyaltyPanel organizationId={activeOrgId} />}
       {tab === 'super' && currentAdmin?.tier === 'super' && (
         <SuperAdminPanel currentUserId={currentAdmin.id} />
       )}

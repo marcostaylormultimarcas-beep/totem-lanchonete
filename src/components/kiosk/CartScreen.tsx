@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import LoyaltyCard from './LoyaltyCard';
 
 export interface AppliedCoupon {
   id: string;
@@ -31,6 +32,17 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
 
   const [couponCode, setCouponCode] = useState('');
   const [validating, setValidating] = useState(false);
+  const [customerPhone, setCustomerPhone] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user || cancelled) return;
+      const { data } = await supabase.from('profiles').select('phone').eq('user_id', user.id).maybeSingle();
+      if (!cancelled && data?.phone) setCustomerPhone(data.phone);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
@@ -88,6 +100,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
         </div>
       ) : (
         <div className="flex-1 p-4 space-y-3">
+          <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />
           {cart.map(item => (
             <div key={item.id} className="kiosk-card p-4 flex items-start gap-4">
               {isImageUrl(item.product.image) ? (

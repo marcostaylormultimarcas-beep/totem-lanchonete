@@ -55,6 +55,39 @@ export type Database = {
           },
         ]
       }
+      config_fidelidade: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          meta_pedidos: number
+          organization_id: string
+          premio_recompensa: string
+          updated_at: string
+          valor_minimo_pedido: number
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          meta_pedidos?: number
+          organization_id: string
+          premio_recompensa?: string
+          updated_at?: string
+          valor_minimo_pedido?: number
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          meta_pedidos?: number
+          organization_id?: string
+          premio_recompensa?: string
+          updated_at?: string
+          valor_minimo_pedido?: number
+        }
+        Relationships: []
+      }
       cupons: {
         Row: {
           codigo: string
@@ -277,6 +310,39 @@ export type Database = {
           phone?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      progresso_fidelidade: {
+        Row: {
+          created_at: string
+          id: string
+          organization_id: string
+          premios_resgatados: number
+          quantidade_carimbos: number
+          telefone_cliente: string
+          ultimo_pedido_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          organization_id: string
+          premios_resgatados?: number
+          quantidade_carimbos?: number
+          telefone_cliente: string
+          ultimo_pedido_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          organization_id?: string
+          premios_resgatados?: number
+          quantidade_carimbos?: number
+          telefone_cliente?: string
+          ultimo_pedido_id?: string | null
+          updated_at?: string
         }
         Relationships: []
       }

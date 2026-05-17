@@ -55,6 +55,47 @@ export type Database = {
           },
         ]
       }
+      cupons: {
+        Row: {
+          codigo: string
+          created_at: string
+          id: string
+          organization_id: string
+          status: string
+          tipo: string
+          updated_at: string
+          valor: number
+        }
+        Insert: {
+          codigo: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          status?: string
+          tipo: string
+          updated_at?: string
+          valor?: number
+        }
+        Update: {
+          codigo?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          status?: string
+          tipo?: string
+          updated_at?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cupons_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       orders: {
         Row: {
           created_at: string

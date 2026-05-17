@@ -344,8 +344,9 @@ const AdminPage = () => {
 
   const unlockMaster = async () => {
     if (!currentAdmin) return;
-    if (!currentAdmin.is_master) { setMasterError('Acesso restrito ao Master.'); return; }
-    // Re-valida com a senha atual do usuário
+    if (currentAdmin.tier !== 'super' && currentAdmin.tier !== 'master') {
+      setMasterError('Acesso restrito.'); return;
+    }
     const { error: err } = await supabase.auth.signInWithPassword({
       email: currentAdmin.username,
       password: masterPassword,

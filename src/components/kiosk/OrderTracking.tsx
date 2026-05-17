@@ -52,13 +52,22 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
   const [orderNumber, setOrderNumber] = useState('');
   const [showDeliveryAlert, setShowDeliveryAlert] = useState(false);
 
+  // Solicita permissão de notificação ao abrir o tracking
   useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    let lastStatus = '';
     // Fetch initial order
     const fetchOrder = async () => {
       const { data } = await supabase.from('orders').select('status, order_number').eq('id', orderId).single();
       if (data) {
         setStatus(data.status);
         setOrderNumber(data.order_number);
+        lastStatus = data.status;
       }
     };
     fetchOrder();
@@ -73,7 +82,12 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
         filter: `id=eq.${orderId}`,
       }, (payload) => {
         const newStatus = payload.new.status as string;
+        const newNumber = (payload.new.order_number as string) || orderNumber;
         setStatus(newStatus);
+        if (newStatus !== lastStatus) {
+          notifyStatus(newStatus, newNumber);
+          lastStatus = newStatus;
+        }
         if (newStatus === 'out_for_delivery') {
           setShowDeliveryAlert(true);
           setTimeout(() => setShowDeliveryAlert(false), 5000);

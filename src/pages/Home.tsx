@@ -167,7 +167,7 @@ const Home = () => {
                 className="neon-orange bg-orange text-black font-bold px-6 py-4 rounded-xl inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
                 Ver Demonstração <ArrowRight className="w-4 h-4" />
               </a>
-              <a href="#contato"
+              <a href={waLink} target="_blank" rel="noreferrer"
                 className="bg-white/5 border border-white/10 text-white font-semibold px-6 py-4 rounded-xl hover:bg-white/10 transition inline-flex items-center justify-center gap-2">
                 Falar com Consultor
               </a>

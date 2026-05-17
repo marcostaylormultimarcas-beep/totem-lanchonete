@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';

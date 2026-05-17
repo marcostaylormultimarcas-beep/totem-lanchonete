@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrg } from '@/contexts/OrgContext';
+import { signOutCompletely } from '@/lib/auth';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
@@ -20,21 +21,21 @@ const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho'
 
 interface AdminUser {
   id: string;
-  username: string;
-  password: string;
+  username: string; // email
   is_master: boolean;
-  paused: boolean;
   organization_id: string | null;
 }
 
 const AdminPage = () => {
-  const { orgId: ctxOrgId, setOrgId, org } = useOrg();
+  const navigate = useNavigate();
+  const { orgId: ctxOrgId, setOrgId, org, refresh: refreshOrg } = useOrg();
   const [authenticated, setAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
-  // For Master: selected org (defaults to ctx). For regular admin: their own org.
+  // For Master: selected org (defaults to own). For regular admin: their own org only.
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
   const [allOrgs, setAllOrgs] = useState<Array<{ id: string; name: string; slug: string }>>([]);
-  const [loginUser, setLoginUser] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -225,41 +226,79 @@ const AdminPage = () => {
     ingredients: '', description: '',
   });
 
-  const handleLogin = async () => {
-    const u = loginUser.trim().toLowerCase();
-    const p = password;
-    if (!u || !p) { setError('Informe usuário e senha'); return; }
-    const { data } = await supabase.from('admins').select('*').eq('username', u).maybeSingle();
-    if (!data || data.password !== p) { setError('Usuário ou senha incorretos'); return; }
-    if (data.paused) { setError('Este admin está pausado. Contate o master.'); return; }
-    const admin = data as AdminUser;
-    setCurrentAdmin(admin);
-    // Determine active org: admin's own org, or fallback to ctx for masters with no org
-    let initialOrg = admin.organization_id;
-    if (!initialOrg) {
-      const { data: firstOrg } = await supabase.from('organizations').select('id').order('created_at', { ascending: true }).limit(1).maybeSingle();
-      initialOrg = firstOrg?.id || null;
+  // Carrega sessão atual e contexto do admin
+  const bootstrapSession = async () => {
+    setAuthLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setAuthenticated(false);
+      setCurrentAdmin(null);
+      setActiveOrgId(null);
+      setAllOrgs([]);
+      setAuthLoading(false);
+      return;
     }
+    // Verifica role master
+    const { data: masterRow } = await supabase
+      .from('user_roles' as any)
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'master')
+      .maybeSingle();
+    const isMaster = !!masterRow;
+    // Org do usuário
+    const { data: ownOrg } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('owner_id', user.id)
+      .maybeSingle();
+    const adminCtx: AdminUser = {
+      id: user.id,
+      username: user.email || '',
+      is_master: isMaster,
+      organization_id: ownOrg?.id ?? null,
+    };
+    setCurrentAdmin(adminCtx);
+    const initialOrg = ownOrg?.id ?? null;
     setActiveOrgId(initialOrg);
     if (initialOrg) await setOrgId(initialOrg);
-    // For master, load all orgs for the switcher
-    if (admin.is_master) {
+    if (isMaster) {
       const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
       setAllOrgs((orgs as any) || []);
     }
     setAuthenticated(true);
-    setError('');
+    setAuthLoading(false);
   };
 
-  const handleLogout = () => {
-    setAuthenticated(false);
-    setCurrentAdmin(null);
-    setActiveOrgId(null);
-    setAllOrgs([]);
-    setLoginUser('');
+  useEffect(() => {
+    bootstrapSession();
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setAuthenticated(false);
+        setCurrentAdmin(null);
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        bootstrapSession();
+      }
+    });
+    return () => { sub.subscription.unsubscribe(); };
+  }, []);
+
+  const handleLogin = async () => {
+    const u = loginEmail.trim().toLowerCase();
+    const p = password;
+    if (!u || !p) { setError('Informe email e senha'); return; }
+    const { error: err } = await supabase.auth.signInWithPassword({ email: u, password: p });
+    if (err) {
+      setError(err.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : err.message);
+      return;
+    }
+    setError('');
     setPassword('');
-    setMasterUnlocked(false);
-    setMasterPassword('');
+    await bootstrapSession();
+  };
+
+  const handleLogout = async () => {
+    await signOutCompletely('/admin');
   };
 
   const switchOrg = async (newOrgId: string) => {
@@ -274,10 +313,13 @@ const AdminPage = () => {
 
   const unlockMaster = async () => {
     if (!currentAdmin) return;
-    // Re-validate against DB to ensure latest password (and master flag)
-    const { data } = await supabase.from('admins').select('*').eq('id', currentAdmin.id).maybeSingle();
-    if (!data || !data.is_master) { setMasterError('Acesso restrito ao Master.'); return; }
-    if (data.password !== masterPassword) { setMasterError('Senha Master incorreta.'); return; }
+    if (!currentAdmin.is_master) { setMasterError('Acesso restrito ao Master.'); return; }
+    // Re-valida com a senha atual do usuário
+    const { error: err } = await supabase.auth.signInWithPassword({
+      email: currentAdmin.username,
+      password: masterPassword,
+    });
+    if (err) { setMasterError('Senha incorreta.'); return; }
     setMasterUnlocked(true);
     setMasterPassword('');
     setMasterError('');

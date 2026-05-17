@@ -72,69 +72,24 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     return () => { supabase.removeChannel(channel); };
   }, [filter, organizationId]);
 
-  const grantLoyaltyStamp = async (order: Order) => {
-    if (!organizationId) return;
-    const phone = (order.customer_phone || '').replace(/\D/g, '');
-    if (phone.length < 8) return;
-    const { data: cfg } = await supabase
-      .from('config_fidelidade' as any)
-      .select('ativo, meta_pedidos, valor_minimo_pedido, premio_recompensa')
-      .eq('organization_id', organizationId)
-      .maybeSingle();
-    const c: any = cfg;
-    if (!c?.ativo) return;
-    if (Number(order.total) < Number(c.valor_minimo_pedido || 0)) return;
-
-    const { data: prog } = await supabase
-      .from('progresso_fidelidade' as any)
-      .select('id, quantidade_carimbos, premios_resgatados, ultimo_pedido_id')
-      .eq('organization_id', organizationId)
-      .eq('telefone_cliente', phone)
-      .maybeSingle();
-
-    const p: any = prog;
-    if (p?.ultimo_pedido_id === order.id) return; // já carimbado para este pedido
-
-    const meta = Math.max(1, Number(c.meta_pedidos) || 10);
-    const atual = Number(p?.quantidade_carimbos) || 0;
-    let novo = atual + 1;
-    let premios = Number(p?.premios_resgatados) || 0;
-    let premioGanho = false;
-    if (novo >= meta) {
-      novo = 0;
-      premios += 1;
-      premioGanho = true;
-    }
-
-    if (p?.id) {
-      await supabase.from('progresso_fidelidade' as any).update({
-        quantidade_carimbos: novo,
-        premios_resgatados: premios,
-        ultimo_pedido_id: order.id,
-      }).eq('id', p.id);
-    } else {
-      await supabase.from('progresso_fidelidade' as any).insert({
-        organization_id: organizationId,
-        telefone_cliente: phone,
-        quantidade_carimbos: novo,
-        premios_resgatados: premios,
-        ultimo_pedido_id: order.id,
-      });
-    }
-
-    const { toast } = await import('sonner');
-    if (premioGanho) {
-      toast.success(`🎉 ${order.customer_name} completou o cartão fidelidade! Prêmio: ${c.premio_recompensa}`);
-    } else {
-      toast.success(`+1 carimbo de fidelidade para ${order.customer_name} (${novo}/${meta})`);
-    }
-  };
-
   const updateStatus = async (id: string, status: string) => {
     await supabase.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered') {
       const order = orders.find(o => o.id === id);
-      if (order) await grantLoyaltyStamp(order);
+      const { data, error } = await supabase.rpc('grant_loyalty_stamp' as any, { _order_id: id });
+      const res: any = data;
+      const { toast } = await import('sonner');
+      if (error) {
+        console.error('grant_loyalty_stamp', error);
+      } else if (res?.ok) {
+        if (res.completed) {
+          toast.success(`🎉 ${order?.customer_name || 'Cliente'} completou o cartão! Prêmio gerado (código ${res.codigo}).`);
+        } else {
+          toast.success(`+1 carimbo (${res.carimbos}/${res.meta}) para ${order?.customer_name || 'cliente'}.`);
+        }
+      } else if (res?.reason && !['below_minimum', 'no_phone', 'inactive', 'already_stamped'].includes(res.reason)) {
+        console.warn('Carimbo não concedido:', res?.reason);
+      }
     }
   };
 

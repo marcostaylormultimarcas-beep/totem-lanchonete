@@ -425,6 +425,14 @@ const AdminPage = () => {
 
   const isImageUrl = (str: string) => str.startsWith('http') || str.startsWith('/');
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (!authenticated) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-6">
@@ -433,15 +441,18 @@ const AdminPage = () => {
         </div>
         <h1 className="text-2xl font-bold">Painel Administrativo</h1>
         <div className="w-full max-w-xs space-y-3">
-          <input type="text" placeholder="Usuário" value={loginUser}
-            onChange={e => setLoginUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={30} />
-          <input type="password" placeholder="Senha" value={password}
+          <input type="email" placeholder="Email" value={loginEmail} autoComplete="email"
+            onChange={e => setLoginEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" />
+          <input type="password" placeholder="Senha" value={password} autoComplete="current-password"
             onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={50} />
+            className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={72} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
-          <a href="mailto:rufinomahado@gmail.com?subject=Recuperação de Senha - Painel Admin" className="text-primary text-sm text-center block hover:underline">Esqueceu a senha?</a>
+          <div className="flex justify-between text-sm">
+            <button onClick={() => navigate('/auth?returnTo=/admin')} className="text-primary hover:underline">Criar conta</button>
+            <button onClick={() => navigate('/auth?returnTo=/admin')} className="text-primary hover:underline">Esqueci a senha</button>
+          </div>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
         <p className="text-[11px] text-muted-foreground mt-4">Desenvolvido by VisionTek</p>

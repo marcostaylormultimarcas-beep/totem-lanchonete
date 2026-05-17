@@ -59,9 +59,11 @@ export type Database = {
         Row: {
           ativo: boolean
           created_at: string
+          descricao_premio: string
           id: string
           meta_pedidos: number
           organization_id: string
+          premio_imagem: string
           premio_recompensa: string
           updated_at: string
           valor_minimo_pedido: number
@@ -69,9 +71,11 @@ export type Database = {
         Insert: {
           ativo?: boolean
           created_at?: string
+          descricao_premio?: string
           id?: string
           meta_pedidos?: number
           organization_id: string
+          premio_imagem?: string
           premio_recompensa?: string
           updated_at?: string
           valor_minimo_pedido?: number
@@ -79,9 +83,11 @@ export type Database = {
         Update: {
           ativo?: boolean
           created_at?: string
+          descricao_premio?: string
           id?: string
           meta_pedidos?: number
           organization_id?: string
+          premio_imagem?: string
           premio_recompensa?: string
           updated_at?: string
           valor_minimo_pedido?: number
@@ -230,6 +236,27 @@ export type Database = {
         }
         Relationships: []
       }
+      pedidos_carimbados: {
+        Row: {
+          created_at: string
+          order_id: string
+          organization_id: string
+          telefone_cliente: string
+        }
+        Insert: {
+          created_at?: string
+          order_id: string
+          organization_id: string
+          telefone_cliente: string
+        }
+        Update: {
+          created_at?: string
+          order_id?: string
+          organization_id?: string
+          telefone_cliente?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: string
@@ -346,6 +373,45 @@ export type Database = {
         }
         Relationships: []
       }
+      resgates_fidelidade: {
+        Row: {
+          codigo_resgate: string
+          created_at: string
+          id: string
+          organization_id: string
+          premio_imagem: string
+          premio_texto: string
+          status: string
+          telefone_cliente: string
+          used_at: string | null
+          used_by_user: string | null
+        }
+        Insert: {
+          codigo_resgate: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          premio_imagem?: string
+          premio_texto: string
+          status?: string
+          telefone_cliente: string
+          used_at?: string | null
+          used_by_user?: string | null
+        }
+        Update: {
+          codigo_resgate?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          premio_imagem?: string
+          premio_texto?: string
+          status?: string
+          telefone_cliente?: string
+          used_at?: string | null
+          used_by_user?: string | null
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           banners: Json
@@ -428,6 +494,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      grant_loyalty_stamp: { Args: { _order_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -437,6 +504,7 @@ export type Database = {
       }
       is_master_admin: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: { _uid: string }; Returns: boolean }
+      redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

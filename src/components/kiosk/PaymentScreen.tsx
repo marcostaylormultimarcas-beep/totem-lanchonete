@@ -21,7 +21,7 @@ interface PaymentScreenProps {
 const PIX_KEY = 'pagamento@visionmidia.com';
 const QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -29,7 +29,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string }>({ storeName: 'Vision Mídia', whatsappNumber: '' });
-  const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const total = Math.max(0, subtotal - discount);
 
   useEffect(() => {
     if (!orgId) return;

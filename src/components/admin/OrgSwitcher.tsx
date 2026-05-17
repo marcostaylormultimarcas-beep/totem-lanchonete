@@ -18,7 +18,7 @@ const OrgSwitcher = ({ orgs, activeOrgId, onChange }: Props) => {
   const active = orgs.find(o => o.id === activeOrgId);
 
   const copyLink = (slug: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/loja/${slug}`);
+    navigator.clipboard.writeText(`${window.location.origin}/cardapio/${slug}`);
     toast.success('Link do totem copiado!');
   };
 
@@ -61,7 +61,7 @@ const OrgSwitcher = ({ orgs, activeOrgId, onChange }: Props) => {
                       {o.name}
                       {o.paused && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/20 text-destructive">pausada</span>}
                     </div>
-                    <div className="text-xs text-muted-foreground truncate">/loja/{o.slug}</div>
+                    <div className="text-xs text-muted-foreground truncate">/cardapio/{o.slug}</div>
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); copyLink(o.slug); }}

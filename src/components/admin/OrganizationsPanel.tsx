@@ -64,7 +64,7 @@ const OrganizationsPanel = () => {
     await load();
   };
 
-  const totemUrl = (s: string) => `${window.location.origin}/loja/${s}`;
+  const totemUrl = (s: string) => `${window.location.origin}/cardapio/${s}`;
 
   return (
     <div className="px-4 space-y-4">

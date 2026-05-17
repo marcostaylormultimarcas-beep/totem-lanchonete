@@ -16,14 +16,23 @@ const Login = () => {
       .from('user_roles' as any)
       .select('role')
       .eq('user_id', userId);
-    const isMaster = (roles || []).some((r: any) => r.role === 'master');
-    const isAdmin = (roles || []).some((r: any) => r.role === 'admin');
-    if (isMaster || isAdmin) {
+    const list = (roles || []).map((r: any) => r.role);
+    const isSuper = list.includes('super_admin') || list.includes('master');
+    const isMasterAdmin = list.includes('master_admin');
+    const isAdmin = list.includes('admin');
+
+    if (isSuper || isMasterAdmin) {
+      // Super Admin → painel global; Master Admin → painel regional (mesmo /admin, abas filtradas)
       navigate('/admin');
-    } else {
-      toast.error('Sua conta não tem acesso ao sistema.');
-      await supabase.auth.signOut();
+      return;
     }
+    if (isAdmin) {
+      // Lojista → painel da sua loja
+      navigate('/admin');
+      return;
+    }
+    toast.error('Sua conta não tem acesso ao sistema.');
+    await supabase.auth.signOut();
   };
 
   useEffect(() => {

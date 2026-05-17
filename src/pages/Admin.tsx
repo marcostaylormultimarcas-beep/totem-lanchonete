@@ -8,8 +8,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
-import AdminsPanel from '@/components/admin/AdminsPanel';
-import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
+import MasterPanel from '@/components/admin/MasterPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 

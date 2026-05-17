@@ -34,21 +34,68 @@ const useWhatsappLink = (username?: string) => {
   useEffect(() => {
     let cancelled = false;
 
-    const resolveByUsername = async (slug: string) => {
-      // slug da loja = username público (ex.: rufinomachado)
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('id, owner_id')
-        .eq('slug', slug)
-        .maybeSingle();
-      if (!org?.id) return null;
-
-      const { data: cfg } = await supabase
+    const fetchWaFromOrg = async (orgId: string) => {
+      const { data: cfg, error } = await supabase
         .from('settings')
         .select('whatsapp_number')
-        .eq('organization_id', org.id)
+        .eq('organization_id', orgId)
         .maybeSingle();
+      if (error) console.warn('[Home/WA] settings error', error);
       return cfg?.whatsapp_number || null;
+    };
+
+    const resolveByUsername = async (rawUsername: string) => {
+      const slug = rawUsername.trim().toLowerCase();
+      console.log('[Home/WA] resolvendo username:', slug);
+
+      // 1) Match exato por slug
+      let { data: org, error: orgErr } = await supabase
+        .from('organizations')
+        .select('id, owner_id, slug, name')
+        .eq('slug', slug)
+        .maybeSingle();
+      if (orgErr) console.warn('[Home/WA] org by slug error', orgErr);
+
+      // 2) Match parcial em slug ou name (case-insensitive)
+      if (!org?.id) {
+        const { data: orgs } = await supabase
+          .from('organizations')
+          .select('id, owner_id, slug, name')
+          .or(`slug.ilike.%${slug}%,name.ilike.%${slug}%`)
+          .limit(1);
+        org = orgs?.[0] || null;
+        if (org) console.log('[Home/WA] match parcial em organizations:', org);
+      }
+
+      // 3) Match por profile (display_name) → pega org owned por esse user
+      if (!org?.id) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('user_id, display_name')
+          .ilike('display_name', `%${slug}%`)
+          .limit(1);
+        const uid = profs?.[0]?.user_id;
+        if (uid) {
+          const { data: ownedOrg } = await supabase
+            .from('organizations')
+            .select('id, owner_id, slug, name')
+            .eq('owner_id', uid)
+            .maybeSingle();
+          if (ownedOrg) {
+            org = ownedOrg;
+            console.log('[Home/WA] match via profile/owner:', org);
+          }
+        }
+      }
+
+      if (!org?.id) {
+        console.warn('[Home/WA] nenhum admin encontrado para username:', slug, '— usando fallback');
+        return null;
+      }
+
+      const phone = await fetchWaFromOrg(org.id);
+      console.log('[Home/WA] WhatsApp encontrado:', phone, 'para org:', org.slug);
+      return phone;
     };
 
     const resolveByAuth = async () => {

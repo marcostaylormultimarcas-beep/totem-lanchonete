@@ -7,6 +7,39 @@ interface OrderTrackingProps {
   onClose: () => void;
 }
 
+const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
+  pending: { title: '🧾 Pedido recebido', body: 'Recebemos seu pedido! Em breve começaremos o preparo.' },
+  preparing: { title: '👨‍🍳 Preparando seu pedido', body: 'Seu pedido já está sendo preparado com carinho.' },
+  out_for_delivery: { title: '🚀 Saiu para entrega!', body: 'Seu pedido está a caminho. Já já chega aí!' },
+  delivered: { title: '✅ Pedido entregue', body: 'Pedido entregue. Bom apetite!' },
+  cancelled: { title: '❌ Pedido cancelado', body: 'Seu pedido foi cancelado.' },
+};
+
+const notifyStatus = (status: string, orderNumber: string) => {
+  const msg = STATUS_MESSAGES[status];
+  if (!msg) return;
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(`${msg.title} #${orderNumber}`, {
+      body: msg.body,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      tag: `order-${orderNumber}`,
+      renotify: true,
+    } as any);
+    setTimeout(() => n.close(), 8000);
+    // pequeno beep de atenção
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880; g.gain.value = 0.05;
+      o.start(); o.stop(ctx.currentTime + 0.18);
+    } catch {}
+  } catch (e) { console.warn('notify err', e); }
+};
+
 const STEPS = [
   { key: 'pending', label: 'Pedido Recebido', icon: Clock, color: 'text-muted-foreground' },
   { key: 'preparing', label: 'Preparando', icon: UtensilsCrossed, color: 'text-accent' },

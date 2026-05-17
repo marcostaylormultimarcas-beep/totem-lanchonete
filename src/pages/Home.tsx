@@ -1,56 +1,51 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Zap, ShieldCheck, Cloud, Smartphone, Monitor, QrCode, ChefHat,
-  Printer, UtensilsCrossed, ArrowRight, CheckCircle2, Sparkles,
-  Database, Lock, Gauge, Tablet, X
+  UtensilsCrossed, QrCode, ChefHat, ArrowRight, CheckCircle2, Sparkles,
+  Zap, BarChart3, Headphones, X, MessageCircle
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import heroTotem from '@/assets/home-hero-totem.jpg';
+import cardMenu from '@/assets/home-card-menu.jpg';
+import cardPix from '@/assets/home-card-pix.jpg';
+import cardKds from '@/assets/home-card-kds.jpg';
+import ecosystemImg from '@/assets/home-ecosystem.jpg';
 
 /** URL do Simulador Interativo carregado no iframe do modal de demonstração.
- *  O parâmetro `?modo=demo` ativa o isolamento: o app não grava pedidos
- *  no banco e não notifica o KDS — apenas simula o fluxo visualmente. */
+ *  `?modo=demo` ativa o isolamento — sem gravar no banco e sem notificar o KDS. */
 const DEMO_URL = '/loja/principal?modo=demo';
 
-/** Número padrão (Super ADM Master) usado quando ninguém está logado ou sem WhatsApp configurado. */
+/** Fallback de WhatsApp (Super ADM Master) usado sem login ou sem número configurado. */
 const DEFAULT_WHATSAPP = '5511999999999';
-
-/** Normaliza um número BR para link wa.me (apenas dígitos). */
 const toWaLink = (raw?: string | null) => {
   const digits = (raw || '').replace(/\D/g, '');
   const num = digits.length >= 10 ? digits : DEFAULT_WHATSAPP;
   return `https://wa.me/${num}`;
 };
 
-/**
- * Hook: resolve WhatsApp do usuário logado conforme hierarquia de roles.
- * - super_admin / master_admin / admin → pega `settings.whatsapp_number` da org do usuário.
- * - Sem login ou sem número → fallback DEFAULT_WHATSAPP.
- * Executa em paralelo (Promise.all) para responder em milissegundos.
- */
+/** Resolve WhatsApp do usuário logado conforme hierarquia de roles. */
 const useWhatsappLink = () => {
   const [waLink, setWaLink] = useState<string>(toWaLink(null));
 
   useEffect(() => {
     let cancelled = false;
-
     const resolve = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return;
 
-        const [rolesRes, ownedOrgRes, masterOrgRes] = await Promise.all([
+        const ownedOrg = await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle();
+        const [rolesRes, ownedSettingsRes, masterOrgRes] = await Promise.all([
           supabase.from('user_roles' as any).select('role').eq('user_id', user.id),
-          supabase.from('settings').select('whatsapp_number').eq('organization_id',
-            (await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle()).data?.id || ''
-          ).maybeSingle(),
+          ownedOrg.data?.id
+            ? supabase.from('settings').select('whatsapp_number').eq('organization_id', ownedOrg.data.id).maybeSingle()
+            : Promise.resolve({ data: null } as any),
           supabase.from('organizations').select('id').eq('master_id', user.id).limit(1).maybeSingle(),
         ]);
 
         const roles = (rolesRes.data || []).map((r: any) => r.role);
-        let phone: string | null = ownedOrgRes.data?.whatsapp_number || null;
+        let phone: string | null = ownedSettingsRes.data?.whatsapp_number || null;
 
-        // Master admin sem org própria → tenta uma das orgs que ele gerencia
         if (!phone && (roles.includes('master_admin') || roles.includes('super_admin')) && masterOrgRes.data?.id) {
           const { data } = await supabase
             .from('settings').select('whatsapp_number')
@@ -65,7 +60,6 @@ const useWhatsappLink = () => {
     };
 
     resolve();
-
     const { data: sub } = supabase.auth.onAuthStateChange(() => resolve());
     return () => { cancelled = true; sub.subscription.unsubscribe(); };
   }, []);
@@ -73,9 +67,7 @@ const useWhatsappLink = () => {
   return waLink;
 };
 
-/**
- * Reveal-on-scroll hook (IntersectionObserver) — adiciona classe quando visível.
- */
+/** Reveal-on-scroll hook. */
 const useReveal = () => {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -83,14 +75,9 @@ const useReveal = () => {
     if (!root) return;
     const els = root.querySelectorAll<HTMLElement>('[data-reveal]');
     const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add('reveal-in');
-            io.unobserve(e.target);
-          }
-        });
-      },
+      (entries) => entries.forEach((e) => {
+        if (e.isIntersecting) { e.target.classList.add('reveal-in'); io.unobserve(e.target); }
+      }),
       { threshold: 0.12 }
     );
     els.forEach((el) => io.observe(el));
@@ -104,82 +91,86 @@ const Home = () => {
   const waLink = useWhatsappLink();
   const [demoOpen, setDemoOpen] = useState(false);
 
-  // Bloqueia scroll do body quando o modal está aberto
   useEffect(() => {
     if (!demoOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDemoOpen(false); };
     window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKey);
-    };
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
   }, [demoOpen]);
 
   return (
-    <div ref={ref} className="min-h-screen bg-[#0b0b0d] text-foreground overflow-x-hidden">
-      {/* === Estilos locais (reveal + glow) === */}
+    <div ref={ref} className="min-h-screen text-foreground overflow-x-hidden"
+      style={{
+        background:
+          'radial-gradient(1200px 600px at 10% -10%, rgba(255,107,0,0.10), transparent 60%),' +
+          'radial-gradient(900px 500px at 110% 10%, rgba(0,200,83,0.08), transparent 60%),' +
+          'linear-gradient(180deg, #0a0a0c 0%, #0e0e11 100%)'
+      }}
+    >
+      {/* === Estilos locais === */}
       <style>{`
-        [data-reveal]{opacity:0;transform:translateY(24px);transition:opacity .8s ease,transform .8s ease}
+        [data-reveal]{opacity:0;transform:translateY(28px);transition:opacity .9s ease,transform .9s ease}
         .reveal-in{opacity:1!important;transform:none!important}
-        .glass{background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015));
-               backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-               border:1px solid rgba(255,255,255,0.08)}
-        .glass:hover{border-color:rgba(255,122,26,0.35)}
-        .grid-bg{
-          background-image:
-            radial-gradient(circle at 20% 0%, rgba(255,122,26,.18), transparent 40%),
-            radial-gradient(circle at 80% 30%, rgba(16,185,129,.12), transparent 45%),
-            linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
-          background-size: auto, auto, 48px 48px, 48px 48px;
+        .glass{
+          background:linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02));
+          backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+          border:1px solid rgba(255,255,255,0.08);
         }
-        .neon-orange{box-shadow:0 0 0 1px rgba(255,122,26,.4), 0 10px 40px -10px rgba(255,122,26,.55)}
-        .neon-emerald{box-shadow:0 0 0 1px rgba(16,185,129,.45), 0 10px 40px -10px rgba(16,185,129,.5)}
-        .text-orange{color:#ff7a1a}
-        .bg-orange{background:#ff7a1a}
-        .text-emerald{color:#10b981}
-        .bg-emerald{background:#10b981}
-        .ring-orange{box-shadow:0 0 0 1px rgba(255,122,26,.35)}
+        .glass:hover{border-color:rgba(255,107,0,0.35)}
+        .neon-orange{box-shadow:0 0 0 1px rgba(255,107,0,.45), 0 12px 50px -12px rgba(255,107,0,.6)}
+        .neon-emerald{box-shadow:0 0 0 1px rgba(0,200,83,.45), 0 12px 50px -12px rgba(0,200,83,.55)}
+        .text-orange{color:#FF6B00}
+        .bg-orange{background:#FF6B00}
+        .text-emerald{color:#00C853}
+        .bg-emerald{background:#00C853}
+        .brushed{
+          background-image:
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0 2px, transparent 2px 4px),
+            linear-gradient(180deg,#0c0c0f,#101014);
+        }
+        .grad-text{
+          background:linear-gradient(90deg,#FF6B00,#FFA255 60%,#FF6B00);
+          -webkit-background-clip:text;background-clip:text;color:transparent;
+        }
       `}</style>
 
       {/* === NAV === */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-black/40 border-b border-white/5">
+      <header className="sticky top-0 z-40 backdrop-blur-md bg-black/50 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between">
           <Link to="/home" className="flex items-center gap-2 font-black tracking-tight">
-            <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center">
+            <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center neon-orange">
               <UtensilsCrossed className="w-4 h-4 text-black" />
             </span>
             <span className="text-white">Vision<span className="text-orange">Mídia</span></span>
           </Link>
           <nav className="hidden md:flex items-center gap-7 text-sm text-white/70">
-            <a href="#tecnologia" className="hover:text-white">Tecnologia</a>
-            <a href="#ecossistema" className="hover:text-white">Ecossistema</a>
-            <a href="#hardware" className="hover:text-white">Hardware</a>
-            <a href="#contato" className="hover:text-white">Contato</a>
+            <a href="#recursos" className="hover:text-white transition">Recursos</a>
+            <a href="#ecossistema" className="hover:text-white transition">Ecossistema</a>
+            <a href="#contato" className="hover:text-white transition">Contato</a>
           </nav>
-          <Link to="/" className="text-sm px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white">
+          <Link to="/" className="text-sm px-4 py-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white transition">
             Acessar Painel
           </Link>
         </div>
       </header>
 
-      {/* === HERO === */}
-      <section className="relative grid-bg">
-        <div className="max-w-7xl mx-auto px-5 pt-16 pb-24 md:pt-24 md:pb-32 grid lg:grid-cols-2 gap-12 items-center">
+      {/* === 1. HERO === */}
+      <section className="relative brushed">
+        <div className="max-w-7xl mx-auto px-5 pt-14 pb-20 md:pt-24 md:pb-28 grid lg:grid-cols-2 gap-12 items-center">
           <div data-reveal>
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-white/80">
               <Sparkles className="w-3.5 h-3.5 text-orange" />
               Ecossistema completo para Food Service
             </span>
             <h1 className="mt-5 text-4xl md:text-6xl font-black leading-[1.05] text-white">
-              O Autoatendimento Inteligente que Transforma sua Gestão em uma{' '}
-              <span className="text-orange">Máquina de Vendas</span>
+              O Autoatendimento Inteligente que Transforma sua Lanchonete em uma{' '}
+              <span className="grad-text">Máquina de Vendas</span>
             </h1>
             <p className="mt-6 text-lg text-white/70 max-w-xl">
-              Reduza filas, elimine erros de pedidos e aumente o faturamento com um
-              ecossistema completo, intuitivo e com sincronização instantânea em tempo real.
+              Reduza filas, elimine erros de pedido e aumente o ticket médio com um
+              ecossistema completo, intuitivo e sincronizado em tempo real.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               <button type="button" onClick={() => setDemoOpen(true)}
@@ -188,7 +179,7 @@ const Home = () => {
               </button>
               <a href={waLink} target="_blank" rel="noreferrer"
                 className="bg-white/5 border border-white/10 text-white font-semibold px-6 py-4 rounded-xl hover:bg-white/10 transition inline-flex items-center justify-center gap-2">
-                Falar com Consultor
+                <MessageCircle className="w-4 h-4 text-emerald" /> Falar com Consultor
               </a>
             </div>
             <div className="mt-8 flex flex-wrap gap-5 text-sm text-white/60">
@@ -198,98 +189,142 @@ const Home = () => {
             </div>
           </div>
 
-          {/* Mockup do Totem */}
+          {/* Imagem real do totem */}
           <div data-reveal className="relative">
-            <div className="relative mx-auto max-w-sm">
-              {/* Tela do totem */}
-              <div className="rounded-[2rem] bg-gradient-to-b from-zinc-800 to-zinc-950 p-3 border border-white/10 shadow-2xl">
-                <div className="rounded-[1.5rem] aspect-[9/16] glass overflow-hidden flex flex-col">
-                  <div className="p-4 flex items-center justify-between border-b border-white/5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-md bg-orange grid place-items-center">
-                        <UtensilsCrossed className="w-3 h-3 text-black" />
-                      </div>
-                      <span className="text-xs font-bold text-white">Cardápio Digital</span>
-                    </div>
-                    <span className="text-[10px] text-emerald font-semibold">● ONLINE</span>
-                  </div>
-                  <div className="flex-1 grid grid-cols-2 gap-2 p-3 bg-black/20">
-                    {['Burgers', 'Combos', 'Bebidas', 'Sobremesa'].map((n, i) => (
-                      <div key={n} className="rounded-xl glass p-3 flex flex-col justify-end aspect-square"
-                        style={{ background: `linear-gradient(135deg, rgba(255,122,26,${0.1 + i * 0.05}), rgba(0,0,0,0.6))` }}>
-                        <span className="text-xs font-bold text-white">{n}</span>
-                        <span className="text-[10px] text-white/60">a partir R$ 19</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-3 border-t border-white/5">
-                    <div className="bg-orange text-black text-xs font-bold py-3 rounded-lg text-center">
-                      TOQUE PARA INICIAR
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {/* Base do totem */}
-              <div className="mx-auto mt-2 h-8 w-40 bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-b-2xl border border-white/10" />
-              <div className="mx-auto h-3 w-56 bg-zinc-900 rounded-b-xl" />
-              {/* Glow */}
-              <div className="absolute -inset-10 -z-10 bg-orange/20 blur-3xl rounded-full" />
+            <div className="relative mx-auto max-w-md">
+              <div className="absolute -inset-6 -z-10 bg-orange/30 blur-3xl rounded-full" />
+              <img
+                src={heroTotem}
+                alt="Totem de autoatendimento Vision Mídia com brilho laranja em lanchonete gourmet"
+                width={1024} height={1024}
+                className="w-full h-auto rounded-3xl border border-white/10 shadow-2xl object-cover"
+              />
             </div>
           </div>
         </div>
       </section>
 
-      {/* === INFRAESTRUTURA === */}
-      <section id="tecnologia" className="py-20 md:py-28 border-t border-white/5">
+      {/* === 2. RECURSOS (3 CARDS) === */}
+      <section id="recursos" className="py-20 md:py-28 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Infraestrutura</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>
             <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
-              Tecnologia de ponta para sua operação não parar
+              Tudo o que sua operação precisa, em um só lugar
             </h2>
             <p className="mt-4 text-white/60">
-              Arquitetura moderna, segura e instantânea — pensada para o ritmo do food service.
+              Do toque do cliente no totem até o pedido pronto na cozinha.
             </p>
           </div>
 
-          <div className="mt-14 grid md:grid-cols-3 gap-5">
+          <div className="mt-14 grid md:grid-cols-3 gap-6">
             {[
               {
-                icon: <Database className="w-6 h-6 text-orange" />,
-                title: 'Sincronização em Tempo Real',
-                desc: 'Painel administrativo e banco de dados conversam instantaneamente via Supabase Realtime. Zero delay entre pedido feito e cozinha avisada.'
+                icon: <UtensilsCrossed className="w-5 h-5" />,
+                tag: 'Para o cliente',
+                title: 'Cardápio Digital Inteligente',
+                desc: 'Interface fluida com fotos em alta qualidade, categorias inteligentes e seleção de adicionais — feita para converter.',
+                img: cardMenu,
+                alt: 'Tablet exibindo cardápio digital interativo de hambúrgueres'
               },
               {
-                icon: <Lock className="w-6 h-6 text-orange" />,
-                title: 'Autenticação Segura',
-                desc: 'Login integrado para clientes e administradores com criptografia, controle por níveis (super_admin, master_admin, admin) e RLS no banco.'
+                icon: <QrCode className="w-5 h-5" />,
+                tag: 'Pagamento',
+                title: 'Checkout Ágil com Pix Integrado',
+                desc: 'QR Code Pix gerado automaticamente e confirmação instantânea do pedido, sem intermediários e sem fricção.',
+                img: cardPix,
+                alt: 'Smartphone exibindo tela de pagamento Pix com QR Code'
               },
               {
-                icon: <Cloud className="w-6 h-6 text-orange" />,
-                title: 'Arquitetura em Nuvem',
-                desc: 'Deploy via Netlify com CDN global, carregamento ultra-rápido e 99.9% de disponibilidade. Atualizações automáticas sem downtime.'
+                icon: <ChefHat className="w-5 h-5" />,
+                tag: 'Operação',
+                title: 'Painel de Gestão e Cozinha (KDS)',
+                desc: 'A cozinha acompanha a fila em tempo real, com colunas organizadas, alertas sonoros e cronômetros de preparo.',
+                img: cardKds,
+                alt: 'Monitor KDS industrial em cozinha profissional exibindo painel de pedidos'
               },
-            ].map((item, i) => (
-              <div key={i} data-reveal className="glass rounded-2xl p-7 transition-all hover:-translate-y-1">
-                <div className="w-12 h-12 rounded-xl bg-orange/10 border border-orange/20 grid place-items-center mb-5">
-                  {item.icon}
+            ].map((c, i) => (
+              <div key={i} data-reveal className="glass rounded-3xl overflow-hidden group hover:-translate-y-1 transition-all shadow-xl">
+                <div className="relative aspect-[4/3] overflow-hidden">
+                  <img
+                    src={c.img}
+                    alt={c.alt}
+                    width={1024} height={768} loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                  <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-widest text-emerald px-2 py-1 bg-black/60 backdrop-blur rounded-md border border-emerald/30">
+                    {c.tag}
+                  </span>
                 </div>
-                <h3 className="text-xl font-bold text-white">{item.title}</h3>
-                <p className="mt-2 text-white/60 text-sm leading-relaxed">{item.desc}</p>
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-orange/15 border border-orange/30 text-orange grid place-items-center">
+                      {c.icon}
+                    </div>
+                    <h3 className="text-xl font-bold text-white">{c.title}</h3>
+                  </div>
+                  <p className="text-white/65 text-sm leading-relaxed">{c.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* === 3. ECOSSISTEMA COMPLETO === */}
+      <section id="ecossistema" className="py-20 md:py-28 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+        <div className="max-w-7xl mx-auto px-5">
+          <div data-reveal className="text-center max-w-3xl mx-auto">
+            <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Integrado</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Um ecossistema completo e integrado para o seu negócio
+            </h2>
+            <p className="mt-4 text-white/60">
+              Totem, tablet do garçom e painel gerencial sincronizados na mesma plataforma.
+            </p>
+          </div>
+
+          {/* Ícones de destaques */}
+          <div data-reveal className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            {[
+              { icon: <Zap className="w-6 h-6 text-orange" />, t: 'Sincronização em tempo real', d: 'Pedidos do totem aparecem na cozinha em milissegundos.' },
+              { icon: <BarChart3 className="w-6 h-6 text-orange" />, t: 'Relatórios completos', d: 'Acompanhe vendas, ticket médio e fechamento em qualquer lugar.' },
+              { icon: <Headphones className="w-6 h-6 text-orange" />, t: 'Suporte especializado', d: 'Time dedicado em food service para ajudar você a vender mais.' },
+            ].map((f, i) => (
+              <div key={i} className="glass rounded-2xl p-5 text-center">
+                <div className="w-12 h-12 mx-auto rounded-xl bg-orange/10 border border-orange/20 grid place-items-center mb-3">
+                  {f.icon}
+                </div>
+                <h3 className="text-white font-bold">{f.t}</h3>
+                <p className="text-white/60 text-sm mt-1">{f.d}</p>
               </div>
             ))}
           </div>
 
-          {/* Stats */}
-          <div data-reveal className="mt-14 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Imagem panorâmica */}
+          <div data-reveal className="mt-14 relative max-w-6xl mx-auto">
+            <div className="absolute -inset-8 -z-10 bg-gradient-to-r from-orange/20 via-transparent to-emerald/20 blur-3xl rounded-full" />
+            <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl neon-orange">
+              <img
+                src={ecosystemImg}
+                alt="Totem, tablet e notebook Vision Mídia sincronizados sobre uma bancada de restaurante"
+                width={1600} height={800} loading="lazy"
+                className="w-full h-auto object-cover"
+              />
+            </div>
+          </div>
+
+          {/* Stats abaixo */}
+          <div data-reveal className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
             {[
               { v: '99.9%', l: 'Disponibilidade' },
-              { v: '<200ms', l: 'Sync em tempo real' },
+              { v: '<200ms', l: 'Sync tempo real' },
               { v: '+40%', l: 'Ticket médio' },
               { v: '-70%', l: 'Filas no balcão' },
             ].map((s, i) => (
-              <div key={i} className="glass rounded-2xl p-6 text-center">
-                <div className="text-3xl md:text-4xl font-black text-orange">{s.v}</div>
+              <div key={i} className="glass rounded-2xl p-5 text-center">
+                <div className="text-3xl md:text-4xl font-black grad-text">{s.v}</div>
                 <div className="text-xs mt-1 text-white/60 uppercase tracking-wider">{s.l}</div>
               </div>
             ))}
@@ -297,153 +332,36 @@ const Home = () => {
         </div>
       </section>
 
-      {/* === ECOSSISTEMA === */}
-      <section id="ecossistema" className="py-20 md:py-28 border-t border-white/5 bg-gradient-to-b from-transparent to-black/30">
-        <div className="max-w-7xl mx-auto px-5">
-          <div data-reveal className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Completo</span>
-            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
-              Tudo o que você precisa, em um só sistema
-            </h2>
-            <p className="mt-4 text-white/60">
-              Do toque do cliente no totem até o relatório de fechamento do caixa.
-            </p>
-          </div>
-
-          <div className="mt-14 grid md:grid-cols-2 gap-6">
-            {[
-              {
-                icon: <UtensilsCrossed className="w-6 h-6" />,
-                tag: 'Para o cliente',
-                title: 'Cardápio Digital Interativo',
-                desc: 'Interface fluida para o cliente navegar, escolher adicionais e montar o combo perfeito — com imagens em alta qualidade e categorias inteligentes.'
-              },
-              {
-                icon: <QrCode className="w-6 h-6" />,
-                tag: 'Pagamento',
-                title: 'Checkout Ágil com Pix Integrado',
-                desc: 'Tela de pagamento instantâneo com geração automática de QR Code Pix e confirmação imediata do pedido, sem intermediários.'
-              },
-              {
-                icon: <ChefHat className="w-6 h-6" />,
-                tag: 'Operação',
-                title: 'Painel de Gestão e Cozinha (KDS)',
-                desc: 'Tela gerencial para a cozinha acompanhar a fila de pedidos em tempo real à medida que entram no autoatendimento, com alertas sonoros.'
-              },
-              {
-                icon: <Printer className="w-6 h-6" />,
-                tag: 'Gestão',
-                title: 'Módulo de Impressão e Relatórios',
-                desc: 'Sistema pronto para gerar relatórios, comandas e fechamentos direto em formato digital ou físico (impressora térmica 80mm).'
-              },
-            ].map((c, i) => (
-              <div key={i} data-reveal className="glass rounded-3xl p-7 group hover:-translate-y-1 transition-all">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-11 h-11 rounded-xl bg-orange/15 border border-orange/30 text-orange grid place-items-center">
-                    {c.icon}
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-emerald px-2 py-1 bg-emerald/10 rounded-md border border-emerald/20">
-                    {c.tag}
-                  </span>
-                </div>
-                <h3 className="text-2xl font-bold text-white">{c.title}</h3>
-                <p className="mt-2 text-white/60 text-sm leading-relaxed">{c.desc}</p>
-
-                {/* Placeholder para print real */}
-                <div className="mt-5 aspect-video rounded-xl border border-dashed border-white/15 bg-black/40 grid place-items-center text-white/30 text-xs">
-                  [ Espaço para print real do sistema ]
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* === HARDWARE === */}
-      <section id="hardware" className="py-20 md:py-28 border-t border-white/5">
-        <div className="max-w-7xl mx-auto px-5">
-          <div data-reveal className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Hardware & Integração</span>
-            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
-              Roda perfeitamente em qualquer dispositivo
-            </h2>
-            <p className="mt-4 text-white/60">
-              Solução comercial completa, do totem ao tablet do garçom.
-            </p>
-          </div>
-
-          <div className="mt-14 grid md:grid-cols-2 gap-6">
-            <div data-reveal className="glass rounded-3xl p-8 relative overflow-hidden">
-              <div className="absolute -right-10 -top-10 w-48 h-48 bg-orange/20 blur-3xl rounded-full" />
-              <Monitor className="w-10 h-10 text-orange" />
-              <h3 className="mt-5 text-2xl font-bold text-white">Totens Digitais de Autoatendimento</h3>
-              <p className="mt-2 text-white/60">
-                Otimizado para salão e balcão, com interface vertical responsiva, áreas de toque
-                generosas e fluxo otimizado para conversão.
-              </p>
-              <ul className="mt-5 space-y-2 text-sm">
-                {['Suporte a telas de 21" a 32"', 'Modo kiosk com bloqueio de SO', 'Impressora térmica integrada'].map((t) => (
-                  <li key={t} className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-4 h-4 text-emerald" /> {t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div data-reveal className="glass rounded-3xl p-8 relative overflow-hidden">
-              <div className="absolute -right-10 -top-10 w-48 h-48 bg-emerald/20 blur-3xl rounded-full" />
-              <div className="flex gap-2">
-                <Smartphone className="w-10 h-10 text-emerald" />
-                <Tablet className="w-10 h-10 text-emerald" />
-              </div>
-              <h3 className="mt-5 text-2xl font-bold text-white">Dispositivos Móveis e Tablets</h3>
-              <p className="mt-2 text-white/60">
-                Atendimento híbrido: garçons com tablet na mesa, clientes pelo celular via QR Code
-                e gestor acompanhando tudo em tempo real.
-              </p>
-              <ul className="mt-5 space-y-2 text-sm">
-                {['100% responsivo (mobile-first)', 'Compatível Android e iOS', 'Funciona em rede local ou 4G'].map((t) => (
-                  <li key={t} className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-4 h-4 text-emerald" /> {t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* === CTA FINAL === */}
+      {/* === 4. CTA FINAL === */}
       <section id="contato" className="py-20 md:py-32 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />
         <div className="max-w-4xl mx-auto px-5 text-center relative" data-reveal>
-          <Gauge className="w-12 h-12 text-orange mx-auto" />
-          <h2 className="mt-6 text-3xl md:text-5xl font-black text-white">
-            Pronto para modernizar o seu atendimento e <span className="text-orange">lucrar mais?</span>
+          <h2 className="text-3xl md:text-5xl font-black">
+            <span className="grad-text">Pronto para modernizar o seu atendimento e lucrar mais?</span>
           </h2>
           <p className="mt-5 text-white/70 max-w-2xl mx-auto">
             Junte-se aos restaurantes que já reduziram filas, aumentaram o ticket médio e
-            transformaram a operação com a Vision Mídia.
+            transformaram a operação com a Vision Mídia Digital.
           </p>
-          <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
+          <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href={waLink} target="_blank" rel="noreferrer"
               className="neon-orange bg-orange text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
-              Quero o Sistema na Minha Lanchonete <ArrowRight className="w-5 h-5" />
+              <MessageCircle className="w-5 h-5" /> Falar com Vendedor
             </a>
             <Link to="/"
-              className="bg-white/5 border border-white/10 text-white font-semibold px-8 py-5 rounded-xl hover:bg-white/10 transition">
-              Acessar Painel
+              className="neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+              Acessar Painel <ArrowRight className="w-5 h-5" />
             </Link>
           </div>
         </div>
       </section>
 
-      {/* === FOOTER === */}
+      {/* === 5. FOOTER === */}
       <footer className="border-t border-white/5 py-10">
         <div className="max-w-7xl mx-auto px-5 flex flex-col md:flex-row gap-4 items-center justify-between text-white/50 text-sm">
           <div className="flex items-center gap-2">
-            <span className="w-7 h-7 rounded-md bg-orange grid place-items-center">
-              <UtensilsCrossed className="w-3.5 h-3.5 text-black" />
+            <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center neon-orange">
+              <UtensilsCrossed className="w-4 h-4 text-black" />
             </span>
             <span className="font-bold text-white">Vision Mídia Digital</span>
           </div>
@@ -454,9 +372,7 @@ const Home = () => {
       {/* === MODAL: Simulador Interativo === */}
       {demoOpen && (
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="demo-title"
+          role="dialog" aria-modal="true" aria-labelledby="demo-title"
           onClick={() => setDemoOpen(false)}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
           style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
@@ -466,7 +382,6 @@ const Home = () => {
             className="relative w-full max-w-[440px] flex flex-col"
             style={{ maxHeight: 'calc(100vh - 2rem)' }}
           >
-            {/* Header */}
             <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-2xl glass border-b border-white/10">
               <div className="flex items-center gap-2 min-w-0">
                 <span className="w-2 h-2 rounded-full bg-emerald animate-pulse shrink-0" />
@@ -475,16 +390,13 @@ const Home = () => {
                 </h3>
               </div>
               <button
-                type="button"
-                onClick={() => setDemoOpen(false)}
-                aria-label="Fechar simulador"
+                type="button" onClick={() => setDemoOpen(false)} aria-label="Fechar simulador"
                 className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-orange hover:text-black border border-white/10 grid place-items-center text-white transition"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Iframe vertical (totem / smartphone) */}
             <div className="relative bg-black rounded-b-2xl overflow-hidden border-x border-b border-white/10 neon-orange">
               <iframe
                 src={DEMO_URL}

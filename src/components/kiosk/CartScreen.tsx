@@ -49,6 +49,15 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       return;
     }
     const c: any = data;
+    const now = new Date();
+    if (c.data_inicio && now < new Date(c.data_inicio)) {
+      toast.error('Este cupom ainda não está ativo.');
+      return;
+    }
+    if (c.data_fim && now > new Date(c.data_fim)) {
+      toast.error('Este cupom já expirou.');
+      return;
+    }
     const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
     onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
     setCouponCode('');

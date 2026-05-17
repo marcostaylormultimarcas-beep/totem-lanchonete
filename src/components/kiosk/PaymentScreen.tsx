@@ -170,6 +170,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
             ))}
           </div>
           <hr className="border-border" />
+          {discount > 0 && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
+                <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between items-center">
             <span className="font-bold text-lg">TOTAL</span>
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>

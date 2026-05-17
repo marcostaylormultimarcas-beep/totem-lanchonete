@@ -248,12 +248,32 @@ const AdminPage = () => {
       .eq('role', 'master')
       .maybeSingle();
     const isMaster = !!masterRow;
+    // Verifica role admin
+    const { data: adminRow } = await supabase
+      .from('user_roles' as any)
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle();
+    const isAdmin = !!adminRow;
     // Org do usuário
     const { data: ownOrg } = await supabase
       .from('organizations')
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle();
+
+    // Bloqueia acesso de contas que não são ADM nem Master (ex.: clientes via Google)
+    if (!isMaster && !isAdmin) {
+      await supabase.auth.signOut();
+      setAuthenticated(false);
+      setCurrentAdmin(null);
+      setActiveOrgId(null);
+      setAuthLoading(false);
+      setError('Esta conta não tem permissão de administrador. Peça ao Master para criar seu acesso.');
+      return;
+    }
+
     const adminCtx: AdminUser = {
       id: user.id,
       username: user.email || '',
@@ -451,10 +471,10 @@ const AdminPage = () => {
             className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary text-center" maxLength={72} />
           {error && <p className="text-secondary text-sm text-center">{error}</p>}
           <button onClick={handleLogin} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl">Entrar</button>
-          <div className="flex justify-between text-sm">
-            <button onClick={() => navigate('/auth?returnTo=/admin')} className="text-primary hover:underline">Criar conta</button>
-            <button onClick={() => navigate('/auth?returnTo=/admin')} className="text-primary hover:underline">Esqueci a senha</button>
-          </div>
+          <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
+            Apenas o ADM Master cria contas de administrador.<br />
+            Clientes não devem usar este painel.
+          </p>
         </div>
         <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
         <p className="text-[11px] text-muted-foreground mt-4">Desenvolvido by VisionTek</p>

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
+import Home from "./pages/Home.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import Admin from "./pages/Admin.tsx";
 import Auth from "./pages/Auth.tsx";
@@ -40,6 +41,7 @@ const App = () => {
           <OrgProvider>
             <Routes>
               <Route path="/" element={<Login />} />
+              <Route path="/home" element={<Home />} />
               <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/auth" element={<Auth />} />

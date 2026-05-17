@@ -1,10 +1,72 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Zap, ShieldCheck, Cloud, Smartphone, Monitor, QrCode, ChefHat,
   Printer, UtensilsCrossed, ArrowRight, CheckCircle2, Sparkles,
   Database, Lock, Gauge, Tablet
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+
+/** Número padrão (Super ADM Master) usado quando ninguém está logado ou sem WhatsApp configurado. */
+const DEFAULT_WHATSAPP = '5511999999999';
+
+/** Normaliza um número BR para link wa.me (apenas dígitos). */
+const toWaLink = (raw?: string | null) => {
+  const digits = (raw || '').replace(/\D/g, '');
+  const num = digits.length >= 10 ? digits : DEFAULT_WHATSAPP;
+  return `https://wa.me/${num}`;
+};
+
+/**
+ * Hook: resolve WhatsApp do usuário logado conforme hierarquia de roles.
+ * - super_admin / master_admin / admin → pega `settings.whatsapp_number` da org do usuário.
+ * - Sem login ou sem número → fallback DEFAULT_WHATSAPP.
+ * Executa em paralelo (Promise.all) para responder em milissegundos.
+ */
+const useWhatsappLink = () => {
+  const [waLink, setWaLink] = useState<string>(toWaLink(null));
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolve = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const [rolesRes, ownedOrgRes, masterOrgRes] = await Promise.all([
+          supabase.from('user_roles' as any).select('role').eq('user_id', user.id),
+          supabase.from('settings').select('whatsapp_number').eq('organization_id',
+            (await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle()).data?.id || ''
+          ).maybeSingle(),
+          supabase.from('organizations').select('id').eq('master_id', user.id).limit(1).maybeSingle(),
+        ]);
+
+        const roles = (rolesRes.data || []).map((r: any) => r.role);
+        let phone: string | null = ownedOrgRes.data?.whatsapp_number || null;
+
+        // Master admin sem org própria → tenta uma das orgs que ele gerencia
+        if (!phone && (roles.includes('master_admin') || roles.includes('super_admin')) && masterOrgRes.data?.id) {
+          const { data } = await supabase
+            .from('settings').select('whatsapp_number')
+            .eq('organization_id', masterOrgRes.data.id).maybeSingle();
+          phone = data?.whatsapp_number || null;
+        }
+
+        if (!cancelled && phone) setWaLink(toWaLink(phone));
+      } catch (e) {
+        console.warn('[Home] WhatsApp resolve falhou, usando fallback', e);
+      }
+    };
+
+    resolve();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => resolve());
+    return () => { cancelled = true; sub.subscription.unsubscribe(); };
+  }, []);
+
+  return waLink;
+};
 
 /**
  * Reveal-on-scroll hook (IntersectionObserver) — adiciona classe quando visível.

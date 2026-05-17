@@ -177,7 +177,8 @@ const useReveal = () => {
 
 const Home = () => {
   const ref = useReveal();
-  const { username } = useParams<{ username?: string }>();
+  const { username: rawUsername } = useParams<{ username?: string }>();
+  const username = rawUsername?.trim().toLowerCase() || undefined;
   const waLink = useWhatsappLink(username);
   const demoUrl = `/loja/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
   const [demoOpen, setDemoOpen] = useState(false);

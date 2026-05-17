@@ -84,6 +84,8 @@ const OrderPrintReceipt = ({ order, storeName }: Props) => {
       <p className="pr-footer">Obrigado pela preferência!</p>
     </div>
   );
+
+  return createPortal(content, document.body);
 };
 
 export default OrderPrintReceipt;

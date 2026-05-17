@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { formatCurrency } from '@/data/store';
 
 interface Props {
@@ -6,7 +7,7 @@ interface Props {
 }
 
 const OrderPrintReceipt = ({ order, storeName }: Props) => {
-  if (!order) return null;
+  if (!order || typeof document === 'undefined') return null;
 
   const items: any[] = Array.isArray(order.items) ? order.items : [];
   const subtotal = items.reduce((s, i) => s + Number(i.total || 0), 0);

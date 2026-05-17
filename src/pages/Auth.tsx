@@ -74,30 +74,8 @@ const Auth = () => {
     setLoading(false);
   };
 
-  const handleGoogle = async () => {
-    setLoading(true);
-    try {
-      sessionStorage.setItem('post_login_return_to', returnTo);
-    } catch {}
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}${returnTo}`,
-          queryParams: { prompt: 'select_account' },
-        },
-      });
-      if (error) {
-        toast.error(error.message || 'Não foi possível entrar com o Google');
-        setLoading(false);
-        return;
-      }
-      // Redireciona para o Google — o navegador troca de página
-    } catch (e: any) {
-      toast.error(e?.message || 'Falha ao iniciar login com Google');
-      setLoading(false);
-    }
-  };
+  // Login com Google removido conforme solicitação.
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

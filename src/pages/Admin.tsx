@@ -242,54 +242,61 @@ const AdminPage = () => {
       setAuthLoading(false);
       return;
     }
-    // Verifica role master
-    const { data: masterRow } = await supabase
+    // Carrega todas as roles do usuário e determina o tier
+    const { data: rolesData } = await supabase
       .from('user_roles' as any)
       .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'master')
-      .maybeSingle();
-    const isMaster = !!masterRow;
-    // Verifica role admin
-    const { data: adminRow } = await supabase
-      .from('user_roles' as any)
-      .select('role')
-      .eq('user_id', user.id)
-      .eq('role', 'admin')
-      .maybeSingle();
-    const isAdmin = !!adminRow;
-    // Org do usuário
+      .eq('user_id', user.id);
+    const roleList = (rolesData || []).map((r: any) => r.role);
+    const isSuper = roleList.includes('super_admin') || roleList.includes('master');
+    const isMasterAdmin = roleList.includes('master_admin');
+    const isAdminLojista = roleList.includes('admin');
+    const tier: 'super' | 'master' | 'admin' | null =
+      isSuper ? 'super' : isMasterAdmin ? 'master' : isAdminLojista ? 'admin' : null;
+
+    // Org do usuário (lojista tem sua própria)
     const { data: ownOrg } = await supabase
       .from('organizations')
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle();
 
-    // Bloqueia acesso de contas que não são ADM nem Master (ex.: clientes via Google)
-    if (!isMaster && !isAdmin) {
+    if (!tier) {
       await supabase.auth.signOut();
       setAuthenticated(false);
       setCurrentAdmin(null);
       setActiveOrgId(null);
       setAuthLoading(false);
-      setError('Esta conta não tem permissão de administrador. Peça ao Master para criar seu acesso.');
+      setError('Esta conta não tem permissão de administrador.');
       return;
     }
 
     const adminCtx: AdminUser = {
       id: user.id,
       username: user.email || '',
-      is_master: isMaster,
+      tier,
       organization_id: ownOrg?.id ?? null,
     };
     setCurrentAdmin(adminCtx);
-    const initialOrg = ownOrg?.id ?? null;
-    setActiveOrgId(initialOrg);
-    if (initialOrg) await setOrgId(initialOrg);
-    if (isMaster) {
+
+    // Lista de lojas disponíveis conforme o tier
+    let initialOrg: string | null = ownOrg?.id ?? null;
+    if (tier === 'super') {
       const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
       setAllOrgs((orgs as any) || []);
+      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+    } else if (tier === 'master') {
+      const { data: orgs } = await supabase
+        .from('organizations').select('id, name, slug')
+        .eq('master_id', user.id).order('name');
+      setAllOrgs((orgs as any) || []);
+      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+    } else {
+      setAllOrgs(ownOrg ? [{ id: ownOrg.id, name: ownOrg.name, slug: ownOrg.slug }] : []);
     }
+
+    setActiveOrgId(initialOrg);
+    if (initialOrg) await setOrgId(initialOrg);
     setAuthenticated(true);
     setAuthLoading(false);
   };

@@ -154,7 +154,7 @@ const Index = () => {
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
     toast.info('Faça login para finalizar e acompanhar seu pedido.');
-    navigate('/auth?returnTo=/');
+    navigate(`/auth?returnTo=${encodeURIComponent(homePath)}`);
   };
 
   return (

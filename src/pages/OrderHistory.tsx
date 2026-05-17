@@ -1,3 +1,4 @@
+import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Clock } from 'lucide-react';
@@ -58,7 +59,7 @@ const OrderHistory = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <div className="flex items-center gap-4 p-4 border-b border-border">
-        <button onClick={() => navigate('/')} className="text-muted-foreground hover:text-foreground">
+        <button onClick={() => navigate(getKioskHomePath())} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-6 h-6" />
         </button>
         <h1 className="text-xl font-bold">Meus Pedidos</h1>
@@ -74,7 +75,7 @@ const OrderHistory = () => {
             <Package className="w-16 h-16 text-muted-foreground/30" />
             <p className="text-muted-foreground text-lg">Nenhum pedido encontrado</p>
             <p className="text-muted-foreground/60 text-sm">Faça seu primeiro pedido!</p>
-            <button onClick={() => navigate('/')} className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold">
+            <button onClick={() => navigate(getKioskHomePath())} className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold">
               Fazer Pedido
             </button>
           </div>

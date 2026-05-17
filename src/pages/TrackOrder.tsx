@@ -1,3 +1,4 @@
+import { getKioskHomePath } from '@/lib/kioskHome';
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { LogOut } from 'lucide-react';
@@ -42,7 +43,7 @@ const TrackOrder = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success('Você saiu da sua conta.');
-    navigate('/');
+    navigate(getKioskHomePath());
   };
 
   return (
@@ -55,7 +56,7 @@ const TrackOrder = () => {
           <LogOut className="w-4 h-4" /> Sair da conta
         </button>
       </div>
-      <OrderTracking orderId={orderId} onClose={() => navigate('/')} />
+      <OrderTracking orderId={orderId} onClose={() => navigate(getKioskHomePath())} />
     </div>
   );
 };

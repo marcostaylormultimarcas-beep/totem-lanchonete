@@ -1,3 +1,4 @@
+import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -475,7 +476,7 @@ const AdminPage = () => {
             Clientes não devem usar este painel.
           </p>
         </div>
-        <Link to="/" className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
+        <Link to={getKioskHomePath()} className="text-muted-foreground text-sm hover:text-foreground">← Voltar ao Totem</Link>
         <p className="text-[11px] text-muted-foreground mt-4">Desenvolvido by VisionTek</p>
       </div>
     );
@@ -485,7 +486,7 @@ const AdminPage = () => {
     <div className="min-h-screen pb-8">
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
-          <Link to="/" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
+          <Link to={getKioskHomePath()} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
           <h1 className="text-xl font-bold">Painel Admin</h1>
           {currentAdmin && (
             <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">

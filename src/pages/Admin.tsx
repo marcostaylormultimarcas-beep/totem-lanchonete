@@ -130,7 +130,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingBannerIdx(idx);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const banners = [...settings.banners];
       banners[idx] = { ...banners[idx], image: url };
       const updated = { ...settings, banners };
@@ -151,7 +151,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCategoryIcon(key);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const cats = (settings.categories || DEFAULT_CATEGORIES).map(c => c.key === key ? { ...c, icon: url } : c);
       const updated = { ...settings, categories: cats, categoryIcons: { ...settings.categoryIcons, [key]: url } };
       setSettings(updated);
@@ -170,7 +170,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingComboImage(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, combo: { ...settings.combo, image: url } };
       setSettings(updated);
       await saveSettingsToDb(updated);
@@ -212,7 +212,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, coverImage: url };
       setSettings(updated);
       await saveSettingsToDb(updated);
@@ -381,7 +381,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       setForm(prev => ({ ...prev, image: url }));
     } catch (err) {
       alert('Erro ao enviar imagem. Tente novamente.');

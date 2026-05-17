@@ -407,7 +407,7 @@ const Home = () => {
             transformaram a operação com a Vision Mídia.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
-            <a href="https://wa.me/" target="_blank" rel="noreferrer"
+            <a href={waLink} target="_blank" rel="noreferrer"
               className="neon-orange bg-orange text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               Quero o Sistema na Minha Lanchonete <ArrowRight className="w-5 h-5" />
             </a>

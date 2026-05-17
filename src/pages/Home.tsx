@@ -432,7 +432,7 @@ const Home = () => {
 
             <div className="relative bg-black rounded-b-2xl overflow-hidden border-x border-b border-white/10 neon-orange">
               <iframe
-                src={DEMO_URL}
+                src={demoUrl}
                 title="Simulador Vision Mídia"
                 className="block w-full bg-black"
                 style={{ height: 'min(700px, calc(100vh - 8rem))', border: 0 }}

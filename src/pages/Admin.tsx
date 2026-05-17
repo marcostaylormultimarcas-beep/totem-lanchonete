@@ -519,7 +519,7 @@ const AdminPage = () => {
       )}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
-          <AdminsPanel currentAdminId={currentAdmin.id} allOrgs={allOrgs} onOrgsChanged={refreshOrgList} />
+          <AdminsPanel currentAdminId={currentAdmin.id} />
         ) : (
           <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )

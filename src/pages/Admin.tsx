@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2 } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage } from '@/lib/imageUpload';
@@ -12,6 +12,7 @@ import DashboardPanel from '@/components/admin/DashboardPanel';
 import MasterPanel from '@/components/admin/MasterPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
+import CouponsPanel from '@/components/admin/CouponsPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -52,7 +53,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'settings' | 'admins'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -518,6 +519,7 @@ const AdminPage = () => {
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
+          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
           { key: 'admins' as const, label: 'Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
@@ -530,6 +532,7 @@ const AdminPage = () => {
 
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
           <MasterPanel currentAdminId={currentAdmin.id} />

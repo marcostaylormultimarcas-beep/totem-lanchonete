@@ -3,6 +3,7 @@ import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'luc
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import type { AppliedCoupon } from './CartScreen';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -12,6 +13,7 @@ interface PaymentScreenProps {
   deliveryAddress?: string;
   deliveryReference?: string;
   deliveryRecipient?: string;
+  appliedCoupon?: AppliedCoupon | null;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }
@@ -19,7 +21,7 @@ interface PaymentScreenProps {
 const PIX_KEY = 'pagamento@visionmidia.com';
 const QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -27,7 +29,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string }>({ storeName: 'Vision Mídia', whatsappNumber: '' });
-  const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const total = Math.max(0, subtotal - discount);
 
   useEffect(() => {
     if (!orgId) return;
@@ -63,7 +67,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
       if (item.removedIngredients.length > 0) msg += `   ❌ Sem: ${item.removedIngredients.join(', ')}\n`;
       if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
-    msg += `─────────────────\n💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
+    msg += `─────────────────\n`;
+    if (appliedCoupon && discount > 0) {
+      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    }
+    msg += `💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
   };
 
@@ -162,6 +170,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
             ))}
           </div>
           <hr className="border-border" />
+          {discount > 0 && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
+                <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+              </div>
+            </>
+          )}
           <div className="flex justify-between items-center">
             <span className="font-bold text-lg">TOTAL</span>
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>

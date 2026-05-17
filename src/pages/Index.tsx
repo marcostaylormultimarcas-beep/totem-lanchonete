@@ -10,6 +10,7 @@ import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import TotemSuccess from '@/components/kiosk/TotemSuccess';
 import LandingScreen from '@/components/kiosk/LandingScreen';
 import { CartItem, Product } from '@/data/store';
+import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -44,6 +45,7 @@ const Index = () => {
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,6 +102,7 @@ const Index = () => {
     setDeliveryRecipient('');
     setTrackingOrderId('');
     setPendingProduct(null);
+    setAppliedCoupon(null);
     setStep('landing');
   }, [orgId]);
 
@@ -122,6 +125,7 @@ const Index = () => {
     setDeliveryReference('');
     setDeliveryRecipient('');
     setTrackingOrderId('');
+    setAppliedCoupon(null);
   };
 
   const handlePaymentDone = (orderId?: string) => {
@@ -182,7 +186,7 @@ const Index = () => {
         />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} />
+        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} />
       )}
       {step === 'checkout' && (
         <CheckoutScreen
@@ -199,6 +203,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          appliedCoupon={appliedCoupon}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}

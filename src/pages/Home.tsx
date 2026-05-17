@@ -450,6 +450,57 @@ const Home = () => {
           <div>© {new Date().getFullYear()} Vision Mídia · Autoatendimento Inteligente</div>
         </div>
       </footer>
+
+      {/* === MODAL: Simulador Interativo === */}
+      {demoOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="demo-title"
+          onClick={() => setDemoOpen(false)}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-[440px] flex flex-col"
+            style={{ maxHeight: 'calc(100vh - 2rem)' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-t-2xl glass border-b border-white/10">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald animate-pulse shrink-0" />
+                <h3 id="demo-title" className="text-sm md:text-base font-semibold text-white truncate">
+                  Simulador Interativo: Faça um pedido teste
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDemoOpen(false)}
+                aria-label="Fechar simulador"
+                className="shrink-0 w-9 h-9 rounded-lg bg-white/5 hover:bg-orange hover:text-black border border-white/10 grid place-items-center text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Iframe vertical (totem / smartphone) */}
+            <div className="relative bg-black rounded-b-2xl overflow-hidden border-x border-b border-white/10 neon-orange">
+              <iframe
+                src={DEMO_URL}
+                title="Simulador Vision Mídia"
+                className="block w-full bg-black"
+                style={{ height: 'min(700px, calc(100vh - 8rem))', border: 0 }}
+                allow="clipboard-write"
+              />
+            </div>
+
+            <p className="mt-3 text-center text-xs text-white/50">
+              Modo demonstração ativo — nenhum pedido é gravado no sistema real.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

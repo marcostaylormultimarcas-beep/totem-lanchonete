@@ -1,5 +1,16 @@
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+export interface AppliedCoupon {
+  id: string;
+  codigo: string;
+  tipo: 'porcentagem' | 'valor_fixo';
+  valor: number;
+  discount: number;
+}
 
 interface CartScreenProps {
   cart: CartItem[];
@@ -7,14 +18,50 @@ interface CartScreenProps {
   onCheckout: () => void;
   onBack: () => void;
   isAuthenticated?: boolean;
+  orgId: string | null;
+  appliedCoupon: AppliedCoupon | null;
+  onApplyCoupon: (c: AppliedCoupon | null) => void;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false }: CartScreenProps) => {
-  const total = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon }: CartScreenProps) => {
+  const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
+  const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const total = Math.max(0, subtotal - discount);
   const isImageUrl = (value: string) => value.startsWith('http') || value.startsWith('/');
 
+  const [couponCode, setCouponCode] = useState('');
+  const [validating, setValidating] = useState(false);
+
+  const applyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code || !orgId) return;
+    setValidating(true);
+    const { data, error } = await supabase
+      .from('cupons' as any)
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('codigo', code)
+      .eq('status', 'ativo')
+      .maybeSingle();
+    setValidating(false);
+    if (error || !data) {
+      toast.error('Cupom inválido para esta loja.');
+      return;
+    }
+    const c: any = data;
+    const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
+    onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
+    setCouponCode('');
+    toast.success('Cupom aplicado com sucesso!');
+  };
+
+  const removeCoupon = () => {
+    onApplyCoupon(null);
+    toast.info('Cupom removido.');
+  };
+
   return (
-    <div className="min-h-screen flex flex-col pb-28 max-w-[1200px] mx-auto">
+    <div className="min-h-screen flex flex-col pb-40 max-w-[1200px] mx-auto">
       <div className="flex items-center gap-4 p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-7 h-7" />
@@ -35,25 +82,17 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
           {cart.map(item => (
             <div key={item.id} className="kiosk-card p-4 flex items-start gap-4">
               {isImageUrl(item.product.image) ? (
-                <img
-                  src={item.product.image}
-                  alt={item.product.name}
-                  className="w-16 h-16 rounded-xl object-cover flex-shrink-0"
-                />
+                <img src={item.product.image} alt={item.product.name} className="w-16 h-16 rounded-xl object-cover flex-shrink-0" />
               ) : (
                 <span className="text-3xl w-16 h-16 flex items-center justify-center flex-shrink-0">{item.product.image}</span>
               )}
               <div className="flex-1 min-w-0">
                 <h4 className="font-bold text-sm">{item.quantity}x {item.product.name}</h4>
                 {item.removedIngredients.length > 0 && (
-                  <p className="text-xs text-secondary mt-1">
-                    Sem: {item.removedIngredients.join(', ')}
-                  </p>
+                  <p className="text-xs text-secondary mt-1">Sem: {item.removedIngredients.join(', ')}</p>
                 )}
                 {item.selectedExtras.length > 0 && (
-                  <p className="text-xs text-primary mt-1">
-                    +{item.selectedExtras.map(e => e.name).join(', ')}
-                  </p>
+                  <p className="text-xs text-primary mt-1">+{item.selectedExtras.map(e => e.name).join(', ')}</p>
                 )}
                 <p className="text-primary font-bold mt-1">{formatCurrency(getItemTotal(item))}</p>
               </div>
@@ -62,19 +101,62 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
               </button>
             </div>
           ))}
+
+          {/* Coupon area */}
+          <div className="kiosk-card p-4 space-y-3">
+            <p className="text-sm font-semibold flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-primary" /> Possui um cupom de desconto?
+            </p>
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between bg-success/10 border border-success/30 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-success" />
+                  <span className="font-bold text-sm">{appliedCoupon.codigo}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({appliedCoupon.tipo === 'porcentagem' ? `${appliedCoupon.valor}%` : formatCurrency(appliedCoupon.valor)})
+                  </span>
+                </div>
+                <button onClick={removeCoupon} className="p-1 text-muted-foreground hover:text-destructive">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  value={couponCode}
+                  onChange={e => setCouponCode(e.target.value.toUpperCase())}
+                  onKeyDown={e => e.key === 'Enter' && applyCoupon()}
+                  placeholder="DIGITE SEU CUPOM"
+                  className="flex-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary uppercase text-sm"
+                  maxLength={30}
+                />
+                <button onClick={applyCoupon} disabled={validating || !couponCode.trim()}
+                  className="touch-btn bg-primary text-primary-foreground px-5 rounded-lg text-sm disabled:opacity-50 flex items-center gap-2">
+                  {validating ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Aplicar'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 space-y-3">
-          <div className="flex justify-between text-lg font-bold">
+        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Subtotal</span>
+            <span>{formatCurrency(subtotal)}</span>
+          </div>
+          {discount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-success">Desconto ({appliedCoupon?.codigo})</span>
+              <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-lg font-bold pt-1 border-t border-border">
             <span>Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-          <button
-            onClick={onCheckout}
-            className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg"
-          >
+          <button onClick={onCheckout} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
             {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
           </button>
         </div>

@@ -67,7 +67,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
       if (item.removedIngredients.length > 0) msg += `   ❌ Sem: ${item.removedIngredients.join(', ')}\n`;
       if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
-    msg += `─────────────────\n💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
+    msg += `─────────────────\n`;
+    if (appliedCoupon && discount > 0) {
+      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    }
+    msg += `💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
   };
 

@@ -180,7 +180,7 @@ const Home = () => {
   const { username: rawUsername } = useParams<{ username?: string }>();
   const username = rawUsername?.trim().toLowerCase() || undefined;
   const waLink = useWhatsappLink(username);
-  const demoUrl = `/loja/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
+  const demoUrl = `/cardapio/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
   const [demoOpen, setDemoOpen] = useState(false);
 
   useEffect(() => {

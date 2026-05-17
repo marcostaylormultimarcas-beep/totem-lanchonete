@@ -125,7 +125,10 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!existingOrg) {
-        const base = (email.split("@")[0] || "loja")
+        const cleanRequested = (requestedSlug || "")
+          .toString().toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const base = cleanRequested || (email.split("@")[0] || "loja")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "") || `loja-${userId.slice(0, 8)}`;

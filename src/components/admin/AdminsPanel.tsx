@@ -158,7 +158,7 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
                 </div>
               </div>
               {u.org && (
-                <p className="text-xs text-muted-foreground pl-5">Loja: <span className="text-foreground font-semibold">{u.org.name}</span> · <code className="text-[10px]">/loja/{u.org.slug}</code></p>
+                <p className="text-xs text-muted-foreground pl-5">Loja: <span className="text-foreground font-semibold">{u.org.name}</span> · <code className="text-[10px]">/cardapio/{u.org.slug}</code></p>
               )}
               <div className="flex gap-2 items-center">
                 <KeyRound className="w-3.5 h-3.5 text-muted-foreground" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { getKioskHomePath } from '@/lib/kioskHome';
 import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -31,13 +32,13 @@ const Login = () => {
       navigate('/admin');
       return;
     }
-    // Cliente sem papel administrativo → volta para o totem/kiosk
+    // Cliente sem papel administrativo → segue para o fluxo público
     if (returnTo && returnTo !== '/') {
       navigate(returnTo);
       return;
     }
-    toast.error('Sua conta não tem acesso ao painel administrativo.');
-    await supabase.auth.signOut();
+
+    navigate(getKioskHomePath());
   };
 
   useEffect(() => {

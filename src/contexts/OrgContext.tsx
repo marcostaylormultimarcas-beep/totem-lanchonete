@@ -130,23 +130,46 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 
 export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const { slug } = useParams<{ slug: string }>();
+  const normalizedSlug = slug?.trim().toLowerCase() || '';
   const { lockToSlug, orgId } = useOrg();
   const [ready, setReady] = useState(false);
+  const [found, setFound] = useState<boolean | null>(null);
 
   useEffect(() => {
     const sync = async () => {
       setReady(false);
-      await lockToSlug(slug || null);
+      setFound(null);
+      await lockToSlug(normalizedSlug || null);
+      // Verifica se o slug realmente existe como organização (kiosk público)
+      if (normalizedSlug) {
+        const { data } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('slug', normalizedSlug)
+          .maybeSingle();
+        setFound(!!data?.id);
+      } else {
+        setFound(false);
+      }
       setReady(true);
     };
     sync();
     return () => {
-      // Ao desmontar (sair da rota /loja/:slug), libera o lock
       lockToSlug(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [normalizedSlug]);
 
-  if (!ready || !orgId) return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
+  if (!ready) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
+  }
+  // Slug não corresponde a nenhuma loja → redireciona para a Landing dinâmica /loja/:username/home
+  if (found === false && normalizedSlug) {
+    return <Navigate to={`/loja/${normalizedSlug}/home`} replace />;
+  }
+  if (!orgId) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
+  }
   return <>{children}</>;
 };
+

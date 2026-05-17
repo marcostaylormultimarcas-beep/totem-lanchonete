@@ -8,8 +8,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
-import AdminsPanel from '@/components/admin/AdminsPanel';
-import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
+import MasterPanel from '@/components/admin/MasterPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 
@@ -52,7 +51,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins' | 'organizations'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'settings' | 'admins'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -519,8 +518,7 @@ const AdminPage = () => {
           { key: 'products' as const, label: 'Produtos', icon: null, master: false },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
           { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
-          { key: 'organizations' as const, label: 'Lojas', icon: Building2, master: true },
-          { key: 'admins' as const, label: 'Painel Master', icon: Shield, master: true },
+          { key: 'admins' as const, label: 'Master', icon: Shield, master: true },
         ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
@@ -531,16 +529,9 @@ const AdminPage = () => {
 
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
-      {tab === 'organizations' && currentAdmin?.is_master && (
-        masterUnlocked ? (
-          <OrganizationsPanel />
-        ) : (
-          <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
-        )
-      )}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
-          <AdminsPanel currentAdminId={currentAdmin.id} />
+          <MasterPanel currentAdminId={currentAdmin.id} />
         ) : (
           <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )

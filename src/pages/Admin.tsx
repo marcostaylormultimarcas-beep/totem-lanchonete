@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
-import { uploadProductImage } from '@/lib/imageUpload';
+import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
@@ -137,7 +137,7 @@ const AdminPage = () => {
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem do banner. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem do banner. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingBannerIdx(null);
@@ -157,7 +157,7 @@ const AdminPage = () => {
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar ícone. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar ícone. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingCategoryIcon(null);
@@ -175,7 +175,7 @@ const AdminPage = () => {
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem do combo. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem do combo. Tente novamente.');
     } finally {
       setUploadingComboImage(false);
     }
@@ -217,7 +217,7 @@ const AdminPage = () => {
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem de capa. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem de capa. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingCover(false);
@@ -384,7 +384,7 @@ const AdminPage = () => {
       const url = await uploadProductImage(file, activeOrgId!);
       setForm(prev => ({ ...prev, image: url }));
     } catch (err) {
-      alert('Erro ao enviar imagem. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
       console.error(err);
     } finally {
       setUploading(false);

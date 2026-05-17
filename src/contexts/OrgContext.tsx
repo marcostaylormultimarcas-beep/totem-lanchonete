@@ -7,6 +7,7 @@ export interface Organization {
   name: string;
   slug: string;
   paused: boolean;
+  owner_id?: string | null;
 }
 
 interface OrgContextValue {
@@ -28,11 +29,6 @@ const OrgContext = createContext<OrgContextValue>({
 });
 
 export const useOrg = () => useContext(OrgContext);
-
-/**
- * Hook que retorna apenas o orgId — usado em queries.
- * Retorna null enquanto carrega; consumidores devem aguardar.
- */
 export const useOrgId = () => useContext(OrgContext).orgId;
 
 export const OrgProvider = ({ children }: { children: ReactNode }) => {
@@ -53,8 +49,23 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 
   const resolve = async () => {
     setLoading(true);
-    // 1. URL slug? (e.g. /loja/:slug) — handled by KioskSlugSync below
-    // 2. localStorage
+    // 1. Se autenticado, prioriza a org do dono (auth.uid)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data: ownOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+      if (ownOrg) {
+        localStorage.setItem(STORAGE_KEY, ownOrg.id);
+        setOrgIdState(ownOrg.id);
+        setOrg(ownOrg as Organization);
+        setLoading(false);
+        return;
+      }
+    }
+    // 2. localStorage (totem público)
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       const { data } = await supabase.from('organizations').select('*').eq('id', stored).maybeSingle();
@@ -65,7 +76,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
     }
-    // 3. first available org (fallback)
+    // 3. primeira org disponível (fallback)
     const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);
@@ -75,7 +86,13 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   };
 
-  useEffect(() => { resolve(); }, []);
+  useEffect(() => {
+    resolve();
+    const { data: sub } = supabase.auth.onAuthStateChange((_event) => {
+      resolve();
+    });
+    return () => { sub.subscription.unsubscribe(); };
+  }, []);
 
   return (
     <OrgContext.Provider value={{ orgId, org, loading, setOrgId, refresh: resolve }}>
@@ -84,9 +101,6 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
   );
 };
 
-/**
- * Componente para a rota /loja/:slug — sincroniza o orgId com base no slug da URL.
- */
 export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const { slug } = useParams<{ slug: string }>();
   const { setOrgId } = useOrg();

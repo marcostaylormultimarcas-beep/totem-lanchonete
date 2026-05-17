@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
-import { uploadProductImage } from '@/lib/imageUpload';
+import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
@@ -14,6 +14,7 @@ import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';
+import StorageUsageCard from '@/components/admin/StorageUsageCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -130,14 +131,14 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingBannerIdx(idx);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const banners = [...settings.banners];
       banners[idx] = { ...banners[idx], image: url };
       const updated = { ...settings, banners };
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem do banner. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem do banner. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingBannerIdx(null);
@@ -151,13 +152,13 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCategoryIcon(key);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const cats = (settings.categories || DEFAULT_CATEGORIES).map(c => c.key === key ? { ...c, icon: url } : c);
       const updated = { ...settings, categories: cats, categoryIcons: { ...settings.categoryIcons, [key]: url } };
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar ícone. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar ícone. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingCategoryIcon(null);
@@ -170,12 +171,12 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingComboImage(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, combo: { ...settings.combo, image: url } };
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem do combo. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem do combo. Tente novamente.');
     } finally {
       setUploadingComboImage(false);
     }
@@ -212,12 +213,12 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, coverImage: url };
       setSettings(updated);
       await saveSettingsToDb(updated);
     } catch (err) {
-      alert('Erro ao enviar imagem de capa. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem de capa. Tente novamente.');
       console.error(err);
     } finally {
       setUploadingCover(false);
@@ -381,10 +382,10 @@ const AdminPage = () => {
     if (!file) return;
     setUploading(true);
     try {
-      const url = await uploadProductImage(file);
+      const url = await uploadProductImage(file, activeOrgId!);
       setForm(prev => ({ ...prev, image: url }));
     } catch (err) {
-      alert('Erro ao enviar imagem. Tente novamente.');
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
       console.error(err);
     } finally {
       setUploading(false);
@@ -740,6 +741,7 @@ const AdminPage = () => {
 
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
+          <StorageUsageCard organizationId={activeOrgId} />
           <ChangePasswordCard />
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Store className="w-5 h-5 text-primary" /> Nome do Restaurante</h3>

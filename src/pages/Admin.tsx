@@ -532,6 +532,7 @@ const AdminPage = () => {
 
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
       {tab === 'admins' && currentAdmin?.is_master && (
         masterUnlocked ? (
           <MasterPanel currentAdminId={currentAdmin.id} />

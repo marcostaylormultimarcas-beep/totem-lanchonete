@@ -19,17 +19,6 @@ const APP_VERSION = "1.0.1";
 
 const queryClient = new QueryClient();
 
-const StoreLandingRedirect = () => {
-  const { username } = useParams<{ username?: string }>();
-  const normalizedUsername = username?.trim().toLowerCase();
-
-  if (!normalizedUsername) {
-    return <Navigate to="/" replace />;
-  }
-
-  return <Navigate to={`/loja/${normalizedUsername}/home`} replace />;
-};
-
 const App = () => {
   useEffect(() => {
     const savedVersion = localStorage.getItem("app_version");

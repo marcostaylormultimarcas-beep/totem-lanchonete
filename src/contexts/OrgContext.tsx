@@ -57,6 +57,7 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     lockedSlugRef.current = slug;
     setLockedSlug(slug);
     if (!slug) return;
+    localStorage.setItem('kiosk_slug', slug);
     const { data } = await supabase.from('organizations').select('*').eq('slug', slug).maybeSingle();
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);

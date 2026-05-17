@@ -42,10 +42,14 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
 
   const handlePrint = (order: Order) => {
     setPrintOrder(order);
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => setPrintOrder(null), 300);
-    }, 50);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          window.print();
+          setTimeout(() => setPrintOrder(null), 500);
+        }, 150);
+      });
+    });
   };
 
   const fetchOrders = async () => {

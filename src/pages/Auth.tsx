@@ -2,7 +2,7 @@ import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { lovable } from '@/integrations/lovable';
+
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 

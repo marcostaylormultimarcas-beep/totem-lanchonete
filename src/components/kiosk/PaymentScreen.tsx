@@ -3,6 +3,7 @@ import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket } from 'luc
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import type { AppliedCoupon } from './CartScreen';
 
 interface PaymentScreenProps {
   cart: CartItem[];

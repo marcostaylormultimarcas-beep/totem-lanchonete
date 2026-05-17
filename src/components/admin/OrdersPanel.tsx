@@ -118,9 +118,10 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         >
           Todos
         </button>
-        <button onClick={fetchOrders} className="ml-auto p-2 text-muted-foreground hover:text-foreground">
-          <RefreshCw className="w-5 h-5" />
-        </button>
+          <button onClick={fetchOrders} className="ml-auto p-2 text-muted-foreground hover:text-foreground">
+            <RefreshCw className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       {orders.length === 0 && (

@@ -11,6 +11,7 @@ import DashboardPanel from '@/components/admin/DashboardPanel';
 import AdminsPanel from '@/components/admin/AdminsPanel';
 import OrganizationsPanel from '@/components/admin/OrganizationsPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
+import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

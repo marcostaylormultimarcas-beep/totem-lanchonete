@@ -500,7 +500,7 @@ const AdminPage = () => {
           <h1 className="text-xl font-bold">Painel Admin</h1>
           {currentAdmin && (
             <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-              {currentAdmin.is_master ? '👑 ' : ''}{currentAdmin.username}
+              {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
             </span>
           )}
         </div>
@@ -509,9 +509,9 @@ const AdminPage = () => {
         </button>
       </div>
 
-      {/* Active org indicator + switcher (Master only) */}
+      {/* Active org indicator + switcher (Super/Master) */}
       <div className="flex items-center gap-2 px-4 pt-3">
-        {currentAdmin?.is_master ? (
+        {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
           <>
@@ -524,14 +524,21 @@ const AdminPage = () => {
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
         {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, master: false },
-          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, master: false },
-          { key: 'products' as const, label: 'Produtos', icon: null, master: false },
-          { key: 'banners' as const, label: 'Banners', icon: Megaphone, master: false },
-          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, master: false },
-          { key: 'settings' as const, label: 'Config', icon: Settings, master: false },
-          { key: 'admins' as const, label: 'Master', icon: Shield, master: true },
-        ].filter(t => !t.master || currentAdmin?.is_master).map(t => (
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
+          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
+          { key: 'products' as const, label: 'Produtos', icon: null, requires: 'admin' as const },
+          { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
+          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
+          { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
+          { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+          { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
+        ].filter(t => {
+          const tier = currentAdmin?.tier;
+          if (t.requires === 'admin') return true; // todos veem
+          if (t.requires === 'master') return tier === 'super' || tier === 'master';
+          if (t.requires === 'super') return tier === 'super';
+          return false;
+        }).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
@@ -542,7 +549,10 @@ const AdminPage = () => {
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
-      {tab === 'admins' && currentAdmin?.is_master && (
+      {tab === 'super' && currentAdmin?.tier === 'super' && (
+        <SuperAdminPanel currentUserId={currentAdmin.id} />
+      )}
+      {tab === 'admins' && (currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') && (
         masterUnlocked ? (
           <MasterPanel currentAdminId={currentAdmin.id} />
         ) : (

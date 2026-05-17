@@ -1,0 +1,2 @@
+ALTER TABLE public.settings
+  ADD COLUMN IF NOT EXISTS delivery_enabled BOOLEAN NOT NULL DEFAULT TRUE;

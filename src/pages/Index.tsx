@@ -46,6 +46,31 @@ const Index = () => {
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!orgId) { setDeliveryEnabled(true); return; }
+    let cancelled = false;
+    supabase
+      .from('settings')
+      .select('delivery_enabled')
+      .eq('organization_id', orgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setDeliveryEnabled((data as any)?.delivery_enabled !== false);
+      });
+    const channel = supabase
+      .channel('settings-delivery-' + orgId)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
+        setDeliveryEnabled(payload.new?.delivery_enabled !== false);
+        if (payload.new?.delivery_enabled === false && orderType === 'viagem') {
+          setOrderType('local');
+          toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
+        }
+      })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(channel); };
+  }, [orgId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -173,7 +198,7 @@ const Index = () => {
         />
       )}
       {step === 'location' && (
-        <LocationSelect onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+        <LocationSelect deliveryEnabled={deliveryEnabled} onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
       )}
       {step === 'menu' && (
         <MenuScreen

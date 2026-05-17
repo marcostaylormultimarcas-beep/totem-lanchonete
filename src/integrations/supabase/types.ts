@@ -288,6 +288,7 @@ export type Database = {
           combo: Json
           cover_image: string | null
           created_at: string
+          delivery_enabled: boolean
           id: string
           instagram_url: string
           organization_id: string | null
@@ -302,6 +303,7 @@ export type Database = {
           combo?: Json
           cover_image?: string | null
           created_at?: string
+          delivery_enabled?: boolean
           id?: string
           instagram_url?: string
           organization_id?: string | null
@@ -316,6 +318,7 @@ export type Database = {
           combo?: Json
           cover_image?: string | null
           created_at?: string
+          delivery_enabled?: boolean
           id?: string
           instagram_url?: string
           organization_id?: string | null

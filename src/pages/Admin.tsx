@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -51,6 +51,7 @@ const AdminPage = () => {
     categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
     categories: DEFAULT_CATEGORIES,
     instagramUrl: '',
+    deliveryEnabled: true,
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -95,6 +96,7 @@ const AdminPage = () => {
           categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
+          deliveryEnabled: (data as any).delivery_enabled !== false,
         });
       } else {
         setSettingsId(null);
@@ -116,6 +118,7 @@ const AdminPage = () => {
       category_icons: s.categoryIcons as any,
       categories: s.categories as any,
       instagram_url: s.instagramUrl || '',
+      delivery_enabled: s.deliveryEnabled !== false,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);
@@ -742,6 +745,37 @@ const AdminPage = () => {
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
+
+          <div className="kiosk-card p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${settings.deliveryEnabled !== false ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+                  <Truck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold leading-tight">Status da Entrega por Bairro</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {settings.deliveryEnabled !== false
+                      ? 'Delivery liberado para os clientes.'
+                      : 'Delivery pausado. Clientes só conseguem Retirada/Local.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  const updated = { ...settings, deliveryEnabled: settings.deliveryEnabled === false ? true : false };
+                  setSettings(updated);
+                  await saveSettingsToDb(updated);
+                }}
+                role="switch"
+                aria-checked={settings.deliveryEnabled !== false}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${settings.deliveryEnabled !== false ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings.deliveryEnabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          </div>
+
           <ChangePasswordCard />
           <div className="kiosk-card p-4 space-y-4">
             <h3 className="font-bold flex items-center gap-2"><Store className="w-5 h-5 text-primary" /> Nome do Restaurante</h3>

@@ -26,7 +26,7 @@ const BADGE_COLOR_LABELS = { primary: '🟠 Laranja', secondary: '🔴 Vermelho'
 interface AdminUser {
   id: string;
   username: string; // email
-  is_master: boolean;
+  tier: 'super' | 'master' | 'admin';
   organization_id: string | null;
 }
 

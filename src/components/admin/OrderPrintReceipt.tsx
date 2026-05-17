@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { formatCurrency } from '@/data/store';
 
 interface Props {
@@ -6,7 +7,7 @@ interface Props {
 }
 
 const OrderPrintReceipt = ({ order, storeName }: Props) => {
-  if (!order) return null;
+  if (!order || typeof document === 'undefined') return null;
 
   const items: any[] = Array.isArray(order.items) ? order.items : [];
   const subtotal = items.reduce((s, i) => s + Number(i.total || 0), 0);
@@ -14,7 +15,7 @@ const OrderPrintReceipt = ({ order, storeName }: Props) => {
   const discount = Math.max(0, subtotal - total);
   const created = new Date(order.created_at);
 
-  return (
+  const content = (
     <div id="print-receipt-area" className="print-receipt">
       <div className="pr-header">
         <h1>{storeName || 'Pedido'}</h1>
@@ -83,6 +84,8 @@ const OrderPrintReceipt = ({ order, storeName }: Props) => {
       <p className="pr-footer">Obrigado pela preferência!</p>
     </div>
   );
+
+  return createPortal(content, document.body);
 };
 
 export default OrderPrintReceipt;

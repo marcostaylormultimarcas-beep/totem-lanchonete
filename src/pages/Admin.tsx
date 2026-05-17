@@ -51,6 +51,7 @@ const AdminPage = () => {
     categoryIcons: { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
     categories: DEFAULT_CATEGORIES,
     instagramUrl: '',
+    deliveryEnabled: true,
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -95,6 +96,7 @@ const AdminPage = () => {
           categoryIcons: ((data as any).category_icons as any) || { hamburgueres: '🍔', pizzas: '🍕', bebidas: '🥤' },
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
+          deliveryEnabled: (data as any).delivery_enabled !== false,
         });
       } else {
         setSettingsId(null);
@@ -116,6 +118,7 @@ const AdminPage = () => {
       category_icons: s.categoryIcons as any,
       categories: s.categories as any,
       instagram_url: s.instagramUrl || '',
+      delivery_enabled: s.deliveryEnabled !== false,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

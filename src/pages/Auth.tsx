@@ -62,8 +62,12 @@ const Auth = () => {
   const handleForgot = async () => {
     if (!email.trim()) { toast.error('Informe seu email'); return; }
     setLoading(true);
+    const host = window.location.hostname;
+    const baseUrl = host.includes('lovable') || host === 'localhost' || host.startsWith('127.')
+      ? 'https://totemlonchonete.netlify.app'
+      : window.location.origin;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${baseUrl}/reset-password`,
     });
     if (error) {
       toast.error(error.message);

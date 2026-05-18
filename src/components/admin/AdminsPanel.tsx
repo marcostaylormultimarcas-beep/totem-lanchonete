@@ -62,7 +62,7 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
       await callAdminFn('create', {
         email: newEmail.trim().toLowerCase(),
         password: newPass,
-        is_master: newMaster,
+        role: newMaster ? 'master_admin' : 'admin',
         store_name: newStoreName.trim() || undefined,
       });
       toast.success('Usuário criado!');

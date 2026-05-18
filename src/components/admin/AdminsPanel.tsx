@@ -62,7 +62,7 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
       await callAdminFn('create', {
         email: newEmail.trim().toLowerCase(),
         password: newPass,
-        is_master: newMaster,
+        role: newMaster ? 'master_admin' : 'admin',
         store_name: newStoreName.trim() || undefined,
       });
       toast.success('Usuário criado!');
@@ -137,7 +137,7 @@ const AdminsPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
           <p className="text-sm text-muted-foreground text-center py-4">Nenhum usuário ainda.</p>
         ) : users.map(u => {
           const paused = !!u.banned_until && new Date(u.banned_until) > new Date();
-          const isMaster = u.roles.includes('master');
+          const isMaster = u.roles.includes('master_admin') || u.roles.includes('super_admin') || u.roles.includes('master');
           return (
             <div key={u.id} className={`kiosk-card p-3 space-y-2 ${paused ? 'opacity-60' : ''}`}>
               <div className="flex items-center justify-between gap-2">

@@ -178,7 +178,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
             <span>Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-          <button onClick={onCheckout} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
+          <button onClick={onCheckout} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
             {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
           </button>
         </div>

@@ -114,7 +114,7 @@ const CheckoutScreen = ({
           onClick={onContinue}
           disabled={!isValid}
           className={`touch-btn w-full py-4 rounded-xl text-lg ${
-            isValid ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground cursor-not-allowed'
+            isValid ? 'bg-primary text-primary-foreground cta-breath' : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >
           Ir para Pagamento

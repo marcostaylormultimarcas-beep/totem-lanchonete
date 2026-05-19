@@ -71,6 +71,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
 
   // Auto-gera Pix real via Mercado Pago quando configurado e fora do modo demo
   useEffect(() => {
+    if (method !== 'pix') return;
     if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || isDemoMode() || total <= 0) return;
     setMpLoading(true);
     supabase.functions.invoke('mercadopago-create-pix', {

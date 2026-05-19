@@ -24,14 +24,21 @@ const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x25
 
 const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
+  type Method = 'pix' | 'cash' | 'terminal' | 'online';
+  const [method, setMethod] = useState<Method | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
-  const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false });
+  const [storeSettings, setStoreSettings] = useState<{
+    storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean;
+    payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;
+  }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false, payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
   const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
   const [mpLoading, setMpLoading] = useState(false);
+  // Online card form (placeholder; integração futura)
+  const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
   const total = Math.max(0, subtotal - discount);

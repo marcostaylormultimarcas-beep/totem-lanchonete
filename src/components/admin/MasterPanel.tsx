@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { getBackendFunctionUrl } from '@/lib/backend';
 import { Plus, Trash2, Pause, Play, Loader2, Store, Link as LinkIcon, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,7 +22,7 @@ const callFn = async (
   method: 'GET' | 'POST' | 'DELETE' = 'POST',
 ) => {
   const { data: { session } } = await supabase.auth.getSession();
-  const url = `https://upwstbeimnlgohbqogzz.supabase.co/functions/v1/admin-users?action=${action}`;
+  const url = getBackendFunctionUrl('admin-users', { action });
   const res = await fetch(url, {
     method,
     headers: {

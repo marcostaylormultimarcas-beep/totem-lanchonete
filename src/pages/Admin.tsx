@@ -53,7 +53,8 @@ const AdminPage = () => {
     categories: DEFAULT_CATEGORIES,
     instagramUrl: '',
     deliveryEnabled: true,
-    shareImage: '', pixKeyManual: '', mpAccessToken: '', mpPublicKey: '',
+    shareImage: '', pixKeyManual: '', mpAccessToken: '', mpPublicKey: '', mpTerminalId: '',
+    payCashEnabled: true, payPixEnabled: true, payCardTerminalEnabled: false, payCardOnlineEnabled: false,
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);

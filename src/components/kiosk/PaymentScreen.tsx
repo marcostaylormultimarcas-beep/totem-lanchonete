@@ -75,7 +75,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
 
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(PIX_KEY);
+    navigator.clipboard.writeText(pixKey);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

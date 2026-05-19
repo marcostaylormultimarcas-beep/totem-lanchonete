@@ -356,7 +356,7 @@ const Home = () => {
       </section>
 
       {/* === 3. ECOSSISTEMA COMPLETO === */}
-      <section id="ecossistema" className="py-12 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+      <section id="ecossistema" className="py-10 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-3xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Integrado</span>

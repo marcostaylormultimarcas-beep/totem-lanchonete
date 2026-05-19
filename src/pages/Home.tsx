@@ -272,7 +272,7 @@ const Home = () => {
       </section>
 
       {/* === 2. RECURSOS (3 CARDS) === */}
-      <section id="recursos" className="py-20 md:py-28 border-t border-white/5">
+      <section id="recursos" className="py-12 md:py-16 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>

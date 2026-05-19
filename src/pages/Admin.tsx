@@ -541,8 +541,8 @@ const AdminPage = () => {
         </button>
       </div>
 
-      {/* Active org indicator + switcher (Super/Master) */}
-      <div className="flex items-center gap-2 px-4 pt-3">
+      {/* Active org indicator + switcher (Super/Master) + Open Store button */}
+      <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
@@ -551,7 +551,23 @@ const AdminPage = () => {
             <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
           </>
         )}
+        {(() => {
+          const activeSlug = allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug;
+          if (!activeSlug) return null;
+          return (
+            <a
+              href={`/cardapio/${activeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"
+              title="Abrir minha loja em nova aba"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja
+            </a>
+          );
+        })()}
       </div>
+
 
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">

@@ -51,13 +51,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, mp_access_token').eq('organization_id', orgId).maybeSingle();
+      const { data } = await supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, mp_access_token, pay_cash_enabled, pay_pix_enabled, pay_card_terminal_enabled, pay_card_online_enabled, mp_terminal_id').eq('organization_id', orgId).maybeSingle();
       if (data) {
         setStoreSettings({
           storeName: data.store_name || 'Vision Mídia',
           whatsappNumber: data.whatsapp_number || '',
           pixKeyManual: (data as any).pix_key_manual || '',
           mpEnabled: Boolean((data as any).mp_access_token),
+          payCash: (data as any).pay_cash_enabled !== false,
+          payPix: (data as any).pay_pix_enabled !== false,
+          payTerminal: Boolean((data as any).pay_card_terminal_enabled),
+          payOnline: Boolean((data as any).pay_card_online_enabled),
+          terminalId: (data as any).mp_terminal_id || '',
         });
       }
     };

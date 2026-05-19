@@ -74,6 +74,13 @@ export interface StoreSettings {
   mpAccessToken?: string;
   /** Public Key do Mercado Pago */
   mpPublicKey?: string;
+  /** ID do terminal/maquininha (Mercado Pago Point) */
+  mpTerminalId?: string;
+  /** Toggles de métodos de pagamento aceitos pela loja */
+  payCashEnabled?: boolean;
+  payPixEnabled?: boolean;
+  payCardTerminalEnabled?: boolean;
+  payCardOnlineEnabled?: boolean;
 }
 
 // localStorage functions removed — all data now lives in Supabase

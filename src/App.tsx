@@ -41,11 +41,11 @@ const App = () => {
           <OrgProvider>
             <Routes>
               <Route path="/" element={<Login />} />
-              {/* Landing institucional dinâmica — busca whatsapp_number pelo :username */}
-              {/* Landing institucional dinâmica — renderiza direto sem redirect; Home resolve whatsapp_number pelo :username */}
-              <Route path="/loja/:username" element={<Home />} />
-              <Route path="/loja/:username/home" element={<Home />} />
-              {/* Totem público (kiosk de autoatendimento) — agora em /cardapio/:slug */}
+              {/* Loja pública: abre direto o cardápio/totem quando o slug existir */}
+              <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
+              {/* Landing institucional só fica no /home */}
+              <Route path="/loja/:slug/home" element={<Home />} />
+              {/* Totem público (kiosk de autoatendimento) */}
               <Route path="/cardapio/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/auth" element={<Auth />} />

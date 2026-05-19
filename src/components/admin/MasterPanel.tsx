@@ -109,7 +109,7 @@ const MasterPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
     } catch (e: any) { toast.error(e.message); }
   };
 
-  const totemUrl = (s: string) => `${window.location.origin}/cardapio/${s}`;
+  const totemUrl = (s: string) => `${window.location.origin}/loja/${s}`;
 
   return (
     <div className="px-4 space-y-5">
@@ -129,7 +129,7 @@ const MasterPanel = ({ currentAdminId }: { currentAdminId?: string }) => {
         <div className="space-y-1">
           <label className="text-xs text-muted-foreground">Slug da URL</label>
           <div className="flex items-center gap-1 bg-muted rounded-lg px-3">
-            <span className="text-xs text-muted-foreground">/cardapio/</span>
+            <span className="text-xs text-muted-foreground">/loja/</span>
             <input placeholder="pizzaria-do-ze" value={slug}
               onChange={e => { setSlug(slugify(e.target.value)); setSlugTouched(true); }}
               className="flex-1 py-3 bg-transparent outline-none" maxLength={50} />

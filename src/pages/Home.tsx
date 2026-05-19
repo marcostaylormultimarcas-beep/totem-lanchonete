@@ -151,8 +151,8 @@ const useReveal = () => {
 
 const Home = () => {
   const ref = useReveal();
-  const { username: rawUsername } = useParams<{ username?: string }>();
-  const username = normalizeUsername(rawUsername) || undefined;
+  const { slug: rawSlug } = useParams<{ slug?: string }>();
+  const username = normalizeUsername(rawSlug) || undefined;
   const waLink = useWhatsappLink(username);
   const demoUrl = `/cardapio/${username || DEFAULT_DEMO_SLUG}?modo=demo`;
   const landingPath = username ? `/loja/${username}/home` : '/';

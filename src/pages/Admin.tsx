@@ -244,7 +244,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
+      const url = await uploadProductImage(file, activeOrgId!, { kind: 'cover' });
       const updated = { ...settings, coverImage: url };
       setSettings(updated);
       await saveSettingsToDb(updated);

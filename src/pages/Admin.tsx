@@ -104,6 +104,11 @@ const AdminPage = () => {
           pixKeyManual: (data as any).pix_key_manual || '',
           mpAccessToken: (data as any).mp_access_token || '',
           mpPublicKey: (data as any).mp_public_key || '',
+          mpTerminalId: (data as any).mp_terminal_id || '',
+          payCashEnabled: (data as any).pay_cash_enabled !== false,
+          payPixEnabled: (data as any).pay_pix_enabled !== false,
+          payCardTerminalEnabled: Boolean((data as any).pay_card_terminal_enabled),
+          payCardOnlineEnabled: Boolean((data as any).pay_card_online_enabled),
         });
       } else {
         setSettingsId(null);

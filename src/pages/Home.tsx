@@ -340,7 +340,7 @@ const Home = () => {
       </section>
 
       {/* === 3. ECOSSISTEMA COMPLETO === */}
-      <section id="ecossistema" className="py-20 md:py-28 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+      <section id="ecossistema" className="py-12 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-3xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Integrado</span>
@@ -400,7 +400,7 @@ const Home = () => {
       </section>
 
       {/* === 4. CTA FINAL === */}
-      <section id="contato" className="py-20 md:py-32 border-t border-white/5 relative overflow-hidden">
+      <section id="contato" className="py-14 md:py-20 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />
         <div className="max-w-4xl mx-auto px-5 text-center relative" data-reveal>
           <h2 className="text-3xl md:text-5xl font-black">

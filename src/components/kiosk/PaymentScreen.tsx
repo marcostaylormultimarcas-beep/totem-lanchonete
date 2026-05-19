@@ -19,8 +19,8 @@ interface PaymentScreenProps {
   onDone: (orderId?: string) => void;
 }
 
-const PIX_KEY = 'pagamento@visionmidia.com';
-const QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
+const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
+const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
 const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
@@ -29,21 +29,49 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
-  const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string }>({ storeName: 'Vision Mídia', whatsappNumber: '' });
+  const [storeSettings, setStoreSettings] = useState<{ storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false });
+  const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
+  const [mpLoading, setMpLoading] = useState(false);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
   const total = Math.max(0, subtotal - discount);
 
+  const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
+  const qrImageSrc = mpPix?.qr_code_base64
+    ? `data:image/png;base64,${mpPix.qr_code_base64}`
+    : FALLBACK_QR_URL;
+
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name, whatsapp_number').eq('organization_id', orgId).maybeSingle();
+      const { data } = await supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, mp_access_token').eq('organization_id', orgId).maybeSingle();
       if (data) {
-        setStoreSettings({ storeName: data.store_name || 'Vision Mídia', whatsappNumber: data.whatsapp_number || '' });
+        setStoreSettings({
+          storeName: data.store_name || 'Vision Mídia',
+          whatsappNumber: data.whatsapp_number || '',
+          pixKeyManual: (data as any).pix_key_manual || '',
+          mpEnabled: Boolean((data as any).mp_access_token),
+        });
       }
     };
     fetchSettings();
   }, [orgId]);
+
+  // Auto-gera Pix real via Mercado Pago quando configurado e fora do modo demo
+  useEffect(() => {
+    if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || isDemoMode() || total <= 0) return;
+    setMpLoading(true);
+    supabase.functions.invoke('mercadopago-create-pix', {
+      body: { organization_id: orgId, amount: total, description: `Pedido ${storeSettings.storeName}` },
+    }).then(({ data, error }) => {
+      if (error || !data?.ok) {
+        console.warn('Mercado Pago Pix indisponível:', error || data);
+      } else {
+        setMpPix({ qr_code_base64: data.qr_code_base64, qr_code: data.qr_code });
+      }
+    }).finally(() => setMpLoading(false));
+  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName]);
+
 
 
   const handleCopy = () => {

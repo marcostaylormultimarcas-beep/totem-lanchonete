@@ -113,7 +113,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
     if (appliedCoupon && discount > 0) {
       msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
     }
-    msg += `💳 *PAGAMENTO:* Pix - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
+    const methodLabel = method === 'cash' ? 'Dinheiro no balcão' : method === 'terminal' ? 'Cartão na maquininha' : method === 'online' ? 'Cartão online' : 'Pix';
+    msg += `💳 *PAGAMENTO:* ${methodLabel} - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
   };
 

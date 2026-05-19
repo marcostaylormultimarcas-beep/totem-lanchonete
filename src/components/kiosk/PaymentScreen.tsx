@@ -252,17 +252,28 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         <h2 className="text-xl font-bold">Pagamento <span className="text-primary">PIX</span></h2>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
-        <p className="text-muted-foreground text-sm">Escaneie o QR Code ou copie a chave</p>
+        <p className="text-muted-foreground text-sm">
+          {mpLoading ? 'Gerando QR Code Pix...' : 'Escaneie o QR Code ou copie a chave'}
+        </p>
         <div className="bg-foreground rounded-2xl p-4">
-          <img src={QR_URL} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
+          <img src={qrImageSrc} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
         </div>
+        {storeSettings.pixKeyManual && (
+          <div className="w-full text-center">
+            <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
+            <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{storeSettings.pixKeyManual}</p>
+          </div>
+        )}
         <div className="w-full">
-          <p className="text-sm text-muted-foreground text-center mb-2">Chave PIX (copia e cola):</p>
+          <p className="text-sm text-muted-foreground text-center mb-2">
+            {mpPix ? 'Pix copia e cola:' : 'Chave PIX (copia e cola):'}
+          </p>
           <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
             {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
-            <span className="font-mono text-sm">{PIX_KEY}</span>
+            <span className="font-mono text-xs break-all line-clamp-2">{pixKey}</span>
           </button>
         </div>
+
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
         <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
           <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}

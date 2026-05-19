@@ -439,6 +439,38 @@ const Home = () => {
         </div>
       </section>
 
+      {/* === 4b. LICENCIADO === */}
+      <section id="licenciado" className="py-12 md:py-20 border-t border-white/5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald/10 via-transparent to-orange/5" />
+        <div className="max-w-5xl mx-auto px-5 relative" data-reveal>
+          <div className="glass rounded-3xl p-6 md:p-12 text-center neon-emerald">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald/15 border border-emerald/30 grid place-items-center mb-5">
+              <Crown className="w-7 h-7 text-emerald" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Expansão Regional</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Seja um Licenciado <span className="grad-text">Vision Mídia Digital</span>
+            </h2>
+            <p className="mt-5 text-white/70 max-w-2xl mx-auto">
+              Expanda seus negócios tornando-se um parceiro regional. Tenha acesso a um painel exclusivo
+              <span className="text-white font-semibold"> Master Admin</span> para cadastrar lanchonetes,
+              gerenciar múltiplas lojas na sua região e faturar com nosso modelo de licenciamento de
+              totens de autoatendimento.
+            </p>
+            <div className="mt-8 flex justify-center">
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-transparent border-2 border-emerald text-emerald font-bold px-8 py-4 rounded-xl text-base inline-flex items-center justify-center gap-2 hover:bg-emerald hover:text-black transition"
+              >
+                <Crown className="w-5 h-5" /> Quero ser um Licenciado
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* === 5. FOOTER === */}
       <footer className="border-t border-white/5 py-10">
         <div className="max-w-7xl mx-auto px-5 flex flex-col md:flex-row gap-4 items-center justify-between text-white/50 text-sm">

@@ -1,56 +1,68 @@
+Resumo das mudanças
 
-## Diagnóstico
+### 1. Pedidos do Simulador NÃO devem ir para o painel
 
-A tela preta no Netlify **não** é causada pelas tabelas — elas já existem. A causa é o cliente Supabase falhando na inicialização porque as variáveis `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` **não existem no build do Netlify**.
+**Status atual:** Já existe `isDemoMode()` (lê `?modo=demo` da URL) e o `PaymentScreen` bloqueia a gravação no banco. Porém, ao navegar entre telas (Cardápio → Carrinho → Checkout → Pagamento) o query-string `?modo=demo` pode estar sendo perdido, fazendo o pedido cair no banco real.
 
-No Lovable o arquivo `.env` é gerado automaticamente. No Netlify ele **não existe** — o Vite faz o build sem essas variáveis, então:
+**Fix:**
 
-```ts
-// src/integrations/supabase/client.ts
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;          // undefined
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY; // undefined
-createClient(undefined, undefined) // 💥 throw → React não monta → tela preta
+- Garantir persistência do modo demo em **sessionStorage** assim que `?modo=demo` for detectado na URL (em `src/lib/demoMode.ts`), para que `isDemoMode()` continue retornando `true` em qualquer rota subsequente da mesma aba.
+- Adicionar verificação extra no `PaymentScreen` (já existe) e também silenciar o alerta sonoro / Realtime quando demo (não necessário, pois não grava).
+
+### 2. Upload de Favicon / Imagem de compartilhamento (Open Graph) por loja
+
+- Adicionar coluna `share_image` (text) na tabela `settings` via migration.
+- Criar componente de upload no painel ADM (aba "Configurações da loja") usando `uploadProductImage` (já redimensiona para WebP 800px).
+- No `Cardapio/:slug` (página pública da loja), injetar dinamicamente as meta tags `<meta property="og:image">`, `<meta name="twitter:image">` e `<link rel="icon">` com a URL salva em `settings.share_image` da loja carregada.
+
+### 3. Botão "Abrir minha loja" no painel
+
+- No painel de cada nível (ADM, Master, Super), adicionar um botão visível no topo (`<a target="_blank" href="/cardapio/{slug}">Abrir loja`) usando o `slug` da `organizations` vinculada ao usuário.
+- Super/Master: aparece um botão por loja na listagem; ADM comum: um botão fixo no header do painel.
+
+### 4. Chave da API do Mercado Pago (pagamento PIX)
+
+> - **Observação:** Você escreveu "Mercado pago", mas a API que processa Pix/cartão é a do **Mercado Pago**. Crie um campo onde a os ADM podem colar a chave app e dps de colado funcione as formas de pagamento do mercado livre.
+
+- Adicionar colunas em `settings`: `mp_access_token` (text, criptografado em uso) e `mp_public_key` (text).
+- Campo na aba "Pagamentos" do painel ADM para colar as chaves.
+- Criar **edge function** `mercadopago-create-pix` que recebe `{organization_id, amount, description}` e usa o `access_token` da loja para gerar uma cobrança Pix real (QR Code + copia-e-cola) via `https://api.mercadopago.com/v1/payments`.
+- `PaymentScreen` chama essa função se a loja tiver token configurado e exibe o QR retornado; caso contrário cai no QR fake atual.
+
+### 5. Chave Pix manual (texto sob o QR Code)
+
+- Adicionar coluna `pix_key_manual` (text) em `settings`.
+- Campo no painel ADM "Chave Pix (exibida no totem)".
+- No `PaymentScreen`, exibir `settings.pix_key_manual` abaixo do QR code com botão "Copiar" (substituindo o `PIX_KEY` hard-coded).
+
+### 6. Conversor de imagem (verificação)
+
+- Já está **ativo e funcional** em `src/lib/imageUpload.ts`: redimensiona para máx. 800×800 e converte para **WebP com qualidade 0.8** antes do upload. Não requer alteração.
+
+---
+
+## Detalhamento técnico
+
+**Migration única:**
+
+```sql
+ALTER TABLE public.settings
+  ADD COLUMN IF NOT EXISTS share_image text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS pix_key_manual text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS mp_access_token text DEFAULT '',
+  ADD COLUMN IF NOT EXISTS mp_public_key text DEFAULT '';
 ```
 
-Como o `client.ts` é arquivo gerado (não devo editar), a correção precisa ser feita de duas formas:
+**Arquivos novos/alterados:**
 
-## Plano
+- `src/lib/demoMode.ts` — persistir flag em sessionStorage
+- `src/components/admin/StoreSettingsPanel.tsx` (ou similar existente) — campos: share image upload, pix manual, MP tokens, botão "abrir loja"
+- `src/components/admin/AdminsPanel.tsx` / `MasterPanel.tsx` / `SuperAdminPanel.tsx` — botões "abrir loja" por linha
+- `src/pages/Index.tsx` (rota `/cardapio/:slug`) — injetar meta OG/favicon via `document.head` no `useEffect`
+- `src/components/kiosk/PaymentScreen.tsx` — usar `pix_key_manual` e MP real quando configurado
+- `supabase/functions/mercadopago-create-pix/index.ts` — nova edge function
 
-### 1. Configurar as variáveis no Netlify (ação do usuário — instruções claras)
-No painel do Netlify: **Site settings → Environment variables → Add variable**, adicionar:
+**Confirmação necessária antes de implementar:**
 
-- `VITE_SUPABASE_URL` = `https://upwstbeimnlgohbqogzz.supabase.co`
-- `VITE_SUPABASE_PUBLISHABLE_KEY` = (a anon key do projeto)
-- `VITE_SUPABASE_PROJECT_ID` = `upwstbeimnlgohbqogzz`
-
-Depois clicar em **Deploys → Trigger deploy → Clear cache and deploy site**.
-
-### 2. Adicionar tela de erro amigável (em vez de tela preta) quando faltar env
-Criar um guard em `src/main.tsx` que detecta env ausentes e renderiza uma mensagem clara em vez de deixar o app crashar silenciosamente. Assim, se algo der errado no futuro, o usuário vê o que está faltando em vez de tela preta.
-
-```tsx
-// src/main.tsx
-const hasEnv = import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-if (!hasEnv) {
-  root.render(<MissingEnvScreen />); // tela explicativa com instruções
-} else {
-  root.render(<App />);
-}
-```
-
-### 3. Adicionar ErrorBoundary no topo do App
-Captura qualquer erro de runtime (ex: RLS bloqueando, query falhando no boot) e mostra mensagem em vez de tela preta.
-
-### 4. Verificar `public/_redirects` para SPA fallback no Netlify
-Garantir que existe `/* /index.html 200` para rotas como `/loja/:slug` não retornarem 404.
-
-### 5. Publish
-Após as mudanças, publicar para atualizar o site Lovable. **O Netlify é deploy separado** — o usuário precisa fazer o redeploy no painel do Netlify depois de configurar as env vars (passo 1).
-
-## Observação importante
-
-Não consigo configurar as variáveis do Netlify por você — isso é feito no painel do Netlify. Mas as mudanças de código (passos 2, 3, 4) vão fazer o app mostrar uma mensagem clara explicando o que falta, em vez de tela preta.
-
-## Pergunta antes de implementar
-
-Você quer que eu siga com o plano acima (guard + ErrorBoundary + checar _redirects), ou prefere que eu apenas confirme as instruções para configurar as variáveis no Netlify sem mexer no código?
+1. Confirma que é **Mercado Pago** (e não Mercado Livre / outro)?
+2. Os tokens MP devem ficar visíveis (mascarados) no painel após salvos ou só "•••• alterar"?

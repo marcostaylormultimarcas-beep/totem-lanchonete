@@ -416,7 +416,7 @@ const Home = () => {
       </section>
 
       {/* === 4. CTA FINAL === */}
-      <section id="contato" className="py-14 md:py-20 border-t border-white/5 relative overflow-hidden">
+      <section id="contato" className="py-10 md:py-20 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />
         <div className="max-w-4xl mx-auto px-5 text-center relative" data-reveal>
           <h2 className="text-3xl md:text-5xl font-black">

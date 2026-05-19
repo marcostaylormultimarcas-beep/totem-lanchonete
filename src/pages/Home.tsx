@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   UtensilsCrossed, QrCode, ChefHat, ArrowRight, CheckCircle2, Sparkles,
-  Zap, BarChart3, Headphones, X, MessageCircle
+  Zap, BarChart3, Headphones, X, MessageCircle, Gift, Smartphone, Crown
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import heroTotem from '@/assets/home-hero-totem.jpg';
@@ -225,7 +225,7 @@ const Home = () => {
 
       {/* === 1. HERO === */}
       <section className="relative brushed">
-        <div className="max-w-7xl mx-auto px-5 pt-10 pb-14 md:pt-20 md:pb-20 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-5 pt-8 pb-10 md:pt-20 md:pb-20 grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
           <div data-reveal>
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-white/80">
               <Sparkles className="w-3.5 h-3.5 text-orange" />
@@ -272,7 +272,7 @@ const Home = () => {
       </section>
 
       {/* === 2. RECURSOS (3 CARDS) === */}
-      <section id="recursos" className="py-12 md:py-16 border-t border-white/5">
+      <section id="recursos" className="py-10 md:py-16 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>
@@ -284,7 +284,7 @@ const Home = () => {
             </p>
           </div>
 
-          <div className="mt-14 grid md:grid-cols-3 gap-6">
+          <div className="mt-8 md:mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
             {[
               {
                 icon: <UtensilsCrossed className="w-5 h-5" />,
@@ -309,6 +309,22 @@ const Home = () => {
                 desc: 'A cozinha acompanha a fila em tempo real, com colunas organizadas, alertas sonoros e cronômetros de preparo.',
                 img: cardKds,
                 alt: 'Monitor KDS industrial em cozinha profissional exibindo painel de pedidos'
+              },
+              {
+                icon: <Gift className="w-5 h-5" />,
+                tag: 'Retenção',
+                title: 'Programa de Fidelidade Integrado',
+                desc: 'Faça o seu cliente voltar mais vezes. Crie regras personalizadas de recompensas e aumente a retenção da sua lanchonete sem precisar de cartões de papel ou apps externos.',
+                img: cardMenu,
+                alt: 'Cliente recebendo recompensas pelo programa de fidelidade digital'
+              },
+              {
+                icon: <Smartphone className="w-5 h-5" />,
+                tag: 'Gestão',
+                title: 'Controle Total em Tempo Real',
+                desc: 'Autonomia total para o lojista. Altere preços, pause produtos esgotados e acompanhe o volume de vendas diretamente do celular ou computador, a qualquer momento.',
+                img: cardKds,
+                alt: 'Lojista gerenciando vendas em tempo real pelo celular'
               },
             ].map((c, i) => (
               <div key={i} data-reveal className="glass rounded-3xl overflow-hidden group hover:-translate-y-1 transition-all shadow-xl">
@@ -340,7 +356,7 @@ const Home = () => {
       </section>
 
       {/* === 3. ECOSSISTEMA COMPLETO === */}
-      <section id="ecossistema" className="py-12 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+      <section id="ecossistema" className="py-10 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-3xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Integrado</span>
@@ -353,7 +369,7 @@ const Home = () => {
           </div>
 
           {/* Ícones de destaques */}
-          <div data-reveal className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
             {[
               { icon: <Zap className="w-6 h-6 text-orange" />, t: 'Sincronização em tempo real', d: 'Pedidos do totem aparecem na cozinha em milissegundos.' },
               { icon: <BarChart3 className="w-6 h-6 text-orange" />, t: 'Relatórios completos', d: 'Acompanhe vendas, ticket médio e fechamento em qualquer lugar.' },
@@ -370,7 +386,7 @@ const Home = () => {
           </div>
 
           {/* Imagem panorâmica */}
-          <div data-reveal className="mt-14 relative max-w-6xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-14 relative max-w-6xl mx-auto">
             <div className="absolute -inset-8 -z-10 bg-gradient-to-r from-orange/20 via-transparent to-emerald/20 blur-3xl rounded-full" />
             <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl neon-orange">
               <img
@@ -383,7 +399,7 @@ const Home = () => {
           </div>
 
           {/* Stats abaixo */}
-          <div data-reveal className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-12 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 max-w-5xl mx-auto">
             {[
               { v: '99.9%', l: 'Disponibilidade' },
               { v: '<200ms', l: 'Sync tempo real' },
@@ -400,7 +416,7 @@ const Home = () => {
       </section>
 
       {/* === 4. CTA FINAL === */}
-      <section id="contato" className="py-14 md:py-20 border-t border-white/5 relative overflow-hidden">
+      <section id="contato" className="py-10 md:py-20 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />
         <div className="max-w-4xl mx-auto px-5 text-center relative" data-reveal>
           <h2 className="text-3xl md:text-5xl font-black">
@@ -419,6 +435,38 @@ const Home = () => {
               className="neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               Acessar Painel <ArrowRight className="w-5 h-5" />
             </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* === 4b. LICENCIADO === */}
+      <section id="licenciado" className="py-12 md:py-20 border-t border-white/5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald/10 via-transparent to-orange/5" />
+        <div className="max-w-5xl mx-auto px-5 relative" data-reveal>
+          <div className="glass rounded-3xl p-6 md:p-12 text-center neon-emerald">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald/15 border border-emerald/30 grid place-items-center mb-5">
+              <Crown className="w-7 h-7 text-emerald" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Expansão Regional</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Seja um Licenciado <span className="grad-text">Vision Mídia Digital</span>
+            </h2>
+            <p className="mt-5 text-white/70 max-w-2xl mx-auto">
+              Expanda seus negócios tornando-se um parceiro regional. Tenha acesso a um painel exclusivo
+              <span className="text-white font-semibold"> Master Admin</span> para cadastrar lanchonetes,
+              gerenciar múltiplas lojas na sua região e faturar com nosso modelo de licenciamento de
+              totens de autoatendimento.
+            </p>
+            <div className="mt-8 flex justify-center">
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-transparent border-2 border-emerald text-emerald font-bold px-8 py-4 rounded-xl text-base inline-flex items-center justify-center gap-2 hover:bg-emerald hover:text-black transition"
+              >
+                <Crown className="w-5 h-5" /> Quero ser um Licenciado
+              </a>
+            </div>
           </div>
         </div>
       </section>

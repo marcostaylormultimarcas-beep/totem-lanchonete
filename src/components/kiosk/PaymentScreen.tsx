@@ -275,7 +275,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         </div>
 
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
-        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
           <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
         </button>
       </div>

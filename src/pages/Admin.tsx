@@ -144,7 +144,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingBannerIdx(idx);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
+      const url = await uploadProductImage(file, activeOrgId!, { kind: 'banner' });
       const banners = [...settings.banners];
       banners[idx] = { ...banners[idx], image: url };
       const updated = { ...settings, banners };
@@ -244,7 +244,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
+      const url = await uploadProductImage(file, activeOrgId!, { kind: 'cover' });
       const updated = { ...settings, coverImage: url };
       setSettings(updated);
       await saveSettingsToDb(updated);
@@ -265,73 +265,81 @@ const AdminPage = () => {
   // Carrega sessão atual e contexto do admin
   const bootstrapSession = async () => {
     setAuthLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setAuthenticated(false);
+        setCurrentAdmin(null);
+        setActiveOrgId(null);
+        setAllOrgs([]);
+        return;
+      }
+      // Carrega todas as roles do usuário e determina o tier
+      const { data: rolesData } = await supabase
+        .from('user_roles' as any)
+        .select('role')
+        .eq('user_id', user.id);
+      const roleList = (rolesData || []).map((r: any) => r.role);
+      const isSuper = roleList.includes('super_admin') || roleList.includes('master');
+      const isMasterAdmin = roleList.includes('master_admin');
+      const isAdminLojista = roleList.includes('admin');
+      const tier: 'super' | 'master' | 'admin' | null =
+        isSuper ? 'super' : isMasterAdmin ? 'master' : isAdminLojista ? 'admin' : null;
+
+      // Org do usuário (lojista tem sua própria)
+      const { data: ownOrg } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('owner_id', user.id)
+        .maybeSingle();
+
+      if (!tier) {
+        await supabase.auth.signOut();
+        setAuthenticated(false);
+        setCurrentAdmin(null);
+        setActiveOrgId(null);
+        setError('Esta conta não tem permissão de administrador.');
+        return;
+      }
+
+      const adminCtx: AdminUser = {
+        id: user.id,
+        username: user.email || '',
+        tier,
+        organization_id: ownOrg?.id ?? null,
+      };
+      setCurrentAdmin(adminCtx);
+
+      // Lista de lojas disponíveis conforme o tier
+      let initialOrg: string | null = ownOrg?.id ?? null;
+      if (tier === 'super') {
+        const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
+        setAllOrgs((orgs as any) || []);
+        if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+      } else if (tier === 'master') {
+        const { data: orgs } = await supabase
+          .from('organizations').select('id, name, slug')
+          .eq('master_id', user.id).order('name');
+        setAllOrgs((orgs as any) || []);
+        if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
+      } else {
+        setAllOrgs(ownOrg ? [{ id: ownOrg.id, name: ownOrg.name, slug: ownOrg.slug }] : []);
+      }
+
+      setActiveOrgId(initialOrg);
+      if (initialOrg) {
+        try { await setOrgId(initialOrg); } catch (e) { console.error('[Admin] setOrgId failed', e); }
+      }
+      setAuthenticated(true);
+    } catch (e) {
+      console.error('[Admin] bootstrapSession failed', e);
+      setError('Não foi possível carregar o painel. Tente novamente.');
       setAuthenticated(false);
-      setCurrentAdmin(null);
-      setActiveOrgId(null);
-      setAllOrgs([]);
+    } finally {
       setAuthLoading(false);
-      return;
     }
-    // Carrega todas as roles do usuário e determina o tier
-    const { data: rolesData } = await supabase
-      .from('user_roles' as any)
-      .select('role')
-      .eq('user_id', user.id);
-    const roleList = (rolesData || []).map((r: any) => r.role);
-    const isSuper = roleList.includes('super_admin') || roleList.includes('master');
-    const isMasterAdmin = roleList.includes('master_admin');
-    const isAdminLojista = roleList.includes('admin');
-    const tier: 'super' | 'master' | 'admin' | null =
-      isSuper ? 'super' : isMasterAdmin ? 'master' : isAdminLojista ? 'admin' : null;
-
-    // Org do usuário (lojista tem sua própria)
-    const { data: ownOrg } = await supabase
-      .from('organizations')
-      .select('*')
-      .eq('owner_id', user.id)
-      .maybeSingle();
-
-    if (!tier) {
-      await supabase.auth.signOut();
-      setAuthenticated(false);
-      setCurrentAdmin(null);
-      setActiveOrgId(null);
-      setAuthLoading(false);
-      setError('Esta conta não tem permissão de administrador.');
-      return;
-    }
-
-    const adminCtx: AdminUser = {
-      id: user.id,
-      username: user.email || '',
-      tier,
-      organization_id: ownOrg?.id ?? null,
-    };
-    setCurrentAdmin(adminCtx);
-
-    // Lista de lojas disponíveis conforme o tier
-    let initialOrg: string | null = ownOrg?.id ?? null;
-    if (tier === 'super') {
-      const { data: orgs } = await supabase.from('organizations').select('id, name, slug').order('name');
-      setAllOrgs((orgs as any) || []);
-      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
-    } else if (tier === 'master') {
-      const { data: orgs } = await supabase
-        .from('organizations').select('id, name, slug')
-        .eq('master_id', user.id).order('name');
-      setAllOrgs((orgs as any) || []);
-      if (!initialOrg && orgs && orgs.length) initialOrg = (orgs[0] as any).id;
-    } else {
-      setAllOrgs(ownOrg ? [{ id: ownOrg.id, name: ownOrg.name, slug: ownOrg.slug }] : []);
-    }
-
-    setActiveOrgId(initialOrg);
-    if (initialOrg) await setOrgId(initialOrg);
-    setAuthenticated(true);
-    setAuthLoading(false);
   };
+
 
   useEffect(() => {
     bootstrapSession();

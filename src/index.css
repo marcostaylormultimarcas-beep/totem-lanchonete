@@ -92,6 +92,23 @@
   }
 }
 
+/* ============ CTA Breath Animation ============ */
+@keyframes ctaBreath {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.25);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 24px 4px hsl(var(--primary) / 0.18);
+  }
+}
+
+.cta-breath {
+  animation: ctaBreath 3s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
 /* ============ Cupom térmico de impressão ============ */
 .print-receipt {
   display: none;

@@ -386,7 +386,7 @@ const Home = () => {
           </div>
 
           {/* Imagem panorâmica */}
-          <div data-reveal className="mt-14 relative max-w-6xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-14 relative max-w-6xl mx-auto">
             <div className="absolute -inset-8 -z-10 bg-gradient-to-r from-orange/20 via-transparent to-emerald/20 blur-3xl rounded-full" />
             <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl neon-orange">
               <img

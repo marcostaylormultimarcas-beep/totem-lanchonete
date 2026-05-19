@@ -220,6 +220,24 @@ const AdminPage = () => {
   };
 
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingShare, setUploadingShare] = useState(false);
+
+  const handleShareImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingShare(true);
+    try {
+      const url = await uploadProductImage(file, activeOrgId!);
+      const updated = { ...settings, shareImage: url };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingShare(false);
+    }
+  };
 
   const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

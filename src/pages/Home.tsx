@@ -369,7 +369,7 @@ const Home = () => {
           </div>
 
           {/* Ícones de destaques */}
-          <div data-reveal className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-4xl mx-auto">
             {[
               { icon: <Zap className="w-6 h-6 text-orange" />, t: 'Sincronização em tempo real', d: 'Pedidos do totem aparecem na cozinha em milissegundos.' },
               { icon: <BarChart3 className="w-6 h-6 text-orange" />, t: 'Relatórios completos', d: 'Acompanhe vendas, ticket médio e fechamento em qualquer lugar.' },

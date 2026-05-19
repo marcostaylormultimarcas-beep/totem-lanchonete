@@ -144,7 +144,7 @@ const AdminPage = () => {
     if (!file) return;
     setUploadingBannerIdx(idx);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
+      const url = await uploadProductImage(file, activeOrgId!, { kind: 'banner' });
       const banners = [...settings.banners];
       banners[idx] = { ...banners[idx], image: url };
       const updated = { ...settings, banners };

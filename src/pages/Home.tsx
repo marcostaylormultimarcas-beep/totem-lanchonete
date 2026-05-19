@@ -284,7 +284,7 @@ const Home = () => {
             </p>
           </div>
 
-          <div className="mt-14 grid md:grid-cols-3 gap-6">
+          <div className="mt-8 md:mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
             {[
               {
                 icon: <UtensilsCrossed className="w-5 h-5" />,
@@ -309,6 +309,22 @@ const Home = () => {
                 desc: 'A cozinha acompanha a fila em tempo real, com colunas organizadas, alertas sonoros e cronômetros de preparo.',
                 img: cardKds,
                 alt: 'Monitor KDS industrial em cozinha profissional exibindo painel de pedidos'
+              },
+              {
+                icon: <Gift className="w-5 h-5" />,
+                tag: 'Retenção',
+                title: 'Programa de Fidelidade Integrado',
+                desc: 'Faça o seu cliente voltar mais vezes. Crie regras personalizadas de recompensas e aumente a retenção da sua lanchonete sem precisar de cartões de papel ou apps externos.',
+                img: cardMenu,
+                alt: 'Cliente recebendo recompensas pelo programa de fidelidade digital'
+              },
+              {
+                icon: <Smartphone className="w-5 h-5" />,
+                tag: 'Gestão',
+                title: 'Controle Total em Tempo Real',
+                desc: 'Autonomia total para o lojista. Altere preços, pause produtos esgotados e acompanhe o volume de vendas diretamente do celular ou computador, a qualquer momento.',
+                img: cardKds,
+                alt: 'Lojista gerenciando vendas em tempo real pelo celular'
               },
             ].map((c, i) => (
               <div key={i} data-reveal className="glass rounded-3xl overflow-hidden group hover:-translate-y-1 transition-all shadow-xl">

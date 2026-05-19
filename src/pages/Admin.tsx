@@ -99,6 +99,10 @@ const AdminPage = () => {
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
           deliveryEnabled: (data as any).delivery_enabled !== false,
+          shareImage: (data as any).share_image || '',
+          pixKeyManual: (data as any).pix_key_manual || '',
+          mpAccessToken: (data as any).mp_access_token || '',
+          mpPublicKey: (data as any).mp_public_key || '',
         });
       } else {
         setSettingsId(null);

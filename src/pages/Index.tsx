@@ -53,11 +53,30 @@ const Index = () => {
     let cancelled = false;
     supabase
       .from('settings')
-      .select('delivery_enabled')
+      .select('delivery_enabled, store_name, share_image')
       .eq('organization_id', orgId)
       .maybeSingle()
       .then(({ data }) => {
-        if (!cancelled) setDeliveryEnabled((data as any)?.delivery_enabled !== false);
+        if (cancelled) return;
+        setDeliveryEnabled((data as any)?.delivery_enabled !== false);
+        // Inject favicon + Open Graph dynamically based on store settings
+        const shareImage = (data as any)?.share_image as string | undefined;
+        const storeName = (data as any)?.store_name as string | undefined;
+        if (storeName) document.title = storeName;
+        if (shareImage) {
+          const setMeta = (selector: string, attr: string, value: string, create: () => HTMLElement) => {
+            let el = document.querySelector(selector) as HTMLElement | null;
+            if (!el) { el = create(); document.head.appendChild(el); }
+            el.setAttribute(attr, value);
+          };
+          setMeta('link[rel="icon"]', 'href', shareImage, () => { const l = document.createElement('link'); l.setAttribute('rel', 'icon'); return l; });
+          setMeta('meta[property="og:image"]', 'content', shareImage, () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:image'); return m; });
+          setMeta('meta[name="twitter:image"]', 'content', shareImage, () => { const m = document.createElement('meta'); m.setAttribute('name', 'twitter:image'); return m; });
+          setMeta('meta[name="twitter:card"]', 'content', 'summary_large_image', () => { const m = document.createElement('meta'); m.setAttribute('name', 'twitter:card'); return m; });
+          if (storeName) {
+            setMeta('meta[property="og:title"]', 'content', storeName, () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m; });
+          }
+        }
       });
     const channel = supabase
       .channel('settings-delivery-' + orgId)

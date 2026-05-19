@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -53,6 +53,7 @@ const AdminPage = () => {
     categories: DEFAULT_CATEGORIES,
     instagramUrl: '',
     deliveryEnabled: true,
+    shareImage: '', pixKeyManual: '', mpAccessToken: '', mpPublicKey: '',
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -98,6 +99,10 @@ const AdminPage = () => {
           categories: ((data as any).categories as CategoryItem[]) || DEFAULT_CATEGORIES,
           instagramUrl: (data as any).instagram_url || '',
           deliveryEnabled: (data as any).delivery_enabled !== false,
+          shareImage: (data as any).share_image || '',
+          pixKeyManual: (data as any).pix_key_manual || '',
+          mpAccessToken: (data as any).mp_access_token || '',
+          mpPublicKey: (data as any).mp_public_key || '',
         });
       } else {
         setSettingsId(null);
@@ -120,6 +125,10 @@ const AdminPage = () => {
       categories: s.categories as any,
       instagram_url: s.instagramUrl || '',
       delivery_enabled: s.deliveryEnabled !== false,
+      share_image: s.shareImage || '',
+      pix_key_manual: s.pixKeyManual || '',
+      mp_access_token: s.mpAccessToken || '',
+      mp_public_key: s.mpPublicKey || '',
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);
@@ -211,6 +220,24 @@ const AdminPage = () => {
   };
 
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingShare, setUploadingShare] = useState(false);
+
+  const handleShareImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingShare(true);
+    try {
+      const url = await uploadProductImage(file, activeOrgId!);
+      const updated = { ...settings, shareImage: url };
+      setSettings(updated);
+      await saveSettingsToDb(updated);
+    } catch (err) {
+      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
+      console.error(err);
+    } finally {
+      setUploadingShare(false);
+    }
+  };
 
   const handleCoverImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -514,8 +541,8 @@ const AdminPage = () => {
         </button>
       </div>
 
-      {/* Active org indicator + switcher (Super/Master) */}
-      <div className="flex items-center gap-2 px-4 pt-3">
+      {/* Active org indicator + switcher (Super/Master) + Open Store button */}
+      <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
@@ -524,7 +551,23 @@ const AdminPage = () => {
             <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
           </>
         )}
+        {(() => {
+          const activeSlug = allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug;
+          if (!activeSlug) return null;
+          return (
+            <a
+              href={`/cardapio/${activeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"
+              title="Abrir minha loja em nova aba"
+            >
+              <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja
+            </a>
+          );
+        })()}
       </div>
+
 
       {/* Tabs */}
       <div className="flex gap-2 p-4 overflow-x-auto">
@@ -892,6 +935,72 @@ const AdminPage = () => {
             <input placeholder="https://instagram.com/seuperfil" value={settings.instagramUrl || ''} onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={200} />
             <p className="text-xs text-muted-foreground">Cole o link completo do perfil. Aparecerá no rodapé da tela inicial.</p>
           </div>
+
+          {/* Imagem de compartilhamento / Favicon */}
+          <div className="kiosk-card p-4 space-y-4">
+            <h3 className="font-bold flex items-center gap-2"><Share2 className="w-5 h-5 text-primary" /> Imagem de Compartilhamento / Favicon</h3>
+            <p className="text-xs text-muted-foreground">Esta imagem aparece quando o link da sua loja é compartilhado no WhatsApp, Facebook, etc. Também é usada como ícone (favicon) na aba do navegador.</p>
+            <div className="flex gap-2 items-center">
+              {settings.shareImage && (
+                <img src={settings.shareImage} alt="Share preview" className="w-16 h-16 object-cover rounded-lg flex-shrink-0 border border-border" />
+              )}
+              <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingShare ? 'opacity-50 pointer-events-none' : ''}`}>
+                {uploadingShare ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                <span className="text-sm">{uploadingShare ? 'Enviando...' : 'Subir Imagem'}</span>
+                <input type="file" accept="image/*" onChange={handleShareImageUpload} className="hidden" disabled={uploadingShare} />
+              </label>
+              {settings.shareImage && (
+                <button onClick={async () => { const updated = { ...settings, shareImage: '' }; setSettings(updated); await saveSettingsToDb(updated); }} className="p-2 text-muted-foreground hover:text-destructive">
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+            <input placeholder="Ou cole o link da imagem" value={settings.shareImage || ''} onChange={e => setSettings({ ...settings, shareImage: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+          </div>
+
+          {/* Chave Pix manual exibida no totem */}
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2"><KeyRound className="w-5 h-5 text-accent" /> Chave Pix (exibida no pagamento)</h3>
+            <p className="text-xs text-muted-foreground">Esta chave aparece em texto abaixo do QR Code para o cliente copiar.</p>
+            <input
+              placeholder="Ex: pagamento@minhaloja.com ou CPF/CNPJ"
+              value={settings.pixKeyManual || ''}
+              onChange={e => setSettings({ ...settings, pixKeyManual: e.target.value })}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+              maxLength={200}
+            />
+          </div>
+
+          {/* Mercado Pago */}
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2"><CreditCard className="w-5 h-5 text-primary" /> Mercado Pago (Pix automático)</h3>
+            <p className="text-xs text-muted-foreground">
+              Cole o <b>Access Token</b> de produção da sua conta Mercado Pago para que o totem gere o QR Code Pix real automaticamente.
+              Pegue em <a href="https://www.mercadopago.com.br/developers/panel/app" target="_blank" rel="noopener noreferrer" className="text-primary underline">developers do Mercado Pago</a>.
+            </p>
+            <label className="text-xs text-muted-foreground block">Access Token</label>
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="APP_USR-..."
+              value={settings.mpAccessToken || ''}
+              onChange={e => setSettings({ ...settings, mpAccessToken: e.target.value })}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+              maxLength={300}
+            />
+            <label className="text-xs text-muted-foreground block">Public Key (opcional)</label>
+            <input
+              placeholder="APP_USR-..."
+              value={settings.mpPublicKey || ''}
+              onChange={e => setSettings({ ...settings, mpPublicKey: e.target.value })}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+              maxLength={300}
+            />
+            {settings.mpAccessToken && (
+              <p className="text-[11px] text-success">✓ Mercado Pago configurado. O QR Code Pix real será gerado no pagamento.</p>
+            )}
+          </div>
+
 
           <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
             <Save className="w-4 h-4" /> Salvar Configurações

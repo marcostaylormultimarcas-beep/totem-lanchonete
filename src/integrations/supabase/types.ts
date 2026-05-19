@@ -423,7 +423,11 @@ export type Database = {
           delivery_enabled: boolean
           id: string
           instagram_url: string
+          mp_access_token: string
+          mp_public_key: string
           organization_id: string | null
+          pix_key_manual: string
+          share_image: string
           store_name: string
           updated_at: string
           whatsapp_number: string
@@ -438,7 +442,11 @@ export type Database = {
           delivery_enabled?: boolean
           id?: string
           instagram_url?: string
+          mp_access_token?: string
+          mp_public_key?: string
           organization_id?: string | null
+          pix_key_manual?: string
+          share_image?: string
           store_name?: string
           updated_at?: string
           whatsapp_number?: string
@@ -453,7 +461,11 @@ export type Database = {
           delivery_enabled?: boolean
           id?: string
           instagram_url?: string
+          mp_access_token?: string
+          mp_public_key?: string
           organization_id?: string | null
+          pix_key_manual?: string
+          share_image?: string
           store_name?: string
           updated_at?: string
           whatsapp_number?: string

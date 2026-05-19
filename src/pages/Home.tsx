@@ -225,7 +225,7 @@ const Home = () => {
 
       {/* === 1. HERO === */}
       <section className="relative brushed">
-        <div className="max-w-7xl mx-auto px-5 pt-10 pb-14 md:pt-20 md:pb-20 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-5 pt-8 pb-10 md:pt-20 md:pb-20 grid lg:grid-cols-2 gap-8 md:gap-12 items-center">
           <div data-reveal>
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-white/80">
               <Sparkles className="w-3.5 h-3.5 text-orange" />

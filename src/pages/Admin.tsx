@@ -135,6 +135,11 @@ const AdminPage = () => {
       pix_key_manual: s.pixKeyManual || '',
       mp_access_token: s.mpAccessToken || '',
       mp_public_key: s.mpPublicKey || '',
+      mp_terminal_id: s.mpTerminalId || '',
+      pay_cash_enabled: s.payCashEnabled !== false,
+      pay_pix_enabled: s.payPixEnabled !== false,
+      pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled),
+      pay_card_online_enabled: Boolean(s.payCardOnlineEnabled),
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

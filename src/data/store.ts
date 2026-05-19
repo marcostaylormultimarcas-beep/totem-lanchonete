@@ -66,6 +66,14 @@ export interface StoreSettings {
   categories: CategoryItem[];
   instagramUrl?: string;
   deliveryEnabled?: boolean;
+  /** Imagem usada como favicon e Open Graph quando o link da loja é compartilhado */
+  shareImage?: string;
+  /** Chave Pix em texto exibida abaixo do QR Code no pagamento */
+  pixKeyManual?: string;
+  /** Access Token do Mercado Pago (gera Pix real) */
+  mpAccessToken?: string;
+  /** Public Key do Mercado Pago */
+  mpPublicKey?: string;
 }
 
 // localStorage functions removed — all data now lives in Supabase

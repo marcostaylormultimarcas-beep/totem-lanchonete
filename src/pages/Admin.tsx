@@ -1020,6 +1020,47 @@ const AdminPage = () => {
             )}
           </div>
 
+          {/* Métodos de pagamento aceitos */}
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2"><CreditCard className="w-5 h-5 text-primary" /> Métodos de Pagamento Aceitos</h3>
+            <p className="text-xs text-muted-foreground">Ative apenas as formas de pagamento que sua loja aceita. O cliente verá só essas opções no checkout.</p>
+
+            {[
+              { key: 'payCashEnabled' as const, label: '💵 Pagamento no Balcão (Dinheiro)', desc: 'Cliente paga em dinheiro ao retirar.' },
+              { key: 'payPixEnabled' as const, label: '📲 Pix (QR Code)', desc: 'Gera QR Code para o cliente escanear.' },
+              { key: 'payCardTerminalEnabled' as const, label: '💳 Cartão na Maquininha (Totem)', desc: 'Cliente passa o cartão na maquininha ao lado do totem.' },
+              { key: 'payCardOnlineEnabled' as const, label: '🌐 Cartão Online (Web App)', desc: 'Cobrança via gateway no próprio celular do cliente.' },
+            ].map(opt => (
+              <label key={opt.key} className="flex items-start gap-3 p-3 rounded-lg bg-muted/40 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={Boolean(settings[opt.key])}
+                  onChange={e => setSettings({ ...settings, [opt.key]: e.target.checked })}
+                  className="mt-1 w-5 h-5 accent-primary"
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">{opt.label}</p>
+                  <p className="text-[11px] text-muted-foreground">{opt.desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+
+          {/* ID da Maquininha */}
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2"><KeyRound className="w-5 h-5 text-accent" /> ID da Maquininha (Point / Terminal)</h3>
+            <p className="text-xs text-muted-foreground">Informe o ID da maquininha física (ex: Mercado Pago Point) para envio automático do valor ao terminal. Deixe em branco se ainda não usa essa integração.</p>
+            <input
+              placeholder="Ex: PAX_A910__SMARTPOS1234567890"
+              value={settings.mpTerminalId || ''}
+              onChange={e => setSettings({ ...settings, mpTerminalId: e.target.value })}
+              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+              maxLength={120}
+            />
+          </div>
+
+
+
 
           <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
             <Save className="w-4 h-4" /> Salvar Configurações

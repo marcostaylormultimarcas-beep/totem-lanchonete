@@ -3,8 +3,8 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL?.trim?.() || import.meta.env.SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.SUPABASE_ANON_KEY;
 
 const FallbackScreen = ({ title, message, hint }: { title: string; message: string; hint?: string }) => (
   <div style={{
@@ -58,6 +58,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
       message="As variáveis de ambiente do backend não foram configuradas neste deploy. Configure-as no painel da hospedagem (ex.: Netlify → Site settings → Environment variables) e refaça o deploy."
       hint={`VITE_SUPABASE_URL=https://upwstbeimnlgohbqogzz.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=<sua chave anon>
+VITE_SUPABASE_ANON_KEY=<sua chave anon>
 VITE_SUPABASE_PROJECT_ID=upwstbeimnlgohbqogzz`}
     />
   );

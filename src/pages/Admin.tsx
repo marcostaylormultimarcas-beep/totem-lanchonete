@@ -564,7 +564,7 @@ const AdminPage = () => {
           if (!activeSlug) return null;
           return (
             <a
-              href={`/cardapio/${activeSlug}`}
+              href={`/loja/${activeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
               className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"

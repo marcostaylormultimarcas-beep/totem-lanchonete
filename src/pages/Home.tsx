@@ -225,7 +225,7 @@ const Home = () => {
 
       {/* === 1. HERO === */}
       <section className="relative brushed">
-        <div className="max-w-7xl mx-auto px-5 pt-14 pb-20 md:pt-24 md:pb-28 grid lg:grid-cols-2 gap-12 items-center">
+        <div className="max-w-7xl mx-auto px-5 pt-10 pb-14 md:pt-20 md:pb-20 grid lg:grid-cols-2 gap-12 items-center">
           <div data-reveal>
             <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-white/5 border border-white/10 text-white/80">
               <Sparkles className="w-3.5 h-3.5 text-orange" />
@@ -272,7 +272,7 @@ const Home = () => {
       </section>
 
       {/* === 2. RECURSOS (3 CARDS) === */}
-      <section id="recursos" className="py-20 md:py-28 border-t border-white/5">
+      <section id="recursos" className="py-12 md:py-16 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>
@@ -340,7 +340,7 @@ const Home = () => {
       </section>
 
       {/* === 3. ECOSSISTEMA COMPLETO === */}
-      <section id="ecossistema" className="py-20 md:py-28 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+      <section id="ecossistema" className="py-12 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-3xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-orange">Ecossistema Integrado</span>
@@ -400,7 +400,7 @@ const Home = () => {
       </section>
 
       {/* === 4. CTA FINAL === */}
-      <section id="contato" className="py-20 md:py-32 border-t border-white/5 relative overflow-hidden">
+      <section id="contato" className="py-14 md:py-20 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />
         <div className="max-w-4xl mx-auto px-5 text-center relative" data-reveal>
           <h2 className="text-3xl md:text-5xl font-black">

@@ -399,7 +399,7 @@ const Home = () => {
           </div>
 
           {/* Stats abaixo */}
-          <div data-reveal className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-5xl mx-auto">
+          <div data-reveal className="mt-8 md:mt-12 grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 max-w-5xl mx-auto">
             {[
               { v: '99.9%', l: 'Disponibilidade' },
               { v: '<200ms', l: 'Sync tempo real' },

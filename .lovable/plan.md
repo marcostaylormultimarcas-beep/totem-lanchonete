@@ -1,68 +1,34 @@
-Resumo das mudanças
+## Objetivo
+Eliminar qualquer referência antiga ao backend no frontend, garantir uso exclusivo das variáveis do Vite e disparar uma nova sincronização automática para o GitHub com uma alteração mínima e segura.
 
-### 1. Pedidos do Simulador NÃO devem ir para o painel
+## O que vou implementar
+1. Revisar e sanitizar os arquivos críticos do app (`src/lib/backend.ts`, `src/main.tsx`, telas de login/auth e quaisquer helpers usados no login) para remover:
+   - URLs hardcoded do projeto antigo
+   - chaves hardcoded
+   - fallbacks como `|| window._env_`, `globalThis`, `process.env` ou equivalentes no cliente
+2. Manter a leitura do backend exclusivamente por:
+   - `import.meta.env.VITE_SUPABASE_URL`
+   - `import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`
+3. Fazer uma pequena alteração não funcional em arquivos editáveis relevantes para disparar uma nova sincronização automática do código.
+4. Validar no código e no preview que o login está usando apenas a configuração atual do Vite, sem referência residual ao host antigo.
 
-**Status atual:** Já existe `isDemoMode()` (lê `?modo=demo` da URL) e o `PaymentScreen` bloqueia a gravação no banco. Porém, ao navegar entre telas (Cardápio → Carrinho → Checkout → Pagamento) o query-string `?modo=demo` pode estar sendo perdido, fazendo o pedido cair no banco real.
+## O que encontrei na exploração
+- `src/integrations/supabase/client.ts` já está lendo apenas `import.meta.env.VITE_SUPABASE_URL` e `import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY`.
+- `src/lib/backend.ts` já monta URLs a partir de `import.meta.env.VITE_SUPABASE_URL`.
+- `src/main.tsx` e `vite.config.ts` estão limpos, sem fallback antigo.
+- Não encontrei URL hardcoded antiga nos arquivos editáveis do `src/`.
+- A URL antiga ainda aparece em artefatos/configuração auto-gerados (`.env` e `supabase/config.toml`), que não devem ser editados manualmente.
 
-**Fix:**
+## Validação após a implementação
+- Rodar nova varredura global por:
+  - domínio antigo
+  - `window._env_`
+  - fallbacks de URL/chave
+- Confirmar que os arquivos editáveis críticos ficaram limpos.
+- Verificar no preview se o fluxo de login não tenta mais usar código com fallback local.
+- Confirmar que houve nova alteração salva para acionar a sincronização automática.
 
-- Garantir persistência do modo demo em **sessionStorage** assim que `?modo=demo` for detectado na URL (em `src/lib/demoMode.ts`), para que `isDemoMode()` continue retornando `true` em qualquer rota subsequente da mesma aba.
-- Adicionar verificação extra no `PaymentScreen` (já existe) e também silenciar o alerta sonoro / Realtime quando demo (não necessário, pois não grava).
-
-### 2. Upload de Favicon / Imagem de compartilhamento (Open Graph) por loja
-
-- Adicionar coluna `share_image` (text) na tabela `settings` via migration.
-- Criar componente de upload no painel ADM (aba "Configurações da loja") usando `uploadProductImage` (já redimensiona para WebP 800px).
-- No `Cardapio/:slug` (página pública da loja), injetar dinamicamente as meta tags `<meta property="og:image">`, `<meta name="twitter:image">` e `<link rel="icon">` com a URL salva em `settings.share_image` da loja carregada.
-
-### 3. Botão "Abrir minha loja" no painel
-
-- No painel de cada nível (ADM, Master, Super), adicionar um botão visível no topo (`<a target="_blank" href="/cardapio/{slug}">Abrir loja`) usando o `slug` da `organizations` vinculada ao usuário.
-- Super/Master: aparece um botão por loja na listagem; ADM comum: um botão fixo no header do painel.
-
-### 4. Chave da API do Mercado Pago (pagamento PIX)
-
-> - **Observação:** Você escreveu "Mercado pago", mas a API que processa Pix/cartão é a do **Mercado Pago**. Crie um campo onde a os ADM podem colar a chave app e dps de colado funcione as formas de pagamento do mercado livre.
-
-- Adicionar colunas em `settings`: `mp_access_token` (text, criptografado em uso) e `mp_public_key` (text).
-- Campo na aba "Pagamentos" do painel ADM para colar as chaves.
-- Criar **edge function** `mercadopago-create-pix` que recebe `{organization_id, amount, description}` e usa o `access_token` da loja para gerar uma cobrança Pix real (QR Code + copia-e-cola) via `https://api.mercadopago.com/v1/payments`.
-- `PaymentScreen` chama essa função se a loja tiver token configurado e exibe o QR retornado; caso contrário cai no QR fake atual.
-
-### 5. Chave Pix manual (texto sob o QR Code)
-
-- Adicionar coluna `pix_key_manual` (text) em `settings`.
-- Campo no painel ADM "Chave Pix (exibida no totem)".
-- No `PaymentScreen`, exibir `settings.pix_key_manual` abaixo do QR code com botão "Copiar" (substituindo o `PIX_KEY` hard-coded).
-
-### 6. Conversor de imagem (verificação)
-
-- Já está **ativo e funcional** em `src/lib/imageUpload.ts`: redimensiona para máx. 800×800 e converte para **WebP com qualidade 0.8** antes do upload. Não requer alteração.
-
----
-
-## Detalhamento técnico
-
-**Migration única:**
-
-```sql
-ALTER TABLE public.settings
-  ADD COLUMN IF NOT EXISTS share_image text DEFAULT '',
-  ADD COLUMN IF NOT EXISTS pix_key_manual text DEFAULT '',
-  ADD COLUMN IF NOT EXISTS mp_access_token text DEFAULT '',
-  ADD COLUMN IF NOT EXISTS mp_public_key text DEFAULT '';
-```
-
-**Arquivos novos/alterados:**
-
-- `src/lib/demoMode.ts` — persistir flag em sessionStorage
-- `src/components/admin/StoreSettingsPanel.tsx` (ou similar existente) — campos: share image upload, pix manual, MP tokens, botão "abrir loja"
-- `src/components/admin/AdminsPanel.tsx` / `MasterPanel.tsx` / `SuperAdminPanel.tsx` — botões "abrir loja" por linha
-- `src/pages/Index.tsx` (rota `/cardapio/:slug`) — injetar meta OG/favicon via `document.head` no `useEffect`
-- `src/components/kiosk/PaymentScreen.tsx` — usar `pix_key_manual` e MP real quando configurado
-- `supabase/functions/mercadopago-create-pix/index.ts` — nova edge function
-
-**Confirmação necessária antes de implementar:**
-
-1. Confirma que é **Mercado Pago** (e não Mercado Livre / outro)?
-2. Os tokens MP devem ficar visíveis (mascarados) no painel após salvos ou só "•••• alterar"?
+## Detalhes técnicos
+- Não vou editar `src/integrations/supabase/client.ts` se ele continuar auto-gerado e já estiver correto; a limpeza será feita apenas onde houver código editável de verdade.
+- Como o cliente já depende do `import.meta.env`, se o erro persistir após a sanitização do código, a causa restante passa a ser a configuração de variáveis do ambiente de deploy, não código hardcoded no frontend.
+- A implementação será mínima e sem risco de quebrar o build do Netlify.

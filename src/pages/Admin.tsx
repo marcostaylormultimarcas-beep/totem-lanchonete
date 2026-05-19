@@ -125,6 +125,10 @@ const AdminPage = () => {
       categories: s.categories as any,
       instagram_url: s.instagramUrl || '',
       delivery_enabled: s.deliveryEnabled !== false,
+      share_image: s.shareImage || '',
+      pix_key_manual: s.pixKeyManual || '',
+      mp_access_token: s.mpAccessToken || '',
+      mp_public_key: s.mpPublicKey || '',
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

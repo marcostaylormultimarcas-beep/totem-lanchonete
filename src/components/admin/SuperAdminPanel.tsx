@@ -19,8 +19,7 @@ const callFn = async (
   query: Record<string, string> = {},
 ) => {
   const { data: { session } } = await supabase.auth.getSession();
-  const qs = new URLSearchParams({ action, ...query }).toString();
-  const url = getBackendFunctionUrl('admin-users');
+  const url = getBackendFunctionUrl('admin-users', { action, ...query });
   const res = await fetch(url, {
     method,
     headers: {

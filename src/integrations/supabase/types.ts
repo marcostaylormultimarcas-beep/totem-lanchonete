@@ -425,7 +425,12 @@ export type Database = {
           instagram_url: string
           mp_access_token: string
           mp_public_key: string
+          mp_terminal_id: string
           organization_id: string | null
+          pay_card_online_enabled: boolean
+          pay_card_terminal_enabled: boolean
+          pay_cash_enabled: boolean
+          pay_pix_enabled: boolean
           pix_key_manual: string
           share_image: string
           store_name: string
@@ -444,7 +449,12 @@ export type Database = {
           instagram_url?: string
           mp_access_token?: string
           mp_public_key?: string
+          mp_terminal_id?: string
           organization_id?: string | null
+          pay_card_online_enabled?: boolean
+          pay_card_terminal_enabled?: boolean
+          pay_cash_enabled?: boolean
+          pay_pix_enabled?: boolean
           pix_key_manual?: string
           share_image?: string
           store_name?: string
@@ -463,7 +473,12 @@ export type Database = {
           instagram_url?: string
           mp_access_token?: string
           mp_public_key?: string
+          mp_terminal_id?: string
           organization_id?: string | null
+          pay_card_online_enabled?: boolean
+          pay_card_terminal_enabled?: boolean
+          pay_cash_enabled?: boolean
+          pay_pix_enabled?: boolean
           pix_key_manual?: string
           share_image?: string
           store_name?: string

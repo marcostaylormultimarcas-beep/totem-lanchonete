@@ -53,6 +53,7 @@ const AdminPage = () => {
     categories: DEFAULT_CATEGORIES,
     instagramUrl: '',
     deliveryEnabled: true,
+    shareImage: '', pixKeyManual: '', mpAccessToken: '', mpPublicKey: '',
   });
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);

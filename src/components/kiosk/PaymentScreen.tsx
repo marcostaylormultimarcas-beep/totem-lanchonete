@@ -83,7 +83,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         setMpPix({ qr_code_base64: data.qr_code_base64, qr_code: data.qr_code });
       }
     }).finally(() => setMpLoading(false));
-  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName]);
+  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName, method]);
 
 
 

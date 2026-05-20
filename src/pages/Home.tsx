@@ -554,11 +554,11 @@ const Home = () => {
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href={waLink} target="_blank" rel="noreferrer"
-              className="neon-orange bg-orange text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+              className="cta-breath neon-orange bg-orange text-white font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               <MessageCircle className="w-5 h-5" /> Falar com Vendedor
             </a>
             <Link to="/"
-              className="neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+              className="cta-breath neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               Acessar Painel <ArrowRight className="w-5 h-5" />
             </Link>
           </div>

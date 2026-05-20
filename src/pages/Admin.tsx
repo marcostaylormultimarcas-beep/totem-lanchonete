@@ -735,6 +735,28 @@ const AdminPage = () => {
                   className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary resize-y"
                 />
               </div>
+
+              {/* Estoque */}
+              <div className="kiosk-card p-3 space-y-2 bg-muted/30 border border-border">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.manageStock} onChange={e => setForm({ ...form, manageStock: e.target.checked })} className="w-4 h-4 accent-primary" />
+                  <span className="text-sm font-semibold">📦 Controlar estoque deste produto</span>
+                </label>
+                {form.manageStock && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Em estoque</label>
+                      <input type="number" min="0" value={form.stockQuantity} onChange={e => setForm({ ...form, stockQuantity: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Alerta abaixo de</label>
+                      <input type="number" min="0" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">Quando um pedido é criado, a quantidade é debitada automaticamente.</p>
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>

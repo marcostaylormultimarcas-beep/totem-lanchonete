@@ -37,7 +37,7 @@ const PlansMatrixPanel = () => {
     setPlans((p as any) || []);
     setFeatures((f as any) || []);
     const map: Record<string, boolean> = {};
-    (m as MatrixRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
+    (m as unknown as MatrixRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);
     setLoading(false);
   };

@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import {
   UtensilsCrossed, QrCode, ChefHat, ArrowRight, CheckCircle2, Sparkles,
   Zap, BarChart3, Headphones, X, MessageCircle, Gift, Smartphone, Crown,
-  Cpu, Bot, ShieldCheck, Wifi, Layers, BrainCircuit
+  Cpu, Bot, ShieldCheck, Wifi, Layers, BrainCircuit,
+  Repeat, PackageCheck, Lock, Undo2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import heroTotem from '@/assets/home-hero-totem.jpg';
@@ -169,14 +170,25 @@ const Home = () => {
   }, [demoOpen]);
 
   return (
-    <div ref={ref} className="min-h-screen text-foreground overflow-x-hidden"
+    <div ref={ref} className="min-h-screen text-foreground overflow-x-hidden relative"
       style={{
         background:
-          'radial-gradient(1200px 600px at 10% -10%, rgba(255,107,0,0.10), transparent 60%),' +
-          'radial-gradient(900px 500px at 110% 10%, rgba(0,200,83,0.08), transparent 60%),' +
-          'linear-gradient(180deg, #0a0a0c 0%, #0e0e11 100%)'
+          'radial-gradient(1200px 600px at 10% -10%, rgba(234,88,12,0.12), transparent 60%),' +
+          'radial-gradient(900px 500px at 110% 10%, rgba(234,88,12,0.06), transparent 60%),' +
+          'linear-gradient(180deg, #020617 0%, #0b1120 100%)'
       }}
     >
+      {/* === Textura de circuitos sutil (Dark Tech) === */}
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 -z-0 opacity-[0.07] mix-blend-screen"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'><g fill='none' stroke='%23ea580c' stroke-width='1'><path d='M0 40h60v40h40v40h60'/><path d='M40 0v30h30v50h50v80'/><path d='M120 0v20h20v60'/><circle cx='60' cy='40' r='2.5' fill='%23ea580c'/><circle cx='100' cy='80' r='2.5' fill='%23ea580c'/><circle cx='40' cy='30' r='2' fill='%23ea580c'/><circle cx='140' cy='80' r='2' fill='%23ea580c'/></g></svg>\")",
+          backgroundSize: '320px 320px',
+        }}
+      />
+
       {/* === Estilos locais === */}
       <style>{`
         [data-reveal]{opacity:0;transform:translateY(28px);transition:opacity .9s ease,transform .9s ease}
@@ -186,23 +198,38 @@ const Home = () => {
           backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
           border:1px solid rgba(255,255,255,0.08);
         }
-        .glass:hover{border-color:rgba(255,107,0,0.35)}
-        .neon-orange{box-shadow:0 0 0 1px rgba(255,107,0,.45), 0 12px 50px -12px rgba(255,107,0,.6)}
+        .glass:hover{border-color:rgba(234,88,12,0.45)}
+        /* Card Dashboard premium: mesmos radius/shadow do painel + borda fina laranja */
+        .card-premium{
+          background:linear-gradient(180deg,rgba(15,23,42,0.85),rgba(2,6,23,0.85));
+          border:1px solid rgba(234,88,12,0.35);
+          border-radius:0.75rem;
+          box-shadow:0 1px 2px 0 rgba(0,0,0,.4), 0 8px 24px -12px rgba(234,88,12,.25);
+          backdrop-filter:blur(8px);
+          transition:border-color .25s ease, transform .25s ease, box-shadow .25s ease;
+        }
+        .card-premium:hover{
+          border-color:rgba(234,88,12,0.75);
+          transform:translateY(-2px);
+          box-shadow:0 1px 2px 0 rgba(0,0,0,.4), 0 14px 36px -12px rgba(234,88,12,.45);
+        }
+        .neon-orange{box-shadow:0 0 0 1px rgba(234,88,12,.55), 0 12px 50px -12px rgba(234,88,12,.6)}
         .neon-emerald{box-shadow:0 0 0 1px rgba(0,200,83,.45), 0 12px 50px -12px rgba(0,200,83,.55)}
-        .text-orange{color:#FF6B00}
-        .bg-orange{background:#FF6B00}
+        .text-orange{color:#ea580c}
+        .bg-orange{background:#ea580c}
         .text-emerald{color:#00C853}
         .bg-emerald{background:#00C853}
         .brushed{
           background-image:
             repeating-linear-gradient(90deg, rgba(255,255,255,0.012) 0 2px, transparent 2px 4px),
-            linear-gradient(180deg,#0c0c0f,#101014);
+            linear-gradient(180deg,#020617,#0b1120);
         }
         .grad-text{
-          background:linear-gradient(90deg,#FF6B00,#FFA255 60%,#FF6B00);
+          background:linear-gradient(90deg,#ea580c,#fb923c 60%,#ea580c);
           -webkit-background-clip:text;background-clip:text;color:transparent;
         }
       `}</style>
+
 
       {/* === NAV === */}
       <header className="sticky top-0 z-40 backdrop-blur-md bg-black/50 border-b border-white/5">
@@ -242,7 +269,7 @@ const Home = () => {
             </p>
             <div className="mt-8 flex flex-col sm:flex-row gap-3">
               <button type="button" onClick={() => setDemoOpen(true)}
-                className="neon-orange bg-orange text-black font-bold px-6 py-4 rounded-xl inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+                className="cta-breath neon-orange bg-orange text-white font-bold px-6 py-4 rounded-xl inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
                 Ver Demonstração <ArrowRight className="w-4 h-4" />
               </button>
               <a href={waLink} target="_blank" rel="noreferrer"
@@ -273,7 +300,56 @@ const Home = () => {
       </section>
 
       {/* === 2. RECURSOS (3 CARDS) === */}
+      {/* === 1b. DIFERENCIAIS DE AUTORIDADE === */}
+      <section id="diferenciais" className="py-10 md:py-16 border-t border-white/5 relative">
+        <div className="max-w-7xl mx-auto px-5">
+          <div data-reveal className="text-center max-w-2xl mx-auto">
+            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que Vision Mídia</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Gestão híbrida com <span className="grad-text">blindagem de receita</span>
+            </h2>
+            <p className="mt-4 text-white/70">
+              Totem físico e app online operando como um único sistema — com regras de servidor que protegem cada pedido.
+            </p>
+          </div>
+
+          <div className="mt-8 md:mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                icon: <Repeat className="w-6 h-6" />,
+                title: 'Gestão Híbrida',
+                desc: 'Sincronização em tempo real entre totem físico e app online.',
+              },
+              {
+                icon: <PackageCheck className="w-6 h-6" />,
+                title: 'Estoque Blindado',
+                desc: 'Gestão de estoque atômica com reserva imediata para evitar vendas duplicadas.',
+              },
+              {
+                icon: <Lock className="w-6 h-6" />,
+                title: 'Anti-Fraude',
+                desc: 'Sistema com bloqueio de cancelamento pós-preparo e logs de auditoria para proteger seu faturamento.',
+              },
+              {
+                icon: <Undo2 className="w-6 h-6" />,
+                title: 'Reembolso Inteligente',
+                desc: 'Estorno automático para desistências imediatas (5 min) e aprovação segura para pedidos em preparo.',
+              },
+            ].map((f, i) => (
+              <div key={i} data-reveal className="card-premium p-6 flex flex-col">
+                <div className="w-12 h-12 rounded-xl bg-orange/10 border border-orange/40 text-orange grid place-items-center mb-4">
+                  {f.icon}
+                </div>
+                <h3 className="text-white font-bold text-lg">{f.title}</h3>
+                <p className="text-slate-300/80 text-sm mt-2 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="recursos" className="py-10 md:py-16 border-t border-white/5">
+
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>
@@ -527,11 +603,11 @@ const Home = () => {
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href={waLink} target="_blank" rel="noreferrer"
-              className="neon-orange bg-orange text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+              className="cta-breath neon-orange bg-orange text-white font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               <MessageCircle className="w-5 h-5" /> Falar com Vendedor
             </a>
             <Link to="/"
-              className="neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
+              className="cta-breath neon-emerald bg-emerald text-black font-bold px-8 py-5 rounded-xl text-lg inline-flex items-center justify-center gap-2 hover:brightness-110 transition">
               Acessar Painel <ArrowRight className="w-5 h-5" />
             </Link>
           </div>

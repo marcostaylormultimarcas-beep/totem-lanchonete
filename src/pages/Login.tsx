@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { getKioskHomePath } from '@/lib/kioskHome';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Login = () => {
@@ -11,6 +11,29 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotPin, setForgotPin] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+    if (!cleanEmail) { toast.error('Informe seu e-mail'); return; }
+    setForgotLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setForgotLoading(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+    setShowForgot(false);
+    setForgotEmail('');
+    setForgotPin('');
+  };
 
   const routeUser = async (userId: string) => {
     const { data: roles } = await supabase

@@ -141,8 +141,7 @@ const AdminPage = () => {
       delivery_enabled: s.deliveryEnabled !== false,
       share_image: s.shareImage || '',
       pix_key_manual: s.pixKeyManual || '',
-      mp_access_token: s.mpAccessToken || '',
-      mp_public_key: s.mpPublicKey || '',
+      // mp_access_token / mp_public_key agora vivem no Vault (set_mp_credentials RPC)
       mp_terminal_id: s.mpTerminalId || '',
       pay_cash_enabled: s.payCashEnabled !== false,
       pay_pix_enabled: s.payPixEnabled !== false,
@@ -1010,35 +1009,8 @@ const AdminPage = () => {
             />
           </div>
 
-          {/* Mercado Pago */}
-          <div className="kiosk-card p-4 space-y-3">
-            <h3 className="font-bold flex items-center gap-2"><CreditCard className="w-5 h-5 text-primary" /> Mercado Pago (Pix automático)</h3>
-            <p className="text-xs text-muted-foreground">
-              Cole o <b>Access Token</b> de produção da sua conta Mercado Pago para que o totem gere o QR Code Pix real automaticamente.
-              Pegue em <a href="https://www.mercadopago.com.br/developers/panel/app" target="_blank" rel="noopener noreferrer" className="text-primary underline">developers do Mercado Pago</a>.
-            </p>
-            <label className="text-xs text-muted-foreground block">Access Token</label>
-            <input
-              type="password"
-              autoComplete="off"
-              placeholder="APP_USR-..."
-              value={settings.mpAccessToken || ''}
-              onChange={e => setSettings({ ...settings, mpAccessToken: e.target.value })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
-              maxLength={300}
-            />
-            <label className="text-xs text-muted-foreground block">Public Key (opcional)</label>
-            <input
-              placeholder="APP_USR-..."
-              value={settings.mpPublicKey || ''}
-              onChange={e => setSettings({ ...settings, mpPublicKey: e.target.value })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
-              maxLength={300}
-            />
-            {settings.mpAccessToken && (
-              <p className="text-[11px] text-success">✓ Mercado Pago configurado. O QR Code Pix real será gerado no pagamento.</p>
-            )}
-          </div>
+          {/* Mercado Pago — credenciais por loja, criptografadas no Vault */}
+          {activeOrgId && <MercadoPagoCard organizationId={activeOrgId} />}
 
           {/* Métodos de pagamento aceitos */}
           <div className="kiosk-card p-4 space-y-3">

@@ -1,15 +1,10 @@
-// Edge function pública: gera uma cobrança Pix real no Mercado Pago
-// usando o Access Token configurado pela loja em `settings.mp_access_token`.
+// Edge function pública: gera uma cobrança Pix real no Mercado Pago.
+// O Access Token de cada loja é guardado criptografado no Supabase Vault.
+// Aqui chamamos a RPC `get_mp_access_token_internal` via service_role, que
+// descriptografa o segredo apenas para esta chamada e devolve o token em memória.
 //
 // Entrada (POST JSON):
 //   { organization_id: uuid, amount: number, description?: string, payer_email?: string }
-//
-// Saída:
-//   { ok: true, qr_code_base64, qr_code, ticket_url, payment_id, amount }
-//
-// Como o totem público (sem login) também precisa gerar Pix, esta função
-// não exige JWT. A leitura do token usa o service role apenas para
-// acessar a coluna `mp_access_token` da loja indicada.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
@@ -42,13 +37,22 @@ Deno.serve(async (req) => {
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    const { data: settings, error: sErr } = await admin
-      .from("settings")
-      .select("mp_access_token, store_name")
-      .eq("organization_id", organization_id)
-      .maybeSingle();
+    // Lê o access token criptografado do Vault via RPC restrita ao service_role
+    const { data: tokenData, error: tokenErr } = await admin.rpc(
+      "get_mp_access_token_internal",
+      { _org: organization_id },
+    );
 
-    if (sErr || !settings?.mp_access_token) {
+    if (tokenErr) {
+      console.error("Vault RPC error:", tokenErr);
+      return new Response(JSON.stringify({ error: "Falha ao ler credenciais da loja" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const accessToken = (tokenData as string | null) || "";
+    if (!accessToken) {
       return new Response(JSON.stringify({ error: "Loja sem Mercado Pago configurado" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -60,7 +64,7 @@ Deno.serve(async (req) => {
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${settings.mp_access_token}`,
+        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
         "X-Idempotency-Key": idempotencyKey,
       },

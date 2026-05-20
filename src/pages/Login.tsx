@@ -135,12 +135,79 @@ const Login = () => {
             >
               {loading ? 'Entrando...' : 'Entrar no Sistema'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => { setForgotEmail(email); setShowForgot(true); }}
+              className="w-full text-center text-sm text-primary/80 hover:text-primary transition font-semibold flex items-center justify-center gap-1.5"
+            >
+              <KeyRound className="w-4 h-4" /> Esqueci minha senha
+            </button>
           </form>
         </div>
       </div>
       <footer className="py-6 text-center text-xs text-muted-foreground">
         Desenvolvido por <span className="font-semibold text-primary/80">VisionTek</span>
       </footer>
+
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForgot(false)}>
+          <form
+            onSubmit={submitForgot}
+            onClick={e => e.stopPropagation()}
+            className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4 animate-in fade-in zoom-in-95"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-primary" /> Recuperar acesso
+              </h3>
+              <button type="button" onClick={() => setShowForgot(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Informe o e-mail cadastrado para receber o link de redefinição de senha.
+            </p>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block">E-mail</label>
+              <input
+                type="email"
+                required
+                value={forgotEmail}
+                onChange={e => setForgotEmail(e.target.value)}
+                placeholder="seu@email.com"
+                className="w-full bg-muted border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground mb-1 block flex items-center gap-1">
+                PIN de Recuperação <span className="text-[10px] font-normal text-muted-foreground/70">(apenas Master Admin)</span>
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="\d{4,6}"
+                maxLength={6}
+                value={forgotPin}
+                onChange={e => setForgotPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="Opcional — 4 a 6 dígitos"
+                className="w-full bg-muted border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary text-center font-mono tracking-widest"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1.5">
+                O PIN é usado pelo suporte para confirmar a sua identidade quando aplicável.
+              </p>
+            </div>
+            <button
+              type="submit"
+              disabled={forgotLoading}
+              className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+              Enviar link de recuperação
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

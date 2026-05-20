@@ -43,6 +43,80 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // KPIs
+  const [period, setPeriod] = useState<'7d' | '30d' | 'all'>('30d');
+  const [orgsCount, setOrgsCount] = useState(0);
+  const [orders, setOrders] = useState<{ created_at: string; total: number; organization_id: string }[]>([]);
+  const [orgsByMaster, setOrgsByMaster] = useState<Record<string, { name: string; master_id: string | null; id: string }[]>>({});
+  const [kpiLoading, setKpiLoading] = useState(true);
+
+  const periodStart = useMemo(() => {
+    if (period === 'all') return null;
+    const days = period === '7d' ? 7 : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }, [period]);
+
+  const loadKpis = async () => {
+    setKpiLoading(true);
+    try {
+      const { data: orgs } = await supabase.from('organizations').select('id, name, master_id');
+      const orgsList = orgs || [];
+      setOrgsCount(orgsList.length);
+      const grouped: Record<string, any[]> = {};
+      orgsList.forEach((o: any) => {
+        const key = o.master_id || '__none__';
+        (grouped[key] = grouped[key] || []).push(o);
+      });
+      setOrgsByMaster(grouped);
+
+      let q = supabase.from('orders').select('created_at, total, organization_id').neq('status', 'cancelled');
+      if (periodStart) q = q.gte('created_at', periodStart.toISOString());
+      const { data: ords } = await q.limit(5000);
+      setOrders((ords as any) || []);
+    } catch (e: any) {
+      console.error(e);
+    }
+    setKpiLoading(false);
+  };
+
+  useEffect(() => { loadKpis(); }, [period]);
+
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const chartData = useMemo(() => {
+    const days = period === '7d' ? 7 : period === '30d' ? 30 : 30;
+    const map: Record<string, { date: string; pedidos: number; receita: number }> = {};
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      map[key] = { date: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), pedidos: 0, receita: 0 };
+    }
+    orders.forEach(o => {
+      const key = o.created_at.slice(0, 10);
+      if (map[key]) {
+        map[key].pedidos += 1;
+        map[key].receita += Number(o.total || 0);
+      }
+    });
+    return Object.values(map);
+  }, [orders, period]);
+
+  const masterRanking = useMemo(() => {
+    return masters.map(m => {
+      const orgIds = new Set((orgsByMaster[m.id] || []).map(o => o.id));
+      const lojas = orgIds.size;
+      const pedidos = orders.filter(o => orgIds.has(o.organization_id));
+      return {
+        id: m.id,
+        email: m.email,
+        lojas,
+        pedidos: pedidos.length,
+        receita: pedidos.reduce((s, o) => s + Number(o.total || 0), 0),
+      };
+    }).sort((a, b) => b.receita - a.receita);
+  }, [masters, orgsByMaster, orders]);
+
   const load = async () => {
     setLoading(true);
     try {

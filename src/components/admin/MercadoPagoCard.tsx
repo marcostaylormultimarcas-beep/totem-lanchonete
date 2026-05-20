@@ -110,12 +110,30 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
 
           <div className="space-y-2">
             <label className="text-xs text-muted-foreground block">Access Token (produção)</label>
-            <input
-              type="password" autoComplete="off" placeholder="APP_USR-..."
-              value={accessToken} onChange={e => setAccessToken(e.target.value)}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
-              maxLength={300}
-            />
+            <div className="flex gap-2">
+              <input
+                type="password" autoComplete="off" placeholder="APP_USR-..."
+                value={accessToken} onChange={e => { setAccessToken(e.target.value); setTestResult(null); }}
+                className="flex-1 min-w-0 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+                maxLength={300}
+              />
+              <button
+                type="button"
+                onClick={testConnection}
+                disabled={testing || (!accessToken.trim() && !stored.access_token)}
+                title="Testar conexão com o Mercado Pago"
+                className="touch-btn px-3 py-3 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-1.5 disabled:opacity-50 text-xs font-semibold whitespace-nowrap"
+              >
+                {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+                Testar
+              </button>
+            </div>
+            {testResult && (
+              <div className={`text-[11px] flex items-center gap-1.5 ${testResult.ok ? 'text-success' : 'text-destructive'}`}>
+                {testResult.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                {testResult.msg}
+              </div>
+            )}
             <label className="text-xs text-muted-foreground block">Client ID</label>
             <input
               type="text" autoComplete="off" placeholder="1234567890123456"

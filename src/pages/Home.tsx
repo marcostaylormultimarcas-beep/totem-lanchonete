@@ -3,7 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import {
   UtensilsCrossed, QrCode, ChefHat, ArrowRight, CheckCircle2, Sparkles,
   Zap, BarChart3, Headphones, X, MessageCircle, Gift, Smartphone, Crown,
-  Cpu, Bot, ShieldCheck, Wifi, Layers, BrainCircuit
+  Cpu, Bot, ShieldCheck, Wifi, Layers, BrainCircuit,
+  Repeat, PackageCheck, Lock, Undo2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import heroTotem from '@/assets/home-hero-totem.jpg';

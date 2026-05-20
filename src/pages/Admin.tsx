@@ -147,6 +147,13 @@ const AdminPage = () => {
       pay_pix_enabled: s.payPixEnabled !== false,
       pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled),
       pay_card_online_enabled: Boolean(s.payCardOnlineEnabled),
+      fiscal_enabled: Boolean(s.fiscalEnabled),
+      fiscal_cnpj: s.fiscalCnpj || '',
+      fiscal_razao: s.fiscalRazao || '',
+      fiscal_ie: s.fiscalIe || '',
+      fiscal_regime: s.fiscalRegime || '',
+      fiscal_csc: s.fiscalCsc || '',
+      fiscal_token: s.fiscalToken || '',
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

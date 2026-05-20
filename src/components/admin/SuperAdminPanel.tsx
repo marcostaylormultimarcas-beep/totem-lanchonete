@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getBackendFunctionUrl } from '@/lib/backend';
-import { Plus, Trash2, Pause, Play, Loader2, Crown, Mail, KeyRound } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Crown, Mail, KeyRound, Store, ShoppingBag, DollarSign, TrendingUp, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { formatCurrency } from '@/data/store';
 
 interface MasterAdmin {
   id: string;
@@ -40,6 +42,80 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
   const [pass, setPass] = useState('');
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // KPIs
+  const [period, setPeriod] = useState<'7d' | '30d' | 'all'>('30d');
+  const [orgsCount, setOrgsCount] = useState(0);
+  const [orders, setOrders] = useState<{ created_at: string; total: number; organization_id: string }[]>([]);
+  const [orgsByMaster, setOrgsByMaster] = useState<Record<string, { name: string; master_id: string | null; id: string }[]>>({});
+  const [kpiLoading, setKpiLoading] = useState(true);
+
+  const periodStart = useMemo(() => {
+    if (period === 'all') return null;
+    const days = period === '7d' ? 7 : 30;
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  }, [period]);
+
+  const loadKpis = async () => {
+    setKpiLoading(true);
+    try {
+      const { data: orgs } = await supabase.from('organizations').select('id, name, master_id');
+      const orgsList = orgs || [];
+      setOrgsCount(orgsList.length);
+      const grouped: Record<string, any[]> = {};
+      orgsList.forEach((o: any) => {
+        const key = o.master_id || '__none__';
+        (grouped[key] = grouped[key] || []).push(o);
+      });
+      setOrgsByMaster(grouped);
+
+      let q = supabase.from('orders').select('created_at, total, organization_id').neq('status', 'cancelled');
+      if (periodStart) q = q.gte('created_at', periodStart.toISOString());
+      const { data: ords } = await q.limit(5000);
+      setOrders((ords as any) || []);
+    } catch (e: any) {
+      console.error(e);
+    }
+    setKpiLoading(false);
+  };
+
+  useEffect(() => { loadKpis(); }, [period]);
+
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((s, o) => s + Number(o.total || 0), 0);
+
+  const chartData = useMemo(() => {
+    const days = period === '7d' ? 7 : period === '30d' ? 30 : 30;
+    const map: Record<string, { date: string; pedidos: number; receita: number }> = {};
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+      const key = d.toISOString().slice(0, 10);
+      map[key] = { date: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }), pedidos: 0, receita: 0 };
+    }
+    orders.forEach(o => {
+      const key = o.created_at.slice(0, 10);
+      if (map[key]) {
+        map[key].pedidos += 1;
+        map[key].receita += Number(o.total || 0);
+      }
+    });
+    return Object.values(map);
+  }, [orders, period]);
+
+  const masterRanking = useMemo(() => {
+    return masters.map(m => {
+      const orgIds = new Set((orgsByMaster[m.id] || []).map(o => o.id));
+      const lojas = orgIds.size;
+      const pedidos = orders.filter(o => orgIds.has(o.organization_id));
+      return {
+        id: m.id,
+        email: m.email,
+        lojas,
+        pedidos: pedidos.length,
+        receita: pedidos.reduce((s, o) => s + Number(o.total || 0), 0),
+      };
+    }).sort((a, b) => b.receita - a.receita);
+  }, [masters, orgsByMaster, orders]);
 
   const load = async () => {
     setLoading(true);
@@ -112,6 +188,85 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
 
   return (
     <div className="px-4 space-y-5">
+      {/* === KPI Dashboard === */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-bold text-base flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" /> Visão Geral
+          </h2>
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
+            {(['7d', '30d', 'all'] as const).map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {p === '7d' ? '7 dias' : p === '30d' ? '30 dias' : 'Tudo'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <KpiCard icon={<Crown className="w-4 h-4" />} label="Masters" value={masters.length} color="primary" />
+          <KpiCard icon={<Store className="w-4 h-4" />} label="Lojas" value={orgsCount} color="accent" />
+          <KpiCard icon={<ShoppingBag className="w-4 h-4" />} label="Pedidos" value={kpiLoading ? '…' : totalOrders} color="primary" />
+          <KpiCard icon={<DollarSign className="w-4 h-4" />} label="Receita" value={kpiLoading ? '…' : formatCurrency(totalRevenue)} color="success" />
+        </div>
+
+        {period !== 'all' && (
+          <div className="kiosk-card p-4">
+            <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" /> Crescimento de Pedidos
+            </h3>
+            <div className="h-48 -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="gradPedidos" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
+                  <Area type="monotone" dataKey="pedidos" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#gradPedidos)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        <div className="kiosk-card p-4">
+          <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-accent" /> Ranking de Masters
+          </h3>
+          {masterRanking.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">Nenhum master cadastrado ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {masterRanking.slice(0, 10).map((m, i) => (
+                <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                    i === 0 ? 'bg-yellow-500/20 text-yellow-500' :
+                    i === 1 ? 'bg-gray-400/20 text-gray-300' :
+                    i === 2 ? 'bg-orange-700/30 text-orange-400' :
+                    'bg-muted text-muted-foreground'
+                  }`}>
+                    {i + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold truncate">{m.email}</p>
+                    <p className="text-[10px] text-muted-foreground">{m.lojas} loja(s) · {m.pedidos} pedido(s)</p>
+                  </div>
+                  <p className="text-xs font-bold text-success">{formatCurrency(m.receita)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+
       <div className="kiosk-card p-5 space-y-4 border-2 border-primary/30">
         <h3 className="font-bold text-base flex items-center gap-2">
           <Crown className="w-5 h-5 text-primary" /> Cadastrar Novo Master Admin
@@ -189,3 +344,19 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
 };
 
 export default SuperAdminPanel;
+
+const KpiCard = ({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: 'primary' | 'accent' | 'success' }) => {
+  const colorClass = color === 'success' ? 'text-success bg-success/15 border-success/30'
+    : color === 'accent' ? 'text-accent bg-accent/15 border-accent/30'
+    : 'text-primary bg-primary/15 border-primary/30';
+  return (
+    <div className="kiosk-card p-3 space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+        <span className={`w-7 h-7 rounded-lg border flex items-center justify-center ${colorClass}`}>{icon}</span>
+      </div>
+      <p className="text-lg font-black truncate">{value}</p>
+    </div>
+  );
+};
+

@@ -416,6 +416,104 @@ const Home = () => {
         </div>
       </section>
 
+      {/* === 3b. TECNOLOGIA VISUAL === */}
+      <section id="tecnologia" className="py-10 md:py-16 border-t border-white/5">
+        <div className="max-w-7xl mx-auto px-5">
+          <div data-reveal className="text-center max-w-3xl mx-auto">
+            <span className="text-xs font-bold uppercase tracking-widest text-emerald">Tecnologia Visual</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Infraestrutura <span className="grad-text">de ponta</span> para o seu restaurante
+            </h2>
+            <p className="mt-4 text-white/60">
+              Arquitetura em nuvem, dados isolados por loja e operação resiliente mesmo em redes instáveis.
+            </p>
+          </div>
+
+          <div data-reveal className="mt-8 md:mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { icon: <Cpu className="w-6 h-6 text-emerald" />, t: 'Cloud Native', d: 'Servidores escaláveis, atualizações automáticas e zero infra para você.' },
+              { icon: <ShieldCheck className="w-6 h-6 text-emerald" />, t: 'RLS Multi-Tenant', d: 'Isolamento real por loja com Row Level Security em cada consulta.' },
+              { icon: <Wifi className="w-6 h-6 text-emerald" />, t: 'Resiliência 4G', d: 'Em caso de queda da internet, o roteador 4G de backup mantém você online.' },
+              { icon: <Layers className="w-6 h-6 text-emerald" />, t: 'Realtime', d: 'Pedidos, status e cardápio sincronizados ao vivo entre totem, cozinha e gerente.' },
+            ].map((f, i) => (
+              <div key={i} className="glass rounded-2xl p-5">
+                <div className="w-12 h-12 rounded-xl bg-emerald/10 border border-emerald/20 grid place-items-center mb-3">
+                  {f.icon}
+                </div>
+                <h3 className="text-white font-bold">{f.t}</h3>
+                <p className="text-white/60 text-sm mt-1 leading-relaxed">{f.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* === 3c. IA 24/7 === */}
+      <section id="ia" className="py-10 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+        <div className="max-w-7xl mx-auto px-5">
+          <div className="grid lg:grid-cols-2 gap-10 items-center">
+            <div data-reveal>
+              <span className="text-xs font-bold uppercase tracking-widest text-orange">Suporte com IA 24/7</span>
+              <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+                Assistente inteligente <span className="grad-text">sempre disponível</span>
+              </h2>
+              <p className="mt-5 text-white/70 leading-relaxed">
+                Tire dúvidas sobre o sistema, configure a sua loja e resolva imprevistos a qualquer hora,
+                direto pelo balão flutuante presente em todas as telas do painel.
+              </p>
+              <ul className="mt-6 space-y-3">
+                {[
+                  { i: <BrainCircuit className="w-5 h-5 text-orange" />, t: 'IA treinada no Vision Mídia' },
+                  { i: <Sparkles className="w-5 h-5 text-orange" />, t: 'Respostas em segundos, em português' },
+                  { i: <Bot className="w-5 h-5 text-orange" />, t: 'Disponível 24 horas, 7 dias por semana' },
+                  { i: <Headphones className="w-5 h-5 text-orange" />, t: 'Fallback para atendimento humano via WhatsApp' },
+                ].map((x, i) => (
+                  <li key={i} className="flex items-center gap-3 text-white/80">
+                    <span className="w-9 h-9 rounded-lg bg-orange/10 border border-orange/20 grid place-items-center flex-shrink-0">
+                      {x.i}
+                    </span>
+                    <span className="text-sm md:text-base">{x.t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div data-reveal className="relative">
+              <div className="absolute -inset-6 -z-10 bg-gradient-to-tr from-orange/20 via-transparent to-emerald/10 blur-3xl rounded-full" />
+              <div className="glass rounded-3xl p-6 md:p-8 border-orange/20 neon-orange">
+                <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/10">
+                  <div className="w-11 h-11 rounded-full bg-gradient-to-br from-orange to-emerald grid place-items-center">
+                    <Bot className="w-6 h-6 text-black" />
+                  </div>
+                  <div>
+                    <p className="text-white font-bold">Assistente Vision</p>
+                    <p className="text-[11px] text-emerald flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald animate-pulse" /> Online agora
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div className="bg-white/5 rounded-2xl rounded-tl-sm p-3 text-sm text-white/85 max-w-[85%]">
+                    Olá! Como ativo a emissão de Nota Fiscal na minha loja?
+                  </div>
+                  <div className="bg-orange/15 border border-orange/25 rounded-2xl rounded-tr-sm p-3 text-sm text-white/90 max-w-[90%] ml-auto">
+                    Vá em <b>Painel &gt; Fiscal</b>, ative o toggle e preencha CNPJ, CSC e Token da SEFAZ. ✨
+                  </div>
+                  <div className="bg-white/5 rounded-2xl rounded-tl-sm p-3 text-sm text-white/85 max-w-[85%]">
+                    Perfeito, obrigado!
+                  </div>
+                </div>
+                <div className="mt-5 flex items-center gap-2 bg-black/40 border border-white/10 rounded-full px-4 py-2.5">
+                  <input disabled placeholder="Pergunte qualquer coisa..." className="bg-transparent text-sm text-white/60 flex-1 outline-none" />
+                  <Sparkles className="w-4 h-4 text-orange" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
       {/* === 4. CTA FINAL === */}
       <section id="contato" className="py-10 md:py-20 border-t border-white/5 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-orange/10 via-transparent to-emerald/10" />

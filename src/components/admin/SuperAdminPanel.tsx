@@ -344,3 +344,19 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
 };
 
 export default SuperAdminPanel;
+
+const KpiCard = ({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: string | number; color: 'primary' | 'accent' | 'success' }) => {
+  const colorClass = color === 'success' ? 'text-success bg-success/15 border-success/30'
+    : color === 'accent' ? 'text-accent bg-accent/15 border-accent/30'
+    : 'text-primary bg-primary/15 border-primary/30';
+  return (
+    <div className="kiosk-card p-3 space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</span>
+        <span className={`w-7 h-7 rounded-lg border flex items-center justify-center ${colorClass}`}>{icon}</span>
+      </div>
+      <p className="text-lg font-black truncate">{value}</p>
+    </div>
+  );
+};
+

@@ -17,6 +17,7 @@ import CouponsPanel from '@/components/admin/CouponsPanel';
 import LoyaltyPanel from '@/components/admin/LoyaltyPanel';
 import StorageUsageCard from '@/components/admin/StorageUsageCard';
 import MasterRecoveryPinCard from '@/components/admin/MasterRecoveryPinCard';
+import MercadoPagoCard from '@/components/admin/MercadoPagoCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

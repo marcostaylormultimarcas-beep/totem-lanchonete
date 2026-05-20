@@ -11,6 +11,8 @@ import OrdersPanel from '@/components/admin/OrdersPanel';
 import DashboardPanel from '@/components/admin/DashboardPanel';
 import MasterPanel from '@/components/admin/MasterPanel';
 import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
+import PlansMatrixPanel from '@/components/admin/PlansMatrixPanel';
+import FeatureGate from '@/components/FeatureGate';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';
@@ -61,7 +63,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'settings' | 'fiscal' | 'admins' | 'super'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -629,6 +631,7 @@ const AdminPage = () => {
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+          { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
         ].filter(t => {
           const tier = currentAdmin?.tier;
@@ -646,8 +649,19 @@ const AdminPage = () => {
 
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
-      {tab === 'coupons' && <CouponsPanel organizationId={activeOrgId} />}
-      {tab === 'loyalty' && <LoyaltyPanel organizationId={activeOrgId} />}
+      {tab === 'coupons' && (
+        <FeatureGate feature="coupons" label="Cupons de Desconto">
+          <CouponsPanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
+      {tab === 'loyalty' && (
+        <FeatureGate feature="loyalty" label="Programa de Fidelidade">
+          <LoyaltyPanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
+      {tab === 'plans' && currentAdmin?.tier === 'super' && (
+        <PlansMatrixPanel />
+      )}
       {tab === 'super' && currentAdmin?.tier === 'super' && (
         <SuperAdminPanel currentUserId={currentAdmin.id} />
       )}

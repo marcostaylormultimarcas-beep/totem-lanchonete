@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CreditCard, Lock, Loader2, Save, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { CreditCard, Lock, Loader2, Save, ShieldCheck, Eye, EyeOff, Plug, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -17,6 +17,31 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
   const [clientId, setClientId] = useState('');
   const [publicKey, setPublicKey] = useState('');
   const [stored, setStored] = useState({ access_token: '', client_id: '', public_key: '' });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const payload: any = {};
+    if (accessToken.trim()) payload.access_token = accessToken.trim();
+    else payload.organization_id = organizationId;
+    const { data, error } = await supabase.functions.invoke('mercadopago-test-token', { body: payload });
+    if (error) {
+      setTestResult({ ok: false, msg: 'Token inválido' });
+      toast.error('Token inválido');
+    } else if ((data as any)?.ok) {
+      const acc = (data as any).account || {};
+      const who = acc.nickname || acc.email || acc.id || 'conta MP';
+      setTestResult({ ok: true, msg: `Conexão bem-sucedida (${who})` });
+      toast.success('Conexão bem-sucedida com o Mercado Pago');
+    } else {
+      const msg = (data as any)?.error || 'Token inválido';
+      setTestResult({ ok: false, msg });
+      toast.error(msg);
+    }
+    setTesting(false);
+  };
 
   const load = async () => {
     setLoading(true);

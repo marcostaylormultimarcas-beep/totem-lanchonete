@@ -79,6 +79,9 @@ const AdminPage = () => {
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          manageStock: Boolean(p.manage_stock),
+          stockQuantity: Number(p.stock_quantity ?? 0),
+          lowStockThreshold: Number(p.low_stock_threshold ?? 5),
         })));
       }
     };
@@ -286,6 +289,7 @@ const AdminPage = () => {
     name: '', price: '', category: 'hamburgueres' as string,
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
+    manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
   });
 
   // Carrega sessão atual e contexto do admin
@@ -425,7 +429,7 @@ const AdminPage = () => {
 
 
   const resetForm = () => {
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '' });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -437,6 +441,9 @@ const AdminPage = () => {
       extras: p.extras.map(e => `${e.name}:${e.price}`).join(', '),
       ingredients: (p.ingredients || []).join('\n'),
       description: p.description || '',
+      manageStock: Boolean(p.manageStock),
+      stockQuantity: String(p.stockQuantity ?? 0),
+      lowStockThreshold: String(p.lowStockThreshold ?? 5),
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -478,12 +485,16 @@ const AdminPage = () => {
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
+      manage_stock: form.manageStock,
+      stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
+      low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
     };
 
     if (editingProduct) {
       await supabase.from('products').update(dbPayload).eq('id', editingProduct.id);
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
+        manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -496,6 +507,9 @@ const AdminPage = () => {
           isCombo: data.is_combo || false,
           ingredients: ((data as any).ingredients as string[]) || [],
           description: (data as any).description || '',
+          manageStock: Boolean((data as any).manage_stock),
+          stockQuantity: Number((data as any).stock_quantity ?? 0),
+          lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
         }]);
       }
     }
@@ -721,6 +735,28 @@ const AdminPage = () => {
                   className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary resize-y"
                 />
               </div>
+
+              {/* Estoque */}
+              <div className="kiosk-card p-3 space-y-2 bg-muted/30 border border-border">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.manageStock} onChange={e => setForm({ ...form, manageStock: e.target.checked })} className="w-4 h-4 accent-primary" />
+                  <span className="text-sm font-semibold">📦 Controlar estoque deste produto</span>
+                </label>
+                {form.manageStock && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Em estoque</label>
+                      <input type="number" min="0" value={form.stockQuantity} onChange={e => setForm({ ...form, stockQuantity: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground mb-1 block">Alerta abaixo de</label>
+                      <input type="number" min="0" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">Quando um pedido é criado, a quantidade é debitada automaticamente.</p>
+              </div>
+
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>
@@ -745,6 +781,12 @@ const AdminPage = () => {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm truncate">{p.name}</p>
                         <p className="text-primary font-bold text-sm">{formatCurrency(p.price)}</p>
+                        {p.manageStock && (
+                          <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-destructive' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-accent' : 'text-muted-foreground'}`}>
+                            📦 {p.stockQuantity ?? 0} em estoque
+                            {(p.stockQuantity ?? 0) <= 0 ? ' · esgotado' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? ' · baixo' : ''}
+                          </p>
+                        )}
                       </div>
                       <button onClick={() => editProduct(p)} className="p-2 text-muted-foreground hover:text-primary"><Pencil className="w-5 h-5" /></button>
                       <button onClick={() => deleteProduct(p.id)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="w-5 h-5" /></button>

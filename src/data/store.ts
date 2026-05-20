@@ -9,7 +9,11 @@ export interface Product {
   isCombo?: boolean;
   ingredients?: string[];
   description?: string;
+  manageStock?: boolean;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
 }
+
 
 export interface CartItem {
   id: string;

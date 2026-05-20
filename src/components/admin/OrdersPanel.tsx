@@ -18,6 +18,9 @@ interface Order {
   total: number;
   status: string;
   created_at: string;
+  nfe_status?: string;
+  nfe_numero?: string;
+  nfe_url?: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {

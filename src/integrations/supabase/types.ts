@@ -443,7 +443,10 @@ export type Database = {
           id: string
           instagram_url: string
           mp_access_token: string
+          mp_access_token_secret_id: string | null
+          mp_client_id_secret_id: string | null
           mp_public_key: string
+          mp_public_key_secret_id: string | null
           mp_terminal_id: string
           organization_id: string | null
           pay_card_online_enabled: boolean
@@ -474,7 +477,10 @@ export type Database = {
           id?: string
           instagram_url?: string
           mp_access_token?: string
+          mp_access_token_secret_id?: string | null
+          mp_client_id_secret_id?: string | null
           mp_public_key?: string
+          mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
@@ -505,7 +511,10 @@ export type Database = {
           id?: string
           instagram_url?: string
           mp_access_token?: string
+          mp_access_token_secret_id?: string | null
+          mp_client_id_secret_id?: string | null
           mp_public_key?: string
+          mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
@@ -554,6 +563,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_mp_access_token_internal: { Args: { _org: string }; Returns: string }
+      get_mp_credentials_for_owner: { Args: { _org: string }; Returns: Json }
       grant_loyalty_stamp: { Args: { _order_id: string }; Returns: Json }
       has_role: {
         Args: {
@@ -565,6 +576,16 @@ export type Database = {
       is_master_admin: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: { _uid: string }; Returns: boolean }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
+      set_mp_credentials: {
+        Args: {
+          _access_token: string
+          _client_id: string
+          _org: string
+          _public_key: string
+        }
+        Returns: Json
+      }
+      user_owns_org: { Args: { _org: string; _uid: string }; Returns: boolean }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

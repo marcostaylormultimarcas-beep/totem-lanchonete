@@ -1,0 +1,1 @@
+REVOKE ALL ON FUNCTION public.decrement_stock_from_order() FROM PUBLIC, anon, authenticated;

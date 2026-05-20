@@ -14,6 +14,7 @@ import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
+import SupportChat from "@/components/support/SupportChat";
 
 const APP_VERSION = "1.0.1";
 
@@ -55,6 +56,7 @@ const App = () => {
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            <SupportChat />
           </OrgProvider>
         </BrowserRouter>
       </TooltipProvider>

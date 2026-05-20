@@ -1,0 +1,14 @@
+
+ALTER TABLE public.settings
+  ADD COLUMN IF NOT EXISTS fiscal_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS fiscal_cnpj text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS fiscal_razao text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS fiscal_ie text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS fiscal_regime text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS fiscal_csc text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS fiscal_token text NOT NULL DEFAULT '';
+
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS nfe_status text NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS nfe_numero text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS nfe_url text NOT NULL DEFAULT '';

@@ -151,6 +151,9 @@ export type Database = {
           delivery_reference: string | null
           id: string
           items: Json
+          nfe_numero: string
+          nfe_status: string
+          nfe_url: string
           order_number: string
           order_type: string
           organization_id: string | null
@@ -168,6 +171,9 @@ export type Database = {
           delivery_reference?: string | null
           id?: string
           items?: Json
+          nfe_numero?: string
+          nfe_status?: string
+          nfe_url?: string
           order_number: string
           order_type?: string
           organization_id?: string | null
@@ -185,6 +191,9 @@ export type Database = {
           delivery_reference?: string | null
           id?: string
           items?: Json
+          nfe_numero?: string
+          nfe_status?: string
+          nfe_url?: string
           order_number?: string
           order_type?: string
           organization_id?: string | null
@@ -421,6 +430,13 @@ export type Database = {
           cover_image: string | null
           created_at: string
           delivery_enabled: boolean
+          fiscal_cnpj: string
+          fiscal_csc: string
+          fiscal_enabled: boolean
+          fiscal_ie: string
+          fiscal_razao: string
+          fiscal_regime: string
+          fiscal_token: string
           id: string
           instagram_url: string
           mp_access_token: string
@@ -445,6 +461,13 @@ export type Database = {
           cover_image?: string | null
           created_at?: string
           delivery_enabled?: boolean
+          fiscal_cnpj?: string
+          fiscal_csc?: string
+          fiscal_enabled?: boolean
+          fiscal_ie?: string
+          fiscal_razao?: string
+          fiscal_regime?: string
+          fiscal_token?: string
           id?: string
           instagram_url?: string
           mp_access_token?: string
@@ -469,6 +492,13 @@ export type Database = {
           cover_image?: string | null
           created_at?: string
           delivery_enabled?: boolean
+          fiscal_cnpj?: string
+          fiscal_csc?: string
+          fiscal_enabled?: boolean
+          fiscal_ie?: string
+          fiscal_razao?: string
+          fiscal_regime?: string
+          fiscal_token?: string
           id?: string
           instagram_url?: string
           mp_access_token?: string

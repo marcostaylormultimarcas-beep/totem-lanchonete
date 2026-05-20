@@ -188,6 +188,85 @@ const SuperAdminPanel = ({ currentUserId }: { currentUserId?: string }) => {
 
   return (
     <div className="px-4 space-y-5">
+      {/* === KPI Dashboard === */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-bold text-base flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-primary" /> Visão Geral
+          </h2>
+          <div className="flex gap-1 bg-muted rounded-lg p-1">
+            {(['7d', '30d', 'all'] as const).map(p => (
+              <button key={p} onClick={() => setPeriod(p)}
+                className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-colors ${period === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                {p === '7d' ? '7 dias' : p === '30d' ? '30 dias' : 'Tudo'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <KpiCard icon={<Crown className="w-4 h-4" />} label="Masters" value={masters.length} color="primary" />
+          <KpiCard icon={<Store className="w-4 h-4" />} label="Lojas" value={orgsCount} color="accent" />
+          <KpiCard icon={<ShoppingBag className="w-4 h-4" />} label="Pedidos" value={kpiLoading ? '…' : totalOrders} color="primary" />
+          <KpiCard icon={<DollarSign className="w-4 h-4" />} label="Receita" value={kpiLoading ? '…' : formatCurrency(totalRevenue)} color="success" />
+        </div>
+
+        {period !== 'all' && (
+          <div className="kiosk-card p-4">
+            <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" /> Crescimento de Pedidos
+            </h3>
+            <div className="h-48 -ml-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="gradPedidos" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+                  <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
+                  <Area type="monotone" dataKey="pedidos" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#gradPedidos)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        <div className="kiosk-card p-4">
+          <h3 className="font-bold text-sm mb-3 flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-accent" /> Ranking de Masters
+          </h3>
+          {masterRanking.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-4">Nenhum master cadastrado ainda.</p>
+          ) : (
+            <div className="space-y-2">
+              {masterRanking.slice(0, 10).map((m, i) => (
+                <div key={m.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/40">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                    i === 0 ? 'bg-yellow-500/20 text-yellow-500' :
+                    i === 1 ? 'bg-gray-400/20 text-gray-300' :
+                    i === 2 ? 'bg-orange-700/30 text-orange-400' :
+                    'bg-muted text-muted-foreground'
+                  }`}>
+                    {i + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold truncate">{m.email}</p>
+                    <p className="text-[10px] text-muted-foreground">{m.lojas} loja(s) · {m.pedidos} pedido(s)</p>
+                  </div>
+                  <p className="text-xs font-bold text-success">{formatCurrency(m.receita)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+
       <div className="kiosk-card p-5 space-y-4 border-2 border-primary/30">
         <h3 className="font-bold text-base flex items-center gap-2">
           <Crown className="w-5 h-5 text-primary" /> Cadastrar Novo Master Admin

@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { getBackendFunctionUrl } from '@/lib/backend';
-import { Plus, Trash2, Pause, Play, Loader2, Crown, Mail, KeyRound } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Crown, Mail, KeyRound, Store, ShoppingBag, DollarSign, TrendingUp, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { formatCurrency } from '@/data/store';
 
 interface MasterAdmin {
   id: string;

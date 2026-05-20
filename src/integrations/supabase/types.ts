@@ -141,6 +141,39 @@ export type Database = {
           },
         ]
       }
+      features: {
+        Row: {
+          category: string
+          created_at: string
+          description: string
+          id: string
+          key: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          key: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string
+          id?: string
+          key?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_cancellations: {
         Row: {
           cancelled_by: string | null
@@ -259,6 +292,7 @@ export type Database = {
           name: string
           owner_id: string | null
           paused: boolean
+          plan_id: string | null
           slug: string
           updated_at: string
         }
@@ -269,6 +303,7 @@ export type Database = {
           name: string
           owner_id?: string | null
           paused?: boolean
+          plan_id?: string | null
           slug: string
           updated_at?: string
         }
@@ -279,10 +314,19 @@ export type Database = {
           name?: string
           owner_id?: string | null
           paused?: boolean
+          plan_id?: string | null
           slug?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "organizations_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pedidos_carimbados: {
         Row: {
@@ -302,6 +346,126 @@ export type Database = {
           order_id?: string
           organization_id?: string
           telefone_cliente?: string
+        }
+        Relationships: []
+      }
+      plan_audit_log: {
+        Row: {
+          action: string
+          actor_email: string
+          actor_id: string | null
+          created_at: string
+          feature_id: string | null
+          feature_key: string
+          feature_name: string
+          id: string
+          new_value: boolean | null
+          plan_id: string | null
+          plan_key: string
+          plan_name: string
+          previous_value: boolean | null
+        }
+        Insert: {
+          action: string
+          actor_email?: string
+          actor_id?: string | null
+          created_at?: string
+          feature_id?: string | null
+          feature_key?: string
+          feature_name?: string
+          id?: string
+          new_value?: boolean | null
+          plan_id?: string | null
+          plan_key?: string
+          plan_name?: string
+          previous_value?: boolean | null
+        }
+        Update: {
+          action?: string
+          actor_email?: string
+          actor_id?: string | null
+          created_at?: string
+          feature_id?: string | null
+          feature_key?: string
+          feature_name?: string
+          id?: string
+          new_value?: boolean | null
+          plan_id?: string | null
+          plan_key?: string
+          plan_name?: string
+          previous_value?: boolean | null
+        }
+        Relationships: []
+      }
+      plan_features: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          feature_id: string
+          id: string
+          plan_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          feature_id: string
+          id?: string
+          plan_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          feature_id?: string
+          id?: string
+          plan_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_features_feature_id_fkey"
+            columns: ["feature_id"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_features_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          key: string
+          name: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string
+          id?: string
+          key: string
+          name: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          key?: string
+          name?: string
+          sort_order?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -628,6 +792,10 @@ export type Database = {
       }
       is_master_admin: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: { _uid: string }; Returns: boolean }
+      org_has_feature: {
+        Args: { _feature_key: string; _org: string }
+        Returns: boolean
+      }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
       restock_from_items: {
         Args: { _items: Json; _org: string }
@@ -640,6 +808,10 @@ export type Database = {
           _org: string
           _public_key: string
         }
+        Returns: Json
+      }
+      toggle_plan_feature: {
+        Args: { _enabled: boolean; _feature_id: string; _plan_id: string }
         Returns: Json
       }
       user_owns_org: { Args: { _org: string; _uid: string }; Returns: boolean }

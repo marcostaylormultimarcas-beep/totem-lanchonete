@@ -79,6 +79,9 @@ const AdminPage = () => {
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          manageStock: Boolean(p.manage_stock),
+          stockQuantity: Number(p.stock_quantity ?? 0),
+          lowStockThreshold: Number(p.low_stock_threshold ?? 5),
         })));
       }
     };
@@ -286,6 +289,7 @@ const AdminPage = () => {
     name: '', price: '', category: 'hamburgueres' as string,
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
+    manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
   });
 
   // Carrega sessão atual e contexto do admin
@@ -425,7 +429,7 @@ const AdminPage = () => {
 
 
   const resetForm = () => {
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '' });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -437,6 +441,9 @@ const AdminPage = () => {
       extras: p.extras.map(e => `${e.name}:${e.price}`).join(', '),
       ingredients: (p.ingredients || []).join('\n'),
       description: p.description || '',
+      manageStock: Boolean(p.manageStock),
+      stockQuantity: String(p.stockQuantity ?? 0),
+      lowStockThreshold: String(p.lowStockThreshold ?? 5),
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -478,12 +485,16 @@ const AdminPage = () => {
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
+      manage_stock: form.manageStock,
+      stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
+      low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
     };
 
     if (editingProduct) {
       await supabase.from('products').update(dbPayload).eq('id', editingProduct.id);
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
+        manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -496,6 +507,9 @@ const AdminPage = () => {
           isCombo: data.is_combo || false,
           ingredients: ((data as any).ingredients as string[]) || [],
           description: (data as any).description || '',
+          manageStock: Boolean((data as any).manage_stock),
+          stockQuantity: Number((data as any).stock_quantity ?? 0),
+          lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
         }]);
       }
     }

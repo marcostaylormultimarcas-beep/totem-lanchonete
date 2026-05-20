@@ -826,6 +826,10 @@ const AdminPage = () => {
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
 
+          {currentAdmin?.tier === 'master' && <MasterRecoveryPinCard userId={currentAdmin.id} />}
+
+
+
           <div className="kiosk-card p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">

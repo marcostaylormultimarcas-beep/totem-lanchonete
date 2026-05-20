@@ -16,6 +16,7 @@ import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
 import CouponsPanel from '@/components/admin/CouponsPanel';
 import LoyaltyPanel from '@/components/admin/LoyaltyPanel';
 import StorageUsageCard from '@/components/admin/StorageUsageCard';
+import MasterRecoveryPinCard from '@/components/admin/MasterRecoveryPinCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -825,6 +826,10 @@ const AdminPage = () => {
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
+
+          {currentAdmin?.tier === 'master' && <MasterRecoveryPinCard userId={currentAdmin.id} />}
+
+
 
           <div className="kiosk-card p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">

@@ -81,6 +81,14 @@ export interface StoreSettings {
   payPixEnabled?: boolean;
   payCardTerminalEnabled?: boolean;
   payCardOnlineEnabled?: boolean;
+  /** Configurações Fiscais (NFe) — UI apenas, sem integração SEFAZ */
+  fiscalEnabled?: boolean;
+  fiscalCnpj?: string;
+  fiscalRazao?: string;
+  fiscalIe?: string;
+  fiscalRegime?: string;
+  fiscalCsc?: string;
+  fiscalToken?: string;
 }
 
 // localStorage functions removed — all data now lives in Supabase

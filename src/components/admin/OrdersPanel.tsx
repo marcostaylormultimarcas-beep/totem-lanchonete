@@ -18,6 +18,9 @@ interface Order {
   total: number;
   status: string;
   created_at: string;
+  nfe_status?: string;
+  nfe_numero?: string;
+  nfe_url?: string;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
@@ -156,12 +159,21 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
         return (
           <div key={order.id} className="kiosk-card p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-primary font-black text-lg">#{order.order_number}</span>
-                <span className={`ml-2 text-xs font-bold px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
                   {cfg.label}
                 </span>
+                {order.nfe_status && order.nfe_status !== 'none' && (
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border flex items-center gap-1 ${
+                    order.nfe_status === 'issued' ? 'bg-success/15 text-success border-success/30'
+                    : order.nfe_status === 'pending' ? 'bg-accent/15 text-accent border-accent/30'
+                    : 'bg-destructive/15 text-destructive border-destructive/30'
+                  }`}>
+                    📄 NFe {order.nfe_status === 'issued' ? `#${order.nfe_numero || '—'}` : order.nfe_status}
+                  </span>
+                )}
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(order.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

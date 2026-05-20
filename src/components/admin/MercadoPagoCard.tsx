@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CreditCard, Lock, Loader2, Save, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { CreditCard, Lock, Loader2, Save, ShieldCheck, Eye, EyeOff, Plug, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -17,6 +17,31 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
   const [clientId, setClientId] = useState('');
   const [publicKey, setPublicKey] = useState('');
   const [stored, setStored] = useState({ access_token: '', client_id: '', public_key: '' });
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+    const payload: any = {};
+    if (accessToken.trim()) payload.access_token = accessToken.trim();
+    else payload.organization_id = organizationId;
+    const { data, error } = await supabase.functions.invoke('mercadopago-test-token', { body: payload });
+    if (error) {
+      setTestResult({ ok: false, msg: 'Token inválido' });
+      toast.error('Token inválido');
+    } else if ((data as any)?.ok) {
+      const acc = (data as any).account || {};
+      const who = acc.nickname || acc.email || acc.id || 'conta MP';
+      setTestResult({ ok: true, msg: `Conexão bem-sucedida (${who})` });
+      toast.success('Conexão bem-sucedida com o Mercado Pago');
+    } else {
+      const msg = (data as any)?.error || 'Token inválido';
+      setTestResult({ ok: false, msg });
+      toast.error(msg);
+    }
+    setTesting(false);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -85,12 +110,30 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
 
           <div className="space-y-2">
             <label className="text-xs text-muted-foreground block">Access Token (produção)</label>
-            <input
-              type="password" autoComplete="off" placeholder="APP_USR-..."
-              value={accessToken} onChange={e => setAccessToken(e.target.value)}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
-              maxLength={300}
-            />
+            <div className="flex gap-2">
+              <input
+                type="password" autoComplete="off" placeholder="APP_USR-..."
+                value={accessToken} onChange={e => { setAccessToken(e.target.value); setTestResult(null); }}
+                className="flex-1 min-w-0 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono"
+                maxLength={300}
+              />
+              <button
+                type="button"
+                onClick={testConnection}
+                disabled={testing || (!accessToken.trim() && !stored.access_token)}
+                title="Testar conexão com o Mercado Pago"
+                className="touch-btn px-3 py-3 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-1.5 disabled:opacity-50 text-xs font-semibold whitespace-nowrap"
+              >
+                {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
+                Testar
+              </button>
+            </div>
+            {testResult && (
+              <div className={`text-[11px] flex items-center gap-1.5 ${testResult.ok ? 'text-success' : 'text-destructive'}`}>
+                {testResult.ok ? <CheckCircle2 className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
+                {testResult.msg}
+              </div>
+            )}
             <label className="text-xs text-muted-foreground block">Client ID</label>
             <input
               type="text" autoComplete="off" placeholder="1234567890123456"

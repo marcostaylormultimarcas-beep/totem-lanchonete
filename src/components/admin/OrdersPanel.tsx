@@ -89,11 +89,11 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     return () => { supabase.removeChannel(channel); };
   }, [filter, organizationId]);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: string, motivo?: string) => {
     const { toast } = await import('sonner');
 
     if (status === 'cancelled') {
-      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id });
+      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id, _motivo: motivo ?? null });
       const res: any = data;
       if (error) {
         console.error('cancelar_pedido', error);
@@ -101,12 +101,30 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         return;
       }
       if (res?.ok) {
-        toast.success(res.already_cancelled ? 'Pedido já estava cancelado.' : 'Pedido cancelado e estoque devolvido.');
+        if (res.already_cancelled) {
+          toast.success('Pedido já estava cancelado.');
+        } else {
+          const ref = res.status_reembolso === 'auto_eligible'
+            ? ' Reembolso automático elegível.'
+            : res.status_reembolso === 'manual_required'
+              ? ' Reembolso requer aprovação manual.'
+              : '';
+          toast.success('Pedido cancelado e estoque devolvido.' + ref);
+        }
       } else {
-        toast.error(res?.reason === 'forbidden' ? 'Sem permissão para cancelar este pedido.' : 'Falha ao cancelar.');
+        const msg: Record<string, string> = {
+          forbidden: 'Sem permissão para cancelar este pedido.',
+          admin_only: 'A partir do preparo, apenas o lojista pode cancelar.',
+          reason_required: 'Informe um motivo (mín. 3 caracteres).',
+          status_locked: 'Pedido não pode mais ser cancelado pelo cliente.',
+          already_delivered: 'Pedido já entregue — não pode ser cancelado.',
+          not_found: 'Pedido não encontrado.',
+        };
+        toast.error(msg[res?.reason] || 'Falha ao cancelar.');
       }
       return;
     }
+
 
     await supabase.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered') {

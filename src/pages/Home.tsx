@@ -300,7 +300,56 @@ const Home = () => {
       </section>
 
       {/* === 2. RECURSOS (3 CARDS) === */}
+      {/* === 1b. DIFERENCIAIS DE AUTORIDADE === */}
+      <section id="diferenciais" className="py-10 md:py-16 border-t border-white/5 relative">
+        <div className="max-w-7xl mx-auto px-5">
+          <div data-reveal className="text-center max-w-2xl mx-auto">
+            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que Vision Mídia</span>
+            <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              Gestão híbrida com <span className="grad-text">blindagem de receita</span>
+            </h2>
+            <p className="mt-4 text-white/70">
+              Totem físico e app online operando como um único sistema — com regras de servidor que protegem cada pedido.
+            </p>
+          </div>
+
+          <div className="mt-8 md:mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {[
+              {
+                icon: <Repeat className="w-6 h-6" />,
+                title: 'Gestão Híbrida',
+                desc: 'Sincronização em tempo real entre totem físico e app online.',
+              },
+              {
+                icon: <PackageCheck className="w-6 h-6" />,
+                title: 'Estoque Blindado',
+                desc: 'Gestão de estoque atômica com reserva imediata para evitar vendas duplicadas.',
+              },
+              {
+                icon: <Lock className="w-6 h-6" />,
+                title: 'Anti-Fraude',
+                desc: 'Sistema com bloqueio de cancelamento pós-preparo e logs de auditoria para proteger seu faturamento.',
+              },
+              {
+                icon: <Undo2 className="w-6 h-6" />,
+                title: 'Reembolso Inteligente',
+                desc: 'Estorno automático para desistências imediatas (5 min) e aprovação segura para pedidos em preparo.',
+              },
+            ].map((f, i) => (
+              <div key={i} data-reveal className="card-premium p-6 flex flex-col">
+                <div className="w-12 h-12 rounded-xl bg-orange/10 border border-orange/40 text-orange grid place-items-center mb-4">
+                  {f.icon}
+                </div>
+                <h3 className="text-white font-bold text-lg">{f.title}</h3>
+                <p className="text-slate-300/80 text-sm mt-2 leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section id="recursos" className="py-10 md:py-16 border-t border-white/5">
+
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Recursos Principais</span>

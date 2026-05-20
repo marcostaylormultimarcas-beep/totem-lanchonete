@@ -145,6 +145,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
       setGeneratedNumber(num);
 
       const orderItems = cart.map(item => ({
+        product_id: item.product.id,
         name: item.product.name,
         quantity: item.quantity,
         price: item.product.price,

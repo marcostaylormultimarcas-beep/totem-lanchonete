@@ -21,7 +21,17 @@ interface Order {
   nfe_status?: string;
   nfe_numero?: string;
   nfe_url?: string;
+  status_reembolso?: string;
 }
+
+const REFUND_LABEL: Record<string, { label: string; cls: string }> = {
+  none: { label: '', cls: '' },
+  auto_eligible: { label: '💸 Reembolso automático', cls: 'bg-success/15 text-success border-success/30' },
+  manual_required: { label: '⚠️ Reembolso manual (aprovar)', cls: 'bg-accent/15 text-accent border-accent/30' },
+  processing: { label: '⏳ Reembolso em processamento', cls: 'bg-blue-400/15 text-blue-400 border-blue-400/30' },
+  refunded: { label: '✅ Reembolsado', cls: 'bg-success/15 text-success border-success/30' },
+  failed: { label: '❌ Reembolso falhou', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+};
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   pending: { label: '⏳ Pendente', color: 'text-accent', bg: 'bg-accent/20' },

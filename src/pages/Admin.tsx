@@ -781,6 +781,12 @@ const AdminPage = () => {
                       <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm truncate">{p.name}</p>
                         <p className="text-primary font-bold text-sm">{formatCurrency(p.price)}</p>
+                        {p.manageStock && (
+                          <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-destructive' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-accent' : 'text-muted-foreground'}`}>
+                            📦 {p.stockQuantity ?? 0} em estoque
+                            {(p.stockQuantity ?? 0) <= 0 ? ' · esgotado' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? ' · baixo' : ''}
+                          </p>
+                        )}
                       </div>
                       <button onClick={() => editProduct(p)} className="p-2 text-muted-foreground hover:text-primary"><Pencil className="w-5 h-5" /></button>
                       <button onClick={() => deleteProduct(p.id)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="w-5 h-5" /></button>

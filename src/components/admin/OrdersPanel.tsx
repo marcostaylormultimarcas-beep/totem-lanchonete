@@ -21,7 +21,17 @@ interface Order {
   nfe_status?: string;
   nfe_numero?: string;
   nfe_url?: string;
+  status_reembolso?: string;
 }
+
+const REFUND_LABEL: Record<string, { label: string; cls: string }> = {
+  none: { label: '', cls: '' },
+  auto_eligible: { label: '💸 Reembolso automático', cls: 'bg-success/15 text-success border-success/30' },
+  manual_required: { label: '⚠️ Reembolso manual (aprovar)', cls: 'bg-accent/15 text-accent border-accent/30' },
+  processing: { label: '⏳ Reembolso em processamento', cls: 'bg-blue-400/15 text-blue-400 border-blue-400/30' },
+  refunded: { label: '✅ Reembolsado', cls: 'bg-success/15 text-success border-success/30' },
+  failed: { label: '❌ Reembolso falhou', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+};
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   pending: { label: '⏳ Pendente', color: 'text-accent', bg: 'bg-accent/20' },
@@ -79,11 +89,11 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     return () => { supabase.removeChannel(channel); };
   }, [filter, organizationId]);
 
-  const updateStatus = async (id: string, status: string) => {
+  const updateStatus = async (id: string, status: string, motivo?: string) => {
     const { toast } = await import('sonner');
 
     if (status === 'cancelled') {
-      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id });
+      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id, _motivo: motivo ?? null });
       const res: any = data;
       if (error) {
         console.error('cancelar_pedido', error);
@@ -91,12 +101,30 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         return;
       }
       if (res?.ok) {
-        toast.success(res.already_cancelled ? 'Pedido já estava cancelado.' : 'Pedido cancelado e estoque devolvido.');
+        if (res.already_cancelled) {
+          toast.success('Pedido já estava cancelado.');
+        } else {
+          const ref = res.status_reembolso === 'auto_eligible'
+            ? ' Reembolso automático elegível.'
+            : res.status_reembolso === 'manual_required'
+              ? ' Reembolso requer aprovação manual.'
+              : '';
+          toast.success('Pedido cancelado e estoque devolvido.' + ref);
+        }
       } else {
-        toast.error(res?.reason === 'forbidden' ? 'Sem permissão para cancelar este pedido.' : 'Falha ao cancelar.');
+        const msg: Record<string, string> = {
+          forbidden: 'Sem permissão para cancelar este pedido.',
+          admin_only: 'A partir do preparo, apenas o lojista pode cancelar.',
+          reason_required: 'Informe um motivo (mín. 3 caracteres).',
+          status_locked: 'Pedido não pode mais ser cancelado pelo cliente.',
+          already_delivered: 'Pedido já entregue — não pode ser cancelado.',
+          not_found: 'Pedido não encontrado.',
+        };
+        toast.error(msg[res?.reason] || 'Falha ao cancelar.');
       }
       return;
     }
+
 
     await supabase.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered') {
@@ -191,6 +219,11 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                     📄 NFe {order.nfe_status === 'issued' ? `#${order.nfe_numero || '—'}` : order.nfe_status}
                   </span>
                 )}
+                {order.status === 'cancelled' && order.status_reembolso && order.status_reembolso !== 'none' && REFUND_LABEL[order.status_reembolso] && (
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${REFUND_LABEL[order.status_reembolso].cls}`}>
+                    {REFUND_LABEL[order.status_reembolso].label}
+                  </span>
+                )}
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(order.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -257,8 +290,20 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                   </button>
                 )}
                 <button
-                  onClick={() => { if (confirm('Cancelar este pedido?')) updateStatus(order.id, 'cancelled'); }}
+                  onClick={() => {
+                    const postPrep = order.status === 'preparing' || order.status === 'out_for_delivery';
+                    if (postPrep) {
+                      const motivo = prompt('Motivo do cancelamento (obrigatório a partir do preparo):');
+                      if (!motivo || motivo.trim().length < 3) return;
+                      updateStatus(order.id, 'cancelled', motivo.trim());
+                    } else {
+                      if (confirm('Cancelar este pedido? O estoque será devolvido.')) {
+                        updateStatus(order.id, 'cancelled');
+                      }
+                    }
+                  }}
                   className="touch-btn py-2 px-3 rounded-lg text-sm bg-destructive/20 text-destructive border border-destructive/30 flex items-center justify-center gap-1"
+                  title="Cancelar pedido"
                 >
                   <XCircle className="w-4 h-4" />
                 </button>

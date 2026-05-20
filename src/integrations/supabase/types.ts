@@ -141,11 +141,45 @@ export type Database = {
           },
         ]
       }
+      order_cancellations: {
+        Row: {
+          cancelled_by: string | null
+          cancelled_by_kind: string
+          created_at: string
+          id: string
+          order_id: string
+          organization_id: string
+          previous_status: string
+          reason: string
+        }
+        Insert: {
+          cancelled_by?: string | null
+          cancelled_by_kind: string
+          created_at?: string
+          id?: string
+          order_id: string
+          organization_id: string
+          previous_status: string
+          reason?: string
+        }
+        Update: {
+          cancelled_by?: string | null
+          cancelled_by_kind?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          organization_id?: string
+          previous_status?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string
           customer_name: string
           customer_phone: string
+          data_reembolso: string | null
           delivery_address: string | null
           delivery_recipient: string | null
           delivery_reference: string | null
@@ -158,6 +192,7 @@ export type Database = {
           order_type: string
           organization_id: string | null
           status: string
+          status_reembolso: string
           total: number
           updated_at: string
           user_id: string | null
@@ -166,6 +201,7 @@ export type Database = {
           created_at?: string
           customer_name: string
           customer_phone?: string
+          data_reembolso?: string | null
           delivery_address?: string | null
           delivery_recipient?: string | null
           delivery_reference?: string | null
@@ -178,6 +214,7 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           status?: string
+          status_reembolso?: string
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -186,6 +223,7 @@ export type Database = {
           created_at?: string
           customer_name?: string
           customer_phone?: string
+          data_reembolso?: string | null
           delivery_address?: string | null
           delivery_recipient?: string | null
           delivery_reference?: string | null
@@ -198,6 +236,7 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           status?: string
+          status_reembolso?: string
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -573,7 +612,10 @@ export type Database = {
     }
     Functions: {
       auto_cancel_stale_pending_orders: { Args: never; Returns: number }
-      cancelar_pedido: { Args: { _order_id: string }; Returns: Json }
+      cancelar_pedido: {
+        Args: { _motivo?: string; _order_id: string }
+        Returns: Json
+      }
       get_mp_access_token_internal: { Args: { _org: string }; Returns: string }
       get_mp_credentials_for_owner: { Args: { _org: string }; Returns: Json }
       grant_loyalty_stamp: { Args: { _order_id: string }; Returns: Json }

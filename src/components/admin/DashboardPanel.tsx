@@ -78,10 +78,10 @@ const DashboardPanel = ({ organizationId }: { organizationId: string | null }) =
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false })
         .limit(8),
-      supabase.from('products')
+      (supabase.from('products') as any)
         .select('id, name, stock_quantity, low_stock_threshold, manage_stock')
         .eq('organization_id', organizationId)
-        .eq('manage_stock' as any, true),
+        .eq('manage_stock', true),
     ]);
 
     setTodayOrders((today as any) || []);

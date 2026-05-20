@@ -34,7 +34,7 @@ export function usePlanFeatures() {
       if (!active) return;
       setPlanKey((plan as any)?.key ?? null);
       const set = new Set<string>();
-      (rows as PlanFeatureRow[] | null)?.forEach(r => {
+      (rows as unknown as PlanFeatureRow[] | null)?.forEach(r => {
         if (r.enabled && r.features?.key) set.add(r.features.key);
       });
       setEnabled(set);

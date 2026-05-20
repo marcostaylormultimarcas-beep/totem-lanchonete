@@ -80,12 +80,29 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   }, [filter, organizationId]);
 
   const updateStatus = async (id: string, status: string) => {
+    const { toast } = await import('sonner');
+
+    if (status === 'cancelled') {
+      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id });
+      const res: any = data;
+      if (error) {
+        console.error('cancelar_pedido', error);
+        toast.error('Não foi possível cancelar o pedido.');
+        return;
+      }
+      if (res?.ok) {
+        toast.success(res.already_cancelled ? 'Pedido já estava cancelado.' : 'Pedido cancelado e estoque devolvido.');
+      } else {
+        toast.error(res?.reason === 'forbidden' ? 'Sem permissão para cancelar este pedido.' : 'Falha ao cancelar.');
+      }
+      return;
+    }
+
     await supabase.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered') {
       const order = orders.find(o => o.id === id);
       const { data, error } = await supabase.rpc('grant_loyalty_stamp' as any, { _order_id: id });
       const res: any = data;
-      const { toast } = await import('sonner');
       if (error) {
         console.error('grant_loyalty_stamp', error);
       } else if (res?.ok) {

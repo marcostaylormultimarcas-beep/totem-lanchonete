@@ -219,6 +219,11 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                     📄 NFe {order.nfe_status === 'issued' ? `#${order.nfe_numero || '—'}` : order.nfe_status}
                   </span>
                 )}
+                {order.status === 'cancelled' && order.status_reembolso && order.status_reembolso !== 'none' && REFUND_LABEL[order.status_reembolso] && (
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${REFUND_LABEL[order.status_reembolso].cls}`}>
+                    {REFUND_LABEL[order.status_reembolso].label}
+                  </span>
+                )}
               </div>
               <span className="text-xs text-muted-foreground">
                 {new Date(order.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}

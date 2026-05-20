@@ -285,8 +285,20 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                   </button>
                 )}
                 <button
-                  onClick={() => { if (confirm('Cancelar este pedido?')) updateStatus(order.id, 'cancelled'); }}
+                  onClick={() => {
+                    const postPrep = order.status === 'preparing' || order.status === 'out_for_delivery';
+                    if (postPrep) {
+                      const motivo = prompt('Motivo do cancelamento (obrigatório a partir do preparo):');
+                      if (!motivo || motivo.trim().length < 3) return;
+                      updateStatus(order.id, 'cancelled', motivo.trim());
+                    } else {
+                      if (confirm('Cancelar este pedido? O estoque será devolvido.')) {
+                        updateStatus(order.id, 'cancelled');
+                      }
+                    }
+                  }}
                   className="touch-btn py-2 px-3 rounded-lg text-sm bg-destructive/20 text-destructive border border-destructive/30 flex items-center justify-center gap-1"
+                  title="Cancelar pedido"
                 >
                   <XCircle className="w-4 h-4" />
                 </button>

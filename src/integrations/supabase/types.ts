@@ -572,6 +572,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_cancel_stale_pending_orders: { Args: never; Returns: number }
+      cancelar_pedido: { Args: { _order_id: string }; Returns: Json }
       get_mp_access_token_internal: { Args: { _org: string }; Returns: string }
       get_mp_credentials_for_owner: { Args: { _org: string }; Returns: Json }
       grant_loyalty_stamp: { Args: { _order_id: string }; Returns: Json }
@@ -585,6 +587,10 @@ export type Database = {
       is_master_admin: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: { _uid: string }; Returns: boolean }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
+      restock_from_items: {
+        Args: { _items: Json; _org: string }
+        Returns: undefined
+      }
       set_mp_credentials: {
         Args: {
           _access_token: string

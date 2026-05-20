@@ -109,6 +109,13 @@ const AdminPage = () => {
           payPixEnabled: (data as any).pay_pix_enabled !== false,
           payCardTerminalEnabled: Boolean((data as any).pay_card_terminal_enabled),
           payCardOnlineEnabled: Boolean((data as any).pay_card_online_enabled),
+          fiscalEnabled: Boolean((data as any).fiscal_enabled),
+          fiscalCnpj: (data as any).fiscal_cnpj || '',
+          fiscalRazao: (data as any).fiscal_razao || '',
+          fiscalIe: (data as any).fiscal_ie || '',
+          fiscalRegime: (data as any).fiscal_regime || '',
+          fiscalCsc: (data as any).fiscal_csc || '',
+          fiscalToken: (data as any).fiscal_token || '',
         });
       } else {
         setSettingsId(null);

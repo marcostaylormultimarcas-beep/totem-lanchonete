@@ -276,10 +276,13 @@ export type Database = {
           image: string
           ingredients: Json
           is_combo: boolean | null
+          low_stock_threshold: number
+          manage_stock: boolean
           name: string
           organization_id: string | null
           price: number
           removable_ingredients: Json
+          stock_quantity: number
           updated_at: string
         }
         Insert: {
@@ -291,10 +294,13 @@ export type Database = {
           image?: string
           ingredients?: Json
           is_combo?: boolean | null
+          low_stock_threshold?: number
+          manage_stock?: boolean
           name: string
           organization_id?: string | null
           price?: number
           removable_ingredients?: Json
+          stock_quantity?: number
           updated_at?: string
         }
         Update: {
@@ -306,10 +312,13 @@ export type Database = {
           image?: string
           ingredients?: Json
           is_combo?: boolean | null
+          low_stock_threshold?: number
+          manage_stock?: boolean
           name?: string
           organization_id?: string | null
           price?: number
           removable_ingredients?: Json
+          stock_quantity?: number
           updated_at?: string
         }
         Relationships: [

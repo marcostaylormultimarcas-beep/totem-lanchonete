@@ -135,19 +135,22 @@ export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const [ready, setReady] = useState(false);
   const [found, setFound] = useState<boolean | null>(null);
 
+  const [paused, setPaused] = useState(false);
+
   useEffect(() => {
     const sync = async () => {
       setReady(false);
       setFound(null);
+      setPaused(false);
       await lockToSlug(normalizedSlug || null);
-      // Verifica se o slug realmente existe como organização (kiosk público)
       if (normalizedSlug) {
         const { data } = await supabase
           .from('organizations')
-          .select('id')
+          .select('id, paused')
           .eq('slug', normalizedSlug)
           .maybeSingle();
         setFound(!!data?.id);
+        setPaused(!!data?.paused);
       } else {
         setFound(false);
       }
@@ -163,9 +166,21 @@ export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   if (!ready) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
   }
-  // Slug não corresponde a nenhuma loja → redireciona para a Landing dinâmica /loja/:username/home
   if (found === false && normalizedSlug) {
     return <Navigate to={`/loja/${normalizedSlug}/home`} replace />;
+  }
+  if (paused) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 bg-background text-center">
+        <div className="max-w-md space-y-4">
+          <div className="text-6xl">🚧</div>
+          <h1 className="text-2xl font-black">Estabelecimento indisponível</h1>
+          <p className="text-muted-foreground text-sm">
+            Esta loja está temporariamente pausada. Tente novamente mais tarde ou entre em contato com o estabelecimento.
+          </p>
+        </div>
+      </div>
+    );
   }
   if (!orgId) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;

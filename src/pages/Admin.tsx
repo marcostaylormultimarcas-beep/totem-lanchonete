@@ -1082,6 +1082,85 @@ const AdminPage = () => {
           </button>
         </div>
       )}
+
+      {tab === 'fiscal' && (
+        <div className="px-4 space-y-4">
+          <div className="kiosk-card p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${settings.fiscalEnabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+                <FileText className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm">Emissão de Nota Fiscal Eletrônica (NFC-e)</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {settings.fiscalEnabled
+                    ? 'Ativa. Os pedidos poderão registrar status fiscal.'
+                    : 'Desativada. Ative para preencher os dados fiscais da sua loja.'}
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={Boolean(settings.fiscalEnabled)}
+                onClick={async () => {
+                  const updated = { ...settings, fiscalEnabled: !settings.fiscalEnabled };
+                  setSettings(updated);
+                  await saveSettingsToDb(updated);
+                }}
+                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${settings.fiscalEnabled ? 'bg-primary' : 'bg-muted'}`}
+              >
+                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings.fiscalEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <h3 className="font-bold flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" /> Dados da Empresa</h3>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">CNPJ</label>
+              <input placeholder="00.000.000/0000-00" value={settings.fiscalCnpj || ''} onChange={e => setSettings({ ...settings, fiscalCnpj: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Razão Social</label>
+              <input placeholder="Razão Social da empresa" value={settings.fiscalRazao || ''} onChange={e => setSettings({ ...settings, fiscalRazao: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={120} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Inscrição Estadual</label>
+              <input placeholder="Ex: 123.456.789.000" value={settings.fiscalIe || ''} onChange={e => setSettings({ ...settings, fiscalIe: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Regime Tributário</label>
+              <select value={settings.fiscalRegime || ''} onChange={e => setSettings({ ...settings, fiscalRegime: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+                <option value="">Selecione...</option>
+                <option value="simples">Simples Nacional</option>
+                <option value="presumido">Lucro Presumido</option>
+                <option value="real">Lucro Real</option>
+                <option value="mei">MEI</option>
+              </select>
+            </div>
+          </div>
+
+          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+            <h3 className="font-bold flex items-center gap-2"><KeyRound className="w-5 h-5 text-accent" /> Credenciais SEFAZ</h3>
+            <p className="text-[11px] text-muted-foreground">CSC e Token de Integração fornecidos pela SEFAZ do seu estado. Usados na futura integração de emissão automática.</p>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">CSC (Código de Segurança do Contribuinte)</label>
+              <input placeholder="Ex: ABCD1234..." value={settings.fiscalCsc || ''} onChange={e => setSettings({ ...settings, fiscalCsc: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={120} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Token de Integração</label>
+              <input placeholder="Cole o token da SEFAZ aqui" value={settings.fiscalToken || ''} onChange={e => setSettings({ ...settings, fiscalToken: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={200} />
+            </div>
+            <div className="bg-accent/10 border border-accent/30 rounded-lg p-3 text-[11px] text-accent">
+              ⚠️ Interface preparada. A emissão automática junto à SEFAZ será habilitada em uma próxima atualização.
+            </div>
+          </div>
+
+          <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
+            <Save className="w-4 h-4" /> Salvar Configurações Fiscais
+          </button>
+        </div>
+      )}
+
       <footer className="mt-8 pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
     </div>
   );

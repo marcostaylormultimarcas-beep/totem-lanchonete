@@ -218,6 +218,7 @@ const Index = () => {
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
+      bairroId, bairroNome, bairroTaxa, bairroTempo,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));

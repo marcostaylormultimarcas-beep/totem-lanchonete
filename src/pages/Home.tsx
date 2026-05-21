@@ -629,7 +629,7 @@ const Home = () => {
             </div>
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Expansão Regional</span>
             <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
-              Seja um Licenciado <span className="grad-text">Vision Mídia Digital</span>
+              Seja um Licenciado <span className="grad-text">{BRAND_LEGAL_NAME}</span>
             </h2>
             <p className="mt-5 text-white/70 max-w-2xl mx-auto">
               Expanda seus negócios tornando-se um parceiro regional. Tenha acesso a um painel exclusivo

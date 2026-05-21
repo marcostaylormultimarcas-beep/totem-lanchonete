@@ -144,6 +144,7 @@ const Index = () => {
     setCart([]);
     setCustomerName('');
     setCustomerPhone('');
+    setCustomerCpf('');
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');

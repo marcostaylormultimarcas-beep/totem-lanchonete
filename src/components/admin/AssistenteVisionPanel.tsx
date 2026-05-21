@@ -172,48 +172,42 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     setFeedback(prev => ({ ...prev, [key]: { action, reason } }));
   };
 
-  const handleConfirmDispatch = async (s: Suggestion, msgOverride?: string) => {
-    const msg = msgOverride ?? s.template;
-    if (!s.audience.length) {
-      toast.info('Esta sugestão não tem lista de envio. Use o link manual.');
-      return;
-    }
-    const first = s.audience[0];
-    const personalizada = msg.replace(/\[Nome\]/g, first.name.split(' ')[0]);
-    window.open(buildWaUrl(first.phone, personalizada), '_blank');
-    await registerFeedback(s.key, 'sent', '', msg);
-    toast.success(`Mensagem aberta no WhatsApp para ${first.name}. Total na fila: ${s.audience.length}`);
-  };
-
   const extractCoupon = (msg: string) => {
     const m = msg.match(/\*([A-Z0-9]{3,20})\*/) || msg.match(/cupom[^A-Z0-9]*([A-Z0-9]{3,20})/i);
     return m ? m[1].toUpperCase() : '';
   };
 
-  const handleApprove = async (s: Suggestion) => {
-    await registerFeedback(s.key, 'approved');
+  const dispatchInternalNotification = async (s: Suggestion, msgOverride?: string) => {
+    const msg = (msgOverride ?? s.template ?? '').trim();
+    if (!organizationId) return;
 
-    // Dispara notificações in-app para a audiência (sininho do cliente + push interno)
-    if (s.audience.length && organizationId) {
-      const phones = s.audience.map(a => a.phone).filter(Boolean);
-      const { data, error } = await supabase.rpc('notify_audience' as any, {
-        _org: organizationId,
-        _suggestion_key: s.key,
-        _title: s.title,
-        _body: s.template ? s.template.replace(/\*/g, '') : s.description,
-        _cta_route: '',
-        _coupon: extractCoupon(s.template || ''),
-        _phones: phones,
-      });
-      if (error) {
-        toast.success('Sugestão aprovada (notificações não enviadas: ' + error.message + ')');
-      } else {
-        toast.success(`Sugestão aprovada — ${data ?? 0} notificações enviadas`);
-      }
-    } else {
+    if (!s.audience.length) {
+      // Sugestão sem audiência (ex.: iniciar parceria) — apenas marca como aprovada
+      await registerFeedback(s.key, 'approved', '', msg);
       toast.success('Sugestão aprovada — marcada como em andamento');
+      return;
     }
+
+    const phones = s.audience.map(a => a.phone).filter(Boolean);
+    const { data, error } = await supabase.rpc('notify_audience' as any, {
+      _org: organizationId,
+      _suggestion_key: s.key,
+      _title: s.title,
+      _body: msg ? msg.replace(/\*/g, '') : s.description,
+      _cta_route: '',
+      _coupon: extractCoupon(msg),
+      _phones: phones,
+    });
+
+    if (error) {
+      toast.error('Falha ao enviar notificações: ' + error.message);
+      return;
+    }
+
+    await registerFeedback(s.key, 'sent', '', msg);
+    toast.success(`✅ ${data ?? phones.length} notificação${(data ?? phones.length) !== 1 ? 'ões' : ''} interna${(data ?? phones.length) !== 1 ? 's' : ''} enviada${(data ?? phones.length) !== 1 ? 's' : ''} no app do cliente`);
   };
+
 
 
   const submitDismiss = async () => {

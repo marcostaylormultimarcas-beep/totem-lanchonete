@@ -15,6 +15,7 @@ interface Order {
   order_type: string;
   customer_cpf?: string;
   nfe_url?: string;
+  delivery_code?: string;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -105,6 +106,13 @@ const OrderHistory = () => {
                       <p key={i}>{item.quantity}x {item.name}</p>
                     ))}
                     {order.items.length > 3 && <p className="text-xs">+{order.items.length - 3} itens</p>}
+                  </div>
+                )}
+                {order.order_type === 'delivery' && order.delivery_code && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                  <div className="bg-orange-600/10 border border-orange-600/40 rounded-xl p-3">
+                    <p className="text-[11px] uppercase tracking-wider text-orange-400/80 font-bold mb-1">🔐 Código de entrega</p>
+                    <p className="text-orange-400 font-black text-3xl tracking-[0.4em] text-center">{order.delivery_code}</p>
+                    <p className="text-[11px] text-muted-foreground text-center mt-1">Informe ao entregador apenas ao receber o pedido</p>
                   </div>
                 )}
                 {order.customer_cpf && (

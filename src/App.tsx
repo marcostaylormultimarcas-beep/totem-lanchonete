@@ -14,6 +14,8 @@ import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import FiscalReceipt from "./pages/FiscalReceipt.tsx";
+import EntregadorLogin from "./pages/EntregadorLogin.tsx";
+import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 
@@ -55,6 +57,9 @@ const App = () => {
               <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/fiscal/:orderId" element={<FiscalReceipt />} />
+              <Route path="/entregador/login" element={<EntregadorLogin />} />
+              <Route path="/entregador/login/:slug" element={<EntregadorLogin />} />
+              <Route path="/entregador" element={<EntregadorDashboard />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

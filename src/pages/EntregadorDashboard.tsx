@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound } from 'lucide-react';
+import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin';
@@ -35,9 +35,11 @@ const EntregadorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
-  const knownReadyIds = useRef<Set<string>>(new Set());
+  const [tab, setTab] = useState<'pendentes' | 'historico'>('pendentes');
+  const knownIds = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
+  const [, forceRender] = useState(0);
 
   useEffect(() => {
     if (!session) navigate('/entregador/login');
@@ -62,7 +64,7 @@ const EntregadorDashboard = () => {
     } catch {}
   }, []);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (silent = false) => {
     if (!session) return;
     const { data, error } = await supabase.rpc('entregador_orders' as any, {
       _entregador_id: session.id,
@@ -78,29 +80,59 @@ const EntregadorDashboard = () => {
       return;
     }
     const list: DeliveryOrder[] = res.orders || [];
-    // detect new ready/out_for_delivery orders
-    const currentReady = list.filter(o => o.status === 'preparing' || o.status === 'out_for_delivery' || o.status === 'ready');
-    const newOnes = currentReady.filter(o => !knownReadyIds.current.has(o.id));
-    if (newOnes.length > 0 && knownReadyIds.current.size > 0) {
+    // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro
+    const ativos = list.filter(o => o.status !== 'delivered');
+    const novos = ativos.filter(o => !knownIds.current.has(o.id));
+    if (!silent && novos.length > 0 && knownIds.current.size > 0) {
       playAlert();
-      toast.success(`🛵 Novo pedido para entrega: #${newOnes[0].order_number}`, { duration: 6000 });
+      toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
     }
-    currentReady.forEach(o => knownReadyIds.current.add(o.id));
+    ativos.forEach(o => knownIds.current.add(o.id));
     setOrders(list);
     setLoading(false);
   }, [session, navigate, playAlert]);
 
+  // Carga inicial + polling de segurança
   useEffect(() => {
-    fetchOrders();
-    const i = setInterval(fetchOrders, 7000);
+    fetchOrders(true);
+    const i = setInterval(() => fetchOrders(false), 15000);
     return () => clearInterval(i);
   }, [fetchOrders]);
+
+  // Realtime: escuta mudanças na tabela orders da loja do entregador
+  useEffect(() => {
+    if (!session) return;
+    const ch = supabase
+      .channel(`entregador-${session.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `organization_id=eq.${session.organization_id}`,
+        },
+        (payload: any) => {
+          const row = payload.new || payload.old;
+          // Só reage se o pedido envolve este entregador (atribuição nova ou pedido já existente dele)
+          if (
+            payload.new?.entregador_id === session.id ||
+            payload.old?.entregador_id === session.id
+          ) {
+            fetchOrders(false);
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [session, fetchOrders]);
 
   const handleUnlockSound = async () => {
     try {
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       await audioCtxRef.current.resume();
       unlocked.current = true;
+      forceRender(x => x + 1);
       toast.success('Alertas sonoros ativados.');
     } catch { toast.error('Não foi possível ativar o som.'); }
   };
@@ -137,7 +169,9 @@ const EntregadorDashboard = () => {
     }
     toast.success('✅ Entrega confirmada!');
     setCodeInputs(p => ({ ...p, [orderId]: '' }));
-    fetchOrders();
+    // Move imediatamente para o Histórico via update otimista
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
+    fetchOrders(true);
   };
 
   const handleLogout = () => {
@@ -148,7 +182,9 @@ const EntregadorDashboard = () => {
   if (!session) return null;
 
   const pendentes = orders.filter(o => o.status !== 'delivered');
-  const entregues = orders.filter(o => o.status === 'delivered');
+  const entregues = orders
+    .filter(o => o.status === 'delivered')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -160,13 +196,41 @@ const EntregadorDashboard = () => {
           <p className="text-xs text-slate-400">{session.org_name}</p>
           <p className="font-bold truncate">{session.name}</p>
         </div>
-        <button onClick={fetchOrders} className="p-2 text-slate-400 hover:text-orange-500" title="Atualizar">
+        <button onClick={() => fetchOrders(false)} className="p-2 text-slate-400 hover:text-orange-500" title="Atualizar">
           <RefreshCw className="w-5 h-5" />
         </button>
         <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-destructive" title="Sair">
           <LogOut className="w-5 h-5" />
         </button>
       </header>
+
+      {/* Tabs */}
+      <div className="max-w-2xl mx-auto px-4 pt-4">
+        <div className="grid grid-cols-2 bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
+          <button
+            onClick={() => setTab('pendentes')}
+            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+              tab === 'pendentes' ? 'bg-orange-600 text-white' : 'text-slate-400'
+            }`}
+          >
+            <Clock className="w-4 h-4" /> Pendentes
+            {pendentes.length > 0 && (
+              <span className="bg-white/20 text-[10px] font-black px-1.5 py-0.5 rounded-full">{pendentes.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => setTab('historico')}
+            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+              tab === 'historico' ? 'bg-orange-600 text-white' : 'text-slate-400'
+            }`}
+          >
+            <History className="w-4 h-4" /> Histórico
+            {entregues.length > 0 && (
+              <span className="bg-white/20 text-[10px] font-black px-1.5 py-0.5 rounded-full">{entregues.length}</span>
+            )}
+          </button>
+        </div>
+      </div>
 
       <main className="max-w-2xl mx-auto px-4 py-4 space-y-4">
         {!unlocked.current && (
@@ -182,98 +246,115 @@ const EntregadorDashboard = () => {
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : pendentes.length === 0 ? (
-          <div className="text-center py-16 text-slate-500">
-            <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
-            <p>Nenhum pedido atribuído no momento.</p>
-            <p className="text-xs mt-1">Aguarde — você será notificado quando chegar um novo.</p>
-          </div>
+        ) : tab === 'pendentes' ? (
+          pendentes.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
+              <p>Nenhum pedido atribuído no momento.</p>
+              <p className="text-xs mt-1">Aguarde — você será notificado quando chegar um novo.</p>
+            </div>
+          ) : (
+            pendentes.map(o => {
+              const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
+              return (
+                <div key={o.id} className="bg-slate-900 border border-orange-600/30 rounded-2xl p-4 space-y-3 shadow-[0_0_20px_-10px_rgba(234,88,12,0.5)]">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-orange-500 font-black text-lg">#{o.order_number}</span>
+                      <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${st.cls}`}>{st.label}</span>
+                    </div>
+                    <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
+                  </div>
+
+                  <div className="text-sm space-y-1.5">
+                    <p className="flex items-center gap-2"><Package className="w-3.5 h-3.5 text-slate-500" /> <span className="font-semibold">{o.customer_name}</span></p>
+                    {o.customer_phone && (
+                      <a href={`tel:${o.customer_phone.replace(/\D/g,'')}`} className="flex items-center gap-2 text-blue-400 hover:underline">
+                        <Phone className="w-3.5 h-3.5" /> {o.customer_phone}
+                      </a>
+                    )}
+                    {o.delivery_address && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="flex items-start gap-2 text-blue-400 hover:underline"
+                      >
+                        <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> <span>{o.delivery_address}</span>
+                      </a>
+                    )}
+                    {o.delivery_reference && <p className="text-xs text-slate-400 pl-5">🧭 {o.delivery_reference}</p>}
+                    {o.delivery_recipient && <p className="text-xs text-slate-400 pl-5">👥 Recebe: {o.delivery_recipient}</p>}
+                  </div>
+
+                  {Array.isArray(o.items) && o.items.length > 0 && (
+                    <div className="text-xs space-y-0.5 bg-slate-800/60 rounded-lg p-2 text-slate-300">
+                      {o.items.map((it: any, i: number) => (
+                        <p key={i}>{it.quantity}x {it.name}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-800 space-y-2">
+                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-orange-500" />
+                      Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        pattern="\d{4}"
+                        maxLength={4}
+                        placeholder="0000"
+                        value={codeInputs[o.id] || ''}
+                        onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
+                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
+                      />
+                      <button
+                        onClick={() => handleConfirm(o.id)}
+                        disabled={confirming === o.id || (codeInputs[o.id] || '').length !== 4}
+                        className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
+                        {confirming === o.id ? '...' : 'OK'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )
         ) : (
-          pendentes.map(o => {
-            const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
-            return (
-              <div key={o.id} className="bg-slate-900 border border-orange-600/30 rounded-2xl p-4 space-y-3 shadow-[0_0_20px_-10px_rgba(234,88,12,0.5)]">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-orange-500 font-black text-lg">#{o.order_number}</span>
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${st.cls}`}>{st.label}</span>
-                  </div>
-                  <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
-                </div>
-
-                <div className="text-sm space-y-1.5">
-                  <p className="flex items-center gap-2"><Package className="w-3.5 h-3.5 text-slate-500" /> <span className="font-semibold">{o.customer_name}</span></p>
-                  {o.customer_phone && (
-                    <a href={`tel:${o.customer_phone.replace(/\D/g,'')}`} className="flex items-center gap-2 text-blue-400 hover:underline">
-                      <Phone className="w-3.5 h-3.5" /> {o.customer_phone}
-                    </a>
-                  )}
-                  {o.delivery_address && (
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}
-                      target="_blank" rel="noopener noreferrer"
-                      className="flex items-start gap-2 text-blue-400 hover:underline"
-                    >
-                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> <span>{o.delivery_address}</span>
-                    </a>
-                  )}
-                  {o.delivery_reference && <p className="text-xs text-slate-400 pl-5">🧭 {o.delivery_reference}</p>}
-                  {o.delivery_recipient && <p className="text-xs text-slate-400 pl-5">👥 Recebe: {o.delivery_recipient}</p>}
-                </div>
-
-                {Array.isArray(o.items) && o.items.length > 0 && (
-                  <div className="text-xs space-y-0.5 bg-slate-800/60 rounded-lg p-2 text-slate-300">
-                    {o.items.map((it: any, i: number) => (
-                      <p key={i}>{it.quantity}x {it.name}</p>
-                    ))}
-                  </div>
-                )}
-
-                <div className="pt-2 border-t border-slate-800 space-y-2">
-                  <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5 text-orange-500" />
-                    Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      inputMode="numeric"
-                      pattern="\d{4}"
-                      maxLength={4}
-                      placeholder="0000"
-                      value={codeInputs[o.id] || ''}
-                      onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
-                    />
-                    <button
-                      onClick={() => handleConfirm(o.id)}
-                      disabled={confirming === o.id || (codeInputs[o.id] || '').length !== 4}
-                      className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
-                    >
-                      <CheckCircle2 className="w-5 h-5" />
-                      {confirming === o.id ? '...' : 'OK'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        {entregues.length > 0 && (
-          <div className="pt-6">
-            <h2 className="text-sm font-bold text-slate-400 mb-2">Entregues recentemente</h2>
+          // Histórico
+          entregues.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <History className="w-14 h-14 mx-auto mb-3 opacity-40" />
+              <p>Nenhuma entrega concluída ainda.</p>
+              <p className="text-xs mt-1">Suas entregas finalizadas aparecerão aqui.</p>
+            </div>
+          ) : (
             <div className="space-y-2">
-              {entregues.slice(0, 10).map(o => (
-                <div key={o.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 text-sm flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold">#{o.order_number} — {o.customer_name}</p>
-                    <p className="text-xs text-slate-500">{new Date(o.created_at).toLocaleString('pt-BR')}</p>
+              {entregues.map(o => (
+                <div key={o.id} className="bg-slate-900 border border-emerald-500/20 rounded-xl p-3">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="font-black text-emerald-400">#{o.order_number}</span>
+                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                      ✓ Entregue
+                    </span>
                   </div>
-                  <span className="text-emerald-400 text-xs font-bold">✓ Entregue</span>
+                  <p className="text-sm font-semibold truncate">{o.customer_name}</p>
+                  {o.delivery_address && (
+                    <p className="text-xs text-slate-400 truncate flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> {o.delivery_address}
+                    </p>
+                  )}
+                  <div className="flex items-center justify-between mt-1.5 text-xs">
+                    <span className="text-slate-500">{new Date(o.created_at).toLocaleString('pt-BR')}</span>
+                    <span className="text-orange-500 font-bold">{formatCurrency(o.total)}</span>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          )
         )}
       </main>
     </div>

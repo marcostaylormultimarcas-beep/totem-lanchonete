@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }
@@ -17,6 +17,8 @@ interface AuditRow {
   created_at: string;
 }
 
+const SUPER_MASTER_EMAIL = 'marcostaylor2020@gmail.com';
+
 const PlansMatrixPanel = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
@@ -26,6 +28,13 @@ const PlansMatrixPanel = () => {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [tab, setTab] = useState<'grid' | 'audit'>('grid');
+  const [currentEmail, setCurrentEmail] = useState<string>('');
+
+  const canWrite = currentEmail.toLowerCase() === SUPER_MASTER_EMAIL;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentEmail(data.user?.email || ''));
+  }, []);
 
   const loadAll = async () => {
     setLoading(true);
@@ -63,6 +72,10 @@ const PlansMatrixPanel = () => {
   }, []);
 
   const toggle = async (plan: Plan, feature: Feature, current: boolean) => {
+    if (!canWrite) {
+      toast.error('Apenas o Super Master pode alterar a Matriz Global de Planos.');
+      return;
+    }
     const cellKey = `${plan.id}:${feature.id}`;
     setSavingKey(cellKey);
     // optimistic
@@ -108,6 +121,16 @@ const PlansMatrixPanel = () => {
         loading ? (
           <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
         ) : (
+          <>
+          {!canWrite && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs p-3 flex items-start gap-2">
+              <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">Modo somente leitura</p>
+                <p className="opacity-80">Apenas o Super Master ({SUPER_MASTER_EMAIL}) pode editar a Matriz Global de Funcionalidades. Você pode visualizar a configuração atual e o histórico de auditoria.</p>
+              </div>
+            </div>
+          )}
           <div className="kiosk-card p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -142,13 +165,13 @@ const PlansMatrixPanel = () => {
                               <td key={p.id} className="p-3 text-center">
                                 <button
                                   onClick={() => !busy && toggle(p, f, on)}
-                                  disabled={busy}
+                                  disabled={busy || !canWrite}
                                   className={`w-9 h-9 rounded-lg border-2 flex items-center justify-center mx-auto transition ${
                                     on
                                       ? 'bg-primary border-primary text-primary-foreground'
                                       : 'bg-muted border-border text-muted-foreground hover:border-primary/50'
-                                  } ${busy ? 'opacity-50' : ''}`}
-                                  title={on ? 'Clique para bloquear' : 'Clique para liberar'}
+                                  } ${busy ? 'opacity-50' : ''} ${!canWrite ? 'cursor-not-allowed opacity-70' : ''}`}
+                                  title={!canWrite ? 'Somente o Super Master pode editar' : (on ? 'Clique para bloquear' : 'Clique para liberar')}
                                 >
                                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (on ? <Check className="w-5 h-5" /> : <X className="w-4 h-4" />)}
                                 </button>
@@ -167,6 +190,7 @@ const PlansMatrixPanel = () => {
               Alterações são aplicadas em tempo real para todas as lojas do plano.
             </div>
           </div>
+          </>
         )
       )}
 

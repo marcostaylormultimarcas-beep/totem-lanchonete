@@ -163,6 +163,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         order_number: num,
         customer_name: customerName,
         customer_phone: customerPhone,
+        customer_cpf: customerCpf || '',
         order_type: orderType,
         delivery_address: deliveryAddress || '',
         delivery_reference: deliveryReference || '',
@@ -170,10 +171,27 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         items: orderItems,
         total,
         status: 'pending',
+        payment_method: method || '',
         user_id: session?.user?.id || null,
       }).select('id').single();
 
       if (error) throw error;
+
+      // Vincula nota fiscal ao pedido quando CPF informado
+      if (data?.id && customerCpf) {
+        const nfeUrl = `${window.location.origin}/fiscal/${data.id}`;
+        await supabase.from('orders').update({
+          nfe_url: nfeUrl,
+          nfe_status: 'issued',
+          nfe_numero: `NFE-${data.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`,
+        }).eq('id', data.id);
+
+        // Impressão automática no totem (após confirmação de pagamento)
+        setTimeout(() => {
+          try { window.open(nfeUrl, '_blank', 'noopener'); } catch {}
+        }, 800);
+      }
+
       setConfirmed(true);
       if (data) setCurrentOrderId(data.id);
     } catch (err) {

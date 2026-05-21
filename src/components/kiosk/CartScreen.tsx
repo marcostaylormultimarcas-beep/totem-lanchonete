@@ -92,6 +92,14 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
     toast.info('Cupom removido.');
   };
 
+  const goPrime = () => navigate(slug ? `/loja/${slug}/prime` : '/');
+  const primeBadge = primeStatus.active && (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black text-black"
+      style={{ background: 'linear-gradient(135deg,#f6c560,#d4881e)' }}>
+      <Crown className="w-3 h-3" /> Prime {primeStatus.sinceYear ?? ''}
+    </span>
+  );
+
   return (
     <div className="min-h-screen flex flex-col pb-40 max-w-[1200px] mx-auto">
       <div className="flex items-center gap-4 p-4 border-b border-border">
@@ -99,6 +107,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
           <ArrowLeft className="w-7 h-7" />
         </button>
         <h2 className="text-xl font-bold">Seu Pedido</h2>
+        {primeBadge}
       </div>
 
       {cart.length === 0 ? (
@@ -112,6 +121,23 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       ) : (
         <div className="flex-1 p-4 space-y-3">
           <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />
+
+          {primeCfg?.ativo && !primeStatus.active && (
+            <button onClick={goPrime}
+              className="w-full text-left rounded-xl p-3 border-2 flex items-center gap-3"
+              style={{ borderColor: '#d4a04c', background: 'linear-gradient(135deg, rgba(246,197,96,0.12), rgba(212,136,30,0.08))' }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-black flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg,#f6c560,#d4881e)' }}>
+                <Crown className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm" style={{ color: '#f4d28b' }}>Seja Vision Prime</p>
+                <p className="text-[11px] text-muted-foreground">{primeCfg.desconto_percentual}% off automático + frete grátis</p>
+              </div>
+              <Sparkles className="w-4 h-4" style={{ color: '#d4a04c' }} />
+            </button>
+          )}
+
           {cart.map(item => (
             <div key={item.id} className="kiosk-card p-4 flex items-start gap-4">
               {isImageUrl(item.product.image) ? (

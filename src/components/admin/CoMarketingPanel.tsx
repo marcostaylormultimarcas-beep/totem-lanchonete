@@ -58,6 +58,18 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
         p.org_parceira_name = map.get(p.org_parceira) as string;
       });
     }
+    // Detect transitions to 'active' to surface a toast
+    list.forEach(p => {
+      const prev = prevStatusRef.current.get(p.id);
+      if (prev && prev !== 'active' && p.status === 'active') {
+        const isOrigem = p.org_origem === organizationId;
+        const counterpart = isOrigem ? p.org_parceira_name : p.org_origem_name;
+        toast.success(`Nova parceria aceita com ${counterpart}!`, {
+          description: isOrigem ? 'Configure agora a recompensa para seu cliente.' : 'Configure a recompensa em "Minhas Parcerias".',
+        });
+      }
+      prevStatusRef.current.set(p.id, p.status);
+    });
     setParcerias(list);
     setLoading(false);
   };

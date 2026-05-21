@@ -85,6 +85,48 @@ export type Database = {
         }
         Relationships: []
       }
+      cliente_notificacoes: {
+        Row: {
+          body: string
+          clicked_at: string | null
+          coupon_code: string
+          created_at: string
+          cta_route: string
+          customer_phone: string
+          id: string
+          organization_id: string
+          read_at: string | null
+          suggestion_key: string
+          title: string
+        }
+        Insert: {
+          body?: string
+          clicked_at?: string | null
+          coupon_code?: string
+          created_at?: string
+          cta_route?: string
+          customer_phone: string
+          id?: string
+          organization_id: string
+          read_at?: string | null
+          suggestion_key?: string
+          title: string
+        }
+        Update: {
+          body?: string
+          clicked_at?: string | null
+          coupon_code?: string
+          created_at?: string
+          cta_route?: string
+          customer_phone?: string
+          id?: string
+          organization_id?: string
+          read_at?: string | null
+          suggestion_key?: string
+          title?: string
+        }
+        Relationships: []
+      }
       config_fidelidade: {
         Row: {
           ativo: boolean
@@ -1168,6 +1210,18 @@ export type Database = {
       }
       is_master_admin: { Args: { _uid: string }; Returns: boolean }
       is_super_admin: { Args: { _uid: string }; Returns: boolean }
+      notify_audience: {
+        Args: {
+          _body: string
+          _coupon: string
+          _cta_route: string
+          _org: string
+          _phones: string[]
+          _suggestion_key: string
+          _title: string
+        }
+        Returns: number
+      }
       org_has_feature: {
         Args: { _feature_key: string; _org: string }
         Returns: boolean

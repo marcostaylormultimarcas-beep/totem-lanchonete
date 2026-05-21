@@ -1,58 +1,89 @@
 import { useCallback, useEffect, useState } from 'react';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, Crown, Bot, Handshake, Bike, Clock, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import primeImg from '@/assets/superapp-prime.jpg';
 import iaImg from '@/assets/superapp-ia.jpg';
 import comktImg from '@/assets/superapp-comarketing.jpg';
+import autonomiaImg from '@/assets/superapp-autonomia.jpg';
 import logImg from '@/assets/superapp-logistica.jpg';
 import opImg from '@/assets/superapp-operacao.jpg';
 import { BRAND_NAME } from '@/config/brandConfig';
 
-const SLIDES = [
+type Slide = {
+  tag: string;
+  title: string;
+  desc: string;
+  icon: string; // Font Awesome class
+  img: string;
+  alt: string;
+  highlight?: boolean;
+  bullets?: string[];
+};
+
+const SLIDES: Slide[] = [
   {
     tag: 'Vision Prime',
-    title: 'Clube de Assinatura Premium',
-    desc: 'Receita recorrente garantida. Seus melhores clientes pagam uma mensalidade e ganham descontos, frete grátis e um badge dourado exclusivo.',
-    icon: <Crown className="w-5 h-5" />,
+    title: 'Clube de assinatura com selo Elite',
+    desc: 'Transforme seus melhores clientes em assinantes recorrentes. Receita previsível mês a mês, badge dourado exclusivo no app e benefícios automáticos.',
+    icon: 'fa-solid fa-crown',
     img: primeImg,
-    alt: 'Coroa premium dourada sobre smartphone com app de assinatura',
+    alt: 'Selo premium dourado representando o Vision Prime',
+    bullets: ['Receita recorrente', 'Badge Elite no perfil', 'Frete grátis & cashback'],
   },
   {
-    tag: 'IA de Retenção',
-    title: 'Recuperação automática via WhatsApp',
-    desc: 'A inteligência artificial identifica clientes inativos e dispara mensagens personalizadas no WhatsApp para trazê-los de volta — sem você levantar um dedo.',
-    icon: <Bot className="w-5 h-5" />,
+    tag: 'Assistente Vision IA',
+    title: 'IA que analisa seus dados e sugere ações',
+    desc: 'O Assistente Vision lê seu histórico de vendas, identifica oportunidades e gera campanhas prontas. Você só aprova com 1 clique — o disparo é nativo.',
+    icon: 'fa-solid fa-brain',
     img: iaImg,
-    alt: 'Smartphone com WhatsApp e rede neural ao fundo, automação de retenção',
+    alt: 'Inteligência artificial analisando dados de vendas em tempo real',
+    bullets: ['Análise automática de clientes', 'Sugestões em 1 clique', 'Aprenda com cada decisão'],
   },
   {
-    tag: 'Co-Marketing',
-    title: 'Rede de parcerias com cupons cruzados',
-    desc: 'Conecte sua loja a outros lojistas da sua cidade. Cada pedido finalizado gera um cupom exclusivo para o cliente usar na loja parceira — e vice-versa.',
-    icon: <Handshake className="w-5 h-5" />,
+    tag: 'Co-Marketing Hub',
+    title: 'Efeito de rede entre lojas parceiras',
+    desc: 'Conecte sua loja a parceiros estratégicos. Cada pedido finalizado gera cupons cruzados, multiplicando a base de clientes sem gastar com mídia.',
+    icon: 'fa-solid fa-handshake-angle',
     img: comktImg,
-    alt: 'Duas lojas conectadas por rede laranja trocando cupons',
+    alt: 'Rede de lojas parceiras trocando cupons em tempo real',
+    bullets: ['Cupons cruzados automáticos', 'Crescimento por rede', 'Zero custo de aquisição'],
   },
   {
-    tag: 'Logística Inteligente',
-    title: 'Dashboard do entregador & taxas por bairro',
-    desc: 'Atribua pedidos manualmente ou deixe os entregadores disputarem em tempo real. Defina taxa de entrega por bairro e confirme com código de segurança.',
-    icon: <Bike className="w-5 h-5" />,
-    img: logImg,
-    alt: 'Entregador de moto com painel de rota no smartphone à noite',
+    tag: 'Autonomia Casa Própria',
+    title: 'Infraestrutura nativa de notificações',
+    desc: `Sem depender de WhatsApp de terceiros nem de APIs pagas. O ${BRAND_NAME} entrega cada aviso pelo nosso próprio canal: Push do navegador/PWA e Central Interna (sininho) dentro do app do cliente.`,
+    icon: 'fa-solid fa-shield-halved',
+    img: autonomiaImg,
+    alt: 'Servidor próprio com sino de notificações e trilhas de luz laranja',
+    highlight: true,
+    bullets: [
+      'Push nativo (PWA + browser)',
+      'Central interna com badge',
+      'Zero dependência de WhatsApp',
+    ],
+  },
+];
+
+const OP_BENEFITS = [
+  {
+    icon: 'fa-regular fa-clock',
+    title: 'Horários Dinâmicos',
+    desc: 'Janelas por dia, pausas para almoço e botão "Fechar Agora" para emergências.',
   },
   {
-    tag: 'Gestão de Operação',
-    title: 'Horários dinâmicos & fechamento de emergência',
-    desc: 'Defina janelas de funcionamento por dia, ative pausas para almoço e tenha um botão de "Fechar Agora" para emergências. O cliente pode até agendar pedidos.',
-    icon: <Clock className="w-5 h-5" />,
-    img: opImg,
-    alt: 'Tablet com dashboard de horários da loja e relógio',
+    icon: 'fa-solid fa-route',
+    title: 'Logística Realtime',
+    desc: 'Atribuição manual ou disputa em tempo real, taxa por bairro e código de entrega.',
+  },
+  {
+    icon: 'fa-solid fa-bolt',
+    title: 'Estabilidade 24/7',
+    desc: 'Realtime nativo, cache-busting automático e infra própria — sempre no ar.',
   },
 ];
 
 const SuperAppCarousel = () => {
-  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: 'start' });
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true, align: 'start', dragFree: false });
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const scrollTo = useCallback((i: number) => emblaApi?.scrollTo(i), [emblaApi]);
@@ -67,39 +98,53 @@ const SuperAppCarousel = () => {
     return () => { emblaApi.off('select', onSelect); };
   }, [emblaApi]);
 
-  // Auto-play
+  // Auto-play (pauses on hover via embla's built-in pointer behavior)
   useEffect(() => {
     if (!emblaApi) return;
-    const id = setInterval(() => emblaApi.scrollNext(), 6000);
+    const id = setInterval(() => emblaApi.scrollNext(), 7000);
     return () => clearInterval(id);
   }, [emblaApi]);
 
   return (
-    <section id="superapp" className="py-12 md:py-20 border-t border-white/5 bg-gradient-to-b from-black/40 via-black/20 to-transparent relative overflow-hidden">
-      {/* glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-orange/10 rounded-full blur-3xl pointer-events-none" />
+    <section
+      id="superapp"
+      className="font-urbanist py-16 md:py-24 border-t border-orange/10 bg-[#050505] relative overflow-hidden"
+      style={{ fontFamily: "'Urbanist', system-ui, sans-serif" }}
+    >
+      {/* Ambient glow */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] bg-[#FF6B00]/[0.08] rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(255,107,0,0.06),transparent_40%),radial-gradient(circle_at_80%_90%,rgba(255,107,0,0.04),transparent_40%)] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-5 relative">
-        <div data-reveal className="text-center max-w-3xl mx-auto mb-8 md:mb-12">
-          <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange px-3 py-1.5 rounded-full bg-orange/10 border border-orange/30">
-            <Crown className="w-3.5 h-3.5" /> Super App {BRAND_NAME}
+        {/* Header */}
+        <div data-reveal className="text-center max-w-3xl mx-auto mb-10 md:mb-14">
+          <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[#FF6B00] px-3.5 py-2 rounded-full bg-[#FF6B00]/10 border border-[#FF6B00]/30">
+            <i className="fa-solid fa-bolt-lightning text-[10px]" /> Plataforma Elite {BRAND_NAME}
           </span>
-          <h2 className="mt-4 text-3xl md:text-5xl font-black text-white">
-            Tudo em <span className="grad-text">um único sistema</span>
+          <h2 className="mt-5 text-3xl md:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.05]">
+            Inovações que substituem<br className="hidden md:block" />
+            <span className="text-[#FF6B00]"> 5 ferramentas</span> diferentes
           </h2>
-          <p className="mt-4 text-white/60">
-            Deslize entre as principais funcionalidades que transformam sua lanchonete num super app de delivery.
+          <p className="mt-5 text-white/60 text-base md:text-lg leading-relaxed">
+            Uma vitrine das funcionalidades que tornam o {BRAND_NAME} a única infraestrutura de delivery que sua lanchonete realmente precisa.
           </p>
         </div>
 
+        {/* Carousel */}
         <div className="relative">
-          {/* Viewport */}
           <div className="overflow-hidden rounded-3xl" ref={emblaRef}>
-            <div className="flex">
+            <div className="flex touch-pan-y">
               {SLIDES.map((s, i) => (
-                <div key={i} className="flex-[0_0_100%] min-w-0 px-1">
-                  <div className="grid md:grid-cols-2 gap-6 md:gap-10 items-center rounded-3xl border border-orange/20 bg-gradient-to-br from-black via-black/90 to-orange/5 p-5 md:p-10 shadow-[0_0_60px_-10px_rgba(255,120,30,0.25)]">
-                    <div className="relative aspect-[4/3] md:aspect-[5/4] rounded-2xl overflow-hidden border border-white/10">
+                <div key={i} className="flex-[0_0_100%] min-w-0 px-1 md:px-2">
+                  <article
+                    className={`grid md:grid-cols-2 gap-6 md:gap-10 items-center rounded-3xl p-5 md:p-10 border ${
+                      s.highlight
+                        ? 'border-[#FF6B00]/60 bg-gradient-to-br from-[#1a0a00] via-black to-[#FF6B00]/10 shadow-[0_0_80px_-15px_rgba(255,107,0,0.55)]'
+                        : 'border-white/10 bg-gradient-to-br from-[#0a0a0a] via-black to-[#FF6B00]/[0.04] shadow-[0_0_60px_-20px_rgba(255,107,0,0.3)]'
+                    }`}
+                  >
+                    {/* Image */}
+                    <div className="relative aspect-[4/3] md:aspect-[5/4] rounded-2xl overflow-hidden border border-white/10 group">
                       <img
                         src={s.img}
                         alt={s.alt}
@@ -107,19 +152,45 @@ const SuperAppCarousel = () => {
                         height={960}
                         loading="lazy"
                         draggable={false}
-                        className="w-full h-full object-cover select-none"
+                        className="w-full h-full object-cover select-none transition-transform duration-700 group-hover:scale-105"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-tr from-black/60 via-transparent to-orange/10" />
-                      <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-orange px-2.5 py-1 bg-black/70 backdrop-blur rounded-md border border-orange/40">
-                        {s.icon} {s.tag}
+                      <div className="absolute inset-0 bg-gradient-to-tr from-black/70 via-transparent to-[#FF6B00]/10" />
+                      {s.highlight && (
+                        <span className="absolute top-3 right-3 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-black px-2.5 py-1 bg-[#FF6B00] rounded-md shadow-lg">
+                          <i className="fa-solid fa-star text-[9px]" /> Destaque
+                        </span>
+                      )}
+                      <span className="absolute bottom-3 left-3 inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#FF6B00] px-3 py-1.5 bg-black/80 backdrop-blur rounded-md border border-[#FF6B00]/40">
+                        <i className={`${s.icon} text-xs`} /> {s.tag}
                       </span>
                     </div>
+
+                    {/* Content */}
                     <div>
-                      <span className="text-xs font-bold uppercase tracking-widest text-orange">{s.tag}</span>
-                      <h3 className="mt-3 text-2xl md:text-4xl font-black text-white leading-tight">{s.title}</h3>
-                      <p className="mt-4 text-white/70 text-base md:text-lg leading-relaxed">{s.desc}</p>
+                      <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[#FF6B00]">
+                        <span className="inline-block w-6 h-px bg-[#FF6B00]" />
+                        Inovação {String(i + 1).padStart(2, '0')} / {String(SLIDES.length).padStart(2, '0')}
+                      </div>
+                      <h3 className="mt-3 text-2xl md:text-4xl font-black text-white leading-[1.1] tracking-tight">
+                        {s.title}
+                      </h3>
+                      <p className="mt-4 text-white/65 text-base md:text-lg leading-relaxed">
+                        {s.desc}
+                      </p>
+                      {s.bullets && (
+                        <ul className="mt-5 space-y-2.5">
+                          {s.bullets.map((b, j) => (
+                            <li key={j} className="flex items-center gap-3 text-white/80 text-sm md:text-base">
+                              <span className="w-5 h-5 rounded-full bg-[#FF6B00]/20 border border-[#FF6B00]/40 flex items-center justify-center shrink-0">
+                                <i className="fa-solid fa-check text-[10px] text-[#FF6B00]" />
+                              </span>
+                              {b}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                  </div>
+                  </article>
                 </div>
               ))}
             </div>
@@ -129,16 +200,16 @@ const SuperAppCarousel = () => {
           <button
             onClick={scrollPrev}
             aria-label="Slide anterior"
-            className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 w-12 h-12 items-center justify-center rounded-full bg-black/80 border border-orange/40 text-orange hover:bg-orange hover:text-black transition-all shadow-xl backdrop-blur"
+            className="hidden md:flex absolute -left-2 lg:-left-6 top-1/2 -translate-y-1/2 w-12 h-12 items-center justify-center rounded-full bg-black border border-[#FF6B00]/40 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-black transition-all shadow-xl"
           >
-            <ChevronLeft className="w-6 h-6" />
+            <i className="fa-solid fa-chevron-left" />
           </button>
           <button
             onClick={scrollNext}
             aria-label="Próximo slide"
-            className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 items-center justify-center rounded-full bg-black/80 border border-orange/40 text-orange hover:bg-orange hover:text-black transition-all shadow-xl backdrop-blur"
+            className="hidden md:flex absolute -right-2 lg:-right-6 top-1/2 -translate-y-1/2 w-12 h-12 items-center justify-center rounded-full bg-black border border-[#FF6B00]/40 text-[#FF6B00] hover:bg-[#FF6B00] hover:text-black transition-all shadow-xl"
           >
-            <ChevronRight className="w-6 h-6" />
+            <i className="fa-solid fa-chevron-right" />
           </button>
         </div>
 
@@ -149,19 +220,51 @@ const SuperAppCarousel = () => {
               key={i}
               onClick={() => scrollTo(i)}
               aria-label={`Ir para slide ${i + 1}`}
-              className={`h-2 rounded-full transition-all ${i === selectedIndex ? 'w-8 bg-orange' : 'w-2 bg-white/25 hover:bg-white/50'}`}
+              className={`h-2 rounded-full transition-all duration-300 ${
+                i === selectedIndex ? 'w-10 bg-[#FF6B00]' : 'w-2 bg-white/20 hover:bg-white/40'
+              }`}
             />
           ))}
         </div>
 
+        {/* Operational stability strip */}
+        <div className="mt-14 md:mt-20">
+          <div className="text-center mb-6">
+            <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-white/50">
+              <i className="fa-solid fa-server text-[10px] text-[#FF6B00]" />
+              Estabilidade Operacional
+            </span>
+            <h3 className="mt-2 text-xl md:text-2xl font-black text-white">
+              Sua operação no ar, com previsibilidade total
+            </h3>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {OP_BENEFITS.map((b) => (
+              <div
+                key={b.title}
+                className="group p-5 rounded-2xl border border-white/10 bg-white/[0.02] hover:border-[#FF6B00]/40 hover:bg-[#FF6B00]/[0.04] transition-all"
+              >
+                <div className="w-11 h-11 rounded-xl bg-[#FF6B00]/15 border border-[#FF6B00]/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                  <i className={`${b.icon} text-[#FF6B00] text-lg`} />
+                </div>
+                <h4 className="text-white font-bold text-base">{b.title}</h4>
+                <p className="text-white/55 text-sm mt-1 leading-relaxed">{b.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* CTA */}
-        <div className="text-center mt-10">
+        <div className="text-center mt-12 md:mt-16">
           <a
             href="#contato"
-            className="inline-flex items-center gap-2 px-7 py-4 rounded-full bg-orange text-black font-black text-base md:text-lg shadow-[0_0_40px_rgba(255,120,30,0.5)] hover:scale-105 transition-transform"
+            className="inline-flex items-center gap-2 px-8 py-4 rounded-full bg-[#FF6B00] text-black font-black text-base md:text-lg shadow-[0_0_50px_rgba(255,107,0,0.55)] hover:scale-105 hover:shadow-[0_0_70px_rgba(255,107,0,0.75)] transition-all"
           >
-            Quero esse sistema em minha lanchonete <ArrowRight className="w-5 h-5" />
+            Quero o {BRAND_NAME} na minha lanchonete <ArrowRight className="w-5 h-5" />
           </a>
+          <p className="mt-3 text-xs text-white/40 uppercase tracking-widest">
+            <i className="fa-solid fa-lock text-[10px] mr-1" /> Infra própria · Sem APIs externas · Push nativo
+          </p>
         </div>
       </div>
     </section>

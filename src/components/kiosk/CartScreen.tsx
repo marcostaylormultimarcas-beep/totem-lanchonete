@@ -124,6 +124,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
         </button>
         <h2 className="text-xl font-bold">Seu Pedido</h2>
         {primeBadge}
+        <div className="ml-auto"><StoreStatusBadge orgId={orgId} compact /></div>
       </div>
 
       {cart.length === 0 ? (

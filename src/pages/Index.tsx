@@ -257,6 +257,8 @@ const Index = () => {
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          bairroId={bairroId}
+          onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
@@ -268,6 +270,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
           appliedCoupon={appliedCoupon}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />

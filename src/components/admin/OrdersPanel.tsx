@@ -58,6 +58,9 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  const [printFormat, setPrintFormat] = useState<PrintFormat>('cupom');
+  const [pendingPrintOrder, setPendingPrintOrder] = useState<Order | null>(null);
+
   const [storeName, setStoreName] = useState<string>('');
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
   const [lowStockIds, setLowStockIds] = useState<Set<string>>(new Set());

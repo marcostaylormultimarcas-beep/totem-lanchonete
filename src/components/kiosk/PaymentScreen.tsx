@@ -5,6 +5,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { isDemoMode } from '@/lib/demoMode';
 import type { AppliedCoupon } from './CartScreen';
+import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
+import { Crown } from 'lucide-react';
 
 interface PaymentScreenProps {
   cart: CartItem[];

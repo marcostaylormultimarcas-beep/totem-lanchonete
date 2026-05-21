@@ -332,17 +332,17 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditing(null)}>
           <div className="kiosk-card w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold flex items-center gap-2"><MessageCircle className="w-5 h-5 text-primary" /> Editar mensagem</h3>
+              <h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-primary" /> Editar mensagem</h3>
               <button onClick={() => setEditing(null)} className="p-1.5 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-xs text-muted-foreground mb-2">Use <code className="bg-muted px-1 rounded">[Nome]</code> para personalizar.</p>
+            <p className="text-xs text-muted-foreground mb-2">Use <code className="bg-muted px-1 rounded">[Nome]</code> para personalizar. Será enviada como notificação interna no app do cliente.</p>
             <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={6} className="w-full p-3 rounded-lg bg-muted border border-border text-sm" />
             <div className="flex gap-2 mt-4">
               <button onClick={() => setEditing(null)} className="flex-1 py-2.5 rounded-lg bg-muted hover:bg-muted/70 font-bold text-sm">Cancelar</button>
               <button
-                onClick={async () => { const s = editing!; setEditing(null); await handleConfirmDispatch(s, editText); }}
+                onClick={async () => { const s = editing!; setEditing(null); await dispatchInternalNotification(s, editText); }}
                 className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-1.5">
-                <Send className="w-4 h-4" /> Salvar e Disparar
+                <Bell className="w-4 h-4" /> Aprovar e Enviar
               </button>
             </div>
           </div>

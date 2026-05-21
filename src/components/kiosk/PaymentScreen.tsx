@@ -10,6 +10,7 @@ interface PaymentScreenProps {
   cart: CartItem[];
   customerName: string;
   customerPhone: string;
+  customerCpf?: string;
   orderType: 'local' | 'viagem';
   deliveryAddress?: string;
   deliveryReference?: string;
@@ -22,7 +23,7 @@ interface PaymentScreenProps {
 const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
 const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);

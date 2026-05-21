@@ -269,21 +269,36 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold">{s.title}</h3>
+                      {!fb && (
+                        <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" /> PENDENTE
+                        </span>
+                      )}
                       {fb?.action === 'approved' && <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">EM ANDAMENTO</span>}
-                      {fb?.action === 'sent' && <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">DISPARADO</span>}
+                      {fb?.action === 'sent' && (
+                        <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Bell className="w-2.5 h-2.5" /> ENVIADO
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{s.description}</p>
 
                     {s.template && (
                       <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border text-sm whitespace-pre-wrap">
-                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem sugerida</div>
+                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem da notificação</div>
                         {s.template}
                       </div>
                     )}
 
                     {s.audience.length > 0 && (
                       <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                        <Users className="w-3 h-3" /> {s.audience.length} destinatário{s.audience.length > 1 ? 's' : ''}
+                        <Bell className="w-3 h-3" /> {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''} receberá{s.audience.length > 1 ? 'ão' : ''} no sininho do app
+                      </div>
+                    )}
+
+                    {fb?.action === 'sent' && (
+                      <div className="mt-2 text-[11px] text-blue-400/80 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Notificação interna disparada — log registrado
                       </div>
                     )}
 
@@ -293,18 +308,17 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                           <Pencil className="w-4 h-4" /> Editar
                         </button>
                       )}
-                      {s.template && s.audience.length > 0 && (
-                        <button onClick={() => handleConfirmDispatch(s)} className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90">
-                          <Send className="w-4 h-4" /> Confirmar Disparo
-                        </button>
-                      )}
-                      <button onClick={() => handleApprove(s)} className="touch-btn px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-sm font-bold flex items-center gap-1.5">
-                        <Check className="w-4 h-4" /> Aprovar
+                      <button
+                        onClick={() => dispatchInternalNotification(s)}
+                        className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90"
+                      >
+                        <Bell className="w-4 h-4" /> Aprovar e Enviar
                       </button>
                       <button onClick={() => { setDismissingKey(s.key); setDismissReason(''); }} className="touch-btn px-3 py-2 rounded-lg bg-muted hover:bg-destructive/20 hover:text-destructive text-sm flex items-center gap-1.5">
                         <X className="w-4 h-4" /> Dispensar
                       </button>
                     </div>
+
                   </div>
                 </div>
               </div>

@@ -201,6 +201,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         status: 'pending',
         payment_method: method || '',
         user_id: session?.user?.id || null,
+        scheduled_for: scheduledFor || null,
       } as any).select('id').single();
 
       if (error) throw error;

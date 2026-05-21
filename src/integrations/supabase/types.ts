@@ -55,6 +55,36 @@ export type Database = {
           },
         ]
       }
+      assistente_vision_feedback: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          message_sent: string
+          organization_id: string
+          reason: string
+          suggestion_key: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          message_sent?: string
+          organization_id: string
+          reason?: string
+          suggestion_key: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          message_sent?: string
+          organization_id?: string
+          reason?: string
+          suggestion_key?: string
+        }
+        Relationships: []
+      }
       config_fidelidade: {
         Row: {
           ativo: boolean

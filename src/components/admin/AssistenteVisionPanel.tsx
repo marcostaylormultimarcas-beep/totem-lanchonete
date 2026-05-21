@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   Sparkles, Loader2, Check, X, Send, Pencil, Users, TrendingUp,
-  Crown, Share2, MessageCircle, RefreshCw, Bot,
+  Crown, Share2, Bell, RefreshCw, Bot, Clock,
 } from 'lucide-react';
 
 interface Props { organizationId: string | null; storeName?: string; whatsappNumber?: string }
@@ -25,12 +25,6 @@ interface Suggestion {
 }
 
 const normalizePhone = (raw: string) => (raw || '').replace(/\D/g, '');
-const buildWaUrl = (phone: string, msg: string) => {
-  let n = normalizePhone(phone);
-  if (!n) return '#';
-  if (n.length <= 11) n = '55' + n;
-  return `https://wa.me/${n}?text=${encodeURIComponent(msg)}`;
-};
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Props) => {
@@ -178,48 +172,42 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     setFeedback(prev => ({ ...prev, [key]: { action, reason } }));
   };
 
-  const handleConfirmDispatch = async (s: Suggestion, msgOverride?: string) => {
-    const msg = msgOverride ?? s.template;
-    if (!s.audience.length) {
-      toast.info('Esta sugestão não tem lista de envio. Use o link manual.');
-      return;
-    }
-    const first = s.audience[0];
-    const personalizada = msg.replace(/\[Nome\]/g, first.name.split(' ')[0]);
-    window.open(buildWaUrl(first.phone, personalizada), '_blank');
-    await registerFeedback(s.key, 'sent', '', msg);
-    toast.success(`Mensagem aberta no WhatsApp para ${first.name}. Total na fila: ${s.audience.length}`);
-  };
-
   const extractCoupon = (msg: string) => {
     const m = msg.match(/\*([A-Z0-9]{3,20})\*/) || msg.match(/cupom[^A-Z0-9]*([A-Z0-9]{3,20})/i);
     return m ? m[1].toUpperCase() : '';
   };
 
-  const handleApprove = async (s: Suggestion) => {
-    await registerFeedback(s.key, 'approved');
+  const dispatchInternalNotification = async (s: Suggestion, msgOverride?: string) => {
+    const msg = (msgOverride ?? s.template ?? '').trim();
+    if (!organizationId) return;
 
-    // Dispara notificações in-app para a audiência (sininho do cliente + push interno)
-    if (s.audience.length && organizationId) {
-      const phones = s.audience.map(a => a.phone).filter(Boolean);
-      const { data, error } = await supabase.rpc('notify_audience' as any, {
-        _org: organizationId,
-        _suggestion_key: s.key,
-        _title: s.title,
-        _body: s.template ? s.template.replace(/\*/g, '') : s.description,
-        _cta_route: '',
-        _coupon: extractCoupon(s.template || ''),
-        _phones: phones,
-      });
-      if (error) {
-        toast.success('Sugestão aprovada (notificações não enviadas: ' + error.message + ')');
-      } else {
-        toast.success(`Sugestão aprovada — ${data ?? 0} notificações enviadas`);
-      }
-    } else {
+    if (!s.audience.length) {
+      // Sugestão sem audiência (ex.: iniciar parceria) — apenas marca como aprovada
+      await registerFeedback(s.key, 'approved', '', msg);
       toast.success('Sugestão aprovada — marcada como em andamento');
+      return;
     }
+
+    const phones = s.audience.map(a => a.phone).filter(Boolean);
+    const { data, error } = await supabase.rpc('notify_audience' as any, {
+      _org: organizationId,
+      _suggestion_key: s.key,
+      _title: s.title,
+      _body: msg ? msg.replace(/\*/g, '') : s.description,
+      _cta_route: '',
+      _coupon: extractCoupon(msg),
+      _phones: phones,
+    });
+
+    if (error) {
+      toast.error('Falha ao enviar notificações: ' + error.message);
+      return;
+    }
+
+    await registerFeedback(s.key, 'sent', '', msg);
+    toast.success(`✅ ${data ?? phones.length} notificação${(data ?? phones.length) !== 1 ? 'ões' : ''} interna${(data ?? phones.length) !== 1 ? 's' : ''} enviada${(data ?? phones.length) !== 1 ? 's' : ''} no app do cliente`);
   };
+
 
 
   const submitDismiss = async () => {
@@ -281,21 +269,36 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-bold">{s.title}</h3>
+                      {!fb && (
+                        <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" /> PENDENTE
+                        </span>
+                      )}
                       {fb?.action === 'approved' && <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">EM ANDAMENTO</span>}
-                      {fb?.action === 'sent' && <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full">DISPARADO</span>}
+                      {fb?.action === 'sent' && (
+                        <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Bell className="w-2.5 h-2.5" /> ENVIADO
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">{s.description}</p>
 
                     {s.template && (
                       <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border text-sm whitespace-pre-wrap">
-                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem sugerida</div>
+                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem da notificação</div>
                         {s.template}
                       </div>
                     )}
 
                     {s.audience.length > 0 && (
                       <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                        <Users className="w-3 h-3" /> {s.audience.length} destinatário{s.audience.length > 1 ? 's' : ''}
+                        <Bell className="w-3 h-3" /> {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''} receberá{s.audience.length > 1 ? 'ão' : ''} no sininho do app
+                      </div>
+                    )}
+
+                    {fb?.action === 'sent' && (
+                      <div className="mt-2 text-[11px] text-blue-400/80 flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Notificação interna disparada — log registrado
                       </div>
                     )}
 
@@ -305,18 +308,17 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                           <Pencil className="w-4 h-4" /> Editar
                         </button>
                       )}
-                      {s.template && s.audience.length > 0 && (
-                        <button onClick={() => handleConfirmDispatch(s)} className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90">
-                          <Send className="w-4 h-4" /> Confirmar Disparo
-                        </button>
-                      )}
-                      <button onClick={() => handleApprove(s)} className="touch-btn px-3 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-sm font-bold flex items-center gap-1.5">
-                        <Check className="w-4 h-4" /> Aprovar
+                      <button
+                        onClick={() => dispatchInternalNotification(s)}
+                        className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90"
+                      >
+                        <Bell className="w-4 h-4" /> Aprovar e Enviar
                       </button>
                       <button onClick={() => { setDismissingKey(s.key); setDismissReason(''); }} className="touch-btn px-3 py-2 rounded-lg bg-muted hover:bg-destructive/20 hover:text-destructive text-sm flex items-center gap-1.5">
                         <X className="w-4 h-4" /> Dispensar
                       </button>
                     </div>
+
                   </div>
                 </div>
               </div>
@@ -330,17 +332,17 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setEditing(null)}>
           <div className="kiosk-card w-full max-w-lg p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold flex items-center gap-2"><MessageCircle className="w-5 h-5 text-primary" /> Editar mensagem</h3>
+              <h3 className="font-bold flex items-center gap-2"><Pencil className="w-5 h-5 text-primary" /> Editar mensagem</h3>
               <button onClick={() => setEditing(null)} className="p-1.5 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
             </div>
-            <p className="text-xs text-muted-foreground mb-2">Use <code className="bg-muted px-1 rounded">[Nome]</code> para personalizar.</p>
+            <p className="text-xs text-muted-foreground mb-2">Use <code className="bg-muted px-1 rounded">[Nome]</code> para personalizar. Será enviada como notificação interna no app do cliente.</p>
             <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={6} className="w-full p-3 rounded-lg bg-muted border border-border text-sm" />
             <div className="flex gap-2 mt-4">
               <button onClick={() => setEditing(null)} className="flex-1 py-2.5 rounded-lg bg-muted hover:bg-muted/70 font-bold text-sm">Cancelar</button>
               <button
-                onClick={async () => { const s = editing!; setEditing(null); await handleConfirmDispatch(s, editText); }}
+                onClick={async () => { const s = editing!; setEditing(null); await dispatchInternalNotification(s, editText); }}
                 className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-1.5">
-                <Send className="w-4 h-4" /> Salvar e Disparar
+                <Bell className="w-4 h-4" /> Aprovar e Enviar
               </button>
             </div>
           </div>

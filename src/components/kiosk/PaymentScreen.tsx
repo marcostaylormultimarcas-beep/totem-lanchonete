@@ -46,7 +46,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
-  const total = Math.max(0, subtotal - discount);
+  const fee = orderType === 'viagem' ? Number(deliveryFee || 0) : 0;
+  const total = Math.max(0, subtotal - discount + fee);
 
   const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
   const qrImageSrc = mpPix?.qr_code_base64

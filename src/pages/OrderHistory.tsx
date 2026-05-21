@@ -1,7 +1,7 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Clock } from 'lucide-react';
+import { ArrowLeft, Package, Clock, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
 
@@ -13,6 +13,8 @@ interface Order {
   created_at: string;
   items: any[];
   order_type: string;
+  customer_cpf?: string;
+  nfe_url?: string;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {

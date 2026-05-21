@@ -220,7 +220,17 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }
 
       setConfirmed(true);
-      if (data) setCurrentOrderId(data.id);
+      if (data) {
+        setCurrentOrderId(data.id);
+        // Co-Marketing: tenta gerar cupom de parceiro
+        try {
+          const { data: pg } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
+          const r = pg as any;
+          if (r?.ok) {
+            setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
+          }
+        } catch {}
+      }
     } catch (err) {
       console.error('Error saving order:', err);
       setConfirmed(true);

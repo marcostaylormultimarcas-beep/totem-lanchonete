@@ -725,6 +725,7 @@ export type Database = {
           combo: Json
           cover_image: string | null
           created_at: string
+          delivery_assignment_mode: string
           delivery_enabled: boolean
           fiscal_cnpj: string
           fiscal_csc: string
@@ -759,6 +760,7 @@ export type Database = {
           combo?: Json
           cover_image?: string | null
           created_at?: string
+          delivery_assignment_mode?: string
           delivery_enabled?: boolean
           fiscal_cnpj?: string
           fiscal_csc?: string
@@ -793,6 +795,7 @@ export type Database = {
           combo?: Json
           cover_image?: string | null
           created_at?: string
+          delivery_assignment_mode?: string
           delivery_enabled?: boolean
           fiscal_cnpj?: string
           fiscal_csc?: string
@@ -905,6 +908,14 @@ export type Database = {
           _order_id: string
           _password: string
         }
+        Returns: Json
+      }
+      entregador_available_orders: {
+        Args: { _entregador_id: string; _password: string }
+        Returns: Json
+      }
+      entregador_claim_order: {
+        Args: { _entregador_id: string; _order_id: string; _password: string }
         Returns: Json
       }
       entregador_login: {

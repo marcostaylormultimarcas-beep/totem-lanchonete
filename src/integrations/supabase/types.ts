@@ -367,6 +367,7 @@ export type Database = {
       }
       organizations: {
         Row: {
+          city: string
           created_at: string
           id: string
           master_id: string | null
@@ -378,6 +379,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          city?: string
           created_at?: string
           id?: string
           master_id?: string | null
@@ -389,6 +391,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          city?: string
           created_at?: string
           id?: string
           master_id?: string | null
@@ -408,6 +411,92 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      parceria_cupons: {
+        Row: {
+          codigo: string
+          created_at: string
+          customer_phone: string
+          discount_percent: number
+          id: string
+          order_id: string
+          org_origem: string
+          org_parceira: string
+          parceria_id: string
+          used: boolean
+        }
+        Insert: {
+          codigo: string
+          created_at?: string
+          customer_phone?: string
+          discount_percent: number
+          id?: string
+          order_id: string
+          org_origem: string
+          org_parceira: string
+          parceria_id: string
+          used?: boolean
+        }
+        Update: {
+          codigo?: string
+          created_at?: string
+          customer_phone?: string
+          discount_percent?: number
+          id?: string
+          order_id?: string
+          org_origem?: string
+          org_parceira?: string
+          parceria_id?: string
+          used?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parceria_cupons_parceria_id_fkey"
+            columns: ["parceria_id"]
+            isOneToOne: false
+            referencedRelation: "parcerias"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      parcerias: {
+        Row: {
+          created_at: string
+          discount_percent: number
+          habilitada_origem: boolean
+          habilitada_parceira: boolean
+          id: string
+          min_order_value: number
+          org_origem: string
+          org_parceira: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          discount_percent?: number
+          habilitada_origem?: boolean
+          habilitada_parceira?: boolean
+          id?: string
+          min_order_value?: number
+          org_origem: string
+          org_parceira: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          discount_percent?: number
+          habilitada_origem?: boolean
+          habilitada_parceira?: boolean
+          id?: string
+          min_order_value?: number
+          org_origem?: string
+          org_parceira?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       pedidos_carimbados: {
         Row: {
@@ -1007,6 +1096,27 @@ export type Database = {
       org_has_feature: {
         Args: { _feature_key: string; _org: string }
         Returns: boolean
+      }
+      parceria_generate_for_order: {
+        Args: { _order_id: string }
+        Returns: Json
+      }
+      parceria_request: {
+        Args: { _org_origem: string; _org_parceira: string }
+        Returns: Json
+      }
+      parceria_respond: {
+        Args: { _accept: boolean; _parceria_id: string }
+        Returns: Json
+      }
+      parceria_set_rules: {
+        Args: { _discount: number; _min_order: number; _parceria_id: string }
+        Returns: Json
+      }
+      parceria_sweep_suspended: { Args: never; Returns: number }
+      parceria_toggle: {
+        Args: { _enabled: boolean; _parceria_id: string }
+        Returns: Json
       }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
       restock_from_items: {

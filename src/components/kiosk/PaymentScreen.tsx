@@ -38,6 +38,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
+  const [copiedPartner, setCopiedPartner] = useState(false);
   const [storeSettings, setStoreSettings] = useState<{
     storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean;
     payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;
@@ -218,7 +220,17 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }
 
       setConfirmed(true);
-      if (data) setCurrentOrderId(data.id);
+      if (data) {
+        setCurrentOrderId(data.id);
+        // Co-Marketing: tenta gerar cupom de parceiro
+        try {
+          const { data: pg } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
+          const r = pg as any;
+          if (r?.ok) {
+            setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
+          }
+        } catch {}
+      }
     } catch (err) {
       console.error('Error saving order:', err);
       setConfirmed(true);
@@ -311,6 +323,32 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>
           </div>
         </div>
+
+
+
+        {partnerGift && (
+          <div className="w-full rounded-2xl p-5 border-2 animate-in fade-in zoom-in duration-500"
+               style={{ background: 'linear-gradient(135deg, rgba(246,197,96,0.18), rgba(244,113,38,0.15))', borderColor: 'rgba(246,197,96,0.6)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl animate-bounce">🎁</span>
+              <h3 className="font-black text-lg" style={{ color: '#f4d28b' }}>Você ganhou um presente!</h3>
+            </div>
+            <p className="text-sm mb-3">Cortesia do nosso parceiro <b>{partnerGift.partner_name}</b>: <b>{partnerGift.discount_percent}% de desconto</b> na próxima compra.</p>
+            <div className="bg-background/60 border border-border rounded-lg px-3 py-2 flex items-center justify-between gap-2 mb-3">
+              <code className="font-mono font-bold tracking-wider">{partnerGift.codigo}</code>
+              <button onClick={() => { navigator.clipboard.writeText(partnerGift.codigo); setCopiedPartner(true); setTimeout(() => setCopiedPartner(false), 1500); }}
+                      className="touch-btn bg-muted px-3 py-1.5 rounded-md text-xs flex items-center gap-1">
+                {copiedPartner ? <><Check className="w-3 h-3" /> Copiado</> : <><Copy className="w-3 h-3" /> Copiar</>}
+              </button>
+            </div>
+            <a href={`/loja/${partnerGift.partner_slug}`} target="_blank" rel="noopener noreferrer"
+               className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+              Ir para a Loja Parceira →
+            </a>
+          </div>
+        )}
+
+
 
 
         <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">

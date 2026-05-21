@@ -712,6 +712,9 @@ const AdminPage = () => {
           <AssistenteVisionPanel organizationId={activeOrgId} storeName={settings.storeName} whatsappNumber={settings.whatsappNumber} />
         </FeatureGate>
       )}
+      {tab === 'tema' && (
+        <PersonalizacaoVisualPanel organizationId={activeOrgId} />
+      )}
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />
       )}

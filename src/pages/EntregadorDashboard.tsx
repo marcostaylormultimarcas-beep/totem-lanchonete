@@ -110,12 +110,25 @@ const EntregadorDashboard = () => {
     setLoading(false);
   }, [session, navigate, playAlert]);
 
+  const fetchAvailable = useCallback(async () => {
+    if (!session) return;
+    const { data } = await supabase.rpc('entregador_available_orders' as any, {
+      _entregador_id: session.id,
+      _password: session.password,
+    });
+    const res: any = data;
+    if (!res?.ok) return;
+    setMode((res.mode === 'free' ? 'free' : 'manual'));
+    setAvailable(res.orders || []);
+  }, [session]);
+
   // Carga inicial + polling de segurança
   useEffect(() => {
     fetchOrders(true);
-    const i = setInterval(() => fetchOrders(false), 15000);
+    fetchAvailable();
+    const i = setInterval(() => { fetchOrders(false); fetchAvailable(); }, 15000);
     return () => clearInterval(i);
-  }, [fetchOrders]);
+  }, [fetchOrders, fetchAvailable]);
 
   // Realtime: escuta mudanças na tabela orders da loja do entregador
   useEffect(() => {

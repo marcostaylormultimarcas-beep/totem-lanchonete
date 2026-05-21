@@ -54,6 +54,7 @@ const App = () => {
               <Route path="/meus-pedidos" element={<OrderHistory />} />
               <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/fiscal/:orderId" element={<FiscalReceipt />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

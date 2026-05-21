@@ -1,14 +1,17 @@
-import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText } from 'lucide-react';
+import { maskCpf, isValidCpf } from '@/lib/cpf';
 
 interface CheckoutScreenProps {
   name: string;
   phone: string;
+  cpf: string;
   orderType: 'local' | 'viagem';
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
+  onCpfChange: (v: string) => void;
   onDeliveryAddressChange: (v: string) => void;
   onDeliveryReferenceChange: (v: string) => void;
   onDeliveryRecipientChange: (v: string) => void;
@@ -17,15 +20,16 @@ interface CheckoutScreenProps {
 }
 
 const CheckoutScreen = ({
-  name, phone, orderType,
+  name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
-  onNameChange, onPhoneChange,
+  onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
   onContinue, onBack,
 }: CheckoutScreenProps) => {
   const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
+  const cpfValid = !cpf || isValidCpf(cpf);
   const deliveryValid = orderType === 'viagem' ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 : true;
-  const isValid = baseValid && deliveryValid;
+  const isValid = baseValid && deliveryValid && cpfValid;
 
   return (
     <div className="min-h-screen flex flex-col">

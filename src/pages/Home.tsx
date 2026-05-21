@@ -309,7 +309,7 @@ const Home = () => {
       <section id="diferenciais" className="py-10 md:py-16 border-t border-white/5 relative">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que Vision Mídia</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que {BRAND_NAME}</span>
             <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
               Gestão híbrida com <span className="grad-text">blindagem de receita</span>
             </h2>

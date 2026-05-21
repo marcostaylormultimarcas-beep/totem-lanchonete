@@ -272,7 +272,19 @@ const EntregadorDashboard = () => {
             pendentes.map(o => {
               const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
               return (
-                <div key={o.id} className="bg-slate-900 border border-orange-600/30 rounded-2xl p-4 space-y-3 shadow-[0_0_20px_-10px_rgba(234,88,12,0.5)]">
+                <div
+                  key={o.id}
+                  className={`bg-slate-900 rounded-2xl p-4 space-y-3 transition-all ${
+                    highlightIds.has(o.id)
+                      ? 'border-2 border-orange-500 shadow-[0_0_30px_-5px_rgba(234,88,12,0.9)] animate-pulse ring-2 ring-orange-500/40'
+                      : 'border border-orange-600/30 shadow-[0_0_20px_-10px_rgba(234,88,12,0.5)]'
+                  }`}
+                >
+                  {highlightIds.has(o.id) && (
+                    <div className="text-[10px] font-black uppercase tracking-wider bg-orange-500 text-white px-2 py-1 rounded-full inline-block">
+                      🆕 Novo pedido atribuído
+                    </div>
+                  )}
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-orange-500 font-black text-lg">#{o.order_number}</span>

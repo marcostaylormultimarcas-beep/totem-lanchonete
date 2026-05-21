@@ -30,6 +30,7 @@ import CoMarketingPanel from '@/components/admin/CoMarketingPanel';
 import CoMarketingGlobalMap from '@/components/admin/CoMarketingGlobalMap';
 import OperacaoPanel from '@/components/admin/OperacaoPanel';
 import AssistenteVisionPanel from '@/components/admin/AssistenteVisionPanel';
+import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

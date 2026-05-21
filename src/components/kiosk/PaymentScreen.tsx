@@ -22,6 +22,7 @@ interface PaymentScreenProps {
   deliveryFee?: number;
   bairroTempo?: number;
   appliedCoupon?: AppliedCoupon | null;
+  scheduledFor?: string | null;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }

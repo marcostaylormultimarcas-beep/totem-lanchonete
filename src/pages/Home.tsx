@@ -529,12 +529,12 @@ const Home = () => {
       </section>
 
       {/* === 3c. IA 24/7 === */}
-      <section id="ia" className="py-10 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40">
+      <section id="ia" className="py-10 md:py-16 border-t border-white/5 bg-gradient-to-b from-transparent to-black/40 overflow-hidden">
         <div className="max-w-7xl mx-auto px-5">
           <div className="grid lg:grid-cols-2 gap-10 items-center">
-            <div data-reveal>
+            <div data-reveal className="min-w-0">
               <span className="text-xs font-bold uppercase tracking-widest text-orange">Suporte com IA 24/7</span>
-              <h2 className="mt-3 text-2xl sm:text-3xl md:text-5xl font-black text-white break-words leading-tight">
+              <h2 className="mt-3 text-2xl sm:text-3xl md:text-5xl font-black text-white break-words hyphens-auto leading-tight">
                 Assistente inteligente <span className="grad-text">sempre disponível</span>
               </h2>
               <p className="mt-5 text-white/70 leading-relaxed break-words">
@@ -548,17 +548,17 @@ const Home = () => {
                   { i: <Bot className="w-5 h-5 text-orange" />, t: 'Disponível 24 horas, 7 dias por semana' },
                   { i: <Headphones className="w-5 h-5 text-orange" />, t: 'Fallback para atendimento humano via WhatsApp' },
                 ].map((x, i) => (
-                  <li key={i} className="flex items-center gap-3 text-white/80">
+                  <li key={i} className="flex items-center gap-3 text-white/80 min-w-0">
                     <span className="w-9 h-9 rounded-lg bg-orange/10 border border-orange/20 grid place-items-center flex-shrink-0">
                       {x.i}
                     </span>
-                    <span className="text-sm md:text-base">{x.t}</span>
+                    <span className="text-sm md:text-base break-words min-w-0">{x.t}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div data-reveal className="relative">
+            <div data-reveal className="relative min-w-0">
               <div className="absolute -inset-6 -z-10 bg-gradient-to-tr from-orange/20 via-transparent to-emerald/10 blur-3xl rounded-full" />
               <div className="glass rounded-3xl p-6 md:p-8 border-orange/20 neon-orange">
                 <div className="flex items-center gap-3 mb-5 pb-4 border-b border-white/10">

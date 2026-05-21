@@ -674,6 +674,9 @@ const AdminPage = () => {
       {tab === 'entregadores' && (
         <EntregadoresPanel organizationId={activeOrgId} />
       )}
+      {tab === 'bairros' && (
+        <BairrosPanel organizationId={activeOrgId} />
+      )}
       {tab === 'plans' && currentAdmin?.tier === 'super' && (
         <PlansMatrixPanel />
       )}

@@ -6,6 +6,7 @@ import iaImg from '@/assets/superapp-ia.jpg';
 import comktImg from '@/assets/superapp-comarketing.jpg';
 import logImg from '@/assets/superapp-logistica.jpg';
 import opImg from '@/assets/superapp-operacao.jpg';
+import { BRAND_NAME } from '@/config/brandConfig';
 
 const SLIDES = [
   {

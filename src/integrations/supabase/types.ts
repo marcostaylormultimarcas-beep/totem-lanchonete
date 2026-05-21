@@ -55,6 +55,72 @@ export type Database = {
           },
         ]
       }
+      ai_suggestions_history: {
+        Row: {
+          acted_at: string | null
+          audience_size: number
+          category: string
+          conversions: number
+          created_at: string
+          dismiss_reason: string
+          dispatched_at: string | null
+          generated_at: string
+          id: string
+          last_conversion_check: string | null
+          notifications_sent: number
+          organization_id: string
+          priority: number
+          reason: string
+          status: string
+          suggestion_key: string
+          template: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          acted_at?: string | null
+          audience_size?: number
+          category?: string
+          conversions?: number
+          created_at?: string
+          dismiss_reason?: string
+          dispatched_at?: string | null
+          generated_at?: string
+          id?: string
+          last_conversion_check?: string | null
+          notifications_sent?: number
+          organization_id: string
+          priority?: number
+          reason?: string
+          status?: string
+          suggestion_key: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          acted_at?: string | null
+          audience_size?: number
+          category?: string
+          conversions?: number
+          created_at?: string
+          dismiss_reason?: string
+          dispatched_at?: string | null
+          generated_at?: string
+          id?: string
+          last_conversion_check?: string | null
+          notifications_sent?: number
+          organization_id?: string
+          priority?: number
+          reason?: string
+          status?: string
+          suggestion_key?: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       assistente_vision_feedback: {
         Row: {
           action: string
@@ -1164,6 +1230,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ai_attribute_conversions: { Args: { _org: string }; Returns: number }
+      ai_suggestion_stats: {
+        Args: { _org: string }
+        Returns: {
+          category: string
+          conversion_rate: number
+          total_conversions: number
+          total_dismissed: number
+          total_sent: number
+        }[]
+      }
       assign_entregador: {
         Args: { _entregador_id: string; _order_id: string }
         Returns: Json

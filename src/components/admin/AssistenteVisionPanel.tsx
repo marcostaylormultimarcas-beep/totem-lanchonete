@@ -33,6 +33,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
   const [primeActive, setPrimeActive] = useState(false);
   const [parceriasAtivas, setParceriasAtivas] = useState(0);
   const [feedback, setFeedback] = useState<Record<string, { action: string; reason: string }>>({});
+  const [stats, setStats] = useState<Record<string, { rate: number; conv: number; sent: number; dismissed: number }>>({});
   const [editing, setEditing] = useState<Suggestion | null>(null);
   const [editText, setEditText] = useState('');
   const [dismissingKey, setDismissingKey] = useState<string | null>(null);
@@ -43,7 +44,9 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     if (!organizationId) return;
     const load = async () => {
       setLoading(true);
-      const [ord, prime, parc, fb] = await Promise.all([
+      // Re-atribui conversões para o ranking refletir vendas recentes
+      await supabase.rpc('ai_attribute_conversions' as any, { _org: organizationId });
+      const [ord, prime, parc, fb, st] = await Promise.all([
         supabase.from('orders').select('id,customer_name,customer_phone,total,created_at,status')
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
         supabase.from('vision_prime_config').select('ativo').eq('organization_id', organizationId).maybeSingle(),
@@ -51,6 +54,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
           .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`),
         supabase.from('assistente_vision_feedback').select('suggestion_key,action,reason')
           .eq('organization_id', organizationId),
+        supabase.rpc('ai_suggestion_stats' as any, { _org: organizationId }),
       ]);
       setOrders((ord.data as OrderRow[]) || []);
       setPrimeActive(Boolean(prime.data?.ativo));
@@ -58,6 +62,16 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       const map: Record<string, { action: string; reason: string }> = {};
       ((fb.data as any[]) || []).forEach(r => { map[r.suggestion_key] = { action: r.action, reason: r.reason || '' }; });
       setFeedback(map);
+      const stm: Record<string, { rate: number; conv: number; sent: number; dismissed: number }> = {};
+      ((st.data as any[]) || []).forEach(r => {
+        stm[r.category] = {
+          rate: Number(r.conversion_rate) || 0,
+          conv: Number(r.total_conversions) || 0,
+          sent: Number(r.total_sent) || 0,
+          dismissed: Number(r.total_dismissed) || 0,
+        };
+      });
+      setStats(stm);
       setLoading(false);
     };
     load();
@@ -158,10 +172,25 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       });
     }
 
-    return out
+    // Ranking adaptativo: categorias com mais conversão sobem; com muita dispensa descem.
+    // Protocolo VisionFood: parceria/prime ganham boost (-1) sempre que existem.
+    const scored = out.map(s => {
+      const cs = stats[s.category];
+      let adj = 0;
+      if (cs) {
+        if (cs.rate >= 10) adj -= 2;        // converte bem → sobe
+        else if (cs.rate >= 3) adj -= 1;
+        if (cs.dismissed > cs.sent && cs.dismissed >= 3) adj += 2; // muito dispensada → desce
+      }
+      if (s.category === 'parceria' && parceriasAtivas > 0) adj -= 1;
+      if (s.category === 'prime' && primeActive) adj -= 1;
+      return { ...s, priority: s.priority + adj };
+    });
+
+    return scored
       .filter(s => feedback[s.key]?.action !== 'dismissed')
       .sort((a, b) => a.priority - b.priority);
-  }, [orders, primeActive, parceriasAtivas, feedback, storeName]);
+  }, [orders, primeActive, parceriasAtivas, feedback, stats, storeName]);
 
   const registerFeedback = async (key: string, action: 'approved' | 'dismissed' | 'sent', reason = '', message_sent = '') => {
     if (!organizationId) return;
@@ -170,6 +199,25 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     });
     if (error) { toast.error('Erro ao registrar feedback'); return; }
     setFeedback(prev => ({ ...prev, [key]: { action, reason } }));
+  };
+
+  const logHistory = async (s: Suggestion, status: 'pending' | 'approved' | 'dismissed' | 'sent', extras: Partial<{ template: string; dismiss_reason: string; notifications_sent: number; dispatched_at: string; acted_at: string }> = {}) => {
+    if (!organizationId) return;
+    await supabase.from('ai_suggestions_history' as any).insert({
+      organization_id: organizationId,
+      suggestion_key: s.key,
+      category: s.category,
+      title: s.title,
+      reason: s.description,
+      template: extras.template ?? s.template,
+      priority: s.priority,
+      audience_size: s.audience.length,
+      status,
+      dismiss_reason: extras.dismiss_reason || '',
+      notifications_sent: extras.notifications_sent ?? 0,
+      acted_at: extras.acted_at || (status !== 'pending' ? new Date().toISOString() : null),
+      dispatched_at: extras.dispatched_at || (status === 'sent' ? new Date().toISOString() : null),
+    });
   };
 
   const extractCoupon = (msg: string) => {
@@ -182,8 +230,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     if (!organizationId) return;
 
     if (!s.audience.length) {
-      // Sugestão sem audiência (ex.: iniciar parceria) — apenas marca como aprovada
       await registerFeedback(s.key, 'approved', '', msg);
+      await logHistory(s, 'approved', { template: msg });
       toast.success('Sugestão aprovada — marcada como em andamento');
       return;
     }
@@ -204,15 +252,17 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       return;
     }
 
+    const sentCount = Number(data ?? phones.length);
     await registerFeedback(s.key, 'sent', '', msg);
-    toast.success(`✅ ${data ?? phones.length} notificação${(data ?? phones.length) !== 1 ? 'ões' : ''} interna${(data ?? phones.length) !== 1 ? 's' : ''} enviada${(data ?? phones.length) !== 1 ? 's' : ''} no app do cliente`);
+    await logHistory(s, 'sent', { template: msg, notifications_sent: sentCount });
+    toast.success(`✅ ${sentCount} notificação${sentCount !== 1 ? 'ões' : ''} interna${sentCount !== 1 ? 's' : ''} enviada${sentCount !== 1 ? 's' : ''} no app do cliente`);
   };
-
-
 
   const submitDismiss = async () => {
     if (!dismissingKey) return;
+    const s = suggestions.find(x => x.key === dismissingKey);
     await registerFeedback(dismissingKey, 'dismissed', dismissReason || 'sem motivo informado');
+    if (s) await logHistory(s, 'dismissed', { dismiss_reason: dismissReason || 'sem motivo informado' });
     toast.success('Sugestão dispensada. A IA não vai repetir esta recomendação.');
     setDismissingKey(null); setDismissReason('');
   };

@@ -26,6 +26,8 @@ import EntregadoresPanel from '@/components/admin/EntregadoresPanel';
 import BairrosPanel from '@/components/admin/BairrosPanel';
 import LogisticaPanel from '@/components/admin/LogisticaPanel';
 import VisionPrimePanel from '@/components/admin/VisionPrimePanel';
+import CoMarketingPanel from '@/components/admin/CoMarketingPanel';
+import CoMarketingGlobalMap from '@/components/admin/CoMarketingGlobalMap';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

@@ -299,6 +299,9 @@ const Home = () => {
         </div>
       </section>
 
+      {/* === SUPER APP CAROUSEL === */}
+      <SuperAppCarousel />
+
       {/* === 2. RECURSOS (3 CARDS) === */}
       {/* === 1b. DIFERENCIAIS DE AUTORIDADE === */}
       <section id="diferenciais" className="py-10 md:py-16 border-t border-white/5 relative">

@@ -530,10 +530,10 @@ const Home = () => {
           <div className="grid lg:grid-cols-2 gap-10 items-center">
             <div data-reveal>
               <span className="text-xs font-bold uppercase tracking-widest text-orange">Suporte com IA 24/7</span>
-              <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
+              <h2 className="mt-3 text-2xl sm:text-3xl md:text-5xl font-black text-white break-words leading-tight">
                 Assistente inteligente <span className="grad-text">sempre disponível</span>
               </h2>
-              <p className="mt-5 text-white/70 leading-relaxed">
+              <p className="mt-5 text-white/70 leading-relaxed break-words">
                 Tire dúvidas sobre o sistema, configure a sua loja e resolva imprevistos a qualquer hora,
                 direto pelo balão flutuante presente em todas as telas do painel.
               </p>

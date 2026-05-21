@@ -24,6 +24,7 @@ interface PendingOrderState {
   cart: CartItem[];
   customerName: string;
   customerPhone: string;
+  customerCpf: string;
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;

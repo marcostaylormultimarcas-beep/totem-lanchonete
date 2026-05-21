@@ -71,6 +71,26 @@ const CheckoutScreen = ({
             />
           </div>
 
+          <div className="relative">
+            <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="CPF na Nota (opcional)"
+              value={cpf}
+              onChange={e => onCpfChange(maskCpf(e.target.value))}
+              className={`w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 transition-all ${cpf && !cpfValid ? 'ring-2 ring-destructive' : 'focus:ring-primary'}`}
+              maxLength={14}
+            />
+            {cpf && !cpfValid && (
+              <p className="text-destructive text-xs mt-1 ml-1">CPF inválido</p>
+            )}
+            {!cpf && (
+              <p className="text-muted-foreground text-[11px] mt-1 ml-1">Preencha para receber a Nota Fiscal vinculada ao pedido</p>
+            )}
+          </div>
+
+
           {orderType === 'viagem' && (
             <>
               <hr className="border-border" />

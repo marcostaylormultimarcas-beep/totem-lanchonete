@@ -641,10 +641,12 @@ const AdminPage = () => {
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
           { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
+          { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
+          { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
         ].filter(t => {
           const tier = currentAdmin?.tier;

@@ -266,10 +266,10 @@ const EntregadorDashboard = () => {
 
       {/* Tabs */}
       <div className="max-w-2xl mx-auto px-4 pt-4">
-        <div className="grid grid-cols-2 bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
+        <div className={`grid ${mode === 'free' ? 'grid-cols-3' : 'grid-cols-2'} bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1`}>
           <button
             onClick={() => setTab('pendentes')}
-            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
               tab === 'pendentes' ? 'bg-orange-600 text-white' : 'text-slate-400'
             }`}
           >
@@ -278,9 +278,22 @@ const EntregadorDashboard = () => {
               <span className="bg-white/20 text-[10px] font-black px-1.5 py-0.5 rounded-full">{pendentes.length}</span>
             )}
           </button>
+          {mode === 'free' && (
+            <button
+              onClick={() => setTab('disponiveis')}
+              className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                tab === 'disponiveis' ? 'bg-orange-600 text-white' : 'text-slate-400'
+              }`}
+            >
+              ⚡ Disponíveis
+              {available.length > 0 && (
+                <span className="bg-yellow-400 text-black text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">{available.length}</span>
+              )}
+            </button>
+          )}
           <button
             onClick={() => setTab('historico')}
-            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
               tab === 'historico' ? 'bg-orange-600 text-white' : 'text-slate-400'
             }`}
           >
@@ -290,6 +303,11 @@ const EntregadorDashboard = () => {
             )}
           </button>
         </div>
+        {mode === 'free' && (
+          <p className="text-[11px] text-yellow-400/80 mt-2 text-center font-semibold">
+            ⚡ Modo Disputa Livre — o primeiro a aceitar fica com o pedido!
+          </p>
+        )}
       </div>
 
       <main className="max-w-2xl mx-auto px-4 py-4 space-y-4">

@@ -658,9 +658,9 @@ const Home = () => {
             <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center neon-orange">
               <UtensilsCrossed className="w-4 h-4 text-black" />
             </span>
-            <span className="font-bold text-white">Vision Mídia Digital</span>
+            <span className="font-bold text-white">{BRAND_LEGAL_NAME}</span>
           </div>
-          <div>© {new Date().getFullYear()} Vision Mídia · Autoatendimento Inteligente</div>
+          <div>© {new Date().getFullYear()} {BRAND_NAME} · {BRAND_TAGLINE}</div>
         </div>
       </footer>
 

@@ -107,6 +107,16 @@ const OrderHistory = () => {
                     {order.items.length > 3 && <p className="text-xs">+{order.items.length - 3} itens</p>}
                   </div>
                 )}
+                {order.customer_cpf && (
+                  <a
+                    href={order.nfe_url || `/fiscal/${order.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-orange-600/10 border border-orange-600/40 text-orange-400 hover:bg-orange-600/20 transition-colors"
+                  >
+                    <FileText className="w-4 h-4" /> Baixar Nota Fiscal
+                  </a>
+                )}
               </div>
             );
           })

@@ -321,8 +321,31 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <div className="flex justify-between items-center">
             <span className="font-bold text-lg">TOTAL</span>
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>
-          </div>
         </div>
+
+        {partnerGift && (
+          <div className="w-full rounded-2xl p-5 border-2 animate-in fade-in zoom-in duration-500"
+               style={{ background: 'linear-gradient(135deg, rgba(246,197,96,0.18), rgba(244,113,38,0.15))', borderColor: 'rgba(246,197,96,0.6)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-2xl animate-bounce">🎁</span>
+              <h3 className="font-black text-lg" style={{ color: '#f4d28b' }}>Você ganhou um presente!</h3>
+            </div>
+            <p className="text-sm mb-3">Cortesia do nosso parceiro <b>{partnerGift.partner_name}</b>: <b>{partnerGift.discount_percent}% de desconto</b> na próxima compra.</p>
+            <div className="bg-background/60 border border-border rounded-lg px-3 py-2 flex items-center justify-between gap-2 mb-3">
+              <code className="font-mono font-bold tracking-wider">{partnerGift.codigo}</code>
+              <button onClick={() => { navigator.clipboard.writeText(partnerGift.codigo); setCopiedPartner(true); setTimeout(() => setCopiedPartner(false), 1500); }}
+                      className="touch-btn bg-muted px-3 py-1.5 rounded-md text-xs flex items-center gap-1">
+                {copiedPartner ? <><Check className="w-3 h-3" /> Copiado</> : <><Copy className="w-3 h-3" /> Copiar</>}
+              </button>
+            </div>
+            <a href={`/loja/${partnerGift.partner_slug}`} target="_blank" rel="noopener noreferrer"
+               className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold flex items-center justify-center gap-2">
+              Ir para a Loja Parceira →
+            </a>
+          </div>
+        )}
+
+
 
 
         <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">

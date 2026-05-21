@@ -13,6 +13,7 @@ import cardPix from '@/assets/home-card-pix.jpg';
 import cardKds from '@/assets/home-card-kds.jpg';
 import ecosystemImg from '@/assets/home-ecosystem.jpg';
 import SuperAppCarousel from '@/components/landing/SuperAppCarousel';
+import { BRAND_NAME, BRAND_LEGAL_NAME, BRAND_TAGLINE } from '@/config/brandConfig';
 
 /** URL base do Simulador Interativo (`?modo=demo` ativa isolamento — sem gravar nem alertar KDS). */
 const DEFAULT_DEMO_SLUG = 'principal';

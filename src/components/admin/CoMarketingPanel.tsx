@@ -120,6 +120,7 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
     });
     setSavingId(null);
     if (error) return toast.error(error.message);
+    markConfigured(id);
     toast.success('Regras atualizadas');
     reload();
   };

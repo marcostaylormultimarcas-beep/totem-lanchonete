@@ -5,3 +5,7 @@ verify_jwt = true
 
 [functions.mercadopago-create-pix]
 verify_jwt = false
+
+[functions.print-agent]
+verify_jwt = false
+

@@ -28,6 +28,10 @@ interface PendingOrderState {
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;
+  bairroId: string;
+  bairroNome: string;
+  bairroTaxa: number;
+  bairroTempo: number;
 }
 
 const Index = () => {

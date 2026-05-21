@@ -114,6 +114,7 @@ const Index = () => {
         setDeliveryAddress(parsed.deliveryAddress || '');
         setDeliveryReference(parsed.deliveryReference || '');
         setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
       } catch (error) {

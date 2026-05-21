@@ -165,6 +165,34 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
         </div>
       </div>
 
+      {(() => {
+        const pendingMine = parcerias.filter(p => p.status === 'pending' && p.org_parceira === organizationId);
+        const needsConfig = parcerias.filter(p => p.status === 'active' && p.org_origem === organizationId && !configuredIds.has(p.id));
+        if (pendingMine.length === 0 && needsConfig.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-primary/40 bg-primary/10 p-4 space-y-2">
+            {pendingMine.map(p => (
+              <div key={'pend-' + p.id} className="flex items-start gap-3">
+                <Bell className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm">Convite pendente de <span className="text-primary">{p.org_origem_name}</span></p>
+                  <p className="text-xs text-muted-foreground">Aceite abaixo para começar a oferecer recompensas cruzadas.</p>
+                </div>
+              </div>
+            ))}
+            {needsConfig.map(p => (
+              <div key={'cfg-' + p.id} className="flex items-start gap-3">
+                <Settings2 className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm">Nova parceria aceita com <span className="text-primary">{p.org_parceira_name}</span></p>
+                  <p className="text-xs text-muted-foreground">Configure agora a recompensa para seu cliente em "Minhas Parcerias".</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {enabled && (
         <>
           <section>

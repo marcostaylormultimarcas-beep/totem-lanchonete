@@ -16,6 +16,7 @@ import ResetPassword from "./pages/ResetPassword.tsx";
 import FiscalReceipt from "./pages/FiscalReceipt.tsx";
 import EntregadorLogin from "./pages/EntregadorLogin.tsx";
 import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
+import VisionPrime from "./pages/VisionPrime.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 

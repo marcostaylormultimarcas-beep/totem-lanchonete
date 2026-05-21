@@ -109,16 +109,10 @@
   will-change: transform, box-shadow;
 }
 
-/* ============ Cupom térmico de impressão ============ */
-.print-receipt {
-  display: none;
-}
+/* ============ Impressão (cupom térmico ou A4) ============ */
+.print-receipt { display: none; }
 
 @media print {
-  @page {
-    size: 80mm auto;
-    margin: 0;
-  }
   html, body {
     background: #fff !important;
     margin: 0 !important;
@@ -126,50 +120,73 @@
     height: auto !important;
     overflow: visible !important;
   }
-  body * {
-    visibility: hidden !important;
-  }
+  body * { visibility: hidden !important; }
   #print-receipt-area,
-  #print-receipt-area * {
-    visibility: visible !important;
-  }
+  #print-receipt-area * { visibility: visible !important; }
   #print-receipt-area {
     display: block !important;
     position: fixed !important;
     left: 0 !important;
     top: 0 !important;
-    width: 80mm !important;
-    padding: 4mm 3mm !important;
     margin: 0 !important;
     color: #000 !important;
     background: #fff !important;
-    font-family: 'Courier New', ui-monospace, monospace !important;
-    font-size: 12px !important;
-    line-height: 1.35 !important;
     z-index: 999999 !important;
     transform: none !important;
   }
   .print-receipt p { margin: 0; padding: 0; }
   .print-receipt .pr-header { text-align: center; }
-  .print-receipt .pr-header h1 {
-    font-size: 16px; font-weight: 900; margin: 0 0 2px; text-transform: uppercase;
-  }
-  .print-receipt .pr-order-num { font-weight: 900; font-size: 14px; margin-top: 2px; }
-  .print-receipt .pr-divider {
-    border-top: 1px dashed #000; margin: 6px 0;
-  }
-  .print-receipt .pr-section-title {
-    font-weight: 900; text-align: center; letter-spacing: 2px; margin-bottom: 4px;
-  }
+  .print-receipt .pr-divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .print-receipt .pr-section-title { font-weight: 900; text-align: center; letter-spacing: 2px; margin-bottom: 4px; }
   .print-receipt .pr-item { margin-bottom: 4px; }
-  .print-receipt .pr-item-row {
-    display: flex; justify-content: space-between; gap: 6px;
-  }
-  .print-receipt .pr-obs {
-    font-style: italic; font-size: 11px; padding-left: 8px;
-  }
-  .print-receipt .pr-total { font-size: 14px; font-weight: 900; margin-top: 4px; }
+  .print-receipt .pr-item-row { display: flex; justify-content: space-between; gap: 6px; }
+  .print-receipt .pr-obs { font-style: italic; padding-left: 8px; }
   .print-receipt .pr-payment { margin-top: 6px; }
-  .print-receipt .pr-footer { text-align: center; font-size: 11px; margin-top: 6px; }
+  .print-receipt .pr-footer { text-align: center; margin-top: 6px; }
   .print-receipt .pr-delivery { margin-top: 4px; }
 }
+
+/* Térmica 58/80mm */
+@media print {
+  body.printing-cupom #print-receipt-area.print-cupom {
+    width: 80mm !important;
+    padding: 4mm 3mm !important;
+    font-family: 'Courier New', ui-monospace, monospace !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+  }
+  body.printing-cupom .print-cupom .pr-header h1 { font-size: 16px; font-weight: 900; margin: 0 0 2px; text-transform: uppercase; }
+  body.printing-cupom .print-cupom .pr-order-num { font-weight: 900; font-size: 14px; margin-top: 2px; }
+  body.printing-cupom .print-cupom .pr-total { font-size: 14px; font-weight: 900; margin-top: 4px; }
+  body.printing-cupom .print-cupom .pr-obs { font-size: 11px; }
+  body.printing-cupom .print-cupom .pr-footer { font-size: 11px; }
+}
+@media print {
+  body.printing-cupom { /* page size hack: only when imprimindo cupom */ }
+}
+@page { size: auto; margin: 10mm; }
+body.printing-cupom { /* JS injeta classe */ }
+
+/* Folha A4 */
+@media print {
+  body.printing-a4 #print-receipt-area.print-a4 {
+    position: static !important;
+    width: 170mm !important;
+    max-width: 170mm !important;
+    margin: 0 auto !important;
+    padding: 15mm 20mm !important;
+    font-family: 'Helvetica', 'Arial', sans-serif !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+  }
+  body.printing-a4 .print-a4 .pr-header h1 { font-size: 24px; font-weight: 900; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+  body.printing-a4 .print-a4 .pr-order-num { font-weight: 900; font-size: 18px; margin-top: 4px; }
+  body.printing-a4 .print-a4 .pr-divider { border-top: 2px solid #000; margin: 12px 0; }
+  body.printing-a4 .print-a4 .pr-section-title { font-size: 13px; letter-spacing: 3px; margin-bottom: 8px; }
+  body.printing-a4 .print-a4 .pr-item { margin-bottom: 8px; font-size: 14px; }
+  body.printing-a4 .print-a4 .pr-obs { font-size: 12px; padding-left: 16px; }
+  body.printing-a4 .print-a4 .pr-total { font-size: 18px; font-weight: 900; margin-top: 10px; padding-top: 8px; border-top: 1px solid #000; }
+  body.printing-a4 .print-a4 .pr-payment { margin-top: 10px; font-size: 13px; }
+  body.printing-a4 .print-a4 .pr-footer { font-size: 12px; margin-top: 14px; font-style: italic; }
+}
+

@@ -173,12 +173,15 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         delivery_address: deliveryAddress || '',
         delivery_reference: deliveryReference || '',
         delivery_recipient: deliveryRecipient || '',
+        bairro_id: bairroId || null,
+        bairro_nome: bairroNome || '',
+        delivery_fee: fee,
         items: orderItems,
         total,
         status: 'pending',
         payment_method: method || '',
         user_id: session?.user?.id || null,
-      }).select('id').single();
+      } as any).select('id').single();
 
       if (error) throw error;
 

@@ -700,6 +700,9 @@ const AdminPage = () => {
           <CoMarketingPanel organizationId={activeOrgId} />
         </FeatureGate>
       )}
+      {tab === 'operacao' && (
+        <OperacaoPanel organizationId={activeOrgId} />
+      )}
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />
       )}

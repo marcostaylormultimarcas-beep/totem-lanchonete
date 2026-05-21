@@ -105,6 +105,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
     msg += `📍 *LOCAL:* ${orderType === 'local' ? 'Comer no Local (Mesa)' : 'Para Viagem (Entrega)'}\n`;
     if (orderType === 'viagem' && deliveryAddress) {
+      if (bairroNome) msg += `🏘️ *BAIRRO:* ${bairroNome}\n`;
       msg += `🏠 *ENDEREÇO:* ${deliveryAddress}\n`;
       if (deliveryReference) msg += `📌 *REFERÊNCIA:* ${deliveryReference}\n`;
       if (deliveryRecipient) msg += `👤 *RECEBEDOR:* ${deliveryRecipient}\n`;
@@ -118,6 +119,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     msg += `─────────────────\n`;
     if (appliedCoupon && discount > 0) {
       msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    }
+    if (fee > 0) {
+      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(fee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
     }
     const methodLabel = method === 'cash' ? 'Dinheiro no balcão' : method === 'terminal' ? 'Cartão na maquininha' : method === 'online' ? 'Cartão online' : 'Pix';
     msg += `💳 *PAGAMENTO:* ${methodLabel} - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;

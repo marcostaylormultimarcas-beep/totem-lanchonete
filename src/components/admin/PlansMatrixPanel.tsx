@@ -72,6 +72,10 @@ const PlansMatrixPanel = () => {
   }, []);
 
   const toggle = async (plan: Plan, feature: Feature, current: boolean) => {
+    if (!canWrite) {
+      toast.error('Apenas o Super Master pode alterar a Matriz Global de Planos.');
+      return;
+    }
     const cellKey = `${plan.id}:${feature.id}`;
     setSavingKey(cellKey);
     // optimistic

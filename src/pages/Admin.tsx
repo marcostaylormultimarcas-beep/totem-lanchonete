@@ -693,6 +693,14 @@ const AdminPage = () => {
           <VisionPrimePanel organizationId={activeOrgId} />
         </FeatureGate>
       )}
+      {tab === 'parcerias' && (
+        <FeatureGate feature="co_marketing" label="Co-Marketing Hub">
+          <CoMarketingPanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
+      {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
+        <CoMarketingGlobalMap />
+      )}
       {tab === 'plans' && currentAdmin?.tier === 'super' && (
         <PlansMatrixPanel />
       )}

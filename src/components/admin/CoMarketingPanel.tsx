@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2 } from 'lucide-react';
+import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2, Bell, Settings2 } from 'lucide-react';
 
 interface Org { id: string; name: string; slug: string; city: string }
 interface Parceria {

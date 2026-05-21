@@ -266,6 +266,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
         </button>
 
+        {currentOrderId && customerCpf && (
+          <a
+            href={`/fiscal/${currentOrderId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="touch-btn w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl text-lg flex items-center justify-center gap-2 font-bold"
+          >
+            <FileText className="w-6 h-6" /> Baixar Nota Fiscal
+          </a>
+        )}
+
+
         {currentOrderId && (
           <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
             📍 Acompanhar Pedido

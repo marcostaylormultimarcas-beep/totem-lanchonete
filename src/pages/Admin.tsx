@@ -684,6 +684,11 @@ const AdminPage = () => {
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />
       )}
+      {tab === 'prime' && (
+        <FeatureGate feature="vision_prime" label="Clube Vision Prime">
+          <VisionPrimePanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
       {tab === 'plans' && currentAdmin?.tier === 'super' && (
         <PlansMatrixPanel />
       )}

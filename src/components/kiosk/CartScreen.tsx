@@ -205,10 +205,16 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatCurrency(subtotal)}</span>
           </div>
-          {discount > 0 && (
+          {couponDiscount > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-success">Desconto ({appliedCoupon?.codigo})</span>
-              <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+              <span className="text-success">Cupom ({appliedCoupon?.codigo})</span>
+              <span className="text-success font-semibold">- {formatCurrency(couponDiscount)}</span>
+            </div>
+          )}
+          {primeDiscount > 0 && (
+            <div className="flex justify-between text-sm">
+              <span style={{ color: '#f4d28b' }} className="flex items-center gap-1"><Crown className="w-3 h-3" /> Vision Prime ({primeCfg?.desconto_percentual}%)</span>
+              <span className="font-semibold" style={{ color: '#f4d28b' }}>- {formatCurrency(primeDiscount)}</span>
             </div>
           )}
           <div className="flex justify-between text-lg font-bold pt-1 border-t border-border">

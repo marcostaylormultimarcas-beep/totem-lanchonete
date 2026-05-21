@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import {
   Sparkles, Loader2, Check, X, Send, Pencil, Users, TrendingUp,
-  Crown, Share2, MessageCircle, RefreshCw, Bot,
+  Crown, Share2, Bell, RefreshCw, Bot, Clock,
 } from 'lucide-react';
 
 interface Props { organizationId: string | null; storeName?: string; whatsappNumber?: string }

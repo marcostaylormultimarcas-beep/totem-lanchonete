@@ -544,7 +544,7 @@ const Home = () => {
               </p>
               <ul className="mt-6 space-y-3">
                 {[
-                  { i: <BrainCircuit className="w-5 h-5 text-orange" />, t: 'IA treinada no Vision Mídia' },
+                  { i: <BrainCircuit className="w-5 h-5 text-orange" />, t: `IA treinada no ${BRAND_NAME}` },
                   { i: <Sparkles className="w-5 h-5 text-orange" />, t: 'Respostas em segundos, em português' },
                   { i: <Bot className="w-5 h-5 text-orange" />, t: 'Disponível 24 horas, 7 dias por semana' },
                   { i: <Headphones className="w-5 h-5 text-orange" />, t: 'Fallback para atendimento humano via WhatsApp' },

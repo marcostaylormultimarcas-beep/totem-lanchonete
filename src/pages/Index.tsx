@@ -56,6 +56,7 @@ const Index = () => {
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
 
   useEffect(() => {

@@ -70,7 +70,7 @@ const StorageUsageCard = ({ organizationId, refreshKey = 0 }: Props) => {
       {isFull && (
         <p className="text-[11px] text-destructive flex items-start gap-1 leading-snug">
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-          Limite atingido. Fale com a Vision Mídia Digital para expandir seu plano.
+          Limite atingido. Fale com a {BRAND_LEGAL_NAME} para expandir seu plano.
         </p>
       )}
     </div>

@@ -274,6 +274,7 @@ const Index = () => {
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
           appliedCoupon={appliedCoupon}
+          scheduledFor={scheduledFor}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}

@@ -473,7 +473,7 @@ const Home = () => {
             <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl neon-orange">
               <img
                 src={ecosystemImg}
-                alt="Totem, tablet e notebook Vision Mídia sincronizados sobre uma bancada de restaurante"
+                alt={`Totem, tablet e notebook ${BRAND_NAME} sincronizados sobre uma bancada de restaurante`}
                 width={1600} height={800} loading="lazy"
                 className="w-full h-auto object-cover"
               />

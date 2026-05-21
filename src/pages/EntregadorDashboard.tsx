@@ -87,6 +87,20 @@ const EntregadorDashboard = () => {
     if (!silent && novos.length > 0 && knownIds.current.size > 0) {
       playAlert();
       toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
+      // Destaque visual (pulse) por 8s nos novos pedidos
+      const newIds = new Set(novos.map(o => o.id));
+      setHighlightIds(prev => {
+        const next = new Set(prev);
+        newIds.forEach(id => next.add(id));
+        return next;
+      });
+      setTimeout(() => {
+        setHighlightIds(prev => {
+          const next = new Set(prev);
+          newIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 8000);
     }
     ativos.forEach(o => knownIds.current.add(o.id));
     setOrders(list);

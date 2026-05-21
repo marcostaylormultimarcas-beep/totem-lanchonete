@@ -35,7 +35,10 @@ const EntregadorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [tab, setTab] = useState<'pendentes' | 'historico'>('pendentes');
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [mode, setMode] = useState<'manual' | 'free'>('manual');
+  const [available, setAvailable] = useState<DeliveryOrder[]>([]);
+  const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -107,12 +110,25 @@ const EntregadorDashboard = () => {
     setLoading(false);
   }, [session, navigate, playAlert]);
 
+  const fetchAvailable = useCallback(async () => {
+    if (!session) return;
+    const { data } = await supabase.rpc('entregador_available_orders' as any, {
+      _entregador_id: session.id,
+      _password: session.password,
+    });
+    const res: any = data;
+    if (!res?.ok) return;
+    setMode((res.mode === 'free' ? 'free' : 'manual'));
+    setAvailable(res.orders || []);
+  }, [session]);
+
   // Carga inicial + polling de segurança
   useEffect(() => {
     fetchOrders(true);
-    const i = setInterval(() => fetchOrders(false), 15000);
+    fetchAvailable();
+    const i = setInterval(() => { fetchOrders(false); fetchAvailable(); }, 15000);
     return () => clearInterval(i);
-  }, [fetchOrders]);
+  }, [fetchOrders, fetchAvailable]);
 
   // Realtime: escuta mudanças na tabela orders da loja do entregador
   useEffect(() => {
@@ -128,19 +144,48 @@ const EntregadorDashboard = () => {
           filter: `organization_id=eq.${session.organization_id}`,
         },
         (payload: any) => {
-          const row = payload.new || payload.old;
-          // Só reage se o pedido envolve este entregador (atribuição nova ou pedido já existente dele)
+          // Atualiza pedidos atribuídos a este entregador
           if (
             payload.new?.entregador_id === session.id ||
             payload.old?.entregador_id === session.id
           ) {
             fetchOrders(false);
           }
+          // Em modo Disputa Livre: refresca lista de disponíveis em qualquer mudança da loja
+          fetchAvailable();
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [session, fetchOrders]);
+  }, [session, fetchOrders, fetchAvailable]);
+
+  const handleClaim = async (orderId: string) => {
+    if (!session) return;
+    setClaiming(orderId);
+    const { data, error } = await supabase.rpc('entregador_claim_order' as any, {
+      _entregador_id: session.id,
+      _password: session.password,
+      _order_id: orderId,
+    });
+    setClaiming(null);
+    const res: any = data;
+    if (error || !res?.ok) {
+      const msg: Record<string, string> = {
+        invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        order_not_found: 'Pedido não encontrado.',
+        forbidden: 'Pedido não pertence à sua loja.',
+        mode_not_free: 'Modo de disputa livre não está ativo.',
+        already_taken: 'Outro entregador foi mais rápido nesse pedido.',
+      };
+      toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+      fetchAvailable();
+      return;
+    }
+    toast.success('🛵 Pedido aceito! Vá até a loja para retirar.');
+    setAvailable(prev => prev.filter(o => o.id !== orderId));
+    fetchOrders(true);
+    setTab('pendentes');
+  };
 
   const handleUnlockSound = async () => {
     try {
@@ -221,10 +266,10 @@ const EntregadorDashboard = () => {
 
       {/* Tabs */}
       <div className="max-w-2xl mx-auto px-4 pt-4">
-        <div className="grid grid-cols-2 bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1">
+        <div className={`grid ${mode === 'free' ? 'grid-cols-3' : 'grid-cols-2'} bg-slate-900 border border-slate-800 rounded-xl p-1 gap-1`}>
           <button
             onClick={() => setTab('pendentes')}
-            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
               tab === 'pendentes' ? 'bg-orange-600 text-white' : 'text-slate-400'
             }`}
           >
@@ -233,9 +278,22 @@ const EntregadorDashboard = () => {
               <span className="bg-white/20 text-[10px] font-black px-1.5 py-0.5 rounded-full">{pendentes.length}</span>
             )}
           </button>
+          {mode === 'free' && (
+            <button
+              onClick={() => setTab('disponiveis')}
+              className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
+                tab === 'disponiveis' ? 'bg-orange-600 text-white' : 'text-slate-400'
+              }`}
+            >
+              ⚡ Disponíveis
+              {available.length > 0 && (
+                <span className="bg-yellow-400 text-black text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">{available.length}</span>
+              )}
+            </button>
+          )}
           <button
             onClick={() => setTab('historico')}
-            className={`py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition ${
+            className={`py-2.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition ${
               tab === 'historico' ? 'bg-orange-600 text-white' : 'text-slate-400'
             }`}
           >
@@ -245,6 +303,11 @@ const EntregadorDashboard = () => {
             )}
           </button>
         </div>
+        {mode === 'free' && (
+          <p className="text-[11px] text-yellow-400/80 mt-2 text-center font-semibold">
+            ⚡ Modo Disputa Livre — o primeiro a aceitar fica com o pedido!
+          </p>
+        )}
       </div>
 
       <main className="max-w-2xl mx-auto px-4 py-4 space-y-4">
@@ -349,6 +412,38 @@ const EntregadorDashboard = () => {
                 </div>
               );
             })
+          )
+        ) : tab === 'disponiveis' ? (
+          available.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
+              <p>Nenhum pedido disponível para disputa.</p>
+              <p className="text-xs mt-1">Aguarde — novos pedidos aparecerão aqui em tempo real.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {available.map(o => (
+                <div key={o.id} className="bg-slate-900 border-2 border-yellow-500/40 rounded-2xl p-4 space-y-2 shadow-[0_0_25px_-10px_rgba(234,179,8,0.6)]">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-yellow-400 font-black text-lg">#{o.order_number}</span>
+                    <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
+                  </div>
+                  <p className="text-sm font-semibold">{o.customer_name}</p>
+                  {o.delivery_address && (
+                    <p className="text-xs text-slate-400 flex items-start gap-1">
+                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {o.delivery_address}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => handleClaim(o.id)}
+                    disabled={claiming === o.id}
+                    className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    ⚡ {claiming === o.id ? 'Aceitando...' : 'ACEITAR PEDIDO'}
+                  </button>
+                </div>
+              ))}
+            </div>
           )
         ) : (
           // Histórico

@@ -36,6 +36,7 @@ const EntregadorDashboard = () => {
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
   const [tab, setTab] = useState<'pendentes' | 'historico'>('pendentes');
+  const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);

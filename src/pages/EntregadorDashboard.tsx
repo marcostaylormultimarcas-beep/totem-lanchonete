@@ -144,14 +144,15 @@ const EntregadorDashboard = () => {
           filter: `organization_id=eq.${session.organization_id}`,
         },
         (payload: any) => {
-          const row = payload.new || payload.old;
-          // Só reage se o pedido envolve este entregador (atribuição nova ou pedido já existente dele)
+          // Atualiza pedidos atribuídos a este entregador
           if (
             payload.new?.entregador_id === session.id ||
             payload.old?.entregador_id === session.id
           ) {
             fetchOrders(false);
           }
+          // Em modo Disputa Livre: refresca lista de disponíveis em qualquer mudança da loja
+          fetchAvailable();
         }
       )
       .subscribe();

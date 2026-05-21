@@ -292,7 +292,7 @@ const Home = () => {
               <div className="absolute -inset-6 -z-10 bg-orange/30 blur-3xl rounded-full" />
               <img
                 src={heroTotem}
-                alt="Totem de autoatendimento Vision Mídia com brilho laranja em lanchonete gourmet"
+                alt={`Totem de autoatendimento ${BRAND_NAME} com brilho laranja em lanchonete gourmet`}
                 width={1024} height={1024}
                 className="w-full h-auto rounded-3xl border border-white/10 shadow-2xl object-cover"
               />

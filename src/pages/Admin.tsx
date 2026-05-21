@@ -24,6 +24,7 @@ import MercadoPagoCard from '@/components/admin/MercadoPagoCard';
 import FiscalExportCard from '@/components/admin/FiscalExportCard';
 import EntregadoresPanel from '@/components/admin/EntregadoresPanel';
 import BairrosPanel from '@/components/admin/BairrosPanel';
+import LogisticaPanel from '@/components/admin/LogisticaPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },

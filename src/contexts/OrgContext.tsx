@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useStoreTheme } from '@/hooks/useStoreTheme';
 
 export interface Organization {
   id: string;

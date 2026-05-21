@@ -46,10 +46,21 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [mpLoading, setMpLoading] = useState(false);
   // Online card form (placeholder; integração futura)
   const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
+  const { config: primeCfg } = useVisionPrimeConfig(orgId);
+  const { status: primeStatus } = useVisionPrimeStatus(orgId);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
-  const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
-  const fee = orderType === 'viagem' ? Number(deliveryFee || 0) : 0;
+  const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const primeActive = Boolean(primeStatus.active && primeCfg?.ativo);
+  const primeDiscount = primeActive
+    ? +(subtotal * (Number(primeCfg!.desconto_percentual) || 0) / 100).toFixed(2)
+    : 0;
+  const discount = Math.min(subtotal, couponDiscount + primeDiscount);
+  const rawFee = orderType === 'viagem' ? Number(deliveryFee || 0) : 0;
+  const primeFreeShipping = primeActive && (Number(primeCfg!.frete_gratis_minimo) || 0) <= subtotal;
+  const fee = primeFreeShipping ? 0 : rawFee;
+  const feeWaived = primeFreeShipping ? rawFee : 0;
   const total = Math.max(0, subtotal - discount + fee);
+  const primeSavings = primeDiscount + feeWaived;
 
   const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
   const qrImageSrc = mpPix?.qr_code_base64

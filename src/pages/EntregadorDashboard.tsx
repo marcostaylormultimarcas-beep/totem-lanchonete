@@ -35,7 +35,10 @@ const EntregadorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
-  const [tab, setTab] = useState<'pendentes' | 'historico'>('pendentes');
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [mode, setMode] = useState<'manual' | 'free'>('manual');
+  const [available, setAvailable] = useState<DeliveryOrder[]>([]);
+  const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const audioCtxRef = useRef<AudioContext | null>(null);

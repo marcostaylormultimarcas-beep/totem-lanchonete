@@ -705,6 +705,11 @@ const AdminPage = () => {
       {tab === 'operacao' && (
         <OperacaoPanel organizationId={activeOrgId} />
       )}
+      {tab === 'assistente' && (
+        <FeatureGate feature="vision_assistant" label="Assistente Vision (IA)">
+          <AssistenteVisionPanel organizationId={activeOrgId} storeName={settings.storeName} whatsappNumber={settings.whatsappNumber} />
+        </FeatureGate>
+      )}
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />
       )}

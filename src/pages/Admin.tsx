@@ -645,6 +645,7 @@ const AdminPage = () => {
           { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
           { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
           { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
+          { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },

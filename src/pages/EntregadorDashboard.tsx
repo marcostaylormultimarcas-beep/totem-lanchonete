@@ -157,7 +157,35 @@ const EntregadorDashboard = () => {
       )
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [session, fetchOrders]);
+  }, [session, fetchOrders, fetchAvailable]);
+
+  const handleClaim = async (orderId: string) => {
+    if (!session) return;
+    setClaiming(orderId);
+    const { data, error } = await supabase.rpc('entregador_claim_order' as any, {
+      _entregador_id: session.id,
+      _password: session.password,
+      _order_id: orderId,
+    });
+    setClaiming(null);
+    const res: any = data;
+    if (error || !res?.ok) {
+      const msg: Record<string, string> = {
+        invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        order_not_found: 'Pedido não encontrado.',
+        forbidden: 'Pedido não pertence à sua loja.',
+        mode_not_free: 'Modo de disputa livre não está ativo.',
+        already_taken: 'Outro entregador foi mais rápido nesse pedido.',
+      };
+      toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+      fetchAvailable();
+      return;
+    }
+    toast.success('🛵 Pedido aceito! Vá até a loja para retirar.');
+    setAvailable(prev => prev.filter(o => o.id !== orderId));
+    fetchOrders(true);
+    setTab('pendentes');
+  };
 
   const handleUnlockSound = async () => {
     try {

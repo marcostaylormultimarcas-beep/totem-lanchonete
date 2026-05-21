@@ -13,6 +13,7 @@ import cardPix from '@/assets/home-card-pix.jpg';
 import cardKds from '@/assets/home-card-kds.jpg';
 import ecosystemImg from '@/assets/home-ecosystem.jpg';
 import SuperAppCarousel from '@/components/landing/SuperAppCarousel';
+import { BRAND_NAME, BRAND_LEGAL_NAME, BRAND_TAGLINE } from '@/config/brandConfig';
 
 /** URL base do Simulador Interativo (`?modo=demo` ativa isolamento — sem gravar nem alertar KDS). */
 const DEFAULT_DEMO_SLUG = 'principal';
@@ -291,7 +292,7 @@ const Home = () => {
               <div className="absolute -inset-6 -z-10 bg-orange/30 blur-3xl rounded-full" />
               <img
                 src={heroTotem}
-                alt="Totem de autoatendimento Vision Mídia com brilho laranja em lanchonete gourmet"
+                alt={`Totem de autoatendimento ${BRAND_NAME} com brilho laranja em lanchonete gourmet`}
                 width={1024} height={1024}
                 className="w-full h-auto rounded-3xl border border-white/10 shadow-2xl object-cover"
               />
@@ -308,7 +309,7 @@ const Home = () => {
       <section id="diferenciais" className="py-10 md:py-16 border-t border-white/5 relative">
         <div className="max-w-7xl mx-auto px-5">
           <div data-reveal className="text-center max-w-2xl mx-auto">
-            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que Vision Mídia</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-orange">Por que {BRAND_NAME}</span>
             <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
               Gestão híbrida com <span className="grad-text">blindagem de receita</span>
             </h2>
@@ -472,7 +473,7 @@ const Home = () => {
             <div className="rounded-3xl overflow-hidden border border-white/10 shadow-2xl neon-orange">
               <img
                 src={ecosystemImg}
-                alt="Totem, tablet e notebook Vision Mídia sincronizados sobre uma bancada de restaurante"
+                alt={`Totem, tablet e notebook ${BRAND_NAME} sincronizados sobre uma bancada de restaurante`}
                 width={1600} height={800} loading="lazy"
                 className="w-full h-auto object-cover"
               />
@@ -543,7 +544,7 @@ const Home = () => {
               </p>
               <ul className="mt-6 space-y-3">
                 {[
-                  { i: <BrainCircuit className="w-5 h-5 text-orange" />, t: 'IA treinada no Vision Mídia' },
+                  { i: <BrainCircuit className="w-5 h-5 text-orange" />, t: `IA treinada no ${BRAND_NAME}` },
                   { i: <Sparkles className="w-5 h-5 text-orange" />, t: 'Respostas em segundos, em português' },
                   { i: <Bot className="w-5 h-5 text-orange" />, t: 'Disponível 24 horas, 7 dias por semana' },
                   { i: <Headphones className="w-5 h-5 text-orange" />, t: 'Fallback para atendimento humano via WhatsApp' },
@@ -603,7 +604,7 @@ const Home = () => {
           </h2>
           <p className="mt-5 text-white/70 max-w-2xl mx-auto">
             Junte-se aos restaurantes que já reduziram filas, aumentaram o ticket médio e
-            transformaram a operação com a Vision Mídia Digital.
+            transformaram a operação com a {BRAND_LEGAL_NAME}.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href={waLink} target="_blank" rel="noreferrer"
@@ -628,7 +629,7 @@ const Home = () => {
             </div>
             <span className="text-xs font-bold uppercase tracking-widest text-emerald">Expansão Regional</span>
             <h2 className="mt-3 text-3xl md:text-5xl font-black text-white">
-              Seja um Licenciado <span className="grad-text">Vision Mídia Digital</span>
+              Seja um Licenciado <span className="grad-text">{BRAND_LEGAL_NAME}</span>
             </h2>
             <p className="mt-5 text-white/70 max-w-2xl mx-auto">
               Expanda seus negócios tornando-se um parceiro regional. Tenha acesso a um painel exclusivo
@@ -657,9 +658,9 @@ const Home = () => {
             <span className="w-8 h-8 rounded-lg bg-orange grid place-items-center neon-orange">
               <UtensilsCrossed className="w-4 h-4 text-black" />
             </span>
-            <span className="font-bold text-white">Vision Mídia Digital</span>
+            <span className="font-bold text-white">{BRAND_LEGAL_NAME}</span>
           </div>
-          <div>© {new Date().getFullYear()} Vision Mídia · Autoatendimento Inteligente</div>
+          <div>© {new Date().getFullYear()} {BRAND_NAME} · {BRAND_TAGLINE}</div>
         </div>
       </footer>
 
@@ -694,7 +695,7 @@ const Home = () => {
             <div className="relative bg-black rounded-b-2xl overflow-hidden border-x border-b border-white/10 neon-orange">
               <iframe
                 src={demoUrl}
-                title="Simulador Vision Mídia"
+                title={`Simulador ${BRAND_NAME}`}
                 className="block w-full bg-black"
                 style={{ height: 'min(700px, calc(100vh - 8rem))', border: 0 }}
                 allow="clipboard-write"

@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { BRAND_LEGAL_NAME } from '@/config/brandConfig';
 
 /**
  * Tipos de imagem suportados.
@@ -27,7 +28,7 @@ export const STORAGE_BUCKET = 'produtos';
 
 export class StorageLimitError extends Error {
   constructor(
-    message = 'Espaço de armazenamento esgotado (Limite de 250MB atingido). Fale com a Vision Mídia Digital para expandir seu plano!',
+    message = `Espaço de armazenamento esgotado (Limite de 250MB atingido). Fale com a ${BRAND_LEGAL_NAME} para expandir seu plano!`,
   ) {
     super(message);
     this.name = 'StorageLimitError';

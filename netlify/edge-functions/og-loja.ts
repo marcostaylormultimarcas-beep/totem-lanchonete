@@ -8,7 +8,7 @@ const SUPABASE_URL = "https://upwstbeimnlgohbqogzz.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd3N0YmVpbW5sZ29oYnFvZ3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTQ4NDQsImV4cCI6MjA5MDY3MDg0NH0.jTK21_zbLLcqPWAVSjOJCwAVrGJ7L6iftFyoppmdtJE";
 
-const DEFAULT_TITLE = "Vision Mídia Digital - Autoatendimento";
+const DEFAULT_TITLE = "VisionFood - Autoatendimento";
 const DEFAULT_DESC = "Sistema de pedidos inteligente para lanchonetes e totens.";
 const DEFAULT_IMAGE =
   "https://storage.googleapis.com/gpt-engineer-file-uploads/CjSEvxfoC6ZkT4Wl8xqLc2qxgrl2/social-images/social-1774985695387-1000712360.webp";

@@ -321,7 +321,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <div className="flex justify-between items-center">
             <span className="font-bold text-lg">TOTAL</span>
             <span className="font-black text-xl text-primary">{formatCurrency(total)}</span>
+          </div>
         </div>
+
+
 
         {partnerGift && (
           <div className="w-full rounded-2xl p-5 border-2 animate-in fade-in zoom-in duration-500"

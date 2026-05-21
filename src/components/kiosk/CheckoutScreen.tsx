@@ -1,5 +1,17 @@
-import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building } from 'lucide-react';
 import { maskCpf, isValidCpf } from '@/lib/cpf';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrgId } from '@/contexts/OrgContext';
+import { formatCurrency } from '@/data/store';
+
+interface Bairro {
+  id: string;
+  nome_bairro: string;
+  valor_taxa: number;
+  tempo_estimado: number;
+  ativo: boolean;
+}
 
 interface CheckoutScreenProps {
   name: string;
@@ -9,6 +21,8 @@ interface CheckoutScreenProps {
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;
+  bairroId: string;
+  onBairroChange: (id: string, nome: string, taxa: number, tempo: number) => void;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onCpfChange: (v: string) => void;
@@ -22,13 +36,37 @@ interface CheckoutScreenProps {
 const CheckoutScreen = ({
   name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
+  bairroId, onBairroChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
   onContinue, onBack,
 }: CheckoutScreenProps) => {
+  const orgId = useOrgId();
+  const [bairros, setBairros] = useState<Bairro[]>([]);
+  const [loadingBairros, setLoadingBairros] = useState(false);
+
+  useEffect(() => {
+    if (!orgId || orderType !== 'viagem') return;
+    setLoadingBairros(true);
+    supabase.from('taxas_entrega' as any)
+      .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
+      .eq('organization_id', orgId)
+      .eq('ativo', true)
+      .order('nome_bairro', { ascending: true })
+      .then(({ data }) => {
+        setBairros(((data as any[]) || []) as Bairro[]);
+        setLoadingBairros(false);
+      });
+  }, [orgId, orderType]);
+
+  const selectedBairro = bairros.find(b => b.id === bairroId);
   const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
   const cpfValid = !cpf || isValidCpf(cpf);
-  const deliveryValid = orderType === 'viagem' ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 : true;
+  const bairroNeeded = orderType === 'viagem' && bairros.length > 0;
+  const bairroValid = !bairroNeeded || !!selectedBairro;
+  const deliveryValid = orderType === 'viagem'
+    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid
+    : true;
   const isValid = baseValid && deliveryValid && cpfValid;
 
   return (
@@ -90,18 +128,55 @@ const CheckoutScreen = ({
             )}
           </div>
 
-
           {orderType === 'viagem' && (
             <>
               <hr className="border-border" />
               <p className="text-sm font-bold text-primary flex items-center gap-2">
                 <MapPin className="w-4 h-4" /> Dados de Entrega
               </p>
+
+              {/* Seletor de bairro */}
+              <div>
+                <label className="text-xs font-bold text-muted-foreground mb-1 ml-1 block flex items-center gap-1">
+                  <Building className="w-3 h-3" /> Selecione seu Bairro
+                </label>
+                {loadingBairros ? (
+                  <div className="w-full py-4 bg-muted rounded-xl text-center text-sm text-muted-foreground">Carregando bairros...</div>
+                ) : bairros.length === 0 ? (
+                  <div className="w-full px-3 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-xs text-destructive">
+                    A loja ainda não cadastrou bairros de entrega. Selecione "Comer no Local" ou entre em contato com a loja.
+                  </div>
+                ) : (
+                  <select
+                    value={bairroId}
+                    onChange={e => {
+                      const b = bairros.find(x => x.id === e.target.value);
+                      if (b) onBairroChange(b.id, b.nome_bairro, Number(b.valor_taxa), b.tempo_estimado);
+                      else onBairroChange('', '', 0, 0);
+                    }}
+                    className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">— Escolha o bairro —</option>
+                    {bairros.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.nome_bairro} — {formatCurrency(Number(b.valor_taxa))} ({b.tempo_estimado} min)
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {selectedBairro && (
+                  <p className="text-xs text-success mt-1 ml-1 flex items-center gap-1">
+                    ✓ Taxa: <span className="font-bold">{formatCurrency(Number(selectedBairro.valor_taxa))}</span>
+                    <span className="text-muted-foreground">• Entrega em ~{selectedBairro.tempo_estimado} min</span>
+                  </p>
+                )}
+              </div>
+
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Endereço completo"
+                  placeholder="Endereço completo (rua, nº)"
                   value={deliveryAddress}
                   onChange={e => onDeliveryAddressChange(e.target.value)}
                   className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"

@@ -20,7 +20,7 @@ export interface AppliedCoupon {
 interface CartScreenProps {
   cart: CartItem[];
   onRemove: (id: string) => void;
-  onCheckout: () => void;
+  onCheckout: (scheduledFor?: string | null) => void;
   onBack: () => void;
   isAuthenticated?: boolean;
   orgId: string | null;

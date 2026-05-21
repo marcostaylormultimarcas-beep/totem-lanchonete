@@ -242,6 +242,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">🏠 Endereço</p>
               <p className="font-bold text-sm">{deliveryAddress}</p>
+              {bairroNome && <p className="text-xs text-muted-foreground">🏘️ Bairro: <span className="text-foreground font-semibold">{bairroNome}</span></p>}
             </div>
           )}
           <hr className="border-border" />
@@ -256,16 +257,24 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             ))}
           </div>
           <hr className="border-border" />
-          {discount > 0 && (
+          {(discount > 0 || fee > 0) && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
-                <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
-              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
+                  <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+                </div>
+              )}
+              {fee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">🛵 Taxa de entrega {bairroNome ? `(${bairroNome})` : ''}</span>
+                  <span className="font-semibold">+ {formatCurrency(fee)}</span>
+                </div>
+              )}
             </>
           )}
           <div className="flex justify-between items-center">

@@ -476,8 +476,40 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         );
       })}
 
-      <OrderPrintReceipt order={printOrder} storeName={storeName} />
+      <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat === 'a4' ? 'print-a4' : 'print-cupom'} />
+
+      {pendingPrintOrder && (
+        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPendingPrintOrder(null)}>
+          <div className="kiosk-card w-full max-w-md p-5 border border-primary/40" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="text-lg font-black">Formato de Impressão</h3>
+              <button onClick={() => setPendingPrintOrder(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Pedido #{pendingPrintOrder.order_number} — escolha o formato.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => doPrint(pendingPrintOrder, 'cupom')}
+                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'cupom' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+              >
+                <div className="flex items-center gap-2 font-bold"><Receipt className="w-5 h-5 text-primary" /> Térmica (58/80mm)</div>
+                <p className="text-[11px] text-muted-foreground">Cupom estreito, sem margens, ideal para impressora térmica.</p>
+                {printFormat === 'cupom' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
+              </button>
+              <button
+                onClick={() => doPrint(pendingPrintOrder, 'a4')}
+                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'a4' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+              >
+                <div className="flex items-center gap-2 font-bold"><FileText className="w-5 h-5 text-primary" /> Folha A4</div>
+                <p className="text-[11px] text-muted-foreground">Layout centralizado, fontes maiores, margens para papel comum.</p>
+                {printFormat === 'a4' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-3 text-center">Sua escolha será lembrada para os próximos pedidos.</p>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 };
 

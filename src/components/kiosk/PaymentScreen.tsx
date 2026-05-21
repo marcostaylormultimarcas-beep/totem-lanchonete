@@ -30,7 +30,7 @@ interface PaymentScreenProps {
 const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
 const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);

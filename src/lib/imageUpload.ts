@@ -1,4 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
+import { BRAND_LEGAL_NAME } from '@/config/brandConfig';
 
 /**
  * Tipos de imagem suportados.

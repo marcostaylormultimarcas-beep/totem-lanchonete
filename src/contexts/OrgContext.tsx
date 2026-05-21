@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useStoreTheme } from '@/hooks/useStoreTheme';
 
 export interface Organization {
   id: string;
@@ -120,6 +121,9 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     });
     return () => { sub.subscription.unsubscribe(); };
   }, []);
+
+  // Aplica o tema da loja (cores e modo) sempre que a org mudar
+  useStoreTheme(orgId);
 
   return (
     <OrgContext.Provider value={{ orgId, org, loading, lockedSlug, setOrgId, lockToSlug, refresh: resolve }}>

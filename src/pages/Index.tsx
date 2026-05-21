@@ -240,9 +240,9 @@ const Index = () => {
       )}
       {step === 'checkout' && (
         <CheckoutScreen
-          name={customerName} phone={customerPhone} orderType={orderType}
+          name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          onNameChange={setCustomerName} onPhoneChange={setCustomerPhone}
+          onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
           onContinue={() => setStep('payment')} onBack={() => setStep('cart')}
@@ -250,7 +250,7 @@ const Index = () => {
       )}
       {step === 'payment' && (
         <PaymentScreen
-          cart={cart} customerName={customerName} customerPhone={customerPhone}
+          cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           appliedCoupon={appliedCoupon}

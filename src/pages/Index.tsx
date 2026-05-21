@@ -40,6 +40,7 @@ const Index = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerCpf, setCustomerCpf] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');

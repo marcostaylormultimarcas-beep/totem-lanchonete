@@ -887,6 +887,72 @@ export type Database = {
         }
         Relationships: []
       }
+      vision_prime_assinaturas: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          organization_id: string
+          started_at: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          organization_id: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          organization_id?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vision_prime_config: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          desconto_percentual: number
+          frete_gratis_minimo: number
+          id: string
+          organization_id: string
+          updated_at: string
+          valor_mensalidade: number
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          desconto_percentual?: number
+          frete_gratis_minimo?: number
+          id?: string
+          organization_id: string
+          updated_at?: string
+          valor_mensalidade?: number
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          desconto_percentual?: number
+          frete_gratis_minimo?: number
+          id?: string
+          organization_id?: string
+          updated_at?: string
+          valor_mensalidade?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -961,6 +1027,8 @@ export type Database = {
         Returns: Json
       }
       user_owns_org: { Args: { _org: string; _uid: string }; Returns: boolean }
+      vision_prime_my_status: { Args: { _org: string }; Returns: Json }
+      vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

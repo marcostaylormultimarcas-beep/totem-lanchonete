@@ -413,6 +413,38 @@ const EntregadorDashboard = () => {
               );
             })
           )
+        ) : tab === 'disponiveis' ? (
+          available.length === 0 ? (
+            <div className="text-center py-16 text-slate-500">
+              <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
+              <p>Nenhum pedido disponível para disputa.</p>
+              <p className="text-xs mt-1">Aguarde — novos pedidos aparecerão aqui em tempo real.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {available.map(o => (
+                <div key={o.id} className="bg-slate-900 border-2 border-yellow-500/40 rounded-2xl p-4 space-y-2 shadow-[0_0_25px_-10px_rgba(234,179,8,0.6)]">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-yellow-400 font-black text-lg">#{o.order_number}</span>
+                    <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
+                  </div>
+                  <p className="text-sm font-semibold">{o.customer_name}</p>
+                  {o.delivery_address && (
+                    <p className="text-xs text-slate-400 flex items-start gap-1">
+                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {o.delivery_address}
+                    </p>
+                  )}
+                  <button
+                    onClick={() => handleClaim(o.id)}
+                    disabled={claiming === o.id}
+                    className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    ⚡ {claiming === o.id ? 'Aceitando...' : 'ACEITAR PEDIDO'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           // Histórico
           entregues.length === 0 ? (

@@ -83,17 +83,44 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
       .then(({ data }) => setLowStockIds(new Set(((data as any[]) || []).map((p: any) => p.id))));
   }, [organizationId]);
 
-  const handlePrint = (order: Order) => {
+  const openPrintDialog = (order: Order) => {
+    setPendingPrintOrder(order);
+  };
+
+  const doPrint = (order: Order, format: PrintFormat) => {
+    try { localStorage.setItem(PRINT_PREF_KEY, format); } catch {}
+    setPrintFormat(format);
     setPrintOrder(order);
+    setPendingPrintOrder(null);
+    const cleanup = () => {
+      setPrintOrder(null);
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setTimeout(() => {
+          // Garante classe no body antes da impressão
+          document.body.classList.add(format === 'cupom' ? 'printing-cupom' : 'printing-a4');
           window.print();
-          setTimeout(() => setPrintOrder(null), 500);
-        }, 150);
+          // Fallback se afterprint não disparar (alguns browsers)
+          setTimeout(() => {
+            document.body.classList.remove('printing-cupom', 'printing-a4');
+            setPrintOrder(null);
+          }, 800);
+        }, 120);
       });
     });
   };
+
+  // Restaura preferência ao montar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PRINT_PREF_KEY) as PrintFormat | null;
+      if (saved === 'cupom' || saved === 'a4') setPrintFormat(saved);
+    } catch {}
+  }, []);
+
 
   const fetchOrders = async () => {
     if (!organizationId) { setOrders([]); return; }

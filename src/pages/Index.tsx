@@ -122,6 +122,10 @@ const Index = () => {
         setDeliveryAddress(parsed.deliveryAddress || '');
         setDeliveryReference(parsed.deliveryReference || '');
         setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setBairroId(parsed.bairroId || '');
+        setBairroNome(parsed.bairroNome || '');
+        setBairroTaxa(parsed.bairroTaxa || 0);
+        setBairroTempo(parsed.bairroTempo || 0);
         setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');

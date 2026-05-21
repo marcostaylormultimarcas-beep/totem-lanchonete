@@ -46,6 +46,20 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [couponCode, setCouponCode] = useState('');
   const [validating, setValidating] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+  const storeStatus = useStoreStatus(orgId);
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>('');
+  const [scheduledTime, setScheduledTime] = useState<string>('');
+
+  // Defaults para o agendamento = próximo horário de abertura
+  useMemo(() => {
+    if (storeStatus.nextOpenAt && !scheduledDate) {
+      const d = storeStatus.nextOpenAt;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+      setScheduledTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    }
+  }, [storeStatus.nextOpenAt]);
 
   useEffect(() => {
     let cancelled = false;

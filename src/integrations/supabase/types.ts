@@ -210,6 +210,7 @@ export type Database = {
       orders: {
         Row: {
           created_at: string
+          customer_cpf: string
           customer_name: string
           customer_phone: string
           data_reembolso: string | null
@@ -224,6 +225,7 @@ export type Database = {
           order_number: string
           order_type: string
           organization_id: string | null
+          payment_method: string
           status: string
           status_reembolso: string
           total: number
@@ -232,6 +234,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          customer_cpf?: string
           customer_name: string
           customer_phone?: string
           data_reembolso?: string | null
@@ -246,6 +249,7 @@ export type Database = {
           order_number: string
           order_type?: string
           organization_id?: string | null
+          payment_method?: string
           status?: string
           status_reembolso?: string
           total?: number
@@ -254,6 +258,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          customer_cpf?: string
           customer_name?: string
           customer_phone?: string
           data_reembolso?: string | null
@@ -268,6 +273,7 @@ export type Database = {
           order_number?: string
           order_type?: string
           organization_id?: string | null
+          payment_method?: string
           status?: string
           status_reembolso?: string
           total?: number

@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const organization_id = String(body.organization_id || "");
     const amountNum = Number(body.amount);
-    const description = String(body.description || "Pedido Vision Mídia").slice(0, 200);
+    const description = String(body.description || "Pedido VisionFood").slice(0, 200);
     const payer_email = String(body.payer_email || "cliente@visionmidia.com").slice(0, 120);
 
     if (!organization_id || !Number.isFinite(amountNum) || amountNum <= 0) {

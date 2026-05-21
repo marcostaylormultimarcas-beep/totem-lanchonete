@@ -201,7 +201,8 @@ const Index = () => {
     }
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (sched?: string | null) => {
+    setScheduledFor(sched || null);
     const { data: { session } } = await supabase.auth.getSession();
 
     if (session) {

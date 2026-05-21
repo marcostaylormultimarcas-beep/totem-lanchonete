@@ -112,7 +112,7 @@
 }
 
 .cta-breath {
-  animation: ctaBreath 3s ease-in-out infinite;
+  animation: ctaBreath 1.6s ease-in-out infinite;
   will-change: transform, box-shadow;
 }
 

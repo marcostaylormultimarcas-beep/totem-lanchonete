@@ -806,7 +806,14 @@ const AdminPage = () => {
             if (catProducts.length === 0) return null;
             return (
               <div key={cat.key}>
-                <h3 className="font-bold text-sm text-muted-foreground mb-2">{cat.icon} {cat.label}</h3>
+                <h3 className="font-bold text-sm text-muted-foreground mb-2 flex items-center gap-2">
+                  {isImageUrl(cat.icon) ? (
+                    <img src={cat.icon} alt="" className="w-5 h-5 object-cover rounded" />
+                  ) : (
+                    <span>{cat.icon}</span>
+                  )}
+                  <span>{cat.label}</span>
+                </h3>
                 <div className="space-y-2">
                   {catProducts.map(p => (
                     <div key={p.id} className="kiosk-card p-3 flex items-center gap-3">

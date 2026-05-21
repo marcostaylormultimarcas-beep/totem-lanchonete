@@ -56,6 +56,7 @@ const Index = () => {
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
 
   useEffect(() => {
@@ -200,7 +201,8 @@ const Index = () => {
     }
   };
 
-  const handleCheckout = async () => {
+  const handleCheckout = async (sched?: string | null) => {
+    setScheduledFor(sched || null);
     const { data: { session } } = await supabase.auth.getSession();
 
     if (session) {
@@ -272,6 +274,7 @@ const Index = () => {
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
           appliedCoupon={appliedCoupon}
+          scheduledFor={scheduledFor}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}

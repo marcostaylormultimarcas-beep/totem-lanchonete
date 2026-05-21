@@ -1,11 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles } from 'lucide-react';
+import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles, CalendarClock, Clock } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoyaltyCard from './LoyaltyCard';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
+import { useStoreStatus } from '@/hooks/useStoreStatus';
+import StoreStatusBadge from './StoreStatusBadge';
 
 export interface AppliedCoupon {
   id: string;
@@ -18,7 +20,7 @@ export interface AppliedCoupon {
 interface CartScreenProps {
   cart: CartItem[];
   onRemove: (id: string) => void;
-  onCheckout: () => void;
+  onCheckout: (scheduledFor?: string | null) => void;
   onBack: () => void;
   isAuthenticated?: boolean;
   orgId: string | null;
@@ -44,6 +46,20 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [couponCode, setCouponCode] = useState('');
   const [validating, setValidating] = useState(false);
   const [customerPhone, setCustomerPhone] = useState('');
+  const storeStatus = useStoreStatus(orgId);
+  const [scheduleMode, setScheduleMode] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>('');
+  const [scheduledTime, setScheduledTime] = useState<string>('');
+
+  // Defaults para o agendamento = próximo horário de abertura
+  useMemo(() => {
+    if (storeStatus.nextOpenAt && !scheduledDate) {
+      const d = storeStatus.nextOpenAt;
+      const pad = (n: number) => String(n).padStart(2, '0');
+      setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
+      setScheduledTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    }
+  }, [storeStatus.nextOpenAt]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +124,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
         </button>
         <h2 className="text-xl font-bold">Seu Pedido</h2>
         {primeBadge}
+        <div className="ml-auto"><StoreStatusBadge orgId={orgId} compact /></div>
       </div>
 
       {cart.length === 0 ? (
@@ -221,9 +238,61 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
             <span>Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-          <button onClick={onCheckout} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
-            {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
-          </button>
+          {/* Status da loja → libera, agenda ou bloqueia o checkout */}
+          {storeStatus.open ? (
+            <button onClick={() => onCheckout(null)} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
+              {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                <p className="font-bold text-destructive flex items-center gap-2">
+                  <Clock className="w-4 h-4" /> {storeStatus.message}
+                </p>
+                {storeStatus.nextOpenAt && !storeStatus.emergencyClosed && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Próxima abertura: {storeStatus.nextOpenAt.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+              </div>
+
+              {storeStatus.schedulingEnabled && !storeStatus.emergencyClosed ? (
+                !scheduleMode ? (
+                  <button onClick={() => setScheduleMode(true)}
+                    className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+                    <CalendarClock className="w-5 h-5" /> Agendar Pedido
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-primary/40 p-3 space-y-2 bg-primary/5">
+                    <p className="text-sm font-bold flex items-center gap-2"><CalendarClock className="w-4 h-4 text-primary" /> Agendar para:</p>
+                    <div className="flex gap-2">
+                      <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
+                      <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
+                        className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setScheduleMode(false)} className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1">Cancelar</button>
+                      <button
+                        onClick={() => {
+                          if (!scheduledDate || !scheduledTime) { toast.error('Escolha data e hora'); return; }
+                          const iso = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
+                          if (new Date(iso) <= new Date()) { toast.error('Escolha uma data futura'); return; }
+                          onCheckout(iso);
+                        }}
+                        className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold">
+                        Confirmar Agendamento
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <button disabled className="touch-btn w-full bg-muted text-muted-foreground py-4 rounded-xl text-lg cursor-not-allowed">
+                  Pedidos indisponíveis
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

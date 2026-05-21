@@ -28,6 +28,7 @@ import LogisticaPanel from '@/components/admin/LogisticaPanel';
 import VisionPrimePanel from '@/components/admin/VisionPrimePanel';
 import CoMarketingPanel from '@/components/admin/CoMarketingPanel';
 import CoMarketingGlobalMap from '@/components/admin/CoMarketingGlobalMap';
+import OperacaoPanel from '@/components/admin/OperacaoPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -71,7 +72,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'parcerias' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -642,6 +643,7 @@ const AdminPage = () => {
           { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
           { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
           { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
+          { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
@@ -697,6 +699,9 @@ const AdminPage = () => {
         <FeatureGate feature="co_marketing" label="Co-Marketing Hub">
           <CoMarketingPanel organizationId={activeOrgId} />
         </FeatureGate>
+      )}
+      {tab === 'operacao' && (
+        <OperacaoPanel organizationId={activeOrgId} />
       )}
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />

@@ -291,6 +291,7 @@ export type Database = {
           order_type: string
           organization_id: string | null
           payment_method: string
+          scheduled_for: string | null
           status: string
           status_reembolso: string
           total: number
@@ -320,6 +321,7 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           payment_method?: string
+          scheduled_for?: string | null
           status?: string
           status_reembolso?: string
           total?: number
@@ -349,6 +351,7 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           payment_method?: string
+          scheduled_for?: string | null
           status?: string
           status_reembolso?: string
           total?: number
@@ -809,13 +812,16 @@ export type Database = {
       settings: {
         Row: {
           banners: Json
+          business_hours: Json
           categories: Json
           category_icons: Json
+          closed_message: string
           combo: Json
           cover_image: string | null
           created_at: string
           delivery_assignment_mode: string
           delivery_enabled: boolean
+          emergency_closed: boolean
           fiscal_cnpj: string
           fiscal_csc: string
           fiscal_enabled: boolean
@@ -837,6 +843,7 @@ export type Database = {
           pay_cash_enabled: boolean
           pay_pix_enabled: boolean
           pix_key_manual: string
+          scheduling_enabled: boolean
           share_image: string
           store_name: string
           updated_at: string
@@ -844,13 +851,16 @@ export type Database = {
         }
         Insert: {
           banners?: Json
+          business_hours?: Json
           categories?: Json
           category_icons?: Json
+          closed_message?: string
           combo?: Json
           cover_image?: string | null
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          emergency_closed?: boolean
           fiscal_cnpj?: string
           fiscal_csc?: string
           fiscal_enabled?: boolean
@@ -872,6 +882,7 @@ export type Database = {
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_enabled?: boolean
           share_image?: string
           store_name?: string
           updated_at?: string
@@ -879,13 +890,16 @@ export type Database = {
         }
         Update: {
           banners?: Json
+          business_hours?: Json
           categories?: Json
           category_icons?: Json
+          closed_message?: string
           combo?: Json
           cover_image?: string | null
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          emergency_closed?: boolean
           fiscal_cnpj?: string
           fiscal_csc?: string
           fiscal_enabled?: boolean
@@ -907,6 +921,7 @@ export type Database = {
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_enabled?: boolean
           share_image?: string
           store_name?: string
           updated_at?: string

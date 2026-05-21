@@ -165,13 +165,13 @@ const PlansMatrixPanel = () => {
                               <td key={p.id} className="p-3 text-center">
                                 <button
                                   onClick={() => !busy && toggle(p, f, on)}
-                                  disabled={busy}
+                                  disabled={busy || !canWrite}
                                   className={`w-9 h-9 rounded-lg border-2 flex items-center justify-center mx-auto transition ${
                                     on
                                       ? 'bg-primary border-primary text-primary-foreground'
                                       : 'bg-muted border-border text-muted-foreground hover:border-primary/50'
-                                  } ${busy ? 'opacity-50' : ''}`}
-                                  title={on ? 'Clique para bloquear' : 'Clique para liberar'}
+                                  } ${busy ? 'opacity-50' : ''} ${!canWrite ? 'cursor-not-allowed opacity-70' : ''}`}
+                                  title={!canWrite ? 'Somente o Super Master pode editar' : (on ? 'Clique para bloquear' : 'Clique para liberar')}
                                 >
                                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : (on ? <Check className="w-5 h-5" /> : <X className="w-4 h-4" />)}
                                 </button>

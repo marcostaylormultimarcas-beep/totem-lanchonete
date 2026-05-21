@@ -264,6 +264,36 @@ export type Database = {
         }
         Relationships: []
       }
+      loja_temas: {
+        Row: {
+          created_at: string
+          id: string
+          mode: string
+          organization_id: string
+          primary_color: string
+          secondary_color: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mode?: string
+          organization_id: string
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mode?: string
+          organization_id?: string
+          primary_color?: string
+          secondary_color?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_cancellations: {
         Row: {
           cancelled_by: string | null

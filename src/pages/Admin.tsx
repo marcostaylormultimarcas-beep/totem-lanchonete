@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown } from 'lucide-react';
 import CrmPanel from '@/components/admin/CrmPanel';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
@@ -25,6 +25,7 @@ import FiscalExportCard from '@/components/admin/FiscalExportCard';
 import EntregadoresPanel from '@/components/admin/EntregadoresPanel';
 import BairrosPanel from '@/components/admin/BairrosPanel';
 import LogisticaPanel from '@/components/admin/LogisticaPanel';
+import VisionPrimePanel from '@/components/admin/VisionPrimePanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -68,7 +69,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -637,6 +638,7 @@ const AdminPage = () => {
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
+          { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
@@ -681,6 +683,11 @@ const AdminPage = () => {
       )}
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />
+      )}
+      {tab === 'prime' && (
+        <FeatureGate feature="vision_prime" label="Clube Vision Prime">
+          <VisionPrimePanel organizationId={activeOrgId} />
+        </FeatureGate>
       )}
       {tab === 'plans' && currentAdmin?.tier === 'super' && (
         <PlansMatrixPanel />

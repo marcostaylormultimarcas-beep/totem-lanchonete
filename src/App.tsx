@@ -16,6 +16,7 @@ import ResetPassword from "./pages/ResetPassword.tsx";
 import FiscalReceipt from "./pages/FiscalReceipt.tsx";
 import EntregadorLogin from "./pages/EntregadorLogin.tsx";
 import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
+import VisionPrime from "./pages/VisionPrime.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 
@@ -60,6 +61,8 @@ const App = () => {
               <Route path="/entregador/login" element={<EntregadorLogin />} />
               <Route path="/entregador/login/:slug" element={<EntregadorLogin />} />
               <Route path="/entregador" element={<EntregadorDashboard />} />
+              <Route path="/loja/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
+              <Route path="/cardapio/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

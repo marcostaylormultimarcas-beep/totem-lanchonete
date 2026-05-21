@@ -20,6 +20,17 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
   const [parcerias, setParcerias] = useState<Parceria[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const prevStatusRef = useRef<Map<string, string>>(new Map());
+  const [configuredIds, setConfiguredIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('parceria_configured') || '[]')); } catch { return new Set(); }
+  });
+  const markConfigured = (id: string) => {
+    setConfiguredIds(prev => {
+      const next = new Set(prev); next.add(id);
+      try { localStorage.setItem('parceria_configured', JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
 
   const reload = async () => {
     if (!organizationId) return;

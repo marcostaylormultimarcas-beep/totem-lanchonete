@@ -21,6 +21,7 @@ import LoyaltyPanel from '@/components/admin/LoyaltyPanel';
 import StorageUsageCard from '@/components/admin/StorageUsageCard';
 import MasterRecoveryPinCard from '@/components/admin/MasterRecoveryPinCard';
 import MercadoPagoCard from '@/components/admin/MercadoPagoCard';
+import FiscalExportCard from '@/components/admin/FiscalExportCard';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -1126,6 +1127,8 @@ const AdminPage = () => {
 
       {tab === 'fiscal' && (
         <div className="px-4 space-y-4">
+          <FiscalExportCard organizationId={activeOrgId} />
+
           <div className="kiosk-card p-4 space-y-3">
             <div className="flex items-start gap-3">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${settings.fiscalEnabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>

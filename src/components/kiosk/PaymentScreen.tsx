@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2 } from 'lucide-react';
+import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, FileText } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -10,6 +10,7 @@ interface PaymentScreenProps {
   cart: CartItem[];
   customerName: string;
   customerPhone: string;
+  customerCpf?: string;
   orderType: 'local' | 'viagem';
   deliveryAddress?: string;
   deliveryReference?: string;
@@ -22,7 +23,7 @@ interface PaymentScreenProps {
 const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
 const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);
@@ -162,6 +163,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         order_number: num,
         customer_name: customerName,
         customer_phone: customerPhone,
+        customer_cpf: customerCpf || '',
         order_type: orderType,
         delivery_address: deliveryAddress || '',
         delivery_reference: deliveryReference || '',
@@ -169,10 +171,27 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         items: orderItems,
         total,
         status: 'pending',
+        payment_method: method || '',
         user_id: session?.user?.id || null,
       }).select('id').single();
 
       if (error) throw error;
+
+      // Vincula nota fiscal ao pedido quando CPF informado
+      if (data?.id && customerCpf) {
+        const nfeUrl = `${window.location.origin}/fiscal/${data.id}`;
+        await supabase.from('orders').update({
+          nfe_url: nfeUrl,
+          nfe_status: 'issued',
+          nfe_numero: `NFE-${data.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`,
+        }).eq('id', data.id);
+
+        // Impressão automática no totem (após confirmação de pagamento)
+        setTimeout(() => {
+          try { window.open(nfeUrl, '_blank', 'noopener'); } catch {}
+        }, 800);
+      }
+
       setConfirmed(true);
       if (data) setCurrentOrderId(data.id);
     } catch (err) {
@@ -246,6 +265,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, orderType, deliveryA
         <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">
           <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
         </button>
+
+        {currentOrderId && customerCpf && (
+          <a
+            href={`/fiscal/${currentOrderId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="touch-btn w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl text-lg flex items-center justify-center gap-2 font-bold"
+          >
+            <FileText className="w-6 h-6" /> Baixar Nota Fiscal
+          </a>
+        )}
+
 
         {currentOrderId && (
           <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">

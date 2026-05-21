@@ -1,7 +1,7 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Clock } from 'lucide-react';
+import { ArrowLeft, Package, Clock, FileText } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
 
@@ -13,6 +13,8 @@ interface Order {
   created_at: string;
   items: any[];
   order_type: string;
+  customer_cpf?: string;
+  nfe_url?: string;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -104,6 +106,16 @@ const OrderHistory = () => {
                     ))}
                     {order.items.length > 3 && <p className="text-xs">+{order.items.length - 3} itens</p>}
                   </div>
+                )}
+                {order.customer_cpf && (
+                  <a
+                    href={order.nfe_url || `/fiscal/${order.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-orange-600/10 border border-orange-600/40 text-orange-400 hover:bg-orange-600/20 transition-colors"
+                  >
+                    <FileText className="w-4 h-4" /> Baixar Nota Fiscal
+                  </a>
                 )}
               </div>
             );

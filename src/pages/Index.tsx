@@ -24,6 +24,7 @@ interface PendingOrderState {
   cart: CartItem[];
   customerName: string;
   customerPhone: string;
+  customerCpf: string;
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;
@@ -39,6 +40,7 @@ const Index = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerCpf, setCustomerCpf] = useState('');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');
@@ -112,6 +114,7 @@ const Index = () => {
         setDeliveryAddress(parsed.deliveryAddress || '');
         setDeliveryReference(parsed.deliveryReference || '');
         setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
       } catch (error) {
@@ -141,6 +144,7 @@ const Index = () => {
     setCart([]);
     setCustomerName('');
     setCustomerPhone('');
+    setCustomerCpf('');
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
@@ -165,6 +169,7 @@ const Index = () => {
     setCart([]);
     setCustomerName('');
     setCustomerPhone('');
+    setCustomerCpf('');
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
@@ -195,6 +200,7 @@ const Index = () => {
       cart,
       customerName,
       customerPhone,
+      customerCpf,
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
@@ -234,9 +240,9 @@ const Index = () => {
       )}
       {step === 'checkout' && (
         <CheckoutScreen
-          name={customerName} phone={customerPhone} orderType={orderType}
+          name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          onNameChange={setCustomerName} onPhoneChange={setCustomerPhone}
+          onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
           onContinue={() => setStep('payment')} onBack={() => setStep('cart')}
@@ -244,7 +250,7 @@ const Index = () => {
       )}
       {step === 'payment' && (
         <PaymentScreen
-          cart={cart} customerName={customerName} customerPhone={customerPhone}
+          cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           appliedCoupon={appliedCoupon}

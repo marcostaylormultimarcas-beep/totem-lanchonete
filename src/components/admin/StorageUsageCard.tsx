@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { HardDrive, Loader2, AlertTriangle } from 'lucide-react';
 import { getOrgStorageUsage, STORAGE_LIMIT_BYTES } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
+import { BRAND_LEGAL_NAME } from '@/config/brandConfig';
 
 const formatMB = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
 

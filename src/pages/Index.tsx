@@ -186,6 +186,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
     setTrackingOrderId('');
     setAppliedCoupon(null);
   };

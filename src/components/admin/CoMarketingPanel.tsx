@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2 } from 'lucide-react';
+import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2, Bell, Settings2 } from 'lucide-react';
 
 interface Org { id: string; name: string; slug: string; city: string }
 interface Parceria {
@@ -20,6 +20,17 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
   const [parcerias, setParcerias] = useState<Parceria[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const prevStatusRef = useRef<Map<string, string>>(new Map());
+  const [configuredIds, setConfiguredIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('parceria_configured') || '[]')); } catch { return new Set(); }
+  });
+  const markConfigured = (id: string) => {
+    setConfiguredIds(prev => {
+      const next = new Set(prev); next.add(id);
+      try { localStorage.setItem('parceria_configured', JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
 
   const reload = async () => {
     if (!organizationId) return;
@@ -47,6 +58,18 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
         p.org_parceira_name = map.get(p.org_parceira) as string;
       });
     }
+    // Detect transitions to 'active' to surface a toast
+    list.forEach(p => {
+      const prev = prevStatusRef.current.get(p.id);
+      if (prev && prev !== 'active' && p.status === 'active') {
+        const isOrigem = p.org_origem === organizationId;
+        const counterpart = isOrigem ? p.org_parceira_name : p.org_origem_name;
+        toast.success(`Nova parceria aceita com ${counterpart}!`, {
+          description: isOrigem ? 'Configure agora a recompensa para seu cliente.' : 'Configure a recompensa em "Minhas Parcerias".',
+        });
+      }
+      prevStatusRef.current.set(p.id, p.status);
+    });
     setParcerias(list);
     setLoading(false);
   };
@@ -97,6 +120,7 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
     });
     setSavingId(null);
     if (error) return toast.error(error.message);
+    markConfigured(id);
     toast.success('Regras atualizadas');
     reload();
   };
@@ -140,6 +164,34 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
           />
         </div>
       </div>
+
+      {(() => {
+        const pendingMine = parcerias.filter(p => p.status === 'pending' && p.org_parceira === organizationId);
+        const needsConfig = parcerias.filter(p => p.status === 'active' && p.org_origem === organizationId && !configuredIds.has(p.id));
+        if (pendingMine.length === 0 && needsConfig.length === 0) return null;
+        return (
+          <div className="rounded-xl border border-primary/40 bg-primary/10 p-4 space-y-2">
+            {pendingMine.map(p => (
+              <div key={'pend-' + p.id} className="flex items-start gap-3">
+                <Bell className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm">Convite pendente de <span className="text-primary">{p.org_origem_name}</span></p>
+                  <p className="text-xs text-muted-foreground">Aceite abaixo para começar a oferecer recompensas cruzadas.</p>
+                </div>
+              </div>
+            ))}
+            {needsConfig.map(p => (
+              <div key={'cfg-' + p.id} className="flex items-start gap-3">
+                <Settings2 className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-sm">Nova parceria aceita com <span className="text-primary">{p.org_parceira_name}</span></p>
+                  <p className="text-xs text-muted-foreground">Configure agora a recompensa para seu cliente em "Minhas Parcerias".</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {enabled && (
         <>

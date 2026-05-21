@@ -269,6 +269,8 @@ export type Database = {
       }
       orders: {
         Row: {
+          bairro_id: string | null
+          bairro_nome: string
           created_at: string
           customer_cpf: string
           customer_name: string
@@ -276,6 +278,7 @@ export type Database = {
           data_reembolso: string | null
           delivery_address: string | null
           delivery_code: string
+          delivery_fee: number
           delivery_recipient: string | null
           delivery_reference: string | null
           entregador_id: string | null
@@ -295,6 +298,8 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          bairro_id?: string | null
+          bairro_nome?: string
           created_at?: string
           customer_cpf?: string
           customer_name: string
@@ -302,6 +307,7 @@ export type Database = {
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_code?: string
+          delivery_fee?: number
           delivery_recipient?: string | null
           delivery_reference?: string | null
           entregador_id?: string | null
@@ -321,6 +327,8 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          bairro_id?: string | null
+          bairro_nome?: string
           created_at?: string
           customer_cpf?: string
           customer_name?: string
@@ -328,6 +336,7 @@ export type Database = {
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_code?: string
+          delivery_fee?: number
           delivery_recipient?: string | null
           delivery_reference?: string | null
           entregador_id?: string | null
@@ -820,6 +829,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      taxas_entrega: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          id: string
+          nome_bairro: string
+          organization_id: string
+          tempo_estimado: number
+          updated_at: string
+          valor_taxa: number
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome_bairro: string
+          organization_id: string
+          tempo_estimado?: number
+          updated_at?: string
+          valor_taxa?: number
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome_bairro?: string
+          organization_id?: string
+          tempo_estimado?: number
+          updated_at?: string
+          valor_taxa?: number
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

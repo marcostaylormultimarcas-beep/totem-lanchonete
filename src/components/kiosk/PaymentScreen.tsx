@@ -15,6 +15,10 @@ interface PaymentScreenProps {
   deliveryAddress?: string;
   deliveryReference?: string;
   deliveryRecipient?: string;
+  bairroId?: string;
+  bairroNome?: string;
+  deliveryFee?: number;
+  bairroTempo?: number;
   appliedCoupon?: AppliedCoupon | null;
   onBack: () => void;
   onDone: (orderId?: string) => void;
@@ -23,7 +27,7 @@ interface PaymentScreenProps {
 const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
 const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);
@@ -42,7 +46,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
-  const total = Math.max(0, subtotal - discount);
+  const fee = orderType === 'viagem' ? Number(deliveryFee || 0) : 0;
+  const total = Math.max(0, subtotal - discount + fee);
 
   const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
   const qrImageSrc = mpPix?.qr_code_base64
@@ -100,6 +105,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
     msg += `📍 *LOCAL:* ${orderType === 'local' ? 'Comer no Local (Mesa)' : 'Para Viagem (Entrega)'}\n`;
     if (orderType === 'viagem' && deliveryAddress) {
+      if (bairroNome) msg += `🏘️ *BAIRRO:* ${bairroNome}\n`;
       msg += `🏠 *ENDEREÇO:* ${deliveryAddress}\n`;
       if (deliveryReference) msg += `📌 *REFERÊNCIA:* ${deliveryReference}\n`;
       if (deliveryRecipient) msg += `👤 *RECEBEDOR:* ${deliveryRecipient}\n`;
@@ -113,6 +119,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     msg += `─────────────────\n`;
     if (appliedCoupon && discount > 0) {
       msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    }
+    if (fee > 0) {
+      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(fee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
     }
     const methodLabel = method === 'cash' ? 'Dinheiro no balcão' : method === 'terminal' ? 'Cartão na maquininha' : method === 'online' ? 'Cartão online' : 'Pix';
     msg += `💳 *PAGAMENTO:* ${methodLabel} - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
@@ -168,12 +177,15 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         delivery_address: deliveryAddress || '',
         delivery_reference: deliveryReference || '',
         delivery_recipient: deliveryRecipient || '',
+        bairro_id: bairroId || null,
+        bairro_nome: bairroNome || '',
+        delivery_fee: fee,
         items: orderItems,
         total,
         status: 'pending',
         payment_method: method || '',
         user_id: session?.user?.id || null,
-      }).select('id').single();
+      } as any).select('id').single();
 
       if (error) throw error;
 
@@ -230,6 +242,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <div className="space-y-1">
               <p className="text-sm text-muted-foreground">🏠 Endereço</p>
               <p className="font-bold text-sm">{deliveryAddress}</p>
+              {bairroNome && <p className="text-xs text-muted-foreground">🏘️ Bairro: <span className="text-foreground font-semibold">{bairroNome}</span></p>}
             </div>
           )}
           <hr className="border-border" />
@@ -244,16 +257,24 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             ))}
           </div>
           <hr className="border-border" />
-          {discount > 0 && (
+          {(discount > 0 || fee > 0) && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
-                <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
-              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
+                  <span className="text-success font-semibold">- {formatCurrency(discount)}</span>
+                </div>
+              )}
+              {fee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">🛵 Taxa de entrega {bairroNome ? `(${bairroNome})` : ''}</span>
+                  <span className="font-semibold">+ {formatCurrency(fee)}</span>
+                </div>
+              )}
             </>
           )}
           <div className="flex justify-between items-center">

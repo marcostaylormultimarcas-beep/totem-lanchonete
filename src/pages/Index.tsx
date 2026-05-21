@@ -28,6 +28,10 @@ interface PendingOrderState {
   deliveryAddress: string;
   deliveryReference: string;
   deliveryRecipient: string;
+  bairroId: string;
+  bairroNome: string;
+  bairroTaxa: number;
+  bairroTempo: number;
 }
 
 const Index = () => {
@@ -44,6 +48,10 @@ const Index = () => {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');
+  const [bairroId, setBairroId] = useState('');
+  const [bairroNome, setBairroNome] = useState('');
+  const [bairroTaxa, setBairroTaxa] = useState(0);
+  const [bairroTempo, setBairroTempo] = useState(0);
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -114,6 +122,10 @@ const Index = () => {
         setDeliveryAddress(parsed.deliveryAddress || '');
         setDeliveryReference(parsed.deliveryReference || '');
         setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setBairroId(parsed.bairroId || '');
+        setBairroNome(parsed.bairroNome || '');
+        setBairroTaxa(parsed.bairroTaxa || 0);
+        setBairroTempo(parsed.bairroTempo || 0);
         setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
@@ -148,6 +160,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
@@ -173,6 +186,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
     setTrackingOrderId('');
     setAppliedCoupon(null);
   };
@@ -204,6 +218,7 @@ const Index = () => {
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
+      bairroId, bairroNome, bairroTaxa, bairroTempo,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
@@ -242,6 +257,8 @@ const Index = () => {
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          bairroId={bairroId}
+          onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
@@ -253,6 +270,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
           appliedCoupon={appliedCoupon}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />

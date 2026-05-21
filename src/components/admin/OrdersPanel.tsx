@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle } from 'lucide-react';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
 
@@ -22,6 +22,14 @@ interface Order {
   nfe_numero?: string;
   nfe_url?: string;
   status_reembolso?: string;
+  delivery_code?: string;
+  entregador_id?: string | null;
+}
+
+interface Entregador {
+  id: string;
+  name: string;
+  active: boolean;
 }
 
 const REFUND_LABEL: Record<string, { label: string; cls: string }> = {
@@ -46,11 +54,25 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
   const [storeName, setStoreName] = useState<string>('');
+  const [entregadores, setEntregadores] = useState<Entregador[]>([]);
+  const [lowStockIds, setLowStockIds] = useState<Set<string>>(new Set());
+
+  // Advanced filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [onlyLowStock, setOnlyLowStock] = useState(false);
 
   useEffect(() => {
-    if (!organizationId) { setStoreName(''); return; }
+    if (!organizationId) { setStoreName(''); setEntregadores([]); return; }
     supabase.from('settings').select('store_name').eq('organization_id', organizationId).maybeSingle()
       .then(({ data }) => setStoreName((data as any)?.store_name || ''));
+    supabase.from('entregadores' as any).select('id,name,active').eq('organization_id', organizationId).eq('active', true)
+      .then(({ data }) => setEntregadores(((data as any[]) || []) as Entregador[]));
+    supabase.from('products').select('id').eq('organization_id', organizationId).eq('manage_stock', true)
+      .lte('stock_quantity', 5)
+      .then(({ data }) => setLowStockIds(new Set(((data as any[]) || []).map((p: any) => p.id))));
   }, [organizationId]);
 
   const handlePrint = (order: Order) => {
@@ -71,7 +93,12 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     if (filter === 'active') {
       query = query.in('status', ['pending', 'preparing', 'out_for_delivery']);
     }
-    const { data } = await query.limit(50);
+    if (dateFrom) query = query.gte('created_at', new Date(dateFrom).toISOString());
+    if (dateTo) {
+      const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
+      query = query.lte('created_at', end.toISOString());
+    }
+    const { data } = await query.limit(200);
     if (data) setOrders(data as Order[]);
   };
 
@@ -87,7 +114,40 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [filter, organizationId]);
+  }, [filter, organizationId, dateFrom, dateTo]);
+
+  // Client-side product/low-stock filter
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      const items = (o.items as any[]) || [];
+      if (productQuery.trim()) {
+        const q = productQuery.trim().toLowerCase();
+        if (!items.some(it => (it.name || '').toLowerCase().includes(q))) return false;
+      }
+      if (onlyLowStock) {
+        if (!items.some(it => {
+          const pid = it.product_id || it.id;
+          return pid && lowStockIds.has(pid);
+        })) return false;
+      }
+      return true;
+    });
+  }, [orders, productQuery, onlyLowStock, lowStockIds]);
+
+  const assignEntregador = async (orderId: string, entregadorId: string | null) => {
+    const { toast } = await import('sonner');
+    const { data, error } = await supabase.rpc('assign_entregador' as any, {
+      _order_id: orderId,
+      _entregador_id: entregadorId,
+    });
+    const res: any = data;
+    if (error || !res?.ok) {
+      toast.error('Falha ao atribuir entregador.');
+      return;
+    }
+    toast.success(entregadorId ? 'Entregador atribuído.' : 'Atribuição removida.');
+    fetchOrders();
+  };
 
   const updateStatus = async (id: string, status: string, motivo?: string) => {
     const { toast } = await import('sonner');
@@ -125,7 +185,6 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
       return;
     }
 
-
     await supabase.from('orders').update({ status }).eq('id', id);
     if (status === 'delivered') {
       const order = orders.find(o => o.id === id);
@@ -159,7 +218,7 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         </button>
       )}
 
-      <div className="flex gap-2 items-center">
+      <div className="flex gap-2 items-center flex-wrap">
         <button
           onClick={() => setMuted(m => !m)}
           className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${
@@ -175,33 +234,71 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
           <span className="hidden sm:inline">{muted ? 'Mutado' : 'Alertas'}</span>
         </button>
         <div className="flex gap-2">
-        <button
-          onClick={() => setFilter('active')}
-          className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-        >
-          Ativos
-        </button>
-        <button
-          onClick={() => setFilter('all')}
-          className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-        >
-          Todos
-        </button>
-          <button onClick={fetchOrders} className="ml-auto p-2 text-muted-foreground hover:text-foreground">
-            <RefreshCw className="w-5 h-5" />
+          <button
+            onClick={() => setFilter('active')}
+            className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          >
+            Ativos
+          </button>
+          <button
+            onClick={() => setFilter('all')}
+            className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          >
+            Todos
           </button>
         </div>
+        <button
+          onClick={() => setShowFilters(s => !s)}
+          className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${showFilters ? 'bg-primary/20 text-primary border-primary/30' : 'bg-foreground/5 text-foreground border-border'}`}
+        >
+          <Filter className="w-4 h-4" /> Filtros
+        </button>
+        <button onClick={fetchOrders} className="ml-auto p-2 text-muted-foreground hover:text-foreground">
+          <RefreshCw className="w-5 h-5" />
+        </button>
       </div>
 
-      {orders.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>Nenhum pedido {filter === 'active' ? 'ativo' : ''} encontrado</p>
+      {showFilters && (
+        <div className="kiosk-card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border border-primary/30">
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase">De</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase">Até</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold text-muted-foreground uppercase">Produto contém</label>
+            <input value={productQuery} onChange={e => setProductQuery(e.target.value)} placeholder="ex: x-burger" className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
+          </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={onlyLowStock} onChange={e => setOnlyLowStock(e.target.checked)} />
+              <AlertTriangle className="w-4 h-4 text-accent" /> Só com estoque baixo
+            </label>
+          </div>
+          <div className="sm:col-span-2 lg:col-span-4 flex justify-between items-center">
+            <p className="text-xs text-muted-foreground">{filteredOrders.length} de {orders.length} pedidos</p>
+            <button
+              onClick={() => { setDateFrom(''); setDateTo(''); setProductQuery(''); setOnlyLowStock(false); }}
+              className="text-xs text-primary underline"
+            >Limpar filtros</button>
+          </div>
         </div>
       )}
 
-      {orders.map(order => {
+      {filteredOrders.length === 0 && (
+        <div className="text-center py-12 text-muted-foreground">
+          <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p>Nenhum pedido encontrado</p>
+        </div>
+      )}
+
+      {filteredOrders.map(order => {
         const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+        const isDelivery = order.order_type === 'delivery';
+        const hasLowStockItem = ((order.items as any[]) || []).some(it => (it.product_id || it.id) && lowStockIds.has(it.product_id || it.id));
         return (
           <div key={order.id} className="kiosk-card p-4 space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -210,6 +307,11 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                 <span className={`text-xs font-bold px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
                   {cfg.label}
                 </span>
+                {hasLowStockItem && (
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-accent/15 text-accent border border-accent/30 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> Estoque baixo
+                  </span>
+                )}
                 {order.nfe_status && order.nfe_status !== 'none' && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full border flex items-center gap-1 ${
                     order.nfe_status === 'issued' ? 'bg-success/15 text-success border-success/30'
@@ -232,16 +334,21 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
 
             <div className="text-sm space-y-1">
               <p>👤 <span className="font-semibold">{order.customer_name}</span> — {order.customer_phone}</p>
-              {order.order_type === 'local' ? (
+              {!isDelivery ? (
                 <p>📍 Comer no Local</p>
               ) : (
-                <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 space-y-0.5 mt-1">
+                <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 space-y-1 mt-1">
                   <p className="text-blue-400 font-bold text-xs uppercase tracking-wide flex items-center gap-1">
                     <Truck className="w-3 h-3" /> Entrega
                   </p>
                   {order.delivery_address && <p>📌 <span className="font-semibold">Endereço:</span> {order.delivery_address}</p>}
                   {order.delivery_reference && <p>🧭 <span className="font-semibold">Referência:</span> {order.delivery_reference}</p>}
                   {order.delivery_recipient && <p>👥 <span className="font-semibold">Recebe:</span> {order.delivery_recipient}</p>}
+                  {order.delivery_code && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                    <p className="flex items-center gap-1.5 text-orange-400 font-bold pt-1">
+                      <KeyRound className="w-3.5 h-3.5" /> Código: <span className="text-lg tracking-[0.3em]">{order.delivery_code}</span>
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -251,6 +358,25 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                 <p key={i}>{item.quantity}x {item.name} — {formatCurrency(item.total)}</p>
               ))}
             </div>
+
+            {isDelivery && order.status !== 'cancelled' && order.status !== 'delivered' && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-muted-foreground">🛵 Entregador:</span>
+                <select
+                  value={order.entregador_id || ''}
+                  onChange={e => assignEntregador(order.id, e.target.value || null)}
+                  className="flex-1 bg-muted border border-border rounded-lg px-2 py-1.5 text-sm"
+                >
+                  <option value="">— Não atribuído —</option>
+                  {entregadores.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+                {entregadores.length === 0 && (
+                  <span className="text-[10px] text-muted-foreground">Cadastre na aba "Entregadores"</span>
+                )}
+              </div>
+            )}
 
             <div className="flex items-center justify-between gap-2">
               <span className="font-black text-primary">{formatCurrency(order.total)}</span>
@@ -262,7 +388,6 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
               </button>
             </div>
 
-            {/* Action buttons */}
             {order.status !== 'delivered' && order.status !== 'cancelled' && (
               <div className="flex gap-2 flex-wrap">
                 {order.status === 'pending' && (

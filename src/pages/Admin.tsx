@@ -22,6 +22,7 @@ import StorageUsageCard from '@/components/admin/StorageUsageCard';
 import MasterRecoveryPinCard from '@/components/admin/MasterRecoveryPinCard';
 import MercadoPagoCard from '@/components/admin/MercadoPagoCard';
 import FiscalExportCard from '@/components/admin/FiscalExportCard';
+import EntregadoresPanel from '@/components/admin/EntregadoresPanel';
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -65,7 +66,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -631,6 +632,7 @@ const AdminPage = () => {
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
           { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
           { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
+          { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
@@ -666,6 +668,9 @@ const AdminPage = () => {
         <FeatureGate feature="crm" label="CRM — Marketing de Retenção">
           <CrmPanel organizationId={activeOrgId} storeName={settings.storeName} />
         </FeatureGate>
+      )}
+      {tab === 'entregadores' && (
+        <EntregadoresPanel organizationId={activeOrgId} />
       )}
       {tab === 'plans' && currentAdmin?.tier === 'super' && (
         <PlansMatrixPanel />

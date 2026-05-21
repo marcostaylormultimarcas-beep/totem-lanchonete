@@ -141,6 +141,66 @@ export type Database = {
           },
         ]
       }
+      entregadores: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          password: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          password: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          password?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      entregas_log: {
+        Row: {
+          created_at: string
+          delivered_at: string
+          entregador_id: string
+          id: string
+          order_id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivered_at?: string
+          entregador_id: string
+          id?: string
+          order_id: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          delivered_at?: string
+          entregador_id?: string
+          id?: string
+          order_id?: string
+          organization_id?: string
+        }
+        Relationships: []
+      }
       features: {
         Row: {
           category: string
@@ -215,8 +275,10 @@ export type Database = {
           customer_phone: string
           data_reembolso: string | null
           delivery_address: string | null
+          delivery_code: string
           delivery_recipient: string | null
           delivery_reference: string | null
+          entregador_id: string | null
           id: string
           items: Json
           nfe_numero: string
@@ -239,8 +301,10 @@ export type Database = {
           customer_phone?: string
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_code?: string
           delivery_recipient?: string | null
           delivery_reference?: string | null
+          entregador_id?: string | null
           id?: string
           items?: Json
           nfe_numero?: string
@@ -263,8 +327,10 @@ export type Database = {
           customer_phone?: string
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_code?: string
           delivery_recipient?: string | null
           delivery_reference?: string | null
+          entregador_id?: string | null
           id?: string
           items?: Json
           nfe_numero?: string
@@ -781,9 +847,30 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_entregador: {
+        Args: { _entregador_id: string; _order_id: string }
+        Returns: Json
+      }
       auto_cancel_stale_pending_orders: { Args: never; Returns: number }
       cancelar_pedido: {
         Args: { _motivo?: string; _order_id: string }
+        Returns: Json
+      }
+      confirm_delivery_with_code: {
+        Args: {
+          _code: string
+          _entregador_id: string
+          _order_id: string
+          _password: string
+        }
+        Returns: Json
+      }
+      entregador_login: {
+        Args: { _org_slug: string; _password: string; _username: string }
+        Returns: Json
+      }
+      entregador_orders: {
+        Args: { _entregador_id: string; _password: string }
         Returns: Json
       }
       get_mp_access_token_internal: { Args: { _org: string }; Returns: string }

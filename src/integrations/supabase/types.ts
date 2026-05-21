@@ -232,6 +232,48 @@ export type Database = {
         }
         Relationships: []
       }
+      configuracoes_impressao: {
+        Row: {
+          agent_token: string
+          auto_print: boolean
+          created_at: string
+          enabled: boolean
+          id: string
+          last_seen_at: string | null
+          organization_id: string
+          paper_width: number
+          printer_ip: string
+          printer_port: number
+          updated_at: string
+        }
+        Insert: {
+          agent_token?: string
+          auto_print?: boolean
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_seen_at?: string | null
+          organization_id: string
+          paper_width?: number
+          printer_ip?: string
+          printer_port?: number
+          updated_at?: string
+        }
+        Update: {
+          agent_token?: string
+          auto_print?: boolean
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_seen_at?: string | null
+          organization_id?: string
+          paper_width?: number
+          printer_ip?: string
+          printer_port?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cupons: {
         Row: {
           codigo: string
@@ -459,6 +501,10 @@ export type Database = {
           order_type: string
           organization_id: string | null
           payment_method: string
+          print_attempts: number
+          print_error: string
+          print_status: string
+          printed_at: string | null
           scheduled_for: string | null
           status: string
           status_reembolso: string
@@ -489,6 +535,10 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           payment_method?: string
+          print_attempts?: number
+          print_error?: string
+          print_status?: string
+          printed_at?: string | null
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
@@ -519,6 +569,10 @@ export type Database = {
           order_type?: string
           organization_id?: string | null
           payment_method?: string
+          print_attempts?: number
+          print_error?: string
+          print_status?: string
+          printed_at?: string | null
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
@@ -1324,6 +1378,21 @@ export type Database = {
         Args: { _enabled: boolean; _parceria_id: string }
         Returns: Json
       }
+      print_agent_ack: {
+        Args: {
+          _error?: string
+          _order_id: string
+          _success: boolean
+          _token: string
+        }
+        Returns: Json
+      }
+      print_agent_authenticate: { Args: { _token: string }; Returns: Json }
+      print_agent_claim_jobs: {
+        Args: { _limit?: number; _token: string }
+        Returns: Json
+      }
+      print_agent_rotate_token: { Args: { _org: string }; Returns: Json }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
       restock_from_items: {
         Args: { _items: Json; _org: string }

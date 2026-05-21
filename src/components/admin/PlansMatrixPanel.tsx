@@ -121,6 +121,16 @@ const PlansMatrixPanel = () => {
         loading ? (
           <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
         ) : (
+          <>
+          {!canWrite && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs p-3 flex items-start gap-2">
+              <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-bold">Modo somente leitura</p>
+                <p className="opacity-80">Apenas o Super Master ({SUPER_MASTER_EMAIL}) pode editar a Matriz Global de Funcionalidades. Você pode visualizar a configuração atual e o histórico de auditoria.</p>
+              </div>
+            </div>
+          )}
           <div className="kiosk-card p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

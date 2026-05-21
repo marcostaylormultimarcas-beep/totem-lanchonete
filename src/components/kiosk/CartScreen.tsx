@@ -27,8 +27,17 @@ interface CartScreenProps {
 }
 
 const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon }: CartScreenProps) => {
+  const navigate = useNavigate();
+  const { slug } = useParams<{ slug: string }>();
+  const { config: primeCfg } = useVisionPrimeConfig(orgId);
+  const { status: primeStatus } = useVisionPrimeStatus(orgId);
+
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
-  const discount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
+  const primeDiscount = (primeStatus.active && primeCfg?.ativo)
+    ? +(subtotal * (Number(primeCfg.desconto_percentual) || 0) / 100).toFixed(2)
+    : 0;
+  const discount = Math.min(subtotal, couponDiscount + primeDiscount);
   const total = Math.max(0, subtotal - discount);
   const isImageUrl = (value: string) => value.startsWith('http') || value.startsWith('/');
 

@@ -190,6 +190,7 @@ const PlansMatrixPanel = () => {
               Alterações são aplicadas em tempo real para todas as lojas do plano.
             </div>
           </div>
+          </>
         )
       )}
 

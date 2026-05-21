@@ -48,6 +48,10 @@ const Index = () => {
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryReference, setDeliveryReference] = useState('');
   const [deliveryRecipient, setDeliveryRecipient] = useState('');
+  const [bairroId, setBairroId] = useState('');
+  const [bairroNome, setBairroNome] = useState('');
+  const [bairroTaxa, setBairroTaxa] = useState(0);
+  const [bairroTempo, setBairroTempo] = useState(0);
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);

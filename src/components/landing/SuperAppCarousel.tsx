@@ -82,7 +82,7 @@ const SuperAppCarousel = () => {
       <div className="max-w-7xl mx-auto px-5 relative">
         <div data-reveal className="text-center max-w-3xl mx-auto mb-8 md:mb-12">
           <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-orange px-3 py-1.5 rounded-full bg-orange/10 border border-orange/30">
-            <Crown className="w-3.5 h-3.5" /> Super App Vision Mídia
+            <Crown className="w-3.5 h-3.5" /> Super App {BRAND_NAME}
           </span>
           <h2 className="mt-4 text-3xl md:text-5xl font-black text-white">
             Tudo em <span className="grad-text">um único sistema</span>

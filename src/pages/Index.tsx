@@ -200,6 +200,7 @@ const Index = () => {
       cart,
       customerName,
       customerPhone,
+      customerCpf,
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,

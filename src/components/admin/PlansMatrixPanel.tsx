@@ -17,6 +17,8 @@ interface AuditRow {
   created_at: string;
 }
 
+const SUPER_MASTER_EMAIL = 'marcostaylor2020@gmail.com';
+
 const PlansMatrixPanel = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [features, setFeatures] = useState<Feature[]>([]);
@@ -26,6 +28,13 @@ const PlansMatrixPanel = () => {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [tab, setTab] = useState<'grid' | 'audit'>('grid');
+  const [currentEmail, setCurrentEmail] = useState<string>('');
+
+  const canWrite = currentEmail.toLowerCase() === SUPER_MASTER_EMAIL;
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentEmail(data.user?.email || ''));
+  }, []);
 
   const loadAll = async () => {
     setLoading(true);

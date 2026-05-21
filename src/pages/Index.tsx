@@ -231,6 +231,12 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      {/* Sininho de notificações (canto superior direito) */}
+      {step !== 'landing' && (
+        <div className="fixed top-3 right-3 z-50">
+          <NotificationBell orgId={orgId} />
+        </div>
+      )}
       {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
       {step === 'start' && (
         <StartScreen

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }

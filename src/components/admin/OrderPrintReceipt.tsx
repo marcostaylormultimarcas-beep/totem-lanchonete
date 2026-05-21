@@ -18,7 +18,7 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
   const created = new Date(order.created_at);
 
   const content = (
-    <div id="print-receipt-area" className="print-receipt">
+    <div id="print-receipt-area" className={`print-receipt ${formatClass}`}>
       <div className="pr-header">
         <h1>{storeName || 'Pedido'}</h1>
         <p>

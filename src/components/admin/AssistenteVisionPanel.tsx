@@ -25,12 +25,6 @@ interface Suggestion {
 }
 
 const normalizePhone = (raw: string) => (raw || '').replace(/\D/g, '');
-const buildWaUrl = (phone: string, msg: string) => {
-  let n = normalizePhone(phone);
-  if (!n) return '#';
-  if (n.length <= 11) n = '55' + n;
-  return `https://wa.me/${n}?text=${encodeURIComponent(msg)}`;
-};
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Props) => {

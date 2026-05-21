@@ -604,7 +604,7 @@ const Home = () => {
           </h2>
           <p className="mt-5 text-white/70 max-w-2xl mx-auto">
             Junte-se aos restaurantes que já reduziram filas, aumentaram o ticket médio e
-            transformaram a operação com a Vision Mídia Digital.
+            transformaram a operação com a {BRAND_LEGAL_NAME}.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a href={waLink} target="_blank" rel="noreferrer"

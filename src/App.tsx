@@ -13,6 +13,7 @@ import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
 import TrackOrder from "./pages/TrackOrder.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
+import FiscalReceipt from "./pages/FiscalReceipt.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 

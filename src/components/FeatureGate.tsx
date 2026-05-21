@@ -1,6 +1,7 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { Lock, Sparkles, X } from 'lucide-react';
 import { usePlanFeatures } from '@/hooks/usePlanFeatures';
+import { getCurrentUserRoleTier, type RoleTier } from '@/lib/auth';
 
 interface FeatureGateProps {
   feature: string;
@@ -12,17 +13,27 @@ interface FeatureGateProps {
   inline?: boolean;
 }
 
+let cachedTier: RoleTier | undefined;
+
 /**
  * Envolve qualquer área/botão e bloqueia o acesso se a funcionalidade não estiver
- * liberada no plano da loja atual. Ao clicar, mostra modal de upgrade.
+ * liberada no plano da loja atual. Super Admin e Master Admin têm bypass total.
  */
 export const FeatureGate = ({ feature, label, children, hideWhenLocked, inline }: FeatureGateProps) => {
   const { has, loading, planKey } = usePlanFeatures();
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [tier, setTier] = useState<RoleTier | undefined>(cachedTier);
 
-  if (loading) return <>{children}</>;
+  useEffect(() => {
+    if (cachedTier !== undefined) { setTier(cachedTier); return; }
+    getCurrentUserRoleTier().then(t => { cachedTier = t; setTier(t); });
+  }, []);
+
+  if (loading || tier === undefined) return <>{children}</>;
+  if (tier === 'super' || tier === 'master') return <>{children}</>;
   if (has(feature)) return <>{children}</>;
   if (hideWhenLocked) return null;
+
 
   if (inline) {
     return (

@@ -1,9 +1,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X } from 'lucide-react';
 import OrderPrintReceipt from './OrderPrintReceipt';
+import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
+
+type PrintFormat = 'cupom' | 'a4';
+const PRINT_PREF_KEY = 'print_format_pref';
+
 
 interface Order {
   id: string;
@@ -53,6 +58,9 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<'active' | 'all'>('active');
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  const [printFormat, setPrintFormat] = useState<PrintFormat>('cupom');
+  const [pendingPrintOrder, setPendingPrintOrder] = useState<Order | null>(null);
+
   const [storeName, setStoreName] = useState<string>('');
   const [entregadores, setEntregadores] = useState<Entregador[]>([]);
   const [lowStockIds, setLowStockIds] = useState<Set<string>>(new Set());
@@ -75,17 +83,44 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
       .then(({ data }) => setLowStockIds(new Set(((data as any[]) || []).map((p: any) => p.id))));
   }, [organizationId]);
 
-  const handlePrint = (order: Order) => {
+  const openPrintDialog = (order: Order) => {
+    setPendingPrintOrder(order);
+  };
+
+  const doPrint = (order: Order, format: PrintFormat) => {
+    try { localStorage.setItem(PRINT_PREF_KEY, format); } catch {}
+    setPrintFormat(format);
     setPrintOrder(order);
+    setPendingPrintOrder(null);
+    const cleanup = () => {
+      setPrintOrder(null);
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         setTimeout(() => {
+          // Garante classe no body antes da impressão
+          document.body.classList.add(format === 'cupom' ? 'printing-cupom' : 'printing-a4');
           window.print();
-          setTimeout(() => setPrintOrder(null), 500);
-        }, 150);
+          // Fallback se afterprint não disparar (alguns browsers)
+          setTimeout(() => {
+            document.body.classList.remove('printing-cupom', 'printing-a4');
+            setPrintOrder(null);
+          }, 800);
+        }, 120);
       });
     });
   };
+
+  // Restaura preferência ao montar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(PRINT_PREF_KEY) as PrintFormat | null;
+      if (saved === 'cupom' || saved === 'a4') setPrintFormat(saved);
+    } catch {}
+  }, []);
+
 
   const fetchOrders = async () => {
     if (!organizationId) { setOrders([]); return; }
@@ -380,13 +415,16 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
 
             <div className="flex items-center justify-between gap-2">
               <span className="font-black text-primary">{formatCurrency(order.total)}</span>
-              <button
-                onClick={() => handlePrint(order)}
-                className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
-              >
-                <Printer className="w-4 h-4" /> Imprimir
-              </button>
+              <FeatureGate feature="print_receipt" label="Impressão" inline>
+                <button
+                  onClick={() => openPrintDialog(order)}
+                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir
+                </button>
+              </FeatureGate>
             </div>
+
 
             {order.status !== 'delivered' && order.status !== 'cancelled' && (
               <div className="flex gap-2 flex-wrap">
@@ -438,8 +476,40 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
         );
       })}
 
-      <OrderPrintReceipt order={printOrder} storeName={storeName} />
+      <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat === 'a4' ? 'print-a4' : 'print-cupom'} />
+
+      {pendingPrintOrder && (
+        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPendingPrintOrder(null)}>
+          <div className="kiosk-card w-full max-w-md p-5 border border-primary/40" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="text-lg font-black">Formato de Impressão</h3>
+              <button onClick={() => setPendingPrintOrder(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Pedido #{pendingPrintOrder.order_number} — escolha o formato.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => doPrint(pendingPrintOrder, 'cupom')}
+                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'cupom' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+              >
+                <div className="flex items-center gap-2 font-bold"><Receipt className="w-5 h-5 text-primary" /> Térmica (58/80mm)</div>
+                <p className="text-[11px] text-muted-foreground">Cupom estreito, sem margens, ideal para impressora térmica.</p>
+                {printFormat === 'cupom' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
+              </button>
+              <button
+                onClick={() => doPrint(pendingPrintOrder, 'a4')}
+                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'a4' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
+              >
+                <div className="flex items-center gap-2 font-bold"><FileText className="w-5 h-5 text-primary" /> Folha A4</div>
+                <p className="text-[11px] text-muted-foreground">Layout centralizado, fontes maiores, margens para papel comum.</p>
+                {printFormat === 'a4' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-3 text-center">Sua escolha será lembrada para os próximos pedidos.</p>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 };
 

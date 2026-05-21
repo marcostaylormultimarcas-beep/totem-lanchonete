@@ -4,9 +4,11 @@ import { formatCurrency } from '@/data/store';
 interface Props {
   order: any | null;
   storeName: string;
+  formatClass?: string;
 }
 
-const OrderPrintReceipt = ({ order, storeName }: Props) => {
+const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Props) => {
+
   if (!order || typeof document === 'undefined') return null;
 
   const items: any[] = Array.isArray(order.items) ? order.items : [];
@@ -16,7 +18,7 @@ const OrderPrintReceipt = ({ order, storeName }: Props) => {
   const created = new Date(order.created_at);
 
   const content = (
-    <div id="print-receipt-area" className="print-receipt">
+    <div id="print-receipt-area" className={`print-receipt ${formatClass}`}>
       <div className="pr-header">
         <h1>{storeName || 'Pedido'}</h1>
         <p>

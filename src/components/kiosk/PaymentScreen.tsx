@@ -38,6 +38,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
+  const [copiedPartner, setCopiedPartner] = useState(false);
   const [storeSettings, setStoreSettings] = useState<{
     storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean;
     payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;

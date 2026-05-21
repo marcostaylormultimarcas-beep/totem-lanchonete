@@ -33,6 +33,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
   const [primeActive, setPrimeActive] = useState(false);
   const [parceriasAtivas, setParceriasAtivas] = useState(0);
   const [feedback, setFeedback] = useState<Record<string, { action: string; reason: string }>>({});
+  const [stats, setStats] = useState<Record<string, { rate: number; conv: number; sent: number; dismissed: number }>>({});
   const [editing, setEditing] = useState<Suggestion | null>(null);
   const [editText, setEditText] = useState('');
   const [dismissingKey, setDismissingKey] = useState<string | null>(null);
@@ -43,7 +44,9 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     if (!organizationId) return;
     const load = async () => {
       setLoading(true);
-      const [ord, prime, parc, fb] = await Promise.all([
+      // Re-atribui conversões para o ranking refletir vendas recentes
+      await supabase.rpc('ai_attribute_conversions' as any, { _org: organizationId });
+      const [ord, prime, parc, fb, st] = await Promise.all([
         supabase.from('orders').select('id,customer_name,customer_phone,total,created_at,status')
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
         supabase.from('vision_prime_config').select('ativo').eq('organization_id', organizationId).maybeSingle(),
@@ -51,6 +54,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
           .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`),
         supabase.from('assistente_vision_feedback').select('suggestion_key,action,reason')
           .eq('organization_id', organizationId),
+        supabase.rpc('ai_suggestion_stats' as any, { _org: organizationId }),
       ]);
       setOrders((ord.data as OrderRow[]) || []);
       setPrimeActive(Boolean(prime.data?.ativo));
@@ -58,6 +62,16 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       const map: Record<string, { action: string; reason: string }> = {};
       ((fb.data as any[]) || []).forEach(r => { map[r.suggestion_key] = { action: r.action, reason: r.reason || '' }; });
       setFeedback(map);
+      const stm: Record<string, { rate: number; conv: number; sent: number; dismissed: number }> = {};
+      ((st.data as any[]) || []).forEach(r => {
+        stm[r.category] = {
+          rate: Number(r.conversion_rate) || 0,
+          conv: Number(r.total_conversions) || 0,
+          sent: Number(r.total_sent) || 0,
+          dismissed: Number(r.total_dismissed) || 0,
+        };
+      });
+      setStats(stm);
       setLoading(false);
     };
     load();

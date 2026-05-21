@@ -71,6 +71,29 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
     return () => { cancelled = true; };
   }, []);
 
+  // Auto-aplica cupom pendente vindo de notificação (sininho)
+  useEffect(() => {
+    if (!orgId || appliedCoupon) return;
+    let pending = '';
+    try { pending = localStorage.getItem('pending_coupon') || ''; } catch { /* ignore */ }
+    if (!pending) return;
+    (async () => {
+      const code = pending.trim().toUpperCase();
+      const { data } = await supabase.from('cupons' as any)
+        .select('*').eq('organization_id', orgId).eq('codigo', code).eq('status', 'ativo').maybeSingle();
+      try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
+      if (!data) return;
+      const c: any = data;
+      const now = new Date();
+      if (c.data_inicio && now < new Date(c.data_inicio)) return;
+      if (c.data_fim && now > new Date(c.data_fim)) return;
+      const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
+      onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
+      toast.success(`Cupom ${code} aplicado da sua notificação!`);
+    })();
+  }, [orgId, appliedCoupon, subtotal, onApplyCoupon]);
+
+
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
     if (!code || !orgId) return;

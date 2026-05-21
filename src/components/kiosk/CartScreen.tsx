@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2 } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoyaltyCard from './LoyaltyCard';
+import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 
 export interface AppliedCoupon {
   id: string;

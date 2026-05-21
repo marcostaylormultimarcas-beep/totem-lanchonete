@@ -415,13 +415,16 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
 
             <div className="flex items-center justify-between gap-2">
               <span className="font-black text-primary">{formatCurrency(order.total)}</span>
-              <button
-                onClick={() => handlePrint(order)}
-                className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
-              >
-                <Printer className="w-4 h-4" /> Imprimir
-              </button>
+              <FeatureGate feature="print_receipt" label="Impressão" inline>
+                <button
+                  onClick={() => openPrintDialog(order)}
+                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
+                >
+                  <Printer className="w-4 h-4" /> Imprimir
+                </button>
+              </FeatureGate>
             </div>
+
 
             {order.status !== 'delivered' && order.status !== 'cancelled' && (
               <div className="flex gap-2 flex-wrap">

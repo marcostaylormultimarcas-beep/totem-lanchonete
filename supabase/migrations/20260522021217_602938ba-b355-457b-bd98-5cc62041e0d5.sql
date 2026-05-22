@@ -1,0 +1,1 @@
+ALTER VIEW public.v_financeiro_detalhado SET (security_invoker = true);

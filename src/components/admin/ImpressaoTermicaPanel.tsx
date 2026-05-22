@@ -361,7 +361,33 @@ loop();
           <Download className="w-4 h-4" /> Baixar agente configurado
         </button>
       </div>
+
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-3">
+        <h3 className="font-semibold flex items-center gap-2"><ListTree className="w-5 h-5 text-primary" /> Últimos eventos de impressão</h3>
+        {logs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum evento registrado ainda.</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {logs.map((l) => {
+              const ok = l.status === 'success' || l.status === 'printed';
+              const fail = l.status === 'failure' || l.status === 'pendente_impressao';
+              return (
+                <li key={l.id} className="py-2 flex items-start gap-3">
+                  <span className={`mt-1 inline-block w-2 h-2 rounded-full ${ok ? 'bg-green-500' : fail ? 'bg-red-500' : 'bg-amber-500'}`} />
+                  <div className="flex-1">
+                    <div className="font-medium">{l.message || l.status}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(l.created_at).toLocaleString('pt-BR')}{l.printer_ip ? ` · ${l.printer_ip}` : ''}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
+
   );
 };
 

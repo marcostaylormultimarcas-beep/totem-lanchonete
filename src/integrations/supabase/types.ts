@@ -245,6 +245,7 @@ export type Database = {
           printer_ip: string
           printer_port: number
           updated_at: string
+          webhook_alerta_url: string
         }
         Insert: {
           agent_token?: string
@@ -258,6 +259,7 @@ export type Database = {
           printer_ip?: string
           printer_port?: number
           updated_at?: string
+          webhook_alerta_url?: string
         }
         Update: {
           agent_token?: string
@@ -271,6 +273,7 @@ export type Database = {
           printer_ip?: string
           printer_port?: number
           updated_at?: string
+          webhook_alerta_url?: string
         }
         Relationships: []
       }
@@ -411,6 +414,39 @@ export type Database = {
           name?: string
           sort_order?: number
           updated_at?: string
+        }
+        Relationships: []
+      }
+      logs_impressao: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          order_id: string | null
+          organization_id: string
+          payload_size: number
+          printer_ip: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message?: string
+          order_id?: string | null
+          organization_id: string
+          payload_size?: number
+          printer_ip?: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          order_id?: string | null
+          organization_id?: string
+          payload_size?: number
+          printer_ip?: string
+          status?: string
         }
         Relationships: []
       }
@@ -1068,6 +1104,7 @@ export type Database = {
           scheduling_enabled: boolean
           share_image: string
           store_name: string
+          taxa_vision_percent: number
           updated_at: string
           whatsapp_number: string
         }
@@ -1107,6 +1144,7 @@ export type Database = {
           scheduling_enabled?: boolean
           share_image?: string
           store_name?: string
+          taxa_vision_percent?: number
           updated_at?: string
           whatsapp_number?: string
         }
@@ -1146,6 +1184,7 @@ export type Database = {
           scheduling_enabled?: boolean
           share_image?: string
           store_name?: string
+          taxa_vision_percent?: number
           updated_at?: string
           whatsapp_number?: string
         }
@@ -1281,7 +1320,30 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_financeiro_detalhado: {
+        Row: {
+          created_at: string | null
+          customer_name: string | null
+          order_id: string | null
+          order_number: string | null
+          organization_id: string | null
+          payment_method: string | null
+          status: string | null
+          taxa_gateway_valor: number | null
+          taxa_vision_valor: number | null
+          valor_bruto: number | null
+          valor_liquido_final: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       ai_attribute_conversions: { Args: { _org: string }; Returns: number }

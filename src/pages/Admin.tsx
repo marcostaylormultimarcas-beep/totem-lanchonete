@@ -32,6 +32,8 @@ import OperacaoPanel from '@/components/admin/OperacaoPanel';
 import AssistenteVisionPanel from '@/components/admin/AssistenteVisionPanel';
 import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPanel';
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
+import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
+
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'hamburgueres', label: 'Hambúrgueres', icon: '🍔' },
@@ -75,7 +77,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -649,7 +651,9 @@ const AdminPage = () => {
           { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
           { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
           { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
-          { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
+         { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
+         { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
+
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
@@ -720,6 +724,10 @@ const AdminPage = () => {
       {tab === 'impressao' && (
         <ImpressaoTermicaPanel organizationId={activeOrgId} />
       )}
+      {tab === 'financeiro' && (
+        <FinanceiroPanel organizationId={activeOrgId} />
+      )}
+
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />
       )}

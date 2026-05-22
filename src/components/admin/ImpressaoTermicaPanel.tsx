@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Printer, Save, Loader2, RotateCcw, Copy, CheckCircle2, AlertCircle, Download, Wifi } from 'lucide-react';
+import { Printer, Save, Loader2, RotateCcw, Copy, CheckCircle2, AlertCircle, Download, Wifi, Zap, Send, ListTree } from 'lucide-react';
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { BRAND_NAME } from '@/config/brandConfig';
@@ -15,17 +16,30 @@ interface PrintConfig {
   paper_width: number;
   agent_token: string;
   last_seen_at: string | null;
+  webhook_alerta_url: string;
 }
+
+interface LogRow {
+  id: string;
+  status: string;
+  message: string;
+  printer_ip: string;
+  created_at: string;
+}
+
 
 const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
   const [cfg, setCfg] = useState<PrintConfig>({
     enabled: true, auto_print: true, printer_ip: '', printer_port: 9100,
-    paper_width: 48, agent_token: '', last_seen_at: null,
+    paper_width: 48, agent_token: '', last_seen_at: null, webhook_alerta_url: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [logs, setLogs] = useState<LogRow[]>([]);
+
 
   const load = async () => {
     if (!organizationId) return;
@@ -48,8 +62,16 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
-      .in('print_status', ['queued', 'pendente_impressao', 'printing']);
+      .in('print_status', ['queued', 'pendente_impressao', 'printing', 'manual_pending']);
     setPendingCount(count || 0);
+
+    const { data: logRows } = await supabase
+      .from('logs_impressao' as any)
+      .select('id,status,message,printer_ip,created_at')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+      .limit(15);
+    setLogs((logRows as any) || []);
     setLoading(false);
   };
 
@@ -66,12 +88,30 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
         printer_ip: cfg.printer_ip,
         printer_port: cfg.printer_port,
         paper_width: cfg.paper_width,
+        webhook_alerta_url: cfg.webhook_alerta_url,
       })
       .eq('organization_id', organizationId);
     setSaving(false);
     if (error) toast.error(error.message);
     else toast.success('Configuração salva');
   };
+
+  const testPrint = async () => {
+    if (!organizationId) return;
+    if (!cfg.printer_ip) { toast.error('Configure o IP da impressora primeiro'); return; }
+    setTesting(true);
+    const { error } = await supabase.from('logs_impressao' as any).insert({
+      organization_id: organizationId,
+      status: 'test_requested',
+      message: 'Teste de impressão solicitado pelo painel',
+      printer_ip: cfg.printer_ip,
+    });
+    setTesting(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Teste enviado! Verifique a impressora. O agente vai imprimir um ticket de teste em alguns segundos.');
+    load();
+  };
+
 
   const rotateToken = async () => {
     if (!organizationId) return;
@@ -234,23 +274,58 @@ loop();
           </label>
         </div>
 
-        <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={cfg.enabled} onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })} />
-            <span className="text-sm">Módulo de impressão ativo</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={cfg.auto_print} onChange={(e) => setCfg({ ...cfg, auto_print: e.target.checked })} />
-            <span className="text-sm">Imprimir automaticamente ao receber pedido</span>
-          </label>
+        <label className="block">
+          <span className="text-sm font-medium">Webhook de alerta de falha (opcional)</span>
+          <input
+            value={cfg.webhook_alerta_url}
+            onChange={(e) => setCfg({ ...cfg, webhook_alerta_url: e.target.value })}
+            placeholder="https://seu-webhook.com/impressora-falhou"
+            className="mt-1 w-full px-3 py-2 rounded-lg bg-background border border-input"
+          />
+          <span className="text-xs text-muted-foreground mt-1 block">
+            Notificado quando a impressora não responde — útil para você ser avisado no celular.
+          </span>
+        </label>
+
+        {/* Toggle Switch: Impressão automática */}
+        <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <div className="font-semibold flex items-center gap-2"><Zap className="w-4 h-4 text-primary" /> Impressão Automática</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Ative para agilizar o fluxo da cozinha e reduzir o tempo de preparo. Cada pedido pago vai direto para a impressora.
+              Desativado, você precisa apertar <strong>"Imprimir Pedido"</strong> no painel.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={cfg.auto_print}
+            onClick={() => setCfg({ ...cfg, auto_print: !cfg.auto_print })}
+            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${cfg.auto_print ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-background shadow-lg transition-transform ${cfg.auto_print ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
         </div>
 
-        <button onClick={save} disabled={saving}
-          className="touch-btn px-5 py-2.5 rounded-xl bg-primary text-primary-foreground inline-flex items-center gap-2 disabled:opacity-50">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Salvar configuração
-        </button>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={cfg.enabled} onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })} />
+          <span className="text-sm">Módulo de impressão ativo</span>
+        </label>
+
+        <div className="flex flex-wrap gap-2">
+          <button onClick={save} disabled={saving}
+            className="touch-btn px-5 py-2.5 rounded-xl bg-primary text-primary-foreground inline-flex items-center gap-2 disabled:opacity-50">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Salvar configuração
+          </button>
+          <button onClick={testPrint} disabled={testing || !cfg.printer_ip}
+            className="touch-btn px-5 py-2.5 rounded-xl bg-muted hover:bg-muted/70 inline-flex items-center gap-2 disabled:opacity-50">
+            {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            Teste de impressão
+          </button>
+        </div>
       </div>
+
 
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <h3 className="font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-primary" /> Token do agente local</h3>
@@ -286,7 +361,33 @@ loop();
           <Download className="w-4 h-4" /> Baixar agente configurado
         </button>
       </div>
+
+      <div className="bg-card rounded-2xl p-6 border border-border space-y-3">
+        <h3 className="font-semibold flex items-center gap-2"><ListTree className="w-5 h-5 text-primary" /> Últimos eventos de impressão</h3>
+        {logs.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum evento registrado ainda.</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {logs.map((l) => {
+              const ok = l.status === 'success' || l.status === 'printed';
+              const fail = l.status === 'failure' || l.status === 'pendente_impressao';
+              return (
+                <li key={l.id} className="py-2 flex items-start gap-3">
+                  <span className={`mt-1 inline-block w-2 h-2 rounded-full ${ok ? 'bg-green-500' : fail ? 'bg-red-500' : 'bg-amber-500'}`} />
+                  <div className="flex-1">
+                    <div className="font-medium">{l.message || l.status}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(l.created_at).toLocaleString('pt-BR')}{l.printer_ip ? ` · ${l.printer_ip}` : ''}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
+
   );
 };
 

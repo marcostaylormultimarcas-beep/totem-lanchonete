@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Printer, Save, Loader2, RotateCcw, Copy, CheckCircle2, AlertCircle, Download, Wifi } from 'lucide-react';
+import { Printer, Save, Loader2, RotateCcw, Copy, CheckCircle2, AlertCircle, Download, Wifi, Zap, Send, ListTree } from 'lucide-react';
+
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { BRAND_NAME } from '@/config/brandConfig';
@@ -15,7 +16,17 @@ interface PrintConfig {
   paper_width: number;
   agent_token: string;
   last_seen_at: string | null;
+  webhook_alerta_url: string;
 }
+
+interface LogRow {
+  id: string;
+  status: string;
+  message: string;
+  printer_ip: string;
+  created_at: string;
+}
+
 
 const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
   const [cfg, setCfg] = useState<PrintConfig>({

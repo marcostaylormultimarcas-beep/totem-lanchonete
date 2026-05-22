@@ -62,8 +62,16 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
-      .in('print_status', ['queued', 'pendente_impressao', 'printing']);
+      .in('print_status', ['queued', 'pendente_impressao', 'printing', 'manual_pending']);
     setPendingCount(count || 0);
+
+    const { data: logRows } = await supabase
+      .from('logs_impressao' as any)
+      .select('id,status,message,printer_ip,created_at')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false })
+      .limit(15);
+    setLogs((logRows as any) || []);
     setLoading(false);
   };
 
@@ -80,12 +88,30 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
         printer_ip: cfg.printer_ip,
         printer_port: cfg.printer_port,
         paper_width: cfg.paper_width,
+        webhook_alerta_url: cfg.webhook_alerta_url,
       })
       .eq('organization_id', organizationId);
     setSaving(false);
     if (error) toast.error(error.message);
     else toast.success('Configuração salva');
   };
+
+  const testPrint = async () => {
+    if (!organizationId) return;
+    if (!cfg.printer_ip) { toast.error('Configure o IP da impressora primeiro'); return; }
+    setTesting(true);
+    const { error } = await supabase.from('logs_impressao' as any).insert({
+      organization_id: organizationId,
+      status: 'test_requested',
+      message: 'Teste de impressão solicitado pelo painel',
+      printer_ip: cfg.printer_ip,
+    });
+    setTesting(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Teste enviado! Verifique a impressora. O agente vai imprimir um ticket de teste em alguns segundos.');
+    load();
+  };
+
 
   const rotateToken = async () => {
     if (!organizationId) return;

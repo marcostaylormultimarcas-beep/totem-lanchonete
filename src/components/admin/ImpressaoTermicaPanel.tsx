@@ -31,12 +31,15 @@ interface LogRow {
 const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
   const [cfg, setCfg] = useState<PrintConfig>({
     enabled: true, auto_print: true, printer_ip: '', printer_port: 9100,
-    paper_width: 48, agent_token: '', last_seen_at: null,
+    paper_width: 48, agent_token: '', last_seen_at: null, webhook_alerta_url: '',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [logs, setLogs] = useState<LogRow[]>([]);
+
 
   const load = async () => {
     if (!organizationId) return;

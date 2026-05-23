@@ -729,6 +729,10 @@ const AdminPage = () => {
       {tab === 'financeiro' && (
         <FinanceiroPanel organizationId={activeOrgId} />
       )}
+      {tab === 'estoque' && (
+        <EstoqueInteligentePanel organizationId={activeOrgId} />
+      )}
+
 
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (
         <CoMarketingGlobalMap />

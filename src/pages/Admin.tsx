@@ -33,6 +33,7 @@ import AssistenteVisionPanel from '@/components/admin/AssistenteVisionPanel';
 import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPanel';
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
+import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [

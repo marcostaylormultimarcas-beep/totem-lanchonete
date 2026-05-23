@@ -121,6 +121,45 @@ export type Database = {
         }
         Relationships: []
       }
+      alertas_estoque: {
+        Row: {
+          created_at: string
+          id: string
+          ingrediente_id: string | null
+          mensagem: string
+          organization_id: string
+          product_id: string | null
+          resolvido: boolean
+          tipo: string
+          webhook_error: string
+          webhook_status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ingrediente_id?: string | null
+          mensagem?: string
+          organization_id: string
+          product_id?: string | null
+          resolvido?: boolean
+          tipo?: string
+          webhook_error?: string
+          webhook_status?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ingrediente_id?: string | null
+          mensagem?: string
+          organization_id?: string
+          product_id?: string | null
+          resolvido?: boolean
+          tipo?: string
+          webhook_error?: string
+          webhook_status?: string
+        }
+        Relationships: []
+      }
       assistente_vision_feedback: {
         Row: {
           action: string
@@ -413,6 +452,45 @@ export type Database = {
           key?: string
           name?: string
           sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ingredientes: {
+        Row: {
+          created_at: string
+          disponivel: boolean
+          estoque_atual: number
+          estoque_minimo: number
+          id: string
+          last_alert_at: string | null
+          nome: string
+          organization_id: string
+          unidade: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          disponivel?: boolean
+          estoque_atual?: number
+          estoque_minimo?: number
+          id?: string
+          last_alert_at?: string | null
+          nome: string
+          organization_id: string
+          unidade?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          disponivel?: boolean
+          estoque_atual?: number
+          estoque_minimo?: number
+          id?: string
+          last_alert_at?: string | null
+          nome?: string
+          organization_id?: string
+          unidade?: string
           updated_at?: string
         }
         Relationships: []
@@ -902,6 +980,7 @@ export type Database = {
       }
       products: {
         Row: {
+          available: boolean
           category: string
           created_at: string
           description: string
@@ -920,6 +999,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          available?: boolean
           category?: string
           created_at?: string
           description?: string
@@ -938,6 +1018,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          available?: boolean
           category?: string
           created_at?: string
           description?: string
@@ -1028,6 +1109,36 @@ export type Database = {
         }
         Relationships: []
       }
+      receitas: {
+        Row: {
+          created_at: string
+          id: string
+          ingrediente_id: string
+          organization_id: string
+          product_id: string
+          quantidade: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ingrediente_id: string
+          organization_id: string
+          product_id: string
+          quantidade?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ingrediente_id?: string
+          organization_id?: string
+          product_id?: string
+          quantidade?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       resgates_fidelidade: {
         Row: {
           codigo_resgate: string
@@ -1080,6 +1191,7 @@ export type Database = {
           delivery_assignment_mode: string
           delivery_enabled: boolean
           emergency_closed: boolean
+          estoque_webhook_url: string
           fiscal_cnpj: string
           fiscal_csc: string
           fiscal_enabled: boolean
@@ -1120,6 +1232,7 @@ export type Database = {
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
           emergency_closed?: boolean
+          estoque_webhook_url?: string
           fiscal_cnpj?: string
           fiscal_csc?: string
           fiscal_enabled?: boolean
@@ -1160,6 +1273,7 @@ export type Database = {
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
           emergency_closed?: boolean
+          estoque_webhook_url?: string
           fiscal_cnpj?: string
           fiscal_csc?: string
           fiscal_enabled?: boolean
@@ -1455,6 +1569,10 @@ export type Database = {
         Returns: Json
       }
       print_agent_rotate_token: { Args: { _org: string }; Returns: Json }
+      reabastecer_ingrediente: {
+        Args: { _id: string; _quantidade: number }
+        Returns: Json
+      }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
       restock_from_items: {
         Args: { _items: Json; _org: string }

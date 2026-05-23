@@ -34,6 +34,7 @@ import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPa
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
+import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -591,6 +592,7 @@ const AdminPage = () => {
 
   return (
     <div className="min-h-screen pb-8">
+      <InstallAppButton />
       <div className="flex items-center justify-between p-4 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
           <Link to={getKioskHomePath()} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>

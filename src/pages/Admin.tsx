@@ -654,6 +654,7 @@ const AdminPage = () => {
           { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
          { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
          { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
+         { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
 
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },

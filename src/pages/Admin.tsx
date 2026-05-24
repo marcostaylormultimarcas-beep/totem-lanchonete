@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin } from 'lucide-react';
 import CrmPanel from '@/components/admin/CrmPanel';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
@@ -34,6 +34,7 @@ import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPa
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
+import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 
@@ -79,7 +80,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -648,6 +649,7 @@ const AdminPage = () => {
           { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
+          { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
           { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
           { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
           { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
@@ -700,6 +702,9 @@ const AdminPage = () => {
       )}
       {tab === 'bairros' && (
         <BairrosPanel organizationId={activeOrgId} />
+      )}
+      {tab === 'area_cep' && (
+        <AreaAtendimentoPanel organizationId={activeOrgId} />
       )}
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />

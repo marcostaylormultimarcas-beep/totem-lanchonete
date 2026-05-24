@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building, Search, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
+import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
+import { toast } from 'sonner';
 
 interface Bairro {
   id: string;
@@ -12,6 +14,9 @@ interface Bairro {
   tempo_estimado: number;
   ativo: boolean;
 }
+
+type DeliveryMode = 'bairros' | 'raio_km' | 'lista_ceps';
+
 
 interface CheckoutScreenProps {
   name: string;
@@ -45,9 +50,21 @@ const CheckoutScreen = ({
   const [bairros, setBairros] = useState<Bairro[]>([]);
   const [loadingBairros, setLoadingBairros] = useState(false);
 
+  // CEP / modo de entrega
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
+  const [cep, setCep] = useState('');
+  const [validandoCep, setValidandoCep] = useState(false);
+  const [cepResultado, setCepResultado] = useState<
+    | { ok: true; taxa: number | null; tempo_min: number | null; distancia_km: number | null; endereco: string }
+    | { ok: false; motivo: string }
+    | null
+  >(null);
+
   useEffect(() => {
     if (!orgId || orderType !== 'viagem') return;
     setLoadingBairros(true);
+    supabase.from('settings').select('delivery_mode').eq('organization_id', orgId).maybeSingle()
+      .then(({ data }) => setDeliveryMode((((data as any)?.delivery_mode) || 'bairros') as DeliveryMode));
     supabase.from('taxas_entrega' as any)
       .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
       .eq('organization_id', orgId)
@@ -59,15 +76,68 @@ const CheckoutScreen = ({
       });
   }, [orgId, orderType]);
 
+  const validarCep = async () => {
+    if (!orgId) return;
+    const n = normalizeCep(cep);
+    if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
+    setValidandoCep(true);
+    setCepResultado(null);
+    console.log('[CEP] Validando', n, 'modo:', deliveryMode);
+
+    const via = await fetchViaCep(n);
+    if (!via) {
+      setValidandoCep(false);
+      setCepResultado({ ok: false, motivo: 'cep_invalido' });
+      return;
+    }
+    const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+    if (deliveryMode === 'raio_km') {
+      const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
+    const { data, error } = await supabase.rpc('validar_cep_entrega' as any, {
+      _org: orgId, _cep: n, _lat: lat, _lng: lng,
+    });
+    setValidandoCep(false);
+    if (error) { toast.error(error.message); return; }
+    const r = data as any;
+    console.log('[CEP] Resultado validação:', r);
+
+    if (!r?.ok) {
+      setCepResultado({ ok: false, motivo: r?.motivo || 'fora_da_area' });
+      return;
+    }
+    setCepResultado({
+      ok: true,
+      taxa: r.taxa != null ? Number(r.taxa) : null,
+      tempo_min: r.tempo_min != null ? Number(r.tempo_min) : null,
+      distancia_km: r.distancia_km != null ? Number(r.distancia_km) : null,
+      endereco: enderecoStr,
+    });
+    // Preenche endereço se vazio
+    if (!deliveryAddress) onDeliveryAddressChange(enderecoStr);
+    // Se modo não-bairros, propaga taxa/tempo via onBairroChange (reusa o canal de taxa)
+    if (deliveryMode !== 'bairros' && r.taxa != null) {
+      onBairroChange('', via.bairro || enderecoStr, Number(r.taxa), Number(r.tempo_min || 30));
+    }
+  };
+
   const selectedBairro = bairros.find(b => b.id === bairroId);
   const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
   const cpfValid = !cpf || isValidCpf(cpf);
-  const bairroNeeded = orderType === 'viagem' && bairros.length > 0;
+  const usaCep = orderType === 'viagem' && deliveryMode !== 'bairros';
+  const cepValid = !usaCep || (cepResultado !== null && cepResultado.ok === true);
+  const bairroNeeded = orderType === 'viagem' && deliveryMode === 'bairros' && bairros.length > 0;
   const bairroValid = !bairroNeeded || !!selectedBairro;
   const deliveryValid = orderType === 'viagem'
-    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid
+    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid && cepValid
     : true;
   const isValid = baseValid && deliveryValid && cpfValid;
+
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -135,42 +205,94 @@ const CheckoutScreen = ({
                 <MapPin className="w-4 h-4" /> Dados de Entrega
               </p>
 
-              {/* Seletor de bairro */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1 ml-1 block flex items-center gap-1">
-                  <Building className="w-3 h-3" /> Selecione seu Bairro
-                </label>
-                {loadingBairros ? (
-                  <div className="w-full py-4 bg-muted rounded-xl text-center text-sm text-muted-foreground">Carregando bairros...</div>
-                ) : bairros.length === 0 ? (
-                  <div className="w-full px-3 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-xs text-destructive">
-                    A loja ainda não cadastrou bairros de entrega. Selecione "Comer no Local" ou entre em contato com a loja.
+              {/* Validação por CEP (modos raio_km / lista_ceps) */}
+              {usaCep && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground ml-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
+                  </label>
+                  <div className="flex gap-2">
+                    <input value={cep} onChange={e => { setCep(maskCep(e.target.value)); setCepResultado(null); }}
+                      placeholder="00000-000" maxLength={9}
+                      className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
+                    <button onClick={validarCep} disabled={validandoCep}
+                      className="touch-btn px-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">
+                      {validandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Validar
+                    </button>
                   </div>
-                ) : (
-                  <select
-                    value={bairroId}
-                    onChange={e => {
-                      const b = bairros.find(x => x.id === e.target.value);
-                      if (b) onBairroChange(b.id, b.nome_bairro, Number(b.valor_taxa), b.tempo_estimado);
-                      else onBairroChange('', '', 0, 0);
-                    }}
-                    className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">— Escolha o bairro —</option>
-                    {bairros.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.nome_bairro} — {formatCurrency(Number(b.valor_taxa))} ({b.tempo_estimado} min)
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {selectedBairro && (
-                  <p className="text-xs text-success mt-1 ml-1 flex items-center gap-1">
-                    ✓ Taxa: <span className="font-bold">{formatCurrency(Number(selectedBairro.valor_taxa))}</span>
-                    <span className="text-muted-foreground">• Entrega em ~{selectedBairro.tempo_estimado} min</span>
-                  </p>
-                )}
-              </div>
+                  {cepResultado?.ok === true && (
+                    <div className="p-3 rounded-xl bg-success/10 border border-success/40 text-success text-sm flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-bold">Entregamos no seu endereço! ✓</p>
+                        <p className="text-xs text-muted-foreground">{cepResultado.endereco}</p>
+                        {cepResultado.taxa != null && (
+                          <p className="text-xs mt-1">
+                            Taxa: <span className="font-bold">{formatCurrency(cepResultado.taxa)}</span>
+                            {cepResultado.tempo_min != null && <> · ~{cepResultado.tempo_min} min</>}
+                            {cepResultado.distancia_km != null && <> · {cepResultado.distancia_km.toFixed(1)} km</>}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {cepResultado?.ok === false && (
+                    <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/40 text-destructive text-sm flex items-start gap-2">
+                      <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-bold">Não entregamos nesta região 😔</p>
+                        <p className="text-xs">
+                          {cepResultado.motivo === 'cep_invalido' && 'CEP inválido — verifique e tente novamente.'}
+                          {cepResultado.motivo === 'fora_da_area' && 'Este CEP não está na nossa lista de atendimento.'}
+                          {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
+                          {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
+                          {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Seletor de bairro (modo bairros) */}
+              {!usaCep && (
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground mb-1 ml-1 block flex items-center gap-1">
+                    <Building className="w-3 h-3" /> Selecione seu Bairro
+                  </label>
+                  {loadingBairros ? (
+                    <div className="w-full py-4 bg-muted rounded-xl text-center text-sm text-muted-foreground">Carregando bairros...</div>
+                  ) : bairros.length === 0 ? (
+                    <div className="w-full px-3 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-xs text-destructive">
+                      A loja ainda não cadastrou bairros de entrega. Selecione "Comer no Local" ou entre em contato com a loja.
+                    </div>
+                  ) : (
+                    <select
+                      value={bairroId}
+                      onChange={e => {
+                        const b = bairros.find(x => x.id === e.target.value);
+                        if (b) onBairroChange(b.id, b.nome_bairro, Number(b.valor_taxa), b.tempo_estimado);
+                        else onBairroChange('', '', 0, 0);
+                      }}
+                      className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">— Escolha o bairro —</option>
+                      {bairros.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.nome_bairro} — {formatCurrency(Number(b.valor_taxa))} ({b.tempo_estimado} min)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedBairro && (
+                    <p className="text-xs text-success mt-1 ml-1 flex items-center gap-1">
+                      ✓ Taxa: <span className="font-bold">{formatCurrency(Number(selectedBairro.valor_taxa))}</span>
+                      <span className="text-muted-foreground">• Entrega em ~{selectedBairro.tempo_estimado} min</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
 
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />

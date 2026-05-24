@@ -1,54 +1,70 @@
-## ⚠️ Aviso crítico antes de começar
+## Módulo "Entrega por CEP" — Plano de implementação
 
-Você confirmou "apagar tudo e recriar". Antes de eu executar isso, leia:
+Vou adicionar geolocalização via ViaCEP + cálculo de distância (Haversine) integrado ao fluxo de delivery atual.
 
-1. **Lovable Cloud (Supabase) NÃO tem botão de undo para `DROP TABLE`.** Pedidos reais, lojas, usuários cadastrados, imagens em storage e configurações de Mercado Pago serão perdidos para sempre. O botão "revert" do Lovable só desfaz **código**, não restaura dados apagados.
-2. **A forma correta de "começar do zero" é usar o histórico do Lovable** para voltar antes de qualquer migration, em vez de eu rodar `DROP`. Se é isso que você quer:
+### 1. Banco de dados (migration)
 
-<presentation-actions>
-<presentation-open-history>Abrir histórico</presentation-open-history>
-</presentation-actions>
+**`settings`** — novas colunas para a loja:
+- `cep_loja` (text) — CEP central da loja
+- `cep_lat` / `cep_lng` (numeric) — coordenadas resolvidas
+- `delivery_mode` (text: `'lista_ceps'` | `'raio_km'` | `'bairros'`) — padrão `'bairros'` (mantém o atual)
+- `delivery_raio_km` (numeric) — raio máximo de atendimento
+- `delivery_taxa_base` (numeric) e `delivery_taxa_por_km` (numeric) — frete dinâmico
+- `delivery_tempo_base_min` (int) e `delivery_tempo_por_km_min` (numeric) — tempo estimado
 
-3. **Recomendação forte:** ir pelo caminho **aditivo**. O sistema atual já tem 90% do que o brief pede (auth 3 níveis, RLS multi-tenant, lojas, pedidos, totem, KDS, pagamentos, landing Dark Premium). Faltam só os itens das ETAPAS 2-4.
+**Nova tabela `cep_atendidos`** (modo lista de CEPs):
+- `organization_id`, `cep` (8 dígitos), `taxa` (numeric, opcional override), `tempo_min` (int, opcional)
+- RLS: leitura pública (totem precisa), escrita só pelo dono da loja
 
-## Escopo proposto (aditivo, sem destruir dados)
+**Função `public.validar_cep_entrega(_org uuid, _cep text, _lat numeric, _lng numeric)`** — `SECURITY DEFINER`, retorna `jsonb { ok, motivo, distancia_km, taxa, tempo_min }`. Consolida as 3 regras (lista / raio / bairros) num único ponto.
 
-### ETAPA 1 – Segurança (já existe, só validar)
-- RLS multi-tenant já está ativo em todas as tabelas (`organizations.owner_id`, `master_id`, `is_super_admin()`).
-- Login + "Esqueci minha senha" já existem (`/` e `/reset-password`).
-- **Novo:** campo `recovery_pin` em `user_roles` ou tabela `master_recovery` para PIN de Master Admin (4-6 dígitos, hash).
+### 2. Lib utilitária `src/lib/cep.ts`
 
-### ETAPA 2 – Regras de negócio + Fiscal
-- `organizations.paused` já existe; **novo:** bloquear painel admin e mostrar "Estabelecimento indisponível" no totem público `/loja/:slug` quando `paused = true`.
-- **Nova migration:** adicionar em `settings`:
-  - `fiscal_enabled bool`, `fiscal_cnpj text`, `fiscal_razao text`, `fiscal_ie text`, `fiscal_regime text`, `fiscal_csc text`, `fiscal_token text`
-- **Nova migration:** adicionar em `orders`:
-  - `nfe_status text` (none|pending|emitida|erro), `nfe_numero text`, `nfe_url text`
-- Nova aba "Fiscal" em `src/pages/Admin.tsx` (só UI, sem integração com SEFAZ — você confirmou).
+- `normalizeCep(input)` — só dígitos, 8 chars
+- `fetchViaCep(cep)` — chama `https://viacep.com.br/ws/{cep}/json/`, retorna `{ cep, logradouro, bairro, cidade, uf }`
+- `geocodeCep(cep)` — usa endpoint público `nominatim.openstreetmap.org` (sem chave) para resolver lat/lng a partir do endereço retornado pelo ViaCEP
+- `haversineKm(a, b)` — distância em km entre dois pontos
 
-### ETAPA 3 – Super Admin + Landing
-- Novo painel no Super Admin: 4 KPI cards (Total Masters, Total Lojas, Total Pedidos, Receita), filtros (data/status/master), gráfico de crescimento (recharts), ranking masters por nº de lojas e receita.
-- Landing (`src/pages/Home.tsx`): adicionar seção "Tecnologia Visual" (cards Leveza + Otimização) e seção "IA 24/7" (título, texto, destaques com ícones, imagem futurista gerada).
+### 3. Admin — painel "Área de Atendimento"
 
-### ETAPA 4 – Chat IA flutuante (Gemini via Lovable AI)
-- Edge Function `support-chat` usando Lovable AI Gateway com `google/gemini-3-flash-preview` (Gemini 1.5 Flash foi descontinuado; uso o equivalente atual do Gateway, sem custo extra de chave).
-- System prompt + FAQ que você forneceu.
-- Componente `<SupportChat />` (balão flutuante Dark Premium) montado em `App.tsx` para aparecer em **todas** as rotas (landing, lojista, master, super, totem).
-- **A chave que você colou no chat NÃO será usada** — chaves em mensagens ficam expostas no histórico. Eu uso `LOVABLE_API_KEY` que já está provisionado. Recomendo você **rotacionar essa chave do Google** assim que possível.
+Novo componente `AreaAtendimentoPanel.tsx` (aba no Admin atual, próximo a Bairros):
+- Campo CEP da loja com botão "Buscar" → preenche endereço + geocodifica
+- Toggle de modo: **Por raio (km)** | **Por lista de CEPs** | **Por bairros** (existente)
+- Modo raio: input numérico `raio_km`, taxa base, taxa por km, tempo base, tempo por km — preview "Atendemos até X km"
+- Modo lista: CRUD simples de `cep_atendidos` (cep, taxa, tempo)
+- Mantém compatibilidade com `taxas_entrega` (bairros) — só desliga quando `delivery_mode` é outro
 
-## Ordem de execução
+### 4. Cliente — bloqueio por CEP no checkout
 
-Vou dividir em 4 mensagens (não cabe em uma só sem ficar com bugs):
+Adaptar `CheckoutScreen` (ou criar `CepGate` reutilizável):
+- Quando o cliente escolhe **Delivery**, o primeiro campo é **CEP** com botão "Validar"
+- Chama `fetchViaCep` → preenche endereço → chama RPC `validar_cep_entrega`
+- Se `ok=false`: mostra card vermelho "Não entregamos nesta região 😔" e bloqueia continuar (botão Avançar desabilitado)
+- Se `ok=true`: mostra "✓ Entregamos no seu endereço — taxa R$ X · ~Y min" e habilita o checkout
+- Salva `delivery_cep`, `delivery_distance_km` no pedido (adicionar colunas em `orders`)
 
-1. **Msg 1:** Migration fiscal + paused-guard + Chat IA (edge function + balão flutuante).
-2. **Msg 2:** Aba Fiscal no Admin + colunas NFe na lista de pedidos.
-3. **Msg 3:** Dashboard Super Admin (KPIs, filtros, gráfico, ranking).
-4. **Msg 4:** Seções "Tecnologia Visual" e "IA 24/7" na landing + PIN de recuperação Master.
+Modos `local` e `viagem` continuam sem CEP (não é entrega).
 
-## Decisão necessária
+### 5. Integração com pedido
 
-Responda **uma** das opções abaixo na próxima mensagem:
+- `orders` ganha `delivery_cep` (text) e `delivery_distance_km` (numeric, nullable)
+- Taxa de entrega calculada via RPC vai para `delivery_fee` (já existe)
+- `bairro_nome` continua sendo preenchido (vem do ViaCEP) para compatibilidade
 
-- **"Aditivo, começar pela Msg 1"** → executo o plano acima preservando dados.
-- **"Apagar mesmo assim"** → eu paro e peço que você primeiro exporte o banco em Cloud → Database → Tables, porque não consigo restaurar depois.
-- **"Vou usar o histórico"** → você reverte pelo botão acima e depois conversamos.
+### 6. Logs e UX
+
+- `console.log('[CEP]', ...)` nas etapas de validação para diagnóstico
+- Mensagens claras em PT-BR ("CEP inválido", "Fora da área", "Sem conexão com ViaCEP")
+- Loading states e erros com `toast.error`
+
+### Arquivos previstos
+- `supabase/migrations/<timestamp>_cep_delivery.sql`
+- `src/lib/cep.ts` (nova)
+- `src/components/admin/AreaAtendimentoPanel.tsx` (nova)
+- `src/components/kiosk/CepGate.tsx` (nova, reutilizável)
+- Edits: `src/pages/Admin.tsx`, `src/components/kiosk/CheckoutScreen.tsx`, `src/integrations/supabase/types.ts` (auto)
+
+### Pontos a confirmar antes de implementar
+1. Manter o modo "Bairros" atual como opção (sim, recomendo) ou substituir totalmente por CEP?
+2. Geocodificação: usar Nominatim (OSM, gratuito, sem chave, com rate-limit) ou prefere já configurar Google Maps API? Vou seguir com Nominatim por ser zero-config — pode trocar depois.
+3. O bloqueio por CEP é só para `order_type = 'delivery'` (correto). Pedidos local/viagem seguem sem CEP.

@@ -190,6 +190,36 @@ export type Database = {
         }
         Relationships: []
       }
+      cep_atendidos: {
+        Row: {
+          cep: string
+          created_at: string
+          id: string
+          organization_id: string
+          taxa: number
+          tempo_min: number
+          updated_at: string
+        }
+        Insert: {
+          cep: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          taxa?: number
+          tempo_min?: number
+          updated_at?: string
+        }
+        Update: {
+          cep?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          taxa?: number
+          tempo_min?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cliente_notificacoes: {
         Row: {
           body: string
@@ -601,7 +631,9 @@ export type Database = {
           customer_phone: string
           data_reembolso: string | null
           delivery_address: string | null
+          delivery_cep: string
           delivery_code: string
+          delivery_distance_km: number | null
           delivery_fee: number
           delivery_recipient: string | null
           delivery_reference: string | null
@@ -635,7 +667,9 @@ export type Database = {
           customer_phone?: string
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_cep?: string
           delivery_code?: string
+          delivery_distance_km?: number | null
           delivery_fee?: number
           delivery_recipient?: string | null
           delivery_reference?: string | null
@@ -669,7 +703,9 @@ export type Database = {
           customer_phone?: string
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_cep?: string
           delivery_code?: string
+          delivery_distance_km?: number | null
           delivery_fee?: number
           delivery_recipient?: string | null
           delivery_reference?: string | null
@@ -1184,12 +1220,21 @@ export type Database = {
           business_hours: Json
           categories: Json
           category_icons: Json
+          cep_lat: number | null
+          cep_lng: number | null
+          cep_loja: string
           closed_message: string
           combo: Json
           cover_image: string | null
           created_at: string
           delivery_assignment_mode: string
           delivery_enabled: boolean
+          delivery_mode: string
+          delivery_raio_km: number
+          delivery_taxa_base: number
+          delivery_taxa_por_km: number
+          delivery_tempo_base_min: number
+          delivery_tempo_por_km_min: number
           emergency_closed: boolean
           estoque_webhook_url: string
           fiscal_cnpj: string
@@ -1225,12 +1270,21 @@ export type Database = {
           business_hours?: Json
           categories?: Json
           category_icons?: Json
+          cep_lat?: number | null
+          cep_lng?: number | null
+          cep_loja?: string
           closed_message?: string
           combo?: Json
           cover_image?: string | null
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          delivery_mode?: string
+          delivery_raio_km?: number
+          delivery_taxa_base?: number
+          delivery_taxa_por_km?: number
+          delivery_tempo_base_min?: number
+          delivery_tempo_por_km_min?: number
           emergency_closed?: boolean
           estoque_webhook_url?: string
           fiscal_cnpj?: string
@@ -1266,12 +1320,21 @@ export type Database = {
           business_hours?: Json
           categories?: Json
           category_icons?: Json
+          cep_lat?: number | null
+          cep_lng?: number | null
+          cep_loja?: string
           closed_message?: string
           combo?: Json
           cover_image?: string | null
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          delivery_mode?: string
+          delivery_raio_km?: number
+          delivery_taxa_base?: number
+          delivery_taxa_por_km?: number
+          delivery_tempo_base_min?: number
+          delivery_tempo_por_km_min?: number
           emergency_closed?: boolean
           estoque_webhook_url?: string
           fiscal_cnpj?: string
@@ -1592,6 +1655,10 @@ export type Database = {
         Returns: Json
       }
       user_owns_org: { Args: { _org: string; _uid: string }; Returns: boolean }
+      validar_cep_entrega: {
+        Args: { _cep: string; _lat?: number; _lng?: number; _org: string }
+        Returns: Json
+      }
       vision_prime_my_status: { Args: { _org: string }; Returns: Json }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
     }

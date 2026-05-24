@@ -205,42 +205,94 @@ const CheckoutScreen = ({
                 <MapPin className="w-4 h-4" /> Dados de Entrega
               </p>
 
-              {/* Seletor de bairro */}
-              <div>
-                <label className="text-xs font-bold text-muted-foreground mb-1 ml-1 block flex items-center gap-1">
-                  <Building className="w-3 h-3" /> Selecione seu Bairro
-                </label>
-                {loadingBairros ? (
-                  <div className="w-full py-4 bg-muted rounded-xl text-center text-sm text-muted-foreground">Carregando bairros...</div>
-                ) : bairros.length === 0 ? (
-                  <div className="w-full px-3 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-xs text-destructive">
-                    A loja ainda não cadastrou bairros de entrega. Selecione "Comer no Local" ou entre em contato com a loja.
+              {/* Validação por CEP (modos raio_km / lista_ceps) */}
+              {usaCep && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-muted-foreground ml-1 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
+                  </label>
+                  <div className="flex gap-2">
+                    <input value={cep} onChange={e => { setCep(maskCep(e.target.value)); setCepResultado(null); }}
+                      placeholder="00000-000" maxLength={9}
+                      className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
+                    <button onClick={validarCep} disabled={validandoCep}
+                      className="touch-btn px-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">
+                      {validandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Validar
+                    </button>
                   </div>
-                ) : (
-                  <select
-                    value={bairroId}
-                    onChange={e => {
-                      const b = bairros.find(x => x.id === e.target.value);
-                      if (b) onBairroChange(b.id, b.nome_bairro, Number(b.valor_taxa), b.tempo_estimado);
-                      else onBairroChange('', '', 0, 0);
-                    }}
-                    className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary"
-                  >
-                    <option value="">— Escolha o bairro —</option>
-                    {bairros.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.nome_bairro} — {formatCurrency(Number(b.valor_taxa))} ({b.tempo_estimado} min)
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {selectedBairro && (
-                  <p className="text-xs text-success mt-1 ml-1 flex items-center gap-1">
-                    ✓ Taxa: <span className="font-bold">{formatCurrency(Number(selectedBairro.valor_taxa))}</span>
-                    <span className="text-muted-foreground">• Entrega em ~{selectedBairro.tempo_estimado} min</span>
-                  </p>
-                )}
-              </div>
+                  {cepResultado?.ok === true && (
+                    <div className="p-3 rounded-xl bg-success/10 border border-success/40 text-success text-sm flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-bold">Entregamos no seu endereço! ✓</p>
+                        <p className="text-xs text-muted-foreground">{cepResultado.endereco}</p>
+                        {cepResultado.taxa != null && (
+                          <p className="text-xs mt-1">
+                            Taxa: <span className="font-bold">{formatCurrency(cepResultado.taxa)}</span>
+                            {cepResultado.tempo_min != null && <> · ~{cepResultado.tempo_min} min</>}
+                            {cepResultado.distancia_km != null && <> · {cepResultado.distancia_km.toFixed(1)} km</>}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {cepResultado?.ok === false && (
+                    <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/40 text-destructive text-sm flex items-start gap-2">
+                      <XCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-bold">Não entregamos nesta região 😔</p>
+                        <p className="text-xs">
+                          {cepResultado.motivo === 'cep_invalido' && 'CEP inválido — verifique e tente novamente.'}
+                          {cepResultado.motivo === 'fora_da_area' && 'Este CEP não está na nossa lista de atendimento.'}
+                          {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
+                          {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
+                          {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Seletor de bairro (modo bairros) */}
+              {!usaCep && (
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground mb-1 ml-1 block flex items-center gap-1">
+                    <Building className="w-3 h-3" /> Selecione seu Bairro
+                  </label>
+                  {loadingBairros ? (
+                    <div className="w-full py-4 bg-muted rounded-xl text-center text-sm text-muted-foreground">Carregando bairros...</div>
+                  ) : bairros.length === 0 ? (
+                    <div className="w-full px-3 py-3 bg-destructive/10 border border-destructive/30 rounded-xl text-xs text-destructive">
+                      A loja ainda não cadastrou bairros de entrega. Selecione "Comer no Local" ou entre em contato com a loja.
+                    </div>
+                  ) : (
+                    <select
+                      value={bairroId}
+                      onChange={e => {
+                        const b = bairros.find(x => x.id === e.target.value);
+                        if (b) onBairroChange(b.id, b.nome_bairro, Number(b.valor_taxa), b.tempo_estimado);
+                        else onBairroChange('', '', 0, 0);
+                      }}
+                      className="w-full px-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="">— Escolha o bairro —</option>
+                      {bairros.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.nome_bairro} — {formatCurrency(Number(b.valor_taxa))} ({b.tempo_estimado} min)
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {selectedBairro && (
+                    <p className="text-xs text-success mt-1 ml-1 flex items-center gap-1">
+                      ✓ Taxa: <span className="font-bold">{formatCurrency(Number(selectedBairro.valor_taxa))}</span>
+                      <span className="text-muted-foreground">• Entrega em ~{selectedBairro.tempo_estimado} min</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
 
               <div className="relative">
                 <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />

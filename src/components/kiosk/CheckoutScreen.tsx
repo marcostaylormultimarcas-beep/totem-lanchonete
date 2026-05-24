@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building, Search, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
+import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
+import { toast } from 'sonner';
 
 interface Bairro {
   id: string;
@@ -12,6 +14,9 @@ interface Bairro {
   tempo_estimado: number;
   ativo: boolean;
 }
+
+type DeliveryMode = 'bairros' | 'raio_km' | 'lista_ceps';
+
 
 interface CheckoutScreenProps {
   name: string;

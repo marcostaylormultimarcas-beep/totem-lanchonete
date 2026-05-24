@@ -83,24 +83,31 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
     if (!orgId) { setLoading(false); return; }
     let cancelled = false;
     const load = async () => {
-      const { data } = await supabase.from('settings')
+      const { data, error } = await supabase.from('settings')
         .select('business_hours, emergency_closed, closed_message, scheduling_enabled')
         .eq('organization_id', orgId).maybeSingle();
       if (cancelled) return;
+      if (error) console.warn('[useStoreStatus] erro ao carregar settings:', error.message);
       if (data) {
-        setHours((data as any).business_hours || DEFAULT_HOURS);
-        setEmergencyClosed(Boolean((data as any).emergency_closed));
+        const hrs = (data as any).business_hours || DEFAULT_HOURS;
+        const ec = Boolean((data as any).emergency_closed);
+        setHours(hrs);
+        setEmergencyClosed(ec);
         setMessage((data as any).closed_message || 'Lanchonete fechada no momento');
         setSchedulingEnabled((data as any).scheduling_enabled !== false);
+        const { open } = computeStatus(new Date(), hrs);
+        console.log('[Vitrine] Status da loja:', {
+          orgId, aberto: open && !ec, emergencyClosed: ec, businessHours: hrs,
+        });
       }
       setLoading(false);
     };
     load();
 
     const ch = supabase.channel('store-hours-' + orgId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` },
-        () => load())
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` },
+        (payload) => { console.log('[Vitrine] Realtime settings update:', payload.eventType); load(); })
+      .subscribe((status) => console.log('[Vitrine] Realtime channel status:', status));
     return () => { cancelled = true; supabase.removeChannel(ch); };
   }, [orgId]);
 

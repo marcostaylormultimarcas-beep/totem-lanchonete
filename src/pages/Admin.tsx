@@ -703,6 +703,9 @@ const AdminPage = () => {
       {tab === 'bairros' && (
         <BairrosPanel organizationId={activeOrgId} />
       )}
+      {tab === 'area_cep' && (
+        <AreaAtendimentoPanel organizationId={activeOrgId} />
+      )}
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />
       )}

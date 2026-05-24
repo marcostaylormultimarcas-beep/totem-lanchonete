@@ -50,9 +50,21 @@ const CheckoutScreen = ({
   const [bairros, setBairros] = useState<Bairro[]>([]);
   const [loadingBairros, setLoadingBairros] = useState(false);
 
+  // CEP / modo de entrega
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
+  const [cep, setCep] = useState('');
+  const [validandoCep, setValidandoCep] = useState(false);
+  const [cepResultado, setCepResultado] = useState<
+    | { ok: true; taxa: number | null; tempo_min: number | null; distancia_km: number | null; endereco: string }
+    | { ok: false; motivo: string }
+    | null
+  >(null);
+
   useEffect(() => {
     if (!orgId || orderType !== 'viagem') return;
     setLoadingBairros(true);
+    supabase.from('settings').select('delivery_mode').eq('organization_id', orgId).maybeSingle()
+      .then(({ data }) => setDeliveryMode((((data as any)?.delivery_mode) || 'bairros') as DeliveryMode));
     supabase.from('taxas_entrega' as any)
       .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
       .eq('organization_id', orgId)
@@ -64,15 +76,68 @@ const CheckoutScreen = ({
       });
   }, [orgId, orderType]);
 
+  const validarCep = async () => {
+    if (!orgId) return;
+    const n = normalizeCep(cep);
+    if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
+    setValidandoCep(true);
+    setCepResultado(null);
+    console.log('[CEP] Validando', n, 'modo:', deliveryMode);
+
+    const via = await fetchViaCep(n);
+    if (!via) {
+      setValidandoCep(false);
+      setCepResultado({ ok: false, motivo: 'cep_invalido' });
+      return;
+    }
+    const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+    if (deliveryMode === 'raio_km') {
+      const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
+    const { data, error } = await supabase.rpc('validar_cep_entrega' as any, {
+      _org: orgId, _cep: n, _lat: lat, _lng: lng,
+    });
+    setValidandoCep(false);
+    if (error) { toast.error(error.message); return; }
+    const r = data as any;
+    console.log('[CEP] Resultado validação:', r);
+
+    if (!r?.ok) {
+      setCepResultado({ ok: false, motivo: r?.motivo || 'fora_da_area' });
+      return;
+    }
+    setCepResultado({
+      ok: true,
+      taxa: r.taxa != null ? Number(r.taxa) : null,
+      tempo_min: r.tempo_min != null ? Number(r.tempo_min) : null,
+      distancia_km: r.distancia_km != null ? Number(r.distancia_km) : null,
+      endereco: enderecoStr,
+    });
+    // Preenche endereço se vazio
+    if (!deliveryAddress) onDeliveryAddressChange(enderecoStr);
+    // Se modo não-bairros, propaga taxa/tempo via onBairroChange (reusa o canal de taxa)
+    if (deliveryMode !== 'bairros' && r.taxa != null) {
+      onBairroChange('', via.bairro || enderecoStr, Number(r.taxa), Number(r.tempo_min || 30));
+    }
+  };
+
   const selectedBairro = bairros.find(b => b.id === bairroId);
   const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
   const cpfValid = !cpf || isValidCpf(cpf);
-  const bairroNeeded = orderType === 'viagem' && bairros.length > 0;
+  const usaCep = orderType === 'viagem' && deliveryMode !== 'bairros';
+  const cepValid = !usaCep || (cepResultado !== null && cepResultado.ok === true);
+  const bairroNeeded = orderType === 'viagem' && deliveryMode === 'bairros' && bairros.length > 0;
   const bairroValid = !bairroNeeded || !!selectedBairro;
   const deliveryValid = orderType === 'viagem'
-    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid
+    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid && cepValid
     : true;
   const isValid = baseValid && deliveryValid && cpfValid;
+
 
   return (
     <div className="min-h-screen flex flex-col">

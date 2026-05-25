@@ -1375,6 +1375,27 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          id: string
+          onesignal_api_key: string
+          onesignal_app_id: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          onesignal_api_key?: string
+          onesignal_app_id?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          onesignal_api_key?: string
+          onesignal_app_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       taxas_entrega: {
         Row: {
           ativo: boolean

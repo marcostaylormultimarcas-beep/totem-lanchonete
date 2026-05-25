@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { triggerRupturaNotification } from '@/lib/onesignal';
 
 interface Ingrediente {
   id: string;
@@ -64,6 +65,29 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [organizationId]);
+
+  // Dispara push via OneSignal quando um ingrediente zerar (realtime)
+  const notifiedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!organizationId) return;
+    const channel = supabase
+      .channel(`ruptura-${organizationId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'ingredientes',
+        filter: `organization_id=eq.${organizationId}`,
+      }, (payload: any) => {
+        const novo = payload.new; const antigo = payload.old;
+        const zerouAgora = Number(antigo?.estoque_atual ?? 0) > 0 && Number(novo?.estoque_atual ?? 0) <= 0;
+        if (zerouAgora && !notifiedRef.current.has(novo.id)) {
+          notifiedRef.current.add(novo.id);
+          triggerRupturaNotification(novo.nome);
+        }
+        // libera reenvio quando reabastecer
+        if (Number(novo?.estoque_atual ?? 0) > 0) notifiedRef.current.delete(novo.id);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [organizationId]);
 
   const recsByProduct = useMemo(() => {
     const m = new Map<string, Receita[]>();

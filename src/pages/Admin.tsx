@@ -34,6 +34,7 @@ import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPa
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
+import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
@@ -667,6 +668,7 @@ const AdminPage = () => {
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
+          { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
           { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
         ].filter(t => {
@@ -748,6 +750,9 @@ const AdminPage = () => {
       )}
       {tab === 'assinatura' && (
         <AssinaturaPanel organizationId={activeOrgId} />
+      )}
+      {tab === 'onesignal' && currentAdmin?.tier === 'super' && (
+        <OneSignalPanel />
       )}
 
 

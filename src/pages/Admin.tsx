@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell } from 'lucide-react';
 import CrmPanel from '@/components/admin/CrmPanel';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
@@ -82,7 +82,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');

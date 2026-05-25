@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Org {
@@ -8,22 +8,33 @@ interface Org {
   name: string;
   slug: string;
   paused: boolean;
+  plan_id: string | null;
 }
+
+interface Plan { id: string; key: string; name: string; sort_order: number; }
 
 const slugify = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 50);
 
 const OrganizationsPanel = () => {
   const [orgs, setOrgs] = useState<Org[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [planId, setPlanId] = useState<string>('');
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: true });
-    setOrgs((data as any) || []);
+    const [{ data: orgsData }, { data: plansData }] = await Promise.all([
+      supabase.from('organizations').select('*').order('created_at', { ascending: true }),
+      supabase.from('plans' as any).select('id, key, name, sort_order').order('sort_order'),
+    ]);
+    setOrgs((orgsData as any) || []);
+    const pl = (plansData as any as Plan[]) || [];
+    setPlans(pl);
+    if (!planId && pl.length) setPlanId(pl[0].id);
     setLoading(false);
   };
   useEffect(() => { load(); }, []);
@@ -33,11 +44,12 @@ const OrganizationsPanel = () => {
     const finalSlug = slug.trim() ? slugify(slug) : slugify(name);
     if (!finalSlug) { toast.error('Slug inválido'); return; }
     setSaving(true);
-    const { data, error } = await supabase.from('organizations').insert({ name: name.trim(), slug: finalSlug }).select().maybeSingle();
+    const { data, error } = await supabase.from('organizations')
+      .insert({ name: name.trim(), slug: finalSlug, plan_id: planId || null } as any)
+      .select().maybeSingle();
     if (error) {
       toast.error(error.message.includes('duplicate') ? 'Esse slug já existe.' : error.message);
     } else if (data) {
-      // create default settings row for the new org
       await supabase.from('settings').insert({ organization_id: data.id, store_name: name.trim() });
       toast.success('Loja criada!');
       setName(''); setSlug('');
@@ -64,6 +76,14 @@ const OrganizationsPanel = () => {
     await load();
   };
 
+  const changePlan = async (o: Org, newPlanId: string) => {
+    if (newPlanId === (o.plan_id || '')) return;
+    const { error } = await supabase.from('organizations').update({ plan_id: newPlanId || null } as any).eq('id', o.id);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Plano atualizado!');
+    await load();
+  };
+
   const totemUrl = (s: string) => `${window.location.origin}/cardapio/${s}`;
 
   return (
@@ -74,6 +94,18 @@ const OrganizationsPanel = () => {
           className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={60} />
         <input placeholder="Slug da URL (auto se vazio)" value={slug} onChange={e => setSlug(e.target.value)}
           className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={50} />
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5" /> Plano da loja
+          </label>
+          <select value={planId} onChange={e => setPlanId(e.target.value)}
+            className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
+            {plans.length === 0 && <option value="">Nenhum plano cadastrado</option>}
+            {plans.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
         <button onClick={create} disabled={saving} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar Loja
         </button>
@@ -100,6 +132,14 @@ const OrganizationsPanel = () => {
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Layers className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <select value={o.plan_id || ''} onChange={e => changePlan(o, e.target.value)}
+                className="text-xs px-2 py-1.5 bg-muted rounded-md outline-none flex-1 focus:ring-2 focus:ring-primary">
+                <option value="">Sem plano</option>
+                {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
             </div>
             <button onClick={() => { navigator.clipboard.writeText(totemUrl(o.slug)); toast.success('Link copiado!'); }}
               className="w-full text-left text-xs text-muted-foreground hover:text-primary flex items-center gap-1 px-1 py-1 rounded">

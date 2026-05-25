@@ -35,6 +35,7 @@ import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
+import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 
@@ -80,7 +81,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map'>('orders');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -659,6 +660,8 @@ const AdminPage = () => {
          { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
          { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
          { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
+         { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
+
 
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
@@ -731,13 +734,20 @@ const AdminPage = () => {
         <PersonalizacaoVisualPanel organizationId={activeOrgId} />
       )}
       {tab === 'impressao' && (
-        <ImpressaoTermicaPanel organizationId={activeOrgId} />
+        <FeatureGate feature="print_receipt" label="Impressão Térmica Automática">
+          <ImpressaoTermicaPanel organizationId={activeOrgId} />
+        </FeatureGate>
       )}
       {tab === 'financeiro' && (
         <FinanceiroPanel organizationId={activeOrgId} />
       )}
       {tab === 'estoque' && (
-        <EstoqueInteligentePanel organizationId={activeOrgId} />
+        <FeatureGate feature="estoque_inteligente" label="Estoque Inteligente">
+          <EstoqueInteligentePanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
+      {tab === 'assinatura' && (
+        <AssinaturaPanel organizationId={activeOrgId} />
       )}
 
 

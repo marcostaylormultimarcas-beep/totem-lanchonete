@@ -782,6 +782,9 @@ const AdminPage = () => {
       {tab === 'onesignal' && currentAdmin?.tier === 'super' && (
         <OneSignalPanel />
       )}
+      {tab === 'billing' && currentAdmin?.tier === 'super' && (
+        <MasterBillingPanel />
+      )}
 
 
       {tab === 'parcerias_map' && currentAdmin?.tier === 'super' && (

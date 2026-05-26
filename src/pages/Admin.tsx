@@ -132,6 +132,9 @@ const AdminPage = () => {
       )
       .subscribe();
     return () => { mounted = false; supabase.removeChannel(ch); };
+  }, [activeOrgId]);
+
+
 
   // Load settings from Supabase (scoped by activeOrgId)
   useEffect(() => {

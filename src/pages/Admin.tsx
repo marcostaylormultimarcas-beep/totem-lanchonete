@@ -696,6 +696,7 @@ const AdminPage = () => {
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
           { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
+          { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
           { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
         ].filter(t => {

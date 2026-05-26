@@ -111,6 +111,28 @@ const AdminPage = () => {
     fetch();
   }, [activeOrgId]);
 
+  // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado
+  useEffect(() => {
+    if (!activeOrgId) return;
+    let mounted = true;
+    const fetchStatus = async () => {
+      const { data } = await supabase
+        .from('organizations')
+        .select('status_assinatura')
+        .eq('id', activeOrgId)
+        .maybeSingle();
+      if (mounted) setSubscriptionStatus((data as any)?.status_assinatura || 'ativo');
+    };
+    fetchStatus();
+    const ch = supabase
+      .channel(`org-status-${activeOrgId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${activeOrgId}` },
+        (p: any) => setSubscriptionStatus(p.new?.status_assinatura || 'ativo'),
+      )
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(ch); };
+
   // Load settings from Supabase (scoped by activeOrgId)
   useEffect(() => {
     if (!activeOrgId) return;

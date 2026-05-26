@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft } from 'lucide-react';
+import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft, CreditCard, ShieldAlert, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }

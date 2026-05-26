@@ -24,15 +24,18 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const load = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }] = await Promise.all([
-      supabase.from('organizations').select('plan_id').eq('id', organizationId).maybeSingle(),
+    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }, { data: sys }] = await Promise.all([
+      supabase.from('organizations').select('plan_id, status_assinatura').eq('id', organizationId).maybeSingle(),
       supabase.from('plans' as any).select('*').order('sort_order'),
       supabase.from('features' as any).select('*').order('sort_order'),
       supabase.from('plan_features' as any).select('plan_id, feature_id, enabled'),
+      supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
     ]);
     setCurrentPlanId((org as any)?.plan_id ?? null);
+    setStatusAssinatura((org as any)?.status_assinatura ?? 'ativo');
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
+    setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);

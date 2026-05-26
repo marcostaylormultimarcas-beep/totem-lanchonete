@@ -746,11 +746,15 @@ export type Database = {
           created_at: string
           id: string
           master_id: string | null
+          mp_next_charge_at: string | null
+          mp_subscription_amount: number | null
+          mp_subscription_id: string | null
           name: string
           owner_id: string | null
           paused: boolean
           plan_id: string | null
           slug: string
+          status_assinatura: string
           updated_at: string
         }
         Insert: {
@@ -758,11 +762,15 @@ export type Database = {
           created_at?: string
           id?: string
           master_id?: string | null
+          mp_next_charge_at?: string | null
+          mp_subscription_amount?: number | null
+          mp_subscription_id?: string | null
           name: string
           owner_id?: string | null
           paused?: boolean
           plan_id?: string | null
           slug: string
+          status_assinatura?: string
           updated_at?: string
         }
         Update: {
@@ -770,11 +778,15 @@ export type Database = {
           created_at?: string
           id?: string
           master_id?: string | null
+          mp_next_charge_at?: string | null
+          mp_subscription_amount?: number | null
+          mp_subscription_id?: string | null
           name?: string
           owner_id?: string | null
           paused?: boolean
           plan_id?: string | null
           slug?: string
+          status_assinatura?: string
           updated_at?: string
         }
         Relationships: [
@@ -1378,21 +1390,27 @@ export type Database = {
       system_settings: {
         Row: {
           id: string
+          mp_master_token_secret_id: string | null
           onesignal_api_key: string
           onesignal_app_id: string
           updated_at: string
+          valor_plano_padrao: number
         }
         Insert: {
           id?: string
+          mp_master_token_secret_id?: string | null
           onesignal_api_key?: string
           onesignal_app_id?: string
           updated_at?: string
+          valor_plano_padrao?: number
         }
         Update: {
           id?: string
+          mp_master_token_secret_id?: string | null
           onesignal_api_key?: string
           onesignal_app_id?: string
           updated_at?: string
+          valor_plano_padrao?: number
         }
         Relationships: []
       }
@@ -1589,9 +1607,11 @@ export type Database = {
         Args: { _entregador_id: string; _password: string }
         Returns: Json
       }
+      get_master_mp_token_internal: { Args: never; Returns: string }
       get_mp_access_token_internal: { Args: { _org: string }; Returns: string }
       get_mp_credentials_for_owner: { Args: { _org: string }; Returns: Json }
       grant_loyalty_stamp: { Args: { _order_id: string }; Returns: Json }
+      has_master_mp_token: { Args: never; Returns: boolean }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1662,6 +1682,7 @@ export type Database = {
         Args: { _items: Json; _org: string }
         Returns: undefined
       }
+      set_master_mp_token: { Args: { _token: string }; Returns: Json }
       set_mp_credentials: {
         Args: {
           _access_token: string
@@ -1671,6 +1692,7 @@ export type Database = {
         }
         Returns: Json
       }
+      set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }
       toggle_plan_feature: {
         Args: { _enabled: boolean; _feature_id: string; _plan_id: string }
         Returns: Json

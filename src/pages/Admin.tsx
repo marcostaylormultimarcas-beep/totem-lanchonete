@@ -37,6 +37,7 @@ import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel'
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
+import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 

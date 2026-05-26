@@ -14,9 +14,12 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [matrix, setMatrix] = useState<Record<string, boolean>>({});
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
+  const [statusAssinatura, setStatusAssinatura] = useState<string>('ativo');
+  const [valorPlano, setValorPlano] = useState<number>(197);
   const [loading, setLoading] = useState(true);
   const [showChange, setShowChange] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
   const load = async () => {
     if (!organizationId) return;

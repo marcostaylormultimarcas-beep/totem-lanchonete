@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.get_master_mp_token_internal() FROM PUBLIC, anon, authenticated;

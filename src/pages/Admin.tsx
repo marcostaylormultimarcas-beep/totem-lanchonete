@@ -37,6 +37,7 @@ import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel'
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
+import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 
@@ -82,7 +83,8 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [masterError, setMasterError] = useState('');
@@ -108,6 +110,31 @@ const AdminPage = () => {
     };
     fetch();
   }, [activeOrgId]);
+
+  // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado
+  useEffect(() => {
+    if (!activeOrgId) return;
+    let mounted = true;
+    const fetchStatus = async () => {
+      const { data } = await supabase
+        .from('organizations')
+        .select('status_assinatura')
+        .eq('id', activeOrgId)
+        .maybeSingle();
+      if (mounted) setSubscriptionStatus((data as any)?.status_assinatura || 'ativo');
+    };
+    fetchStatus();
+    const ch = supabase
+      .channel(`org-status-${activeOrgId}`)
+      .on('postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${activeOrgId}` },
+        (p: any) => setSubscriptionStatus(p.new?.status_assinatura || 'ativo'),
+      )
+      .subscribe();
+    return () => { mounted = false; supabase.removeChannel(ch); };
+  }, [activeOrgId]);
+
+
 
   // Load settings from Supabase (scoped by activeOrgId)
   useEffect(() => {
@@ -669,6 +696,7 @@ const AdminPage = () => {
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
           { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
+          { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
           { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
         ].filter(t => {
@@ -685,6 +713,24 @@ const AdminPage = () => {
         ))}
       </div>
 
+      {/* Bloqueio por inadimplência (apenas lojista) */}
+      {currentAdmin?.tier === 'admin' && (subscriptionStatus === 'inadimplente' || subscriptionStatus === 'cancelado') && tab !== 'assinatura' ? (
+        <div className="mx-4 mt-6 kiosk-card p-8 text-center space-y-4 border-2 border-destructive/40">
+          <div className="w-16 h-16 mx-auto rounded-full bg-destructive/15 text-destructive flex items-center justify-center">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-black">Painel bloqueado</h2>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Sua assinatura está <b className="text-destructive">{subscriptionStatus === 'cancelado' ? 'cancelada' : 'em atraso'}</b>.
+            Para reativar todos os recursos, regularize o pagamento.
+          </p>
+          <button onClick={() => setTab('assinatura')}
+            className="touch-btn bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold inline-flex items-center gap-2">
+            <CreditCard className="w-4 h-4" /> Ir para Assinatura
+          </button>
+        </div>
+      ) : (
+      <>
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'coupons' && (
@@ -753,6 +799,9 @@ const AdminPage = () => {
       )}
       {tab === 'onesignal' && currentAdmin?.tier === 'super' && (
         <OneSignalPanel />
+      )}
+      {tab === 'billing' && currentAdmin?.tier === 'super' && (
+        <MasterBillingPanel />
       )}
 
 
@@ -1302,6 +1351,8 @@ const AdminPage = () => {
             <Save className="w-4 h-4" /> Salvar Configurações Fiscais
           </button>
         </div>
+      )}
+      </>
       )}
 
       <footer className="mt-8 pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>

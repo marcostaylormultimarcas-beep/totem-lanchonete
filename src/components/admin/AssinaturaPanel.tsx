@@ -85,6 +85,32 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const liberadas = featuresForPlan(currentPlanId);
   const todasOrdenadas = [...features].sort((a, b) => a.sort_order - b.sort_order);
 
+  const assinar = async () => {
+    if (!organizationId) return;
+    setSubscribing(true);
+    const { data, error } = await supabase.functions.invoke('mp-create-subscription', {
+      body: { organization_id: organizationId },
+    });
+    setSubscribing(false);
+    if (error || (data as any)?.error) {
+      toast.error((data as any)?.error || error?.message || 'Falha ao iniciar assinatura');
+      return;
+    }
+    const url = (data as any)?.init_point;
+    if (url) window.location.href = url;
+    else toast.error('Link de pagamento não recebido');
+  };
+
+  const statusColor = statusAssinatura === 'ativo' ? 'success'
+    : statusAssinatura === 'pendente' ? 'primary'
+    : 'destructive';
+  const statusLabel = ({
+    ativo: '✅ Ativa',
+    pendente: '⏳ Aguardando pagamento',
+    inadimplente: '⚠️ Inadimplente',
+    cancelado: '🚫 Cancelada',
+  } as Record<string, string>)[statusAssinatura] || statusAssinatura;
+
   return (
     <div className="px-4 space-y-4">
       <div className="kiosk-card p-5 space-y-3 border-2 border-primary/30">
@@ -102,11 +128,38 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
             </div>
           </div>
           <button onClick={() => setShowChange(true)}
-            className="touch-btn flex-shrink-0 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 hover:opacity-90">
-            <ArrowRightLeft className="w-4 h-4" /> Alterar
+            className="touch-btn flex-shrink-0 bg-muted text-foreground px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:opacity-90">
+            <ArrowRightLeft className="w-3.5 h-3.5" /> Alterar
           </button>
         </div>
+
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border">
+          <span className={`text-xs font-bold px-2.5 py-1 rounded-full bg-${statusColor}/15 text-${statusColor} border border-${statusColor}/30`}>
+            {statusLabel}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            <b className="text-foreground">R$ {valorPlano.toFixed(2)}</b> / mês
+          </span>
+        </div>
+
+        {statusAssinatura !== 'ativo' && (
+          <button onClick={assinar} disabled={subscribing}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50">
+            {subscribing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
+            Assinar Plano · R$ {valorPlano.toFixed(2)}/mês
+            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+          </button>
+        )}
+
+        {statusAssinatura === 'inadimplente' && (
+          <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 text-xs flex items-start gap-2 text-destructive">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+            <span>Seu pagamento está em atraso. Renove a assinatura para reativar o painel.</span>
+          </div>
+        )}
       </div>
+
+
 
       <div className="kiosk-card p-4 space-y-3">
         <h3 className="font-bold text-sm flex items-center gap-2">

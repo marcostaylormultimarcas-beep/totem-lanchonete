@@ -34,6 +34,7 @@ import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPa
 import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
+import EstoquePreditivPanel from '@/components/admin/EstoquePreditivPanel';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
@@ -83,7 +84,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -687,7 +688,8 @@ const AdminPage = () => {
           { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
          { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
          { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
-         { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
+          { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
+          { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
          { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
 
 
@@ -792,6 +794,11 @@ const AdminPage = () => {
       {tab === 'estoque' && (
         <FeatureGate feature="estoque_inteligente" label="Estoque Inteligente">
           <EstoqueInteligentePanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
+      {tab === 'preditivo' && (
+        <FeatureGate feature="estoque_inteligente" label="IA de Estoque Preditivo">
+          <EstoquePreditivPanel organizationId={activeOrgId} />
         </FeatureGate>
       )}
       {tab === 'assinatura' && (

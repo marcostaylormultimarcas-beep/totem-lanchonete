@@ -53,3 +53,46 @@ export async function triggerRupturaNotification(ingredienteNome: string): Promi
     console.warn('[OneSignal] Erro inesperado:', e?.message || e);
   }
 }
+
+/**
+ * Dispara um push preditivo (estoque vai acabar nos próximos N dias) para administradores.
+ * Usa filtro por tag `tipo = admin` no OneSignal.
+ */
+export async function triggerPredictiveStockAlert(ingredienteNome: string, diasRestantes: number): Promise<void> {
+  try {
+    const { data, error } = await supabase
+      .from('system_settings' as any)
+      .select('onesignal_app_id, onesignal_api_key')
+      .eq('id', 'global')
+      .maybeSingle();
+    if (error) { console.warn('[OneSignal] Falha system_settings:', error.message); return; }
+
+    const appId = (data as any)?.onesignal_app_id?.trim();
+    const apiKey = (data as any)?.onesignal_api_key?.trim();
+    if (!appId) { console.warn('[OneSignal] App ID ausente. Push preditivo abortado.'); return; }
+
+    const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
+    if (apiKey) headers['Authorization'] = `Basic ${apiKey}`;
+
+    const res = await fetch('https://onesignal.com/api/v1/notifications', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        app_id: appId,
+        filters: [{ field: 'tag', key: 'tipo', relation: '=', value: 'admin' }],
+        headings: { pt: '🚨 Alerta de Estoque' },
+        contents: { pt: `O item ${ingredienteNome} pode acabar em ${diasRestantes} dia(s). Veja a sugestão de compra no painel.` },
+        android_sound: 'notification_sound',
+        ios_sound: 'notification_sound.wav',
+      }),
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      console.warn('[OneSignal] Push preditivo falhou:', res.status, txt);
+    } else {
+      console.log('[OneSignal] Push preditivo enviado:', ingredienteNome, diasRestantes);
+    }
+  } catch (e: any) {
+    console.warn('[OneSignal] Erro preditivo:', e?.message || e);
+  }
+}

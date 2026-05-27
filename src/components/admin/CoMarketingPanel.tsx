@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2, Bell, Settings2 } from 'lucide-react';
+import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2, Bell, Settings2, Sparkles, ShieldCheck } from 'lucide-react';
+import { CATEGORIAS_LOJA } from '@/lib/categorias';
 
-interface Org { id: string; name: string; slug: string; city: string }
+interface Org { id: string; name: string; slug: string; city: string; categoria?: string; logo_url?: string }
 interface Parceria {
   id: string;
   org_origem: string; org_parceira: string;
@@ -36,12 +37,12 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
     if (!organizationId) return;
     setLoading(true);
     const { data: meRow } = await supabase.from('organizations')
-      .select('id,name,slug,city').eq('id', organizationId).maybeSingle();
+      .select('id,name,slug,city,categoria,logo_url').eq('id', organizationId).maybeSingle();
     const me = meRow as Org | null;
     setMyOrg(me);
 
     const { data: othersRows } = await supabase.from('organizations')
-      .select('id,name,slug,city').neq('id', organizationId);
+      .select('id,name,slug,city,categoria,logo_url').neq('id', organizationId);
     const others = ((othersRows || []) as Org[]).filter(o => !me?.city || (o.city || '').toLowerCase() === me.city.toLowerCase());
     setAvailable(others);
 

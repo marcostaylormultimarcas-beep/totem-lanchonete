@@ -10,6 +10,7 @@ import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import TotemSuccess from '@/components/kiosk/TotemSuccess';
 import LandingScreen from '@/components/kiosk/LandingScreen';
 import NotificationBell from '@/components/kiosk/NotificationBell';
+import PartnersFooter from '@/components/kiosk/PartnersFooter';
 import { CartItem, Product } from '@/data/store';
 import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
@@ -290,6 +291,9 @@ const Index = () => {
           await supabase.auth.signOut();
           resetOrder();
         }} />
+      )}
+      {step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
+        <PartnersFooter orgId={orgId} />
       )}
     </div>
   );

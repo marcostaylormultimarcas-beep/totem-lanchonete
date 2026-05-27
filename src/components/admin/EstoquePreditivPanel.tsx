@@ -118,7 +118,7 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
       else if (diasRestantes <= 7) risco = 'medio';
 
       // Projeção: próximos 7 dias = consumo médio (peso fds quando weekend)
-      const serie = serieFull.map(s => ({ date: s.date.slice(5), consumo: s.total }));
+      const serie: { date: string; consumo: number; projecao?: number }[] = serieFull.map(s => ({ date: s.date.slice(5), consumo: s.total }));
       let estoqueProj = ing.estoque_atual;
       for (let i = 1; i <= 7; i++) {
         const d = new Date(); d.setDate(d.getDate() + i);

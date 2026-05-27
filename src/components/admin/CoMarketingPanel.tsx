@@ -154,6 +154,75 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
         </label>
       </div>
 
+      {/* Info: Clube de Vantagens + proteção de nicho */}
+      <div className="rounded-2xl p-4 border border-primary/30 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent shadow-[0_8px_24px_-12px_hsl(var(--primary)/0.45)]">
+        <div className="flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center shrink-0">
+            <Sparkles className="w-5 h-5 text-primary" />
+          </div>
+          <div className="text-sm leading-relaxed">
+            <p className="font-black mb-1 flex items-center gap-2">
+              💡 Como funciona o seu Clube de Vantagens
+              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-primary font-bold bg-primary/15 px-2 py-0.5 rounded-full">
+                <ShieldCheck className="w-3 h-3" /> Proteção de nicho
+              </span>
+            </p>
+            <p className="text-muted-foreground">
+              Seus clientes ganham acesso automático a cupons e descontos exclusivos em nossa rede de lojas parceiras da cidade
+              (como açaiterias, distribuidoras e pizzarias). Fique tranquilo: nossa tecnologia de proteção de nicho bloqueia
+              automaticamente qualquer comércio da mesma categoria que a sua. Seus clientes nunca verão anúncios ou descontos
+              de outras lanchonetes aqui!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Identidade da loja no Clube */}
+      <div className="kiosk-card p-4 space-y-3">
+        <p className="font-bold text-sm">Identidade no Clube de Vantagens</p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Categoria (nicho)</label>
+            <select
+              value={myOrg?.categoria || 'outro'}
+              onChange={async e => {
+                const v = e.target.value;
+                await supabase.from('organizations').update({ categoria: v } as any).eq('id', organizationId!);
+                setMyOrg(m => m ? { ...m, categoria: v } : m);
+                toast.success('Categoria atualizada');
+              }}
+              className="w-full px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+            >
+              {CATEGORIAS_LOJA.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <p className="text-[11px] text-muted-foreground mt-1">Usada para bloquear concorrentes diretos do seu Clube.</p>
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Logo (URL da imagem)</label>
+            <div className="flex items-center gap-2">
+              {myOrg?.logo_url ? (
+                <img src={myOrg.logo_url} alt="logo" className="w-10 h-10 rounded-lg object-cover border border-border/60" />
+              ) : (
+                <div className="w-10 h-10 rounded-lg bg-muted border border-border/60" />
+              )}
+              <input
+                defaultValue={myOrg?.logo_url || ''}
+                placeholder="https://..."
+                onBlur={async e => {
+                  const v = e.target.value.trim();
+                  if (v === (myOrg?.logo_url || '')) return;
+                  await supabase.from('organizations').update({ logo_url: v } as any).eq('id', organizationId!);
+                  setMyOrg(m => m ? { ...m, logo_url: v } : m);
+                  toast.success('Logo atualizada');
+                }}
+                className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Exibida no rodapé dos parceiros da rede.</p>
+          </div>
+        </div>
+      </div>
+
       <div className="kiosk-card p-4">
         <label className="text-xs text-muted-foreground mb-1 block">Cidade da minha loja (usada para listar parceiros)</label>
         <div className="flex gap-2">

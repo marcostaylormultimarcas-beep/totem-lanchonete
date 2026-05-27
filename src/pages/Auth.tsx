@@ -51,7 +51,12 @@ const Auth = () => {
       toast.error(error.message);
     } else {
       if (data.user) {
-        await supabase.from('profiles').update({ display_name: name, phone }).eq('user_id', data.user.id);
+        const origemOrgId = localStorage.getItem('kiosk_org_id');
+        await supabase.from('profiles').update({
+          display_name: name,
+          phone,
+          ...(origemOrgId ? { origem_assinatura_empresa_id: origemOrgId } : {}),
+        } as any).eq('user_id', data.user.id);
       }
       toast.success('Conta criada com sucesso!');
       navigate(returnTo);

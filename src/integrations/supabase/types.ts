@@ -742,9 +742,11 @@ export type Database = {
       }
       organizations: {
         Row: {
+          categoria: string
           city: string
           created_at: string
           id: string
+          logo_url: string
           master_id: string | null
           mp_next_charge_at: string | null
           mp_subscription_amount: number | null
@@ -758,9 +760,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          categoria?: string
           city?: string
           created_at?: string
           id?: string
+          logo_url?: string
           master_id?: string | null
           mp_next_charge_at?: string | null
           mp_subscription_amount?: number | null
@@ -774,9 +778,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          categoria?: string
           city?: string
           created_at?: string
           id?: string
+          logo_url?: string
           master_id?: string | null
           mp_next_charge_at?: string | null
           mp_subscription_amount?: number | null
@@ -1099,6 +1105,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           id: string
+          origem_assinatura_empresa_id: string | null
           phone: string | null
           recovery_pin_hash: string | null
           updated_at: string
@@ -1108,6 +1115,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null
           updated_at?: string
@@ -1117,6 +1125,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null
           updated_at?: string

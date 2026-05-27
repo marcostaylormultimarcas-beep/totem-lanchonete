@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList, Instagram, MessageCircle } from 'lucide-react';
+import { Settings, Plus, ChevronRight, ShoppingCart, User, ClipboardList, Instagram, MessageCircle, Sparkles } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -186,6 +186,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           <span className="text-foreground">{storeName.split(' ').slice(1).join(' ')}</span>
         </h1>
         <div className="flex items-center gap-2">
+          <Link to="/clube" className="p-2 rounded-full bg-primary/15 text-primary hover:bg-primary/25 transition-colors" title="Clube de Vantagens">
+            <Sparkles className="w-5 h-5" />
+          </Link>
           <Link to="/meus-pedidos" className="p-2 rounded-full bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Meus Pedidos">
             <ClipboardList className="w-5 h-5" />
           </Link>

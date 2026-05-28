@@ -804,9 +804,7 @@ const AdminPage = () => {
         </FeatureGate>
       )}
       {tab === 'rotaIA' && (
-        <FeatureGate feature="logistics_ia" label="Roteirização Inteligente com IA">
-          <RoteirizacaoIAPanel organizationId={activeOrgId} />
-        </FeatureGate>
+        <RoteirizacaoIAPanel organizationId={activeOrgId} />
       )}
       {tab === 'assinatura' && (
         <AssinaturaPanel organizationId={activeOrgId} />

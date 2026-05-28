@@ -803,6 +803,11 @@ const AdminPage = () => {
           <EstoquePreditivPanel organizationId={activeOrgId} />
         </FeatureGate>
       )}
+      {tab === 'rotaIA' && (
+        <FeatureGate feature="logistics_ia" label="Roteirização Inteligente com IA">
+          <RoteirizacaoIAPanel organizationId={activeOrgId} />
+        </FeatureGate>
+      )}
       {tab === 'assinatura' && (
         <AssinaturaPanel organizationId={activeOrgId} />
       )}

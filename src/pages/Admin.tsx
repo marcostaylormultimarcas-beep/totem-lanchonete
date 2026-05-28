@@ -35,6 +35,7 @@ import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
 import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
 import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
 import EstoquePreditivPanel from '@/components/admin/EstoquePreditivPanel';
+import RoteirizacaoIAPanel from '@/components/admin/RoteirizacaoIAPanel';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';

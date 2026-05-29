@@ -156,12 +156,22 @@ export default function Onboarding() {
   };
 
   const canAdvance = () => {
-    if (step === 1) return nome.trim().length >= 2 && categoria;
+    if (step === 1) return nome.trim().length >= 2 && !!categoria;
     if (step === 2) return !!template;
-    return true; // 3 e 4 podem ser preenchidos depois
+    if (step === 3) {
+      // Se preencheu chaves, exige validação real antes de avançar.
+      const filled = appId.trim() || apiKey.trim();
+      if (!filled) return true; // pode pular esta etapa
+      return osValidated;
+    }
+    return true;
   };
 
   const next = async () => {
+    if (step === 3 && (appId.trim() || apiKey.trim()) && !osValidated) {
+      toast.error('Teste e valide as chaves do OneSignal antes de avançar.');
+      return;
+    }
     if (!canAdvance()) {
       toast.error('Preencha os campos obrigatórios para continuar.');
       return;
@@ -172,6 +182,7 @@ export default function Onboarding() {
     }
     await finalizar();
   };
+
 
   const back = () => setStep((s) => Math.max(1, s - 1));
 

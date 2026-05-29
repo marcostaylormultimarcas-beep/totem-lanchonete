@@ -238,6 +238,8 @@ export default function Onboarding() {
         mp_public_key: mpPub.trim(),
         mp_access_token: mpTok.trim(),
         pay_pix_enabled: true,
+        onesignal_app_id: appId.trim(),
+        onesignal_api_key: apiKey.trim(),
       };
       if (existingSettings?.id) {
         await supabase.from('settings').update(settingsPayload).eq('id', existingSettings.id);
@@ -260,21 +262,6 @@ export default function Onboarding() {
         await supabase.from('products').insert(rows);
       }
 
-      // OneSignal (system_settings global) - somente se super_admin tiver permissão; ignora erro
-      if (appId.trim() || apiKey.trim()) {
-        const { error: ssErr } = await supabase
-          .from('system_settings')
-          .upsert(
-            {
-              id: 'global',
-              onesignal_app_id: appId.trim(),
-              onesignal_api_key: apiKey.trim(),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: 'id' },
-          );
-        if (ssErr) console.warn('OneSignal save (ignorado):', ssErr.message);
-      }
 
       // confetes dourados
       const duration = 1800;

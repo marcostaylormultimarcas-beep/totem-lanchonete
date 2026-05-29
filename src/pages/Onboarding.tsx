@@ -12,7 +12,16 @@ import {
   Store,
   Upload,
   X,
+  ShieldCheck,
+  AlertTriangle,
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { CATEGORIAS_LOJA } from '@/lib/categorias';
+import { CARDAPIO_TEMPLATES, CardapioTemplateKey, getTemplate } from '@/lib/cardapioTemplates';
+import { uploadProductImage } from '@/lib/imageUpload';
+
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';

@@ -147,7 +147,7 @@ export default function Onboarding() {
       // upload logo
       let logoUrl = logoPreview;
       if (logoFile) {
-        logoUrl = await uploadProductImage(logoFile, { kind: 'logo' });
+        logoUrl = await uploadProductImage(logoFile, oid, { kind: 'logo' });
       }
 
       // org update

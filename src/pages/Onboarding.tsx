@@ -60,6 +60,9 @@ export default function Onboarding() {
   // step 3
   const [appId, setAppId] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [osValidated, setOsValidated] = useState(false);
+  const [osError, setOsError] = useState<string>('');
+  const [osTesting, setOsTesting] = useState(false);
 
   // step 4
   const [mpPub, setMpPub] = useState('');
@@ -86,14 +89,66 @@ export default function Onboarding() {
         setNome(org.name || '');
         setCategoria(org.categoria || 'lanchonete');
         setLogoPreview(org.logo_url || '');
+        // pré-carrega chaves já salvas da loja (se houver)
+        const { data: s } = await supabase
+          .from('settings')
+          .select('onesignal_app_id, onesignal_api_key, mp_public_key, mp_access_token, whatsapp_number')
+          .eq('organization_id', org.id)
+          .maybeSingle();
+        if (s) {
+          setAppId(s.onesignal_app_id || '');
+          setApiKey(s.onesignal_api_key || '');
+          setMpPub(s.mp_public_key || '');
+          setMpTok(s.mp_access_token || '');
+          setTelefone(s.whatsapp_number || '');
+        }
       }
     })();
   }, [navigate]);
 
+  // Reseta validação quando chaves mudam
+  useEffect(() => {
+    setOsValidated(false);
+    setOsError('');
+  }, [appId, apiKey]);
+
   const webhookUrl = useMemo(() => {
     const ref = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID;
-    return `https://${ref}.supabase.co/functions/v1/mp-webhook`;
-  }, []);
+    const base = `https://${ref}.supabase.co/functions/v1/mp-webhook`;
+    return orgId ? `${base}?store_id=${orgId}` : base;
+  }, [orgId]);
+
+  async function testarOneSignal() {
+    if (!appId.trim() || !apiKey.trim()) {
+      setOsError('Preencha App ID e REST API Key.');
+      toast.error('Preencha App ID e REST API Key.');
+      return;
+    }
+    setOsTesting(true);
+    setOsError('');
+    try {
+      const { data, error } = await supabase.functions.invoke('onesignal-validate', {
+        body: { app_id: appId.trim(), api_key: apiKey.trim() },
+      });
+      if (error) throw error;
+      if (data?.valid) {
+        setOsValidated(true);
+        toast.success('Chaves do OneSignal validadas com sucesso ✅');
+      } else {
+        setOsValidated(false);
+        const msg = data?.error || 'Credenciais inválidas.';
+        setOsError(msg);
+        toast.error(`OneSignal: ${msg}`);
+      }
+    } catch (e: any) {
+      setOsValidated(false);
+      setOsError(e.message || 'Falha ao validar.');
+      toast.error('Falha ao validar OneSignal: ' + (e.message || ''));
+    } finally {
+      setOsTesting(false);
+    }
+  }
+
 
   const onLogo = (f: File | null) => {
     setLogoFile(f);

@@ -1273,6 +1273,8 @@ export type Database = {
           mp_public_key: string
           mp_public_key_secret_id: string | null
           mp_terminal_id: string
+          onesignal_api_key: string
+          onesignal_app_id: string
           organization_id: string | null
           pay_card_online_enabled: boolean
           pay_card_terminal_enabled: boolean
@@ -1323,6 +1325,8 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
+          onesignal_api_key?: string
+          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
@@ -1373,6 +1377,8 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
+          onesignal_api_key?: string
+          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean

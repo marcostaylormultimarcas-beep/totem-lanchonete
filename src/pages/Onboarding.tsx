@@ -501,9 +501,35 @@ export default function Onboarding() {
                 type="password"
                 onHelp={() => setHelp('os_key')}
               />
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  onClick={testarOneSignal}
+                  disabled={osTesting || !appId.trim() || !apiKey.trim()}
+                  className="px-4 py-2.5 rounded-xl border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 inline-flex items-center gap-2 text-sm font-semibold"
+                >
+                  {osTesting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4" />
+                  )}
+                  Testar conexão
+                </button>
+                {osValidated && (
+                  <span className="inline-flex items-center gap-1 text-sm text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" /> Validado
+                  </span>
+                )}
+                {osError && (
+                  <span className="inline-flex items-center gap-1 text-xs text-rose-400">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {osError}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-zinc-500">
-                Pode pular agora e configurar depois em Painel → Notificações Push.
+                Pode pular agora e configurar depois em Painel → Notificações Push. Se preencher,
+                validamos as chaves diretamente com o OneSignal antes de avançar.
               </p>
+
             </div>
           )}
 

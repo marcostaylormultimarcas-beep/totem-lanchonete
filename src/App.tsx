@@ -18,6 +18,7 @@ import EntregadorLogin from "./pages/EntregadorLogin.tsx";
 import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
 import VisionPrime from "./pages/VisionPrime.tsx";
 import ClubeVantagens from "./pages/ClubeVantagens.tsx";
+import Onboarding from "./pages/Onboarding.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 
@@ -66,6 +67,7 @@ const App = () => {
               <Route path="/cardapio/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
               <Route path="/clube" element={<ClubeVantagens />} />
               <Route path="/loja/:slug/clube" element={<KioskSlugSync><ClubeVantagens /></KioskSlugSync>} />
+              <Route path="/onboarding" element={<Onboarding />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

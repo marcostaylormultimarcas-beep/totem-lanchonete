@@ -680,6 +680,7 @@ const AdminPage = () => {
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
           { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
           { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
+          { key: 'leads' as const, label: 'Clientes & Leads', icon: Users, requires: 'admin' as const },
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },

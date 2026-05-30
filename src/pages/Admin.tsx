@@ -2,6 +2,7 @@ import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell } from 'lucide-react';
 import CrmPanel from '@/components/admin/CrmPanel';
+import ClientesLeadsPanel from '@/components/admin/ClientesLeadsPanel';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -86,7 +87,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -679,6 +680,7 @@ const AdminPage = () => {
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
           { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
           { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
+          { key: 'leads' as const, label: 'Clientes & Leads', icon: Users, requires: 'admin' as const },
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
@@ -753,6 +755,9 @@ const AdminPage = () => {
         <FeatureGate feature="crm" label="CRM — Marketing de Retenção">
           <CrmPanel organizationId={activeOrgId} storeName={settings.storeName} />
         </FeatureGate>
+      )}
+      {tab === 'leads' && (
+        <ClientesLeadsPanel organizationId={activeOrgId} storeName={settings.storeName} />
       )}
       {tab === 'entregadores' && (
         <EntregadoresPanel organizationId={activeOrgId} />

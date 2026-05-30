@@ -699,6 +699,7 @@ const AdminPage = () => {
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+          { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
           { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
           { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },

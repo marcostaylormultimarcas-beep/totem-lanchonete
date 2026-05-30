@@ -40,6 +40,7 @@ import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
+import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 

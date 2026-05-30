@@ -87,7 +87,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');

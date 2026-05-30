@@ -756,6 +756,9 @@ const AdminPage = () => {
           <CrmPanel organizationId={activeOrgId} storeName={settings.storeName} />
         </FeatureGate>
       )}
+      {tab === 'leads' && (
+        <ClientesLeadsPanel organizationId={activeOrgId} storeName={settings.storeName} />
+      )}
       {tab === 'entregadores' && (
         <EntregadoresPanel organizationId={activeOrgId} />
       )}

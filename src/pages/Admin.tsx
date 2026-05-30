@@ -835,6 +835,9 @@ const AdminPage = () => {
           <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )
       )}
+      {tab === 'multilojas' && (currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') && (
+        <MultiLojasPanel tier={currentAdmin.tier as 'master' | 'super'} userId={currentAdmin.id} />
+      )}
 
 
       {tab === 'products' && (

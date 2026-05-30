@@ -40,6 +40,7 @@ import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
+import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 
 
@@ -85,7 +86,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -698,6 +699,7 @@ const AdminPage = () => {
           { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+          { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
           { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
           { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
@@ -832,6 +834,9 @@ const AdminPage = () => {
         ) : (
           <MasterUnlockGate masterPassword={masterPassword} setMasterPassword={setMasterPassword} masterError={masterError} unlockMaster={unlockMaster} />
         )
+      )}
+      {tab === 'multilojas' && (currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') && (
+        <MultiLojasPanel tier={currentAdmin.tier as 'master' | 'super'} userId={currentAdmin.id} />
       )}
 
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Crown, Loader2, Save, Sparkles } from 'lucide-react';
+import { Crown, Loader2, Save, Sparkles, DollarSign, Percent, Truck } from 'lucide-react';
 
 interface PrimeConfig {
   ativo: boolean;

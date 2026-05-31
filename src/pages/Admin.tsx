@@ -811,7 +811,28 @@ const AdminPage = () => {
       ) : (
       <>
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
-      {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'dashboard' && (
+        <>
+          <div className="px-4 pt-2 pb-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {[
+              { key: 'products' as const, label: 'Cardápio', icon: Boxes },
+              { key: 'dashboard' as const, label: 'Relatórios', icon: Zap },
+              { key: 'onesignal' as const, label: 'Notificações', icon: Bell },
+              { key: 'logistica' as const, label: 'Entrega', icon: Truck },
+              { key: 'leads' as const, label: 'Público / CRM', icon: Users },
+            ].map(q => (
+              <button key={q.label} onClick={() => setTab(q.key)}
+                className="group p-4 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/60 hover:bg-zinc-900/80 transition-all flex flex-col items-center gap-2">
+                <div className="w-11 h-11 rounded-lg flex items-center justify-center bg-zinc-950 border border-zinc-800 group-hover:border-amber-500/60 transition">
+                  <q.icon className="w-5 h-5 text-zinc-400 group-hover:text-amber-400 transition" />
+                </div>
+                <span className="text-xs font-bold text-zinc-200 text-center">{q.label}</span>
+              </button>
+            ))}
+          </div>
+          <DashboardPanel organizationId={activeOrgId} />
+        </>
+      )}
       {tab === 'coupons' && (
         <FeatureGate feature="coupons" label="Cupons de Desconto">
           <CouponsPanel organizationId={activeOrgId} />

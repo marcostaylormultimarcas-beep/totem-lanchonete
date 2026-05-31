@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Crown, Loader2, Save, Sparkles } from 'lucide-react';
+import { Crown, Loader2, Save, Sparkles, DollarSign, Percent, Truck } from 'lucide-react';
 
 interface PrimeConfig {
   ativo: boolean;
@@ -89,23 +89,32 @@ const VisionPrimePanel = ({ organizationId }: { organizationId: string | null })
 
         <div className="grid sm:grid-cols-3 gap-3">
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Mensalidade (R$)</label>
-            <input type="number" step="0.10" min={0} value={cfg.valor_mensalidade}
-              onChange={e => setCfg({ ...cfg, valor_mensalidade: Number(e.target.value) || 0 })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
+            <label className="text-[11px] uppercase tracking-wider text-amber-100/60 mb-1 block">Mensalidade</label>
+            <div className="relative">
+              <DollarSign className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-amber-400/70" />
+              <input type="number" step="0.10" min={0} value={cfg.valor_mensalidade}
+                onChange={e => setCfg({ ...cfg, valor_mensalidade: Number(e.target.value) || 0 })}
+                className="w-full pl-9 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c] text-zinc-100" />
+            </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Desconto fixo (%)</label>
-            <input type="number" step="1" min={0} max={100} value={cfg.desconto_percentual}
-              onChange={e => setCfg({ ...cfg, desconto_percentual: Number(e.target.value) || 0 })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
+            <label className="text-[11px] uppercase tracking-wider text-amber-100/60 mb-1 block">Desconto fixo</label>
+            <div className="relative">
+              <Percent className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-amber-400/70" />
+              <input type="number" step="1" min={0} max={100} value={cfg.desconto_percentual}
+                onChange={e => setCfg({ ...cfg, desconto_percentual: Number(e.target.value) || 0 })}
+                className="w-full pl-9 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c] text-zinc-100" />
+            </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Frete grátis a partir de (R$)</label>
-            <input type="number" step="1" min={0} value={cfg.frete_gratis_minimo}
-              onChange={e => setCfg({ ...cfg, frete_gratis_minimo: Number(e.target.value) || 0 })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
-            <p className="text-[10px] text-muted-foreground mt-1">Use 0 para sempre conceder frete grátis aos Prime.</p>
+            <label className="text-[11px] uppercase tracking-wider text-amber-100/60 mb-1 block">Frete grátis a partir de</label>
+            <div className="relative">
+              <Truck className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-amber-400/70" />
+              <input type="number" step="1" min={0} value={cfg.frete_gratis_minimo}
+                onChange={e => setCfg({ ...cfg, frete_gratis_minimo: Number(e.target.value) || 0 })}
+                className="w-full pl-9 pr-3 py-3 bg-zinc-950/60 border border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c] text-zinc-100" />
+            </div>
+            <p className="text-[10px] text-amber-100/50 mt-1">Use 0 para sempre conceder frete grátis aos Prime.</p>
           </div>
         </div>
 

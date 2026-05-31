@@ -959,7 +959,7 @@ const AdminPage = () => {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>
                 <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {(settings.categories || DEFAULT_CATEGORIES).map(c => <option key={c.key} value={c.key}>{c.icon} {c.label}</option>)}
+                  {(settings.categories || DEFAULT_CATEGORIES).map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
               </div>
               {/* Image Upload */}

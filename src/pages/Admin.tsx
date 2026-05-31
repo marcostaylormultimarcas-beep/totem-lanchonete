@@ -918,7 +918,9 @@ const AdminPage = () => {
 
       {tab === 'products' && (
         <div className="px-4 space-y-4">
-          <button onClick={() => { resetForm(); setShowForm(true); }} className="touch-btn w-full bg-success text-success-foreground py-3 rounded-xl flex items-center justify-center gap-2">
+          <button onClick={() => { resetForm(); setShowForm(true); }}
+            className="w-full py-3.5 rounded-xl flex items-center justify-center gap-2 font-bold text-zinc-950 shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition-all hover:scale-[1.01]"
+            style={{ background: 'linear-gradient(135deg,#fbbf24,#ea580c)' }}>
             <Plus className="w-5 h-5" /> Adicionar Novo Produto
           </button>
 

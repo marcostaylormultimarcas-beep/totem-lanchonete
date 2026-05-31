@@ -1035,26 +1035,26 @@ const AdminPage = () => {
                   )}
                   <span>{cat.label}</span>
                 </h3>
-                <div className="space-y-2">
+                <div className="grid gap-2">
                   {catProducts.map(p => (
-                    <div key={p.id} className="kiosk-card p-3 flex items-center gap-3">
+                    <div key={p.id} className="p-3 flex items-center gap-3 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-amber-500/50 transition-all">
                       {isImageUrl(p.image) ? (
-                        <img src={p.image} alt={p.name} className="w-12 h-12 object-cover rounded-lg flex-shrink-0" />
+                        <img src={p.image} alt={p.name} className="w-14 h-14 object-cover rounded-lg flex-shrink-0 ring-1 ring-zinc-800" />
                       ) : (
-                        <span className="text-2xl flex-shrink-0">{p.image}</span>
+                        <span className="text-2xl flex-shrink-0 w-14 h-14 flex items-center justify-center bg-zinc-950 rounded-lg">{p.image}</span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm truncate">{p.name}</p>
-                        <p className="text-primary font-bold text-sm">{formatCurrency(p.price)}</p>
+                        <p className="font-bold text-sm truncate text-zinc-100">{p.name}</p>
+                        <p className="text-amber-400 font-bold text-sm">{formatCurrency(p.price)}</p>
                         {p.manageStock && (
-                          <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-destructive' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-accent' : 'text-muted-foreground'}`}>
+                          <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-red-400' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-amber-300' : 'text-zinc-500'}`}>
                             📦 {p.stockQuantity ?? 0} em estoque
                             {(p.stockQuantity ?? 0) <= 0 ? ' · esgotado' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? ' · baixo' : ''}
                           </p>
                         )}
                       </div>
-                      <button onClick={() => editProduct(p)} className="p-2 text-muted-foreground hover:text-primary"><Pencil className="w-5 h-5" /></button>
-                      <button onClick={() => deleteProduct(p.id)} className="p-2 text-muted-foreground hover:text-destructive"><Trash2 className="w-5 h-5" /></button>
+                      <button onClick={() => editProduct(p)} className="p-2 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-800/60 transition"><Pencil className="w-4 h-4" /></button>
+                      <button onClick={() => deleteProduct(p.id)} className="p-2 rounded-lg text-zinc-400 hover:text-red-400 hover:bg-zinc-800/60 transition"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   ))}
                 </div>

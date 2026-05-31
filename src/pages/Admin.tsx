@@ -624,33 +624,139 @@ const AdminPage = () => {
     );
   }
 
+  // Top navigation groups (Dark Premium)
+  const NAV_GROUPS = [
+    { key: 'inicio', label: 'Início', icon: Zap },
+    { key: 'pedidos', label: 'Pedidos', icon: ClipboardList },
+    { key: 'logistica', label: 'Logística', icon: Truck },
+    { key: 'parceiros', label: 'Parceiros', icon: Share2 },
+  ] as const;
+  const TAB_GROUP: Record<string, typeof NAV_GROUPS[number]['key']> = {
+    dashboard: 'inicio', products: 'inicio', banners: 'inicio', tema: 'inicio',
+    assistente: 'inicio', settings: 'inicio', impressao: 'inicio', multilojas: 'inicio',
+    orders: 'pedidos', financeiro: 'pedidos', fiscal: 'pedidos', leads: 'pedidos',
+    crm: 'pedidos', estoque: 'pedidos', preditivo: 'pedidos', operacao: 'pedidos',
+    entregadores: 'logistica', bairros: 'logistica', area_cep: 'logistica',
+    logistica: 'logistica', rotaIA: 'logistica',
+    prime: 'parceiros', parcerias: 'parceiros', parcerias_map: 'parceiros',
+    plans: 'parceiros', onesignal: 'parceiros', billing: 'parceiros',
+    admins: 'parceiros', assinatura: 'parceiros', coupons: 'parceiros', loyalty: 'parceiros',
+    super: 'parceiros',
+  };
+  const activeGroup = TAB_GROUP[tab] || 'inicio';
+
+  const ALL_TABS = [
+    { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
+    { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
+    { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const },
+    { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
+    { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
+    { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
+    { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
+    { key: 'leads' as const, label: 'Clientes & Leads', icon: Users, requires: 'admin' as const },
+    { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
+    { key: 'bairros' as const, label: 'Bairros', icon: MapPin, requires: 'admin' as const },
+    { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
+    { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
+    { key: 'rotaIA' as const, label: 'Roteirização IA', icon: Sparkles, requires: 'admin' as const },
+    { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
+    { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
+    { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
+    { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
+    { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
+    { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
+    { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
+    { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
+    { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
+    { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
+    { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
+    { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
+    { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
+    { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
+    { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
+    { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
+    { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
+    { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
+    { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
+  ];
+  const visibleTabs = ALL_TABS.filter(t => {
+    const tier = currentAdmin?.tier;
+    if (t.requires === 'admin') return true;
+    if (t.requires === 'master') return tier === 'super' || tier === 'master';
+    if (t.requires === 'super') return tier === 'super';
+    return false;
+  }).filter(t => (TAB_GROUP[t.key] || 'inicio') === activeGroup);
+
   return (
-    <div className="min-h-screen pb-8">
+    <div className="min-h-screen pb-8 bg-zinc-950 text-zinc-100">
       <InstallAppButton />
-      <div className="flex items-center justify-between p-4 border-b border-border">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link to={getKioskHomePath()} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
-          <h1 className="text-xl font-bold">Painel Admin</h1>
-          {currentAdmin && (
-            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
-              {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
-            </span>
-          )}
+
+      {/* Header Dark Premium */}
+      <div className="sticky top-0 z-30 backdrop-blur-md bg-zinc-950/85 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link to={getKioskHomePath()} className="text-zinc-400 hover:text-amber-400 transition">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center shadow-lg shadow-amber-500/20"
+                style={{ background: 'linear-gradient(135deg,#f6c560,#d4881e)' }}>
+                <Crown className="w-5 h-5 text-zinc-950" />
+              </div>
+              <div className="leading-tight">
+                <h1 className="text-base font-black tracking-tight bg-clip-text text-transparent"
+                  style={{ backgroundImage: 'linear-gradient(135deg,#fde68a,#f59e0b)' }}>Vision Prime</h1>
+                <p className="text-[10px] text-zinc-500 uppercase tracking-widest">Painel do Lojista</p>
+              </div>
+            </div>
+            {currentAdmin && (
+              <span className="hidden sm:inline-flex text-[11px] px-2 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400">
+                {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
+              </span>
+            )}
+          </div>
+          <button onClick={handleLogout}
+            className="text-zinc-500 hover:text-red-400 transition flex items-center gap-1 text-xs font-semibold">
+            <LogOut className="w-4 h-4" /> Sair
+          </button>
         </div>
-        <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-sm">
-          <LogOut className="w-4 h-4" /> Sair
-        </button>
+
+        {/* Grupos Início / Pedidos / Logística / Parceiros */}
+        <div className="flex gap-2 px-4 pb-3 overflow-x-auto scrollbar-none">
+          {NAV_GROUPS.map(g => {
+            const active = activeGroup === g.key;
+            return (
+              <button key={g.key}
+                onClick={() => {
+                  const first = ALL_TABS.find(t => (TAB_GROUP[t.key] || 'inicio') === g.key && (
+                    t.requires === 'admin' ||
+                    (t.requires === 'master' && (currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master')) ||
+                    (t.requires === 'super' && currentAdmin?.tier === 'super')
+                  ));
+                  if (first) setTab(first.key);
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all
+                  ${active
+                    ? 'text-zinc-950 shadow-lg shadow-amber-500/25 border border-amber-300'
+                    : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:border-amber-500/40 hover:text-amber-300'}`}
+                style={active ? { background: 'linear-gradient(135deg,#fbbf24,#ea580c)' } : undefined}
+              >
+                <g.icon className="w-4 h-4" /> {g.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Active org indicator + switcher (Super/Master) + Open Store button */}
-      <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
+      <div className="flex items-center gap-2 px-4 pt-4 flex-wrap">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
         ) : (
-          <>
-            <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
-            <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
-          </>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800">
+            <Building2 className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span className="text-xs text-zinc-400">Loja: <span className="text-zinc-100 font-semibold">{org?.name || '—'}</span></span>
+          </div>
         )}
         {(() => {
           const activeSlug = allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug;
@@ -660,7 +766,7 @@ const AdminPage = () => {
               href={`/loja/${activeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"
+              className="ml-auto text-xs px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 flex items-center gap-1.5 font-semibold transition"
               title="Abrir minha loja em nova aba"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja
@@ -669,56 +775,21 @@ const AdminPage = () => {
         })()}
       </div>
 
-
-      {/* Tabs */}
-      <div className="flex gap-2 p-4 overflow-x-auto">
-        {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
-          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
-          { key: 'products' as const, label: 'Produtos', icon: null, requires: 'admin' as const },
-          { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
-          { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
-          { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
-          { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
-          { key: 'leads' as const, label: 'Clientes & Leads', icon: Users, requires: 'admin' as const },
-          { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
-          { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
-          { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
-          { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
-          { key: 'rotaIA' as const, label: 'Roteirização IA', icon: Sparkles, requires: 'admin' as const },
-          { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
-          { key: 'parcerias' as const, label: 'Parcerias', icon: Share2, requires: 'admin' as const },
-          { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
-          { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
-          { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
-         { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
-         { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
-          { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
-          { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
-         { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
-
-
-          { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
-          { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
-          { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
-          { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
-          { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
-          { key: 'onesignal' as const, label: 'Push (OneSignal)', icon: Bell, requires: 'super' as const },
-          { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
-          { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
-          { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
-        ].filter(t => {
-          const tier = currentAdmin?.tier;
-          if (t.requires === 'admin') return true; // todos veem
-          if (t.requires === 'master') return tier === 'super' || tier === 'master';
-          if (t.requires === 'super') return tier === 'super';
-          return false;
-        }).map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-            {t.icon && <t.icon className="w-4 h-4" />} {t.label}
-          </button>
-        ))}
+      {/* Sub-tabs do grupo ativo */}
+      <div className="flex gap-2 px-4 py-3 overflow-x-auto scrollbar-none">
+        {visibleTabs.map(t => {
+          const active = tab === t.key;
+          const Icon = t.icon;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-4 py-2 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-all border
+                ${active
+                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/60 shadow-[0_0_0_1px_rgba(245,158,11,0.2)]'
+                  : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200'}`}>
+              {Icon && <Icon className="w-3.5 h-3.5" />} {t.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Bloqueio por inadimplência (apenas lojista) */}

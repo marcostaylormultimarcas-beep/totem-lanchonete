@@ -64,7 +64,7 @@ const PlansMatrixPanel = () => {
   // Realtime: matriz + auditoria
   useEffect(() => {
     const ch = supabase
-      .channel('plans-matrix-admin')
+      .channel(`plans-matrix-admin-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_features' }, () => loadAll())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'plan_audit_log' }, () => loadAudit())
       .subscribe();

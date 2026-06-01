@@ -673,7 +673,7 @@ const AdminPage = () => {
 
 
       {/* Tabs */}
-      <div className="flex gap-2 p-4 overflow-x-auto">
+      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto whitespace-nowrap">
         {[
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
@@ -717,7 +717,7 @@ const AdminPage = () => {
           return false;
         }).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 border transition-colors ${tab === t.key ? 'bg-primary/10 text-primary border-primary/40' : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/30'}`}>
+            className={`touch-btn px-4 py-2 rounded-lg text-sm whitespace-nowrap flex items-center gap-1.5 border transition-colors flex-shrink-0 ${tab === t.key ? 'bg-amber-500/10 text-amber-500 border-amber-500/40' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-amber-500/30'}`}>
 
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
           </button>

@@ -715,7 +715,8 @@ const AdminPage = () => {
           return false;
         }).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+            className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 border transition-colors ${tab === t.key ? 'bg-primary/10 text-primary border-primary/40' : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/30'}`}>
+
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
           </button>
         ))}

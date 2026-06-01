@@ -48,7 +48,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   useEffect(() => {
     if (!organizationId) return;
     const ch = supabase
-      .channel(`assinatura-${organizationId}`)
+      .channel(`assinatura-${organizationId}-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_features' }, load)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'organizations', filter: `id=eq.${organizationId}` }, load)
       .subscribe();

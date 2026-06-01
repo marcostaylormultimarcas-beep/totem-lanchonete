@@ -43,7 +43,7 @@ export function usePlanFeatures() {
     load();
 
     const ch = supabase
-      .channel(`plan-features-${planId}`)
+      .channel(`plan-features-${planId}-${Math.random().toString(36).slice(2)}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'plan_features', filter: `plan_id=eq.${planId}` }, load)
       .subscribe();
     return () => { active = false; supabase.removeChannel(ch); };

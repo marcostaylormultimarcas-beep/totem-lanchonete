@@ -625,32 +625,34 @@ const AdminPage = () => {
   }
 
   return (
-    <div className="min-h-screen pb-8">
+    <div className="min-h-screen pb-8 bg-zinc-950 text-zinc-100">
       <InstallAppButton />
-      <div className="flex items-center justify-between p-4 border-b border-border">
+      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
         <div className="flex items-center gap-3 min-w-0">
-          <Link to={getKioskHomePath()} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
-          <h1 className="text-xl font-bold">Painel Admin</h1>
+          <Link to={getKioskHomePath()} className="text-zinc-400 hover:text-white"><ArrowLeft className="w-6 h-6" /></Link>
+          <h1 className="text-xl font-bold text-white">Painel Admin</h1>
           {currentAdmin && (
-            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
+            <span className="text-xs px-2 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300">
               {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
             </span>
           )}
         </div>
-        <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-sm">
+        <button onClick={handleLogout} className="text-zinc-400 hover:text-red-400 flex items-center gap-1 text-sm">
           <LogOut className="w-4 h-4" /> Sair
         </button>
       </div>
 
       {/* Active org indicator + switcher (Super/Master) + Open Store button */}
-      <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
+      <div className="flex items-center gap-2 px-4 pt-3 overflow-x-auto whitespace-nowrap pb-2">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
-          <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
+          <div className="[&_button]:!bg-zinc-900 [&_button]:!border-zinc-800 [&_button]:!text-zinc-100">
+            <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
+          </div>
         ) : (
-          <>
-            <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
-            <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
-          </>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100">
+            <Building2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <span className="text-sm text-zinc-400">Loja: <span className="text-zinc-100 font-semibold">{org?.name || '—'}</span></span>
+          </div>
         )}
         {(() => {
           const activeSlug = allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug;
@@ -660,7 +662,7 @@ const AdminPage = () => {
               href={`/loja/${activeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"
+              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/40 hover:bg-amber-500/20 flex items-center gap-1.5 font-semibold flex-shrink-0"
               title="Abrir minha loja em nova aba"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja
@@ -671,7 +673,7 @@ const AdminPage = () => {
 
 
       {/* Tabs */}
-      <div className="flex gap-2 p-4 overflow-x-auto">
+      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto whitespace-nowrap">
         {[
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
@@ -715,7 +717,7 @@ const AdminPage = () => {
           return false;
         }).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={`touch-btn px-5 py-3 rounded-xl text-sm whitespace-nowrap flex items-center gap-1 border transition-colors ${tab === t.key ? 'bg-primary/10 text-primary border-primary/40' : 'bg-card text-muted-foreground border-border hover:text-foreground hover:border-primary/30'}`}>
+            className={`touch-btn px-4 py-2 rounded-lg text-sm whitespace-nowrap flex items-center gap-1.5 border transition-colors flex-shrink-0 ${tab === t.key ? 'bg-amber-500/10 text-amber-500 border-amber-500/40' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-amber-500/30'}`}>
 
             {t.icon && <t.icon className="w-4 h-4" />} {t.label}
           </button>

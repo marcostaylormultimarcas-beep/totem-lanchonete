@@ -625,19 +625,19 @@ const AdminPage = () => {
   }
 
   return (
-    <div className="min-h-screen pb-8">
+    <div className="min-h-screen pb-8 bg-zinc-950 text-zinc-100">
       <InstallAppButton />
-      <div className="flex items-center justify-between p-4 border-b border-border">
+      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
         <div className="flex items-center gap-3 min-w-0">
-          <Link to={getKioskHomePath()} className="text-muted-foreground hover:text-foreground"><ArrowLeft className="w-6 h-6" /></Link>
-          <h1 className="text-xl font-bold">Painel Admin</h1>
+          <Link to={getKioskHomePath()} className="text-zinc-400 hover:text-white"><ArrowLeft className="w-6 h-6" /></Link>
+          <h1 className="text-xl font-bold text-white">Painel Admin</h1>
           {currentAdmin && (
-            <span className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground">
+            <span className="text-xs px-2 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300">
               {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
             </span>
           )}
         </div>
-        <button onClick={handleLogout} className="text-muted-foreground hover:text-destructive flex items-center gap-1 text-sm">
+        <button onClick={handleLogout} className="text-zinc-400 hover:text-red-400 flex items-center gap-1 text-sm">
           <LogOut className="w-4 h-4" /> Sair
         </button>
       </div>

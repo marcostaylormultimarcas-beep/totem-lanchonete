@@ -6,44 +6,45 @@
 
 @layer base {
   :root {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 96%;
+    /* Dark Premium — zinc-950 base, zinc-900 cards, zinc-800 borders, amber accents */
+    --background: 240 10% 4%;        /* zinc-950 */
+    --foreground: 0 0% 100%;         /* white puro */
 
-    --card: 0 0% 11%;
-    --card-foreground: 0 0% 96%;
+    --card: 240 6% 10%;              /* zinc-900 */
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 11%;
-    --popover-foreground: 0 0% 96%;
+    --popover: 240 6% 10%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 25 95% 53%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 38 92% 50%;           /* amber-500 */
+    --primary-foreground: 240 10% 4%; /* zinc-950 — texto escuro sobre âmbar */
 
     --secondary: 0 72% 51%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 64%;
+    --muted: 240 6% 10%;             /* zinc-900 — inputs/seletores */
+    --muted-foreground: 240 5% 65%;  /* zinc-400 */
 
-    --accent: 45 93% 47%;
-    --accent-foreground: 0 0% 7%;
+    --accent: 38 92% 50%;            /* amber-500 */
+    --accent-foreground: 240 10% 4%; /* zinc-950 sobre âmbar */
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 20%;
-    --input: 0 0% 20%;
-    --ring: 25 95% 53%;
+    --border: 240 4% 16%;            /* zinc-800 */
+    --input: 240 4% 16%;
+    --ring: 38 92% 50%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 9%;
-    --sidebar-foreground: 0 0% 96%;
-    --sidebar-primary: 25 95% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 15%;
-    --sidebar-accent-foreground: 0 0% 96%;
-    --sidebar-border: 0 0% 20%;
-    --sidebar-ring: 25 95% 53%;
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 240 10% 4%;
+    --sidebar-accent: 240 6% 10%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 240 4% 16%;
+    --sidebar-ring: 38 92% 50%;
 
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;

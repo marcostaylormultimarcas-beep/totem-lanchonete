@@ -643,14 +643,16 @@ const AdminPage = () => {
       </div>
 
       {/* Active org indicator + switcher (Super/Master) + Open Store button */}
-      <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
+      <div className="flex items-center gap-2 px-4 pt-3 overflow-x-auto whitespace-nowrap pb-2">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
-          <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
+          <div className="[&_button]:!bg-zinc-900 [&_button]:!border-zinc-800 [&_button]:!text-zinc-100">
+            <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
+          </div>
         ) : (
-          <>
-            <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
-            <span className="text-sm text-muted-foreground">Loja: <span className="text-foreground font-semibold">{org?.name || '—'}</span></span>
-          </>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100">
+            <Building2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
+            <span className="text-sm text-zinc-400">Loja: <span className="text-zinc-100 font-semibold">{org?.name || '—'}</span></span>
+          </div>
         )}
         {(() => {
           const activeSlug = allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug;
@@ -660,7 +662,7 @@ const AdminPage = () => {
               href={`/loja/${activeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-primary/15 text-primary border border-primary/40 hover:bg-primary/25 flex items-center gap-1.5 font-semibold"
+              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/40 hover:bg-amber-500/20 flex items-center gap-1.5 font-semibold flex-shrink-0"
               title="Abrir minha loja em nova aba"
             >
               <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja

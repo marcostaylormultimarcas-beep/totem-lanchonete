@@ -156,7 +156,10 @@ export async function uploadProductImage(
 ): Promise<string> {
   if (!orgId) throw new Error('Loja não identificada para upload.');
   const kind = options.kind ?? 'product';
-  const enhance = options.enhance ?? true;
+  // Banners e capas NUNCA recebem enhancement (preserva cores originais sRGB).
+  // Para os demais tipos, o enhancement só roda se explicitamente solicitado.
+  const isLargeMedia = kind === 'banner' || kind === 'cover';
+  const enhance = isLargeMedia ? false : (options.enhance ?? false);
 
   const optimized = await processImage(file, kind, enhance);
 

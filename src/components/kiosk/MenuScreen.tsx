@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';

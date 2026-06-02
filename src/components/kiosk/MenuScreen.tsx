@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -116,106 +116,143 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const isUrl = (s: string) => s.startsWith('http') || s.startsWith('/');
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-zinc-950 text-zinc-100">
+      {/* Blindagem visual: imagens sempre em cores originais */}
+      <style>{`.menu-shell img{filter:none !important;-webkit-filter:none !important;mix-blend-mode:normal !important;opacity:1 !important;color-scheme:light !important;}`}</style>
+
       {/* Main content area */}
-      <div className="flex-1 flex flex-col pb-24 lg:pb-0">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-border">
-        <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-7 h-7" />
-        </button>
-        <h2 className="text-xl font-bold">Cardápio</h2>
-        <button onClick={onGoToCart} className="relative text-primary">
-          <ShoppingCart className="w-7 h-7" />
-          {cart.length > 0 && (
-            <span className="absolute -top-2 -right-2 bg-secondary text-secondary-foreground text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-              {cart.length}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* Categories */}
-      <div className="flex gap-2 p-4 overflow-x-auto">
-        {categories.map(cat => (
-          <button
-            key={cat.key}
-            onClick={() => setActiveCategory(cat.key)}
-            className={`touch-btn px-6 py-3 rounded-xl whitespace-nowrap text-base font-semibold transition-all flex items-center gap-2 ${
-              activeCategory === cat.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            {cat.icon && (isUrl(cat.icon)
-              ? <img src={cat.icon} alt="" className="w-6 h-6 rounded-full object-cover" />
-              : <span>{cat.icon}</span>)}
-            {cat.label}
+      <div className="menu-shell flex-1 flex flex-col pb-24 lg:pb-0">
+        {/* Header sofisticado */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-zinc-800/80 bg-zinc-950/95 backdrop-blur-sm sticky top-0 z-20">
+          <button onClick={onBack} className="text-zinc-400 hover:text-amber-300 transition-colors">
+            <ArrowLeft className="w-6 h-6" />
           </button>
-        ))}
-      </div>
-
-      {/* Products Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 flex-1 max-w-[1200px] mx-auto w-full">
-        {filtered.map(product => {
-          const isUrlImg = product.image.startsWith('http') || product.image.startsWith('/');
-          return (
-            <button
-              key={product.id}
-              onClick={() => setSelectedProduct(product)}
-              className="kiosk-card overflow-hidden flex flex-col text-left active:scale-95 transition-transform group"
-            >
-              <div className="w-full aspect-square bg-muted overflow-hidden">
-                {isUrlImg ? (
-                  <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                ) : (
-                  <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>
-                )}
-              </div>
-              <div className="p-3 flex flex-col gap-1">
-                <span className="font-bold text-sm sm:text-base leading-tight line-clamp-2">{product.name}</span>
-                <span className="text-primary font-black text-base sm:text-lg">{formatCurrency(product.price)}</span>
-              </div>
+          <h2 className="text-base sm:text-lg font-bold tracking-wide text-white">
+            Vision Mídia <span className="text-amber-400">Digital</span>
+          </h2>
+          <div className="flex items-center gap-3">
+            <button className="text-amber-300/90 hover:text-amber-300 transition-colors" aria-label="Buscar">
+              <Search className="w-5 h-5" />
             </button>
-          );
-        })}
-      </div>
+            <button onClick={onGoToCart} className="relative text-amber-300/90 hover:text-amber-300 transition-colors">
+              <ShoppingCart className="w-6 h-6" />
+              {cart.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-gradient-to-br from-amber-500 to-orange-600 text-zinc-950 text-[10px] font-black rounded-full w-5 h-5 flex items-center justify-center shadow-[0_0_10px_rgba(245,158,11,0.5)]">
+                  {cart.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
 
+        {/* Categorias iluminadas */}
+        <div className="flex gap-3 px-4 py-5 overflow-x-auto whitespace-nowrap">
+          {categories.map(cat => {
+            const active = activeCategory === cat.key;
+            return (
+              <button
+                key={cat.key}
+                onClick={() => setActiveCategory(cat.key)}
+                className="touch-btn flex flex-col items-center gap-2 flex-shrink-0 group"
+              >
+                <span
+                  className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center bg-zinc-900 border transition-all duration-300 overflow-hidden ${
+                    active
+                      ? 'border-transparent scale-110 shadow-[0_0_18px_rgba(245,158,11,0.45)]'
+                      : 'border-zinc-800 group-hover:border-amber-500/40'
+                  }`}
+                  style={
+                    active
+                      ? { backgroundImage: 'linear-gradient(#18181b,#18181b), linear-gradient(135deg,#f59e0b,#ea580c)', backgroundOrigin: 'border-box', backgroundClip: 'padding-box, border-box', borderWidth: '2px', borderStyle: 'solid' }
+                      : undefined
+                  }
+                >
+                  {cat.icon && (isUrl(cat.icon)
+                    ? <img src={cat.icon} alt="" className="w-full h-full object-cover rounded-full" />
+                    : <span className={`text-3xl ${active ? 'scale-110' : ''} transition-transform`}>{cat.icon}</span>)}
+                </span>
+                <span className={`text-xs font-semibold ${active ? 'text-amber-400' : 'text-zinc-400 group-hover:text-zinc-200'} transition-colors`}>
+                  {cat.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Grid de produtos noturno */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-4 pb-6 flex-1 max-w-[1200px] mx-auto w-full">
+          {filtered.map(product => {
+            const isUrlImg = product.image.startsWith('http') || product.image.startsWith('/');
+            return (
+              <div
+                key={product.id}
+                className="relative bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col text-left transition-all hover:border-amber-500/40 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+              >
+                <button
+                  onClick={() => setSelectedProduct(product)}
+                  className="w-full aspect-square bg-zinc-950/60 overflow-hidden block"
+                >
+                  {isUrlImg ? (
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 hover:scale-105" />
+                  ) : (
+                    <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>
+                  )}
+                </button>
+                <div className="p-3 flex flex-col gap-1">
+                  <span className="font-bold text-sm sm:text-base leading-tight line-clamp-2 text-white">{product.name}</span>
+                  <div className="flex items-end justify-between gap-2 mt-1">
+                    <span className="text-amber-400 font-black text-base sm:text-lg tracking-tight">
+                      {formatCurrency(product.price)}
+                    </span>
+                    <button
+                      onClick={() => setSelectedProduct(product)}
+                      aria-label={`Adicionar ${product.name}`}
+                      className="touch-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] active:scale-90 transition-transform"
+                    >
+                      <Plus className="w-5 h-5" strokeWidth={3} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Cart */}
       {cart.length > 0 && (
         <>
-          <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 lg:hidden z-30">
-            <button onClick={onGoToCart} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3">
+          <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 p-4 lg:hidden z-30">
+            <button onClick={onGoToCart} className="touch-btn w-full bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_18px_rgba(245,158,11,0.35)] active:scale-[0.98] transition-transform">
               <ShoppingCart className="w-5 h-5" />
-              Ver Carrinho ({cart.length} itens) — {formatCurrency(cartTotal)}
+              Ver Carrinho ({cart.length} {cart.length === 1 ? 'item' : 'itens'}) — {formatCurrency(cartTotal)}
             </button>
           </div>
-          <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-border bg-card p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
-            <h3 className="text-lg font-bold flex items-center gap-2">
-              <ShoppingCart className="w-5 h-5 text-primary" /> Carrinho ({cart.length})
+          <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-zinc-800 bg-zinc-950 p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
+            <h3 className="text-lg font-bold flex items-center gap-2 text-white">
+              <ShoppingCart className="w-5 h-5 text-amber-400" /> Carrinho ({cart.length})
             </h3>
             <div className="flex-1 space-y-2 overflow-y-auto">
               {cart.map(item => (
-                <div key={item.id} className="bg-muted rounded-xl p-3 text-sm">
-                  <p className="font-semibold">{item.quantity}x {item.product.name}</p>
-                  <p className="text-primary font-bold">{formatCurrency(getItemTotal(item))}</p>
+                <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm">
+                  <p className="font-semibold text-white">{item.quantity}x {item.product.name}</p>
+                  <p className="text-amber-400 font-bold">{formatCurrency(getItemTotal(item))}</p>
                 </div>
               ))}
             </div>
-            <div className="border-t border-border pt-3 space-y-2">
-              <div className="flex justify-between font-bold text-lg">
+            <div className="border-t border-zinc-800 pt-3 space-y-2">
+              <div className="flex justify-between font-bold text-lg text-white">
                 <span>Total</span>
-                <span className="text-primary">{formatCurrency(cartTotal)}</span>
+                <span className="text-amber-400">{formatCurrency(cartTotal)}</span>
               </div>
-              <button onClick={onGoToCart} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl flex items-center justify-center gap-3">
+              <button onClick={onGoToCart} className="touch-btn w-full bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_18px_rgba(245,158,11,0.35)] active:scale-[0.98] transition-transform">
                 Finalizar Pedido
               </button>
             </div>
           </div>
         </>
       )}
+
 
       {selectedProduct && (
         <ProductModal product={selectedProduct} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />

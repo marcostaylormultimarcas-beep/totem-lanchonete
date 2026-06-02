@@ -1,6 +1,7 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import CrmPanel from '@/components/admin/CrmPanel';
 import ClientesLeadsPanel from '@/components/admin/ClientesLeadsPanel';
 import { Link, useNavigate } from 'react-router-dom';
@@ -625,7 +626,7 @@ const AdminPage = () => {
   }
 
   return (
-    <div className="min-h-screen pb-8 bg-zinc-950 text-zinc-100">
+    <div className="admin-shell min-h-screen pb-8 bg-zinc-950 text-zinc-100">
       <InstallAppButton />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
         <div className="flex items-center gap-3 min-w-0">
@@ -672,12 +673,13 @@ const AdminPage = () => {
       </div>
 
 
-      {/* Tabs */}
-      <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto whitespace-nowrap">
-        {[
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const },
-          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const },
-          { key: 'products' as const, label: 'Produtos', icon: null, requires: 'admin' as const },
+      {/* Quick Access Bar + Drawer */}
+      {(() => {
+        const ALL_TABS = [
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
+          { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
+          { key: 'settings' as const, label: 'Configuração', icon: Settings, requires: 'admin' as const, quick: true },
+          { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
           { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
@@ -693,14 +695,11 @@ const AdminPage = () => {
           { key: 'operacao' as const, label: 'Operação', icon: Settings, requires: 'admin' as const },
           { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
           { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
-         { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
-         { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
+          { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
+          { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
           { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
           { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
-         { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
-
-
-          { key: 'settings' as const, label: 'Config', icon: Settings, requires: 'admin' as const },
+          { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
@@ -709,20 +708,73 @@ const AdminPage = () => {
           { key: 'billing' as const, label: 'Cobrança Master', icon: CreditCard, requires: 'super' as const },
           { key: 'parcerias_map' as const, label: 'Mapa Parcerias', icon: Share2, requires: 'super' as const },
           { key: 'super' as const, label: 'Super', icon: Shield, requires: 'super' as const },
-        ].filter(t => {
-          const tier = currentAdmin?.tier;
-          if (t.requires === 'admin') return true; // todos veem
+        ];
+        const tier = currentAdmin?.tier;
+        const allowed = ALL_TABS.filter(t => {
+          if (t.requires === 'admin') return true;
           if (t.requires === 'master') return tier === 'super' || tier === 'master';
           if (t.requires === 'super') return tier === 'super';
           return false;
-        }).map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`touch-btn px-4 py-2 rounded-lg text-sm whitespace-nowrap flex items-center gap-1.5 border transition-colors flex-shrink-0 ${tab === t.key ? 'bg-amber-500/10 text-amber-500 border-amber-500/40' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-100 hover:border-amber-500/30'}`}>
+        });
+        const quickTabs = allowed.filter(t => (t as any).quick);
+        const drawerTabs = allowed.filter(t => !(t as any).quick);
+        const renderQuickBtn = (t: typeof ALL_TABS[number]) => {
+          const active = tab === t.key;
+          return (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`touch-btn px-5 py-2.5 rounded-xl text-sm whitespace-nowrap flex items-center gap-2 border transition-all flex-shrink-0 font-semibold ${
+                active
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 border-transparent shadow-[0_0_15px_rgba(245,158,11,0.3)]'
+                  : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30'
+              }`}>
+              {t.icon && <t.icon className="w-4 h-4" />} {t.label}
+            </button>
+          );
+        };
+        return (
+          <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto whitespace-nowrap">
+            {quickTabs.map(renderQuickBtn)}
+            <Sheet>
+              <SheetTrigger asChild>
+                <button
+                  className="touch-btn px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 border bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30 flex-shrink-0 font-semibold"
+                  aria-label="Abrir menu">
+                  <Menu className="w-4 h-4" /> Menu
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[300px] sm:w-[340px] bg-zinc-950 border-r border-zinc-800 text-zinc-100 p-0 overflow-y-auto">
+                <SheetHeader className="px-5 py-4 border-b border-zinc-800">
+                  <SheetTitle className="text-white text-left flex items-center gap-2">
+                    <Menu className="w-5 h-5 text-amber-500" /> Mais ferramentas
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="p-3 flex flex-col gap-1">
+                  {drawerTabs.map(t => {
+                    const active = tab === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => setTab(t.key)}
+                        className={`w-full text-left px-4 py-3 rounded-lg text-sm flex items-center gap-3 border transition-colors ${
+                          active
+                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/40'
+                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30'
+                        }`}>
+                        {t.icon && <t.icon className="w-4 h-4 flex-shrink-0" />}
+                        <span className="truncate">{t.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        );
+      })()}
 
-            {t.icon && <t.icon className="w-4 h-4" />} {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Blindagem visual: imagens nunca devem ser invertidas */}
+      <style>{`.admin-shell img{filter:none !important;-webkit-filter:none !important;}`}</style>
+
 
       {/* Bloqueio por inadimplência (apenas lojista) */}
       {currentAdmin?.tier === 'admin' && (subscriptionStatus === 'inadimplente' || subscriptionStatus === 'cancelado') && tab !== 'assinatura' ? (

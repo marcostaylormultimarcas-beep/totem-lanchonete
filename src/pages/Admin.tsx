@@ -772,8 +772,18 @@ const AdminPage = () => {
         );
       })()}
 
-      {/* Blindagem visual: imagens nunca devem ser invertidas */}
-      <style>{`.admin-shell img{filter:none !important;-webkit-filter:none !important;}`}</style>
+      {/* Blindagem visual: imagens sempre em cores originais sRGB, sem filtros/inversão/mix-blend */}
+      <style>{`
+        .admin-shell img{
+          filter:none !important;
+          -webkit-filter:none !important;
+          mix-blend-mode:normal !important;
+          opacity:1 !important;
+          background:transparent !important;
+          color-scheme:light !important;
+          image-rendering:auto !important;
+        }
+      `}</style>
 
 
       {/* Bloqueio por inadimplência (apenas lojista) */}

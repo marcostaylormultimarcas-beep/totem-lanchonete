@@ -772,8 +772,18 @@ const AdminPage = () => {
         );
       })()}
 
-      {/* Blindagem visual: imagens nunca devem ser invertidas */}
-      <style>{`.admin-shell img{filter:none !important;-webkit-filter:none !important;}`}</style>
+      {/* Blindagem visual: imagens sempre em cores originais sRGB, sem filtros/inversão/mix-blend */}
+      <style>{`
+        .admin-shell img{
+          filter:none !important;
+          -webkit-filter:none !important;
+          mix-blend-mode:normal !important;
+          opacity:1 !important;
+          background:transparent !important;
+          color-scheme:light !important;
+          image-rendering:auto !important;
+        }
+      `}</style>
 
 
       {/* Bloqueio por inadimplência (apenas lojista) */}
@@ -920,7 +930,11 @@ const AdminPage = () => {
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>
                 <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {(settings.categories || DEFAULT_CATEGORIES).map(c => <option key={c.key} value={c.key}>{c.icon} {c.label}</option>)}
+                  {(settings.categories || DEFAULT_CATEGORIES).map(c => {
+                    const isUrl = typeof c.icon === 'string' && /^(https?:|\/|data:)/i.test(c.icon);
+                    const prefix = isUrl ? '🍽️' : c.icon;
+                    return <option key={c.key} value={c.key}>{prefix} {c.label}</option>;
+                  })}
                 </select>
               </div>
               {/* Image Upload */}

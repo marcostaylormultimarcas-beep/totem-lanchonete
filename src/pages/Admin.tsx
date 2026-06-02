@@ -626,7 +626,7 @@ const AdminPage = () => {
   }
 
   return (
-    <div className="min-h-screen pb-8 bg-zinc-950 text-zinc-100">
+    <div className="admin-shell min-h-screen pb-8 bg-zinc-950 text-zinc-100">
       <InstallAppButton />
       <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
         <div className="flex items-center gap-3 min-w-0">

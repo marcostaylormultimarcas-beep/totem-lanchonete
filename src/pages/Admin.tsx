@@ -44,6 +44,7 @@ import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
+import SenhasPanel from '@/components/admin/SenhasPanel';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [

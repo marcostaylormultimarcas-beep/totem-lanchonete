@@ -680,6 +680,7 @@ const AdminPage = () => {
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
           { key: 'settings' as const, label: 'Configuração', icon: Settings, requires: 'admin' as const, quick: true },
+          { key: 'senhas' as const, label: 'Painel de Senhas (TV)', icon: Bell, requires: 'admin' as const },
           { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },

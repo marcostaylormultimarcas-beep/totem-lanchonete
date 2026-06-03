@@ -1,70 +1,86 @@
-## Módulo "Entrega por CEP" — Plano de implementação
+# PWA de Senhas (TV) + Integração no Painel Admin
 
-Vou adicionar geolocalização via ViaCEP + cálculo de distância (Haversine) integrado ao fluxo de delivery atual.
+## Visão geral
+Criar um ecossistema de chamada de senhas em tempo real:
+1. **TV/PWA** em `/painel-senhas/:slug` — tela cheia, instalável, exibe senha atual gigante + últimas 4
+2. **Controles no Admin** — botão "Chamar próxima senha" + histórico
+3. **Realtime via Supabase** + som de campainha automático
+4. **PWA manifest-only** (sem service worker, conforme melhor prática — instalável mas sem cache que quebre preview)
 
-### 1. Banco de dados (migration)
+## Parte 1 — Banco de dados (migração)
+Nova tabela `senhas_chamadas`:
+- `organization_id` (uuid)
+- `numero` (text, ex: "A045")
+- `tipo` (text: 'normal' | 'preferencial')
+- `called_at` (timestamptz)
+- `called_by` (uuid, opcional)
 
-**`settings`** — novas colunas para a loja:
-- `cep_loja` (text) — CEP central da loja
-- `cep_lat` / `cep_lng` (numeric) — coordenadas resolvidas
-- `delivery_mode` (text: `'lista_ceps'` | `'raio_km'` | `'bairros'`) — padrão `'bairros'` (mantém o atual)
-- `delivery_raio_km` (numeric) — raio máximo de atendimento
-- `delivery_taxa_base` (numeric) e `delivery_taxa_por_km` (numeric) — frete dinâmico
-- `delivery_tempo_base_min` (int) e `delivery_tempo_por_km_min` (numeric) — tempo estimado
+RLS:
+- **Public SELECT** (TV precisa ler sem login via slug)
+- **INSERT/UPDATE/DELETE** apenas pelo owner da organização
+- Realtime habilitado (`ALTER PUBLICATION supabase_realtime ADD TABLE`)
+- GRANT SELECT para anon + GRANT ALL para authenticated/service_role
 
-**Nova tabela `cep_atendidos`** (modo lista de CEPs):
-- `organization_id`, `cep` (8 dígitos), `taxa` (numeric, opcional override), `tempo_min` (int, opcional)
-- RLS: leitura pública (totem precisa), escrita só pelo dono da loja
+## Parte 2 — Página TV (`src/pages/PainelSenhas.tsx`)
+Rota nova: `/painel-senhas/:slug` (resolve org pelo slug, igual ao cardápio público).
 
-**Função `public.validar_cep_entrega(_org uuid, _cep text, _lat numeric, _lng numeric)`** — `SECURITY DEFINER`, retorna `jsonb { ok, motivo, distancia_km, taxa, tempo_min }`. Consolida as 3 regras (lista / raio / bairros) num único ponto.
+**Layout 16:9 Dark Premium:**
+```text
+┌──────────────────────────────────────────────┐
+│  SENHA ATUAL          │  ÚLTIMAS CHAMADAS   │
+│                       │                      │
+│      A045             │   A044              │
+│  (text-9xl amber)     │   A043              │
+│   glow neon           │   A042              │
+│                       │   A041              │
+│  Nome da Loja         │                      │
+└──────────────────────────────────────────────┘
+```
 
-### 2. Lib utilitária `src/lib/cep.ts`
+**Comportamento:**
+- Fundo `bg-zinc-950`, sem scroll (`overflow-hidden h-screen`)
+- Subscribe realtime na tabela `senhas_chamadas` filtrado por `organization_id`
+- Ao receber nova senha: anima flash âmbar (3 piscadas), toca som "plim" (gerado via Web Audio API — sem precisar de arquivo externo)
+- Mostra horário atual + nome da loja no rodapé
+- Auto-hide cursor após 3s (modo TV)
 
-- `normalizeCep(input)` — só dígitos, 8 chars
-- `fetchViaCep(cep)` — chama `https://viacep.com.br/ws/{cep}/json/`, retorna `{ cep, logradouro, bairro, cidade, uf }`
-- `geocodeCep(cep)` — usa endpoint público `nominatim.openstreetmap.org` (sem chave) para resolver lat/lng a partir do endereço retornado pelo ViaCEP
-- `haversineKm(a, b)` — distância em km entre dois pontos
+## Parte 3 — PWA Manifest (apenas)
+- Atualizar `public/manifest.json`: `name`, `short_name`, `display: "standalone"`, `start_url: "/painel-senhas"`, ícones, `theme_color: "#f59e0b"`, `background_color: "#09090b"`
+- Adicionar `<link rel="manifest">` e meta tags PWA no `index.html` (se já não tiver)
+- **Sem service worker** — evita problemas de cache no preview; instalável via "Adicionar à tela inicial"
+- Banner sutil na página TV: "Toque em ⋮ → Adicionar à tela inicial" (primeira visita)
 
-### 3. Admin — painel "Área de Atendimento"
+## Parte 4 — Controles no Admin
+Novo painel `src/components/admin/SenhasPanel.tsx`:
+- Input do prefixo (ex: "A") + contador automático ou manual
+- Botão grande **"CHAMAR PRÓXIMA SENHA"** (amber gradient)
+- Botão **"SENHA PREFERENCIAL"** (variant)
+- Lista das últimas 10 chamadas com horário
+- Botão **"Abrir TV em nova aba"** → `/painel-senhas/{slug}`
+- Botão **"Limpar histórico do dia"**
 
-Novo componente `AreaAtendimentoPanel.tsx` (aba no Admin atual, próximo a Bairros):
-- Campo CEP da loja com botão "Buscar" → preenche endereço + geocodifica
-- Toggle de modo: **Por raio (km)** | **Por lista de CEPs** | **Por bairros** (existente)
-- Modo raio: input numérico `raio_km`, taxa base, taxa por km, tempo base, tempo por km — preview "Atendemos até X km"
-- Modo lista: CRUD simples de `cep_atendidos` (cep, taxa, tempo)
-- Mantém compatibilidade com `taxas_entrega` (bairros) — só desliga quando `delivery_mode` é outro
+Adicionar entrada no menu lateral do Admin (`src/pages/Admin.tsx`): "Painel de Senhas" no drawer.
 
-### 4. Cliente — bloqueio por CEP no checkout
+## Parte 5 — Rota
+Adicionar em `src/App.tsx`:
+```tsx
+<Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
+```
 
-Adaptar `CheckoutScreen` (ou criar `CepGate` reutilizável):
-- Quando o cliente escolhe **Delivery**, o primeiro campo é **CEP** com botão "Validar"
-- Chama `fetchViaCep` → preenche endereço → chama RPC `validar_cep_entrega`
-- Se `ok=false`: mostra card vermelho "Não entregamos nesta região 😔" e bloqueia continuar (botão Avançar desabilitado)
-- Se `ok=true`: mostra "✓ Entregamos no seu endereço — taxa R$ X · ~Y min" e habilita o checkout
-- Salva `delivery_cep`, `delivery_distance_km` no pedido (adicionar colunas em `orders`)
+## Arquivos a criar/editar
+**Criar:**
+- `src/pages/PainelSenhas.tsx`
+- `src/components/admin/SenhasPanel.tsx`
+- Migração SQL `senhas_chamadas`
 
-Modos `local` e `viagem` continuam sem CEP (não é entrega).
+**Editar:**
+- `src/App.tsx` (rota)
+- `src/pages/Admin.tsx` (entrada no drawer)
+- `public/manifest.json` (PWA config)
+- `index.html` (meta PWA, se faltar)
 
-### 5. Integração com pedido
-
-- `orders` ganha `delivery_cep` (text) e `delivery_distance_km` (numeric, nullable)
-- Taxa de entrega calculada via RPC vai para `delivery_fee` (já existe)
-- `bairro_nome` continua sendo preenchido (vem do ViaCEP) para compatibilidade
-
-### 6. Logs e UX
-
-- `console.log('[CEP]', ...)` nas etapas de validação para diagnóstico
-- Mensagens claras em PT-BR ("CEP inválido", "Fora da área", "Sem conexão com ViaCEP")
-- Loading states e erros com `toast.error`
-
-### Arquivos previstos
-- `supabase/migrations/<timestamp>_cep_delivery.sql`
-- `src/lib/cep.ts` (nova)
-- `src/components/admin/AreaAtendimentoPanel.tsx` (nova)
-- `src/components/kiosk/CepGate.tsx` (nova, reutilizável)
-- Edits: `src/pages/Admin.tsx`, `src/components/kiosk/CheckoutScreen.tsx`, `src/integrations/supabase/types.ts` (auto)
-
-### Pontos a confirmar antes de implementar
-1. Manter o modo "Bairros" atual como opção (sim, recomendo) ou substituir totalmente por CEP?
-2. Geocodificação: usar Nominatim (OSM, gratuito, sem chave, com rate-limit) ou prefere já configurar Google Maps API? Vou seguir com Nominatim por ser zero-config — pode trocar depois.
-3. O bloqueio por CEP é só para `order_type = 'delivery'` (correto). Pedidos local/viagem seguem sem CEP.
+## Observações técnicas
+- **Som**: gerado por `AudioContext` (oscillator → 2 beeps "plim plim") — não precisa de arquivo de áudio
+- **PWA preview**: instalação só funciona no domínio publicado (não no preview iframe da Lovable); vou avisar
+- **Sem `service worker`**: cumpre as melhores práticas; basta o manifest para "Adicionar à tela inicial"
+- Realtime já está configurado para outras tabelas — só preciso adicionar `senhas_chamadas` à publication

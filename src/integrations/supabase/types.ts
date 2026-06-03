@@ -1235,6 +1235,36 @@ export type Database = {
         }
         Relationships: []
       }
+      senhas_chamadas: {
+        Row: {
+          called_at: string
+          called_by: string | null
+          created_at: string
+          id: string
+          numero: string
+          organization_id: string
+          tipo: string
+        }
+        Insert: {
+          called_at?: string
+          called_by?: string | null
+          created_at?: string
+          id?: string
+          numero: string
+          organization_id: string
+          tipo?: string
+        }
+        Update: {
+          called_at?: string
+          called_by?: string | null
+          created_at?: string
+          id?: string
+          numero?: string
+          organization_id?: string
+          tipo?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           banners: Json

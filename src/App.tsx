@@ -19,6 +19,7 @@ import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
 import VisionPrime from "./pages/VisionPrime.tsx";
 import ClubeVantagens from "./pages/ClubeVantagens.tsx";
 import Onboarding from "./pages/Onboarding.tsx";
+import PainelSenhas from "./pages/PainelSenhas.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 
@@ -68,6 +69,7 @@ const App = () => {
               <Route path="/clube" element={<ClubeVantagens />} />
               <Route path="/loja/:slug/clube" element={<KioskSlugSync><ClubeVantagens /></KioskSlugSync>} />
               <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

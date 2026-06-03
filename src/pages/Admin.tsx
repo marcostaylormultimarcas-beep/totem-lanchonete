@@ -44,6 +44,7 @@ import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
+import SenhasPanel from '@/components/admin/SenhasPanel';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -88,7 +89,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -679,6 +680,7 @@ const AdminPage = () => {
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
           { key: 'settings' as const, label: 'Configuração', icon: Settings, requires: 'admin' as const, quick: true },
+          { key: 'senhas' as const, label: 'Painel de Senhas (TV)', icon: Bell, requires: 'admin' as const },
           { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
@@ -806,6 +808,12 @@ const AdminPage = () => {
       <>
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'senhas' && (
+        <SenhasPanel
+          organizationId={activeOrgId}
+          orgSlug={allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug || null}
+        />
+      )}
       {tab === 'coupons' && (
         <FeatureGate feature="coupons" label="Cupons de Desconto">
           <CouponsPanel organizationId={activeOrgId} />

@@ -69,6 +69,7 @@ const App = () => {
               <Route path="/clube" element={<ClubeVantagens />} />
               <Route path="/loja/:slug/clube" element={<KioskSlugSync><ClubeVantagens /></KioskSlugSync>} />
               <Route path="/onboarding" element={<Onboarding />} />
+              <Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

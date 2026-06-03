@@ -19,6 +19,7 @@ import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
 import VisionPrime from "./pages/VisionPrime.tsx";
 import ClubeVantagens from "./pages/ClubeVantagens.tsx";
 import Onboarding from "./pages/Onboarding.tsx";
+import PainelSenhas from "./pages/PainelSenhas.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 

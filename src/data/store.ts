@@ -107,7 +107,12 @@ export interface StoreSettings {
 
 export function getItemTotal(item: CartItem): number {
   const extrasTotal = item.selectedExtras.reduce((sum, e) => sum + e.price, 0);
-  return (item.product.price + extrasTotal) * item.quantity;
+  const unit = item.product.price + extrasTotal;
+  if (item.weightKg && item.weightKg > 0) {
+    // Produto por peso: preço por kg × peso (quantidade ignorada/fixa em 1)
+    return unit * item.weightKg;
+  }
+  return unit * item.quantity;
 }
 
 export function formatCurrency(value: number): string {

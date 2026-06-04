@@ -21,6 +21,14 @@ export interface CartItem {
   quantity: number;
   removedIngredients: string[];
   selectedExtras: { name: string; price: number }[];
+  /** Peso em kg (apenas para produtos vendidos por quilo via balança) */
+  weightKg?: number;
+}
+
+/** Detecta se um produto é vendido por peso (kg) pelo nome/categoria. */
+export function isByWeight(product: Product): boolean {
+  const hay = `${product.category || ''} ${product.name || ''}`.toLowerCase();
+  return /\b(kg|quilo|por\s*kg|\/kg|self[\s-]?service|por\s*peso)\b/.test(hay);
 }
 
 export interface ComboSettings {

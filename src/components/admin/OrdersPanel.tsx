@@ -471,6 +471,13 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                   </button>
                 )}
                 <button
+                  onClick={() => callPassword(order)}
+                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-white border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 flex items-center justify-center gap-1 font-bold"
+                  title="Chamar / Rechamar senha na TV"
+                >
+                  <BellRing className="w-4 h-4" /> Chamar Senha
+                </button>
+                <button
                   onClick={() => {
                     const postPrep = order.status === 'preparing' || order.status === 'out_for_delivery';
                     if (postPrep) {

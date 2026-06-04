@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing } from 'lucide-react';
+import { toast } from 'sonner';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';

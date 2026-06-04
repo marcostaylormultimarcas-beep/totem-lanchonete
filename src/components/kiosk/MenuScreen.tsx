@@ -67,10 +67,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   }, [initialProduct, onInitialProductHandled]);
 
   const filtered = products.filter(p => p.category === activeCategory);
-  const cartTotal = cart.reduce((sum, item) => {
-    const extras = item.selectedExtras.reduce((s, e) => s + e.price, 0);
-    return sum + (item.product.price + extras) * item.quantity;
-  }, 0);
+  const cartTotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const handleAddItem = (item: CartItem) => {
     if (item.product.category === 'hamburgueres' || item.product.category === 'pizzas') {

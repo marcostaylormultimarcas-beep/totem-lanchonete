@@ -21,6 +21,14 @@ export interface CartItem {
   quantity: number;
   removedIngredients: string[];
   selectedExtras: { name: string; price: number }[];
+  /** Peso em kg (apenas para produtos vendidos por quilo via balança) */
+  weightKg?: number;
+}
+
+/** Detecta se um produto é vendido por peso (kg) pelo nome/categoria. */
+export function isByWeight(product: Product): boolean {
+  const hay = `${product.category || ''} ${product.name || ''}`.toLowerCase();
+  return /\b(kg|quilo|por\s*kg|\/kg|self[\s-]?service|por\s*peso)\b/.test(hay);
 }
 
 export interface ComboSettings {
@@ -99,7 +107,12 @@ export interface StoreSettings {
 
 export function getItemTotal(item: CartItem): number {
   const extrasTotal = item.selectedExtras.reduce((sum, e) => sum + e.price, 0);
-  return (item.product.price + extrasTotal) * item.quantity;
+  const unit = item.product.price + extrasTotal;
+  if (item.weightKg && item.weightKg > 0) {
+    // Produto por peso: preço por kg × peso (quantidade ignorada/fixa em 1)
+    return unit * item.weightKg;
+  }
+  return unit * item.quantity;
 }
 
 export function formatCurrency(value: number): string {

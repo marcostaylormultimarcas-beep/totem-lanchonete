@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing } from 'lucide-react';
+import { toast } from 'sonner';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
@@ -239,6 +240,23 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     }
   };
 
+  const callPassword = async (order: Order) => {
+    if (!organizationId) return;
+    const numero = String(order.order_number || '').trim();
+    if (!numero) return;
+    const { error } = await (supabase.from('senhas_chamadas' as any).insert({
+      organization_id: organizationId,
+      numero,
+      tipo: 'normal',
+    }) as any);
+    if (error) {
+      toast.error('Erro ao chamar senha');
+      console.error(error);
+    } else {
+      toast.success(`🔔 Senha #${numero} chamada na TV`);
+    }
+  };
+
   const hasPending = orders.some(o => o.status === 'pending');
   const { needsUnlock, muted, setMuted, unlock } = useOrderAlertSound(hasPending);
 
@@ -452,6 +470,13 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                     <CheckCircle2 className="w-4 h-4" /> Entregue
                   </button>
                 )}
+                <button
+                  onClick={() => callPassword(order)}
+                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-white border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 flex items-center justify-center gap-1 font-bold"
+                  title="Chamar / Rechamar senha na TV"
+                >
+                  <BellRing className="w-4 h-4" /> Chamar Senha
+                </button>
                 <button
                   onClick={() => {
                     const postPrep = order.status === 'preparing' || order.status === 'out_for_delivery';

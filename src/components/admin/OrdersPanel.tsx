@@ -240,6 +240,23 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     }
   };
 
+  const callPassword = async (order: Order) => {
+    if (!organizationId) return;
+    const numero = String(order.order_number || '').trim();
+    if (!numero) return;
+    const { error } = await (supabase.from('senhas_chamadas' as any).insert({
+      organization_id: organizationId,
+      numero,
+      tipo: 'normal',
+    }) as any);
+    if (error) {
+      toast.error('Erro ao chamar senha');
+      console.error(error);
+    } else {
+      toast.success(`🔔 Senha #${numero} chamada na TV`);
+    }
+  };
+
   const hasPending = orders.some(o => o.status === 'pending');
   const { needsUnlock, muted, setMuted, unlock } = useOrderAlertSound(hasPending);
 

@@ -504,6 +504,7 @@ const AdminPage = () => {
       manageStock: Boolean(p.manageStock),
       stockQuantity: String(p.stockQuantity ?? 0),
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
+      soldByWeight: Boolean(p.soldByWeight),
     });
     setEditingProduct(p);
     setShowForm(true);

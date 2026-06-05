@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -33,6 +33,64 @@ const playChime = () => {
   } catch {}
 };
 
+/* ─── ajusta font-size para que o texto caiba dentro do container ─── */
+function useFitty(containerRef: React.RefObject<HTMLDivElement>, text: string, minPx = 24, maxVw = 22) {
+  const [fontSize, setFontSize] = useState(`${maxVw}vw`);
+
+  const fit = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const parent = el.parentElement as HTMLElement;
+    if (!parent) return;
+
+    // tenta começar com a fonte em vw e reduz proporcionalmente
+    const maxW = parent.clientWidth - 32; // px-4 de folga
+    const maxH = parent.clientHeight;
+
+    let lo = minPx;
+    let hi = Math.min(window.innerWidth * (maxVw / 100), maxH * 0.8);
+    let best = lo;
+
+    // cria um medidor escondido com o mesmo estilo
+    const measure = document.createElement('span');
+    measure.style.visibility = 'hidden';
+    measure.style.position = 'absolute';
+    measure.style.whiteSpace = 'nowrap';
+    measure.style.fontFamily = getComputedStyle(el).fontFamily;
+    measure.style.fontWeight = getComputedStyle(el).fontWeight;
+    measure.style.letterSpacing = getComputedStyle(el).letterSpacing;
+    measure.textContent = text || '\u2014';
+    document.body.appendChild(measure);
+
+    for (let i = 0; i < 20; i++) {
+      const mid = (lo + hi) / 2;
+      measure.style.fontSize = `${mid}px`;
+      if (measure.scrollWidth <= maxW && measure.scrollHeight <= maxH) {
+        best = mid;
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    document.body.removeChild(measure);
+    setFontSize(`${best}px`);
+  }, [containerRef, text, minPx, maxVw]);
+
+  useEffect(() => {
+    fit();
+    const ro = new ResizeObserver(() => fit());
+    const parent = containerRef.current?.parentElement;
+    if (parent) ro.observe(parent);
+    window.addEventListener('resize', fit);
+    return () => {
+      if (parent) ro.unobserve(parent);
+      window.removeEventListener('resize', fit);
+    };
+  }, [fit, containerRef]);
+
+  return fontSize;
+}
+
 const PainelSenhas = () => {
   const { slug } = useParams<{ slug: string }>();
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -42,6 +100,15 @@ const PainelSenhas = () => {
   const [now, setNow] = useState(new Date());
   const [audioReady, setAudioReady] = useState(false);
   const lastIdRef = useRef<string | null>(null);
+
+  const atual = senhas[0];
+  const anteriores = senhas.slice(1, 5);
+
+  const senhaRef = useRef<HTMLDivElement>(null);
+  const senhaSize = useFitty(senhaRef, atual?.numero || '\u2014', 24, 22);
+
+  const dashRef = useRef<HTMLDivElement>(null);
+  const dashSize = useFitty(dashRef, '\u2014', 24, 16);
 
   // Relógio
   useEffect(() => {
@@ -109,9 +176,6 @@ const PainelSenhas = () => {
     return () => { supabase.removeChannel(channel); };
   }, [orgId]);
 
-  const atual = senhas[0];
-  const anteriores = senhas.slice(1, 5);
-
   // Web Audio precisa de gesto do usuário (autoplay policy)
   if (!audioReady) {
     return (
@@ -141,58 +205,64 @@ const PainelSenhas = () => {
       <div className="pointer-events-none absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full bg-orange-600/10 blur-3xl" />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-10 py-5 border-b border-zinc-900/80">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-white tracking-wide">
+      <header className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0 px-4 md:px-10 py-4 md:py-5 border-b border-zinc-900/80">
+        <h1 className="text-lg md:text-3xl font-extrabold text-white tracking-wide truncate max-w-full text-center md:text-left">
           {storeName || 'Painel de Senhas'}
         </h1>
-        <div className="text-amber-400 font-mono text-2xl md:text-3xl font-bold tabular-nums">
+        <div className="text-amber-400 font-mono text-xl md:text-3xl font-bold tabular-nums">
           {now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
         </div>
       </header>
 
-      {/* Conteúdo principal */}
-      <main className={`relative z-10 flex-1 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-6 md:gap-10 px-6 md:px-10 py-6 ${flash ? 'flash' : ''}`}>
+      {/* Conteúdo principal — sempre flex-col para evitar rolagem em telas pequenas */}
+      <main className={`relative z-10 flex-1 flex flex-col md:grid md:grid-cols-[2fr_1fr] gap-4 md:gap-10 px-4 md:px-10 py-4 md:py-6 overflow-hidden ${flash ? 'flash' : ''}`}>
         {/* Senha atual */}
-        <section className="flex flex-col items-center justify-center text-center">
-          <div className="text-zinc-500 uppercase tracking-[0.5em] text-base md:text-xl font-bold mb-4">
+        <section className="flex flex-col items-center justify-center text-center min-h-0">
+          <div className="text-zinc-500 uppercase tracking-[0.5em] text-sm md:text-xl font-bold mb-2 md:mb-4">
             Senha Atual
           </div>
           {atual ? (
             <>
-              <div className={`text-amber-500 font-black leading-none tracking-tight pulse-num`}
-                style={{ fontSize: 'clamp(8rem, 22vw, 22rem)' }}>
+              <div
+                ref={senhaRef}
+                className="text-amber-500 font-black leading-none tracking-tight pulse-num w-full max-w-full break-words"
+                style={{ fontSize: senhaSize }}
+              >
                 {atual.numero}
               </div>
               {atual.tipo === 'preferencial' && (
-                <div className="mt-6 px-6 py-2 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold tracking-widest uppercase text-lg">
+                <div className="mt-3 md:mt-6 px-4 md:px-6 py-1.5 md:py-2 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold tracking-widest uppercase text-sm md:text-lg">
                   Preferencial
                 </div>
               )}
             </>
           ) : (
-            <div className="text-zinc-700 font-black" style={{ fontSize: 'clamp(6rem, 16vw, 16rem)' }}>
+            <div
+              ref={dashRef}
+              className="text-zinc-700 font-black w-full max-w-full break-words"
+              style={{ fontSize: dashSize }}
+            >
               —
             </div>
           )}
         </section>
 
         {/* Últimas senhas */}
-        <aside className="flex flex-col bg-zinc-900/60 border border-zinc-800 rounded-3xl p-6 md:p-8 backdrop-blur-sm">
-          <div className="text-zinc-500 uppercase tracking-[0.3em] text-sm md:text-base font-bold mb-6 text-center">
+        <aside className="flex flex-col min-h-0 bg-zinc-900/60 border border-zinc-800 rounded-2xl md:rounded-3xl p-4 md:p-8 backdrop-blur-sm overflow-hidden">
+          <div className="text-zinc-500 uppercase tracking-[0.3em] text-xs md:text-base font-bold mb-3 md:mb-6 text-center">
             Últimas Chamadas
           </div>
-          <div className="flex-1 flex flex-col gap-4 justify-center">
+          <div className="flex-1 flex flex-col gap-2 md:gap-4 justify-center overflow-y-auto">
             {anteriores.length === 0 && (
               <div className="text-zinc-700 text-center text-2xl">—</div>
             )}
             {anteriores.map((s) => (
               <div key={s.id}
-                className="flex items-baseline justify-between px-5 py-3 rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-                <span className="text-zinc-400 font-black tracking-tight"
-                  style={{ fontSize: 'clamp(2rem, 4vw, 3.5rem)' }}>
+                className="flex items-baseline justify-between px-3 md:px-5 py-2 md:py-3 rounded-xl md:rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
+                <span className="text-zinc-400 font-black tracking-tight text-3xl md:text-[clamp(2rem,4vw,3.5rem)] break-words max-w-[70%] leading-none">
                   {s.numero}
                 </span>
-                <span className="text-zinc-600 font-mono text-base md:text-lg tabular-nums">
+                <span className="text-zinc-600 font-mono text-sm md:text-lg tabular-nums shrink-0 ml-2">
                   {new Date(s.called_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -202,7 +272,7 @@ const PainelSenhas = () => {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 px-10 py-3 border-t border-zinc-900/80 text-center text-zinc-600 text-xs md:text-sm tracking-widest uppercase">
+      <footer className="relative z-10 px-4 md:px-10 py-2 md:py-3 border-t border-zinc-900/80 text-center text-zinc-600 text-[10px] md:text-sm tracking-widest uppercase">
         Painel em tempo real · {storeName}
       </footer>
     </div>

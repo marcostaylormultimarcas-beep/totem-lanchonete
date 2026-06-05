@@ -12,6 +12,8 @@ export interface Product {
   manageStock?: boolean;
   stockQuantity?: number;
   lowStockThreshold?: number;
+  /** Marcado pelo lojista: produto vendido por quilo (balança) */
+  soldByWeight?: boolean;
 }
 
 
@@ -25,11 +27,13 @@ export interface CartItem {
   weightKg?: number;
 }
 
-/** Detecta se um produto é vendido por peso (kg) pelo nome/categoria. */
+/** Detecta se um produto é vendido por peso (kg). Prioriza flag explícita do lojista. */
 export function isByWeight(product: Product): boolean {
+  if (product.soldByWeight) return true;
   const hay = `${product.category || ''} ${product.name || ''}`.toLowerCase();
   return /\b(kg|quilo|por\s*kg|\/kg|self[\s-]?service|por\s*peso)\b/.test(hay);
 }
+
 
 export interface ComboSettings {
   name: string;

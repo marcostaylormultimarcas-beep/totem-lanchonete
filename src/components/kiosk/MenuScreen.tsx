@@ -37,7 +37,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
     const fetchData = async () => {
       const [{ data: prods }, { data: settingsData }] = await Promise.all([
         supabase.from('products').select('*').eq('organization_id', orgId),
-        supabase.from('settings').select('combo, categories').eq('organization_id', orgId).maybeSingle(),
+        supabase.from('settings').select('combo, categories, balanca_baud_rate, balanca_modelo').eq('organization_id', orgId).maybeSingle(),
       ]);
       if (prods) {
         setProducts(prods.map((p: any) => ({
@@ -45,9 +45,12 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          soldByWeight: Boolean(p.sold_by_weight),
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);
+      const baud = Number((settingsData as any)?.balanca_baud_rate ?? 9600);
+      if (baud) setBalancaBaud(baud);
       const cats = (settingsData as any)?.categories as CategoryItem[] | undefined;
       if (cats && cats.length > 0) {
         setCategories(cats);

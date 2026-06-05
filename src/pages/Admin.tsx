@@ -349,6 +349,7 @@ const AdminPage = () => {
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
+    soldByWeight: false,
   });
 
   // Carrega sessão atual e contexto do admin

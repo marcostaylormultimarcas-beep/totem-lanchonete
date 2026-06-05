@@ -941,9 +941,33 @@ const AdminPage = () => {
                 <label className="text-xs text-muted-foreground mb-1 block">Nome do Produto</label>
                 <input placeholder="Ex: X-Burguer Especial" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={100} />
               </div>
+              {/* Tipo de venda: Unidade x Quilo (Balança) */}
+              <div className="rounded-xl p-3 bg-zinc-900 border border-zinc-800 space-y-2">
+                <label className="text-xs text-zinc-400 block">⚖️ Tipo de Venda</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, soldByWeight: false })}
+                    className={`touch-btn py-2.5 rounded-lg text-sm font-semibold border transition-colors ${!form.soldByWeight ? 'bg-amber-500 text-zinc-950 border-amber-500' : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:border-zinc-500'}`}
+                  >
+                    Por Unidade
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, soldByWeight: true })}
+                    className={`touch-btn py-2.5 rounded-lg text-sm font-semibold border transition-colors ${form.soldByWeight ? 'bg-amber-500 text-zinc-950 border-amber-500' : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:border-zinc-500'}`}
+                  >
+                    Por Quilo (Balança)
+                  </button>
+                </div>
+                {form.soldByWeight && (
+                  <p className="text-[11px] text-amber-400/80">O totem multiplicará o peso lido na balança pelo preço por Kg.</p>
+                )}
+              </div>
               <div>
-                <label className="text-xs text-muted-foreground mb-1 block">Preço (R$)</label>
-                <input placeholder="Ex: 25.90" type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço (R$)'}</label>
+                <input placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'} type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>

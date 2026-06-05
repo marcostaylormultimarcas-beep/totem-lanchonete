@@ -31,6 +31,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
+  const [balancaBaud, setBalancaBaud] = useState(9600);
 
   useEffect(() => {
     if (!orgId) return;

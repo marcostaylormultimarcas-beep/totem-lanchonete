@@ -111,6 +111,7 @@ const AdminPage = () => {
           manageStock: Boolean(p.manage_stock),
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
+          soldByWeight: Boolean((p as any).sold_by_weight),
         })));
       }
     };

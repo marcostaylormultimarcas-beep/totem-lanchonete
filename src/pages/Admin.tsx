@@ -549,6 +549,7 @@ const AdminPage = () => {
       manage_stock: form.manageStock,
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
+      sold_by_weight: form.soldByWeight,
     };
 
     if (editingProduct) {
@@ -556,6 +557,7 @@ const AdminPage = () => {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
+        soldByWeight: dbPayload.sold_by_weight,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -571,6 +573,7 @@ const AdminPage = () => {
           manageStock: Boolean((data as any).manage_stock),
           stockQuantity: Number((data as any).stock_quantity ?? 0),
           lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
+          soldByWeight: Boolean((data as any).sold_by_weight),
         }]);
       }
     }

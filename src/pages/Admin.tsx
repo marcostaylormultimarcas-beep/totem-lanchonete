@@ -215,6 +215,8 @@ const AdminPage = () => {
       fiscal_regime: s.fiscalRegime || '',
       fiscal_csc: s.fiscalCsc || '',
       fiscal_token: s.fiscalToken || '',
+      balanca_modelo: s.balancaModelo || 'generic',
+      balanca_baud_rate: s.balancaBaudRate || 9600,
     };
     if (settingsId) {
       await supabase.from('settings').update(payload).eq('id', settingsId);

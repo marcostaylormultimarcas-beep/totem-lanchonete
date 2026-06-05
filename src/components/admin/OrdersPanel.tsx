@@ -407,9 +407,18 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
             </div>
 
             <div className="text-xs space-y-0.5 bg-muted/50 rounded-lg p-2">
-              {(order.items as any[]).map((item: any, i: number) => (
-                <p key={i}>{item.quantity}x {item.name} — {formatCurrency(item.total)}</p>
-              ))}
+              {(order.items as any[]).map((item: any, i: number) => {
+                if (item.sold_by_weight && item.weight_kg) {
+                  const kg = Number(item.weight_kg).toFixed(3).replace('.', ',');
+                  const pk = Number(item.price_per_kg || item.price || 0);
+                  return (
+                    <p key={i} className="text-amber-400">
+                      ⚖️ {item.name} — {kg} kg × {formatCurrency(pk)}/kg = <span className="font-bold">{formatCurrency(item.total)}</span>
+                    </p>
+                  );
+                }
+                return <p key={i}>{item.quantity}x {item.name} — {formatCurrency(item.total)}</p>;
+              })}
             </div>
 
             {isDelivery && order.status !== 'cancelled' && order.status !== 'delivered' && (

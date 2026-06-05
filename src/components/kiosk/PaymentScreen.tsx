@@ -178,6 +178,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         total: getItemTotal(item),
         removedIngredients: item.removedIngredients,
         extras: item.selectedExtras.map(e => e.name),
+        weight_kg: item.weightKg ?? null,
+        price_per_kg: item.weightKg ? item.product.price : null,
+        sold_by_weight: Boolean(item.weightKg),
       }));
 
       // Get current user if logged in

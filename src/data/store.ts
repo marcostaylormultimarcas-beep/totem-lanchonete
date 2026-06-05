@@ -105,6 +105,10 @@ export interface StoreSettings {
   fiscalRegime?: string;
   fiscalCsc?: string;
   fiscalToken?: string;
+  /** Marca da balança conectada via Web Serial (Toledo, Filizola, Urano, Elgin, Genérica) */
+  balancaModelo?: 'toledo' | 'filizola' | 'urano' | 'elgin' | 'generic';
+  /** Velocidade serial da balança (9600 ou 4800) */
+  balancaBaudRate?: number;
 }
 
 // localStorage functions removed — all data now lives in Supabase

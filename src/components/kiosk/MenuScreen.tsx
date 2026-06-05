@@ -31,13 +31,14 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
+  const [balancaBaud, setBalancaBaud] = useState(9600);
 
   useEffect(() => {
     if (!orgId) return;
     const fetchData = async () => {
       const [{ data: prods }, { data: settingsData }] = await Promise.all([
         supabase.from('products').select('*').eq('organization_id', orgId),
-        supabase.from('settings').select('combo, categories').eq('organization_id', orgId).maybeSingle(),
+        supabase.from('settings').select('combo, categories, balanca_baud_rate, balanca_modelo').eq('organization_id', orgId).maybeSingle(),
       ]);
       if (prods) {
         setProducts(prods.map((p: any) => ({
@@ -45,9 +46,12 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          soldByWeight: Boolean(p.sold_by_weight),
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);
+      const baud = Number((settingsData as any)?.balanca_baud_rate ?? 9600);
+      if (baud) setBalancaBaud(baud);
       const cats = (settingsData as any)?.categories as CategoryItem[] | undefined;
       if (cats && cats.length > 0) {
         setCategories(cats);
@@ -252,7 +256,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
+        <ProductModal product={selectedProduct} baudRate={balancaBaud} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
       {showUpsell && (
         <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />

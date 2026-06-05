@@ -1049,6 +1049,7 @@ export type Database = {
           organization_id: string | null
           price: number
           removable_ingredients: Json
+          sold_by_weight: boolean
           stock_quantity: number
           updated_at: string
         }
@@ -1068,6 +1069,7 @@ export type Database = {
           organization_id?: string | null
           price?: number
           removable_ingredients?: Json
+          sold_by_weight?: boolean
           stock_quantity?: number
           updated_at?: string
         }
@@ -1087,6 +1089,7 @@ export type Database = {
           organization_id?: string | null
           price?: number
           removable_ingredients?: Json
+          sold_by_weight?: boolean
           stock_quantity?: number
           updated_at?: string
         }
@@ -1267,6 +1270,8 @@ export type Database = {
       }
       settings: {
         Row: {
+          balanca_baud_rate: number
+          balanca_modelo: string
           banners: Json
           business_hours: Json
           categories: Json
@@ -1319,6 +1324,8 @@ export type Database = {
           whatsapp_number: string
         }
         Insert: {
+          balanca_baud_rate?: number
+          balanca_modelo?: string
           banners?: Json
           business_hours?: Json
           categories?: Json
@@ -1371,6 +1378,8 @@ export type Database = {
           whatsapp_number?: string
         }
         Update: {
+          balanca_baud_rate?: number
+          balanca_modelo?: string
           banners?: Json
           business_hours?: Json
           categories?: Json

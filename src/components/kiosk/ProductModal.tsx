@@ -7,15 +7,16 @@ interface ProductModalProps {
   product: Product;
   onAdd: (item: CartItem) => void;
   onClose: () => void;
+  baudRate?: number;
 }
 
-const ProductModal = ({ product, onAdd, onClose }: ProductModalProps) => {
+const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModalProps) => {
   const [quantity, setQuantity] = useState(1);
   const [removedIngredients, setRemovedIngredients] = useState<string[]>([]);
   const [selectedExtras, setSelectedExtras] = useState<{ name: string; price: number }[]>([]);
 
   const byWeight = isByWeight(product);
-  const balanca = useBalanca(9600);
+  const balanca = useBalanca(baudRate);
 
   const toggleIngredient = (ing: string) => {
     setRemovedIngredients(prev =>

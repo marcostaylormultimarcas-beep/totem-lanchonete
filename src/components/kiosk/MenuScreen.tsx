@@ -256,7 +256,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
+        <ProductModal product={selectedProduct} baudRate={balancaBaud} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
       {showUpsell && (
         <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />

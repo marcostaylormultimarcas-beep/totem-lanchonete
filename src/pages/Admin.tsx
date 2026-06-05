@@ -176,6 +176,8 @@ const AdminPage = () => {
           fiscalRegime: (data as any).fiscal_regime || '',
           fiscalCsc: (data as any).fiscal_csc || '',
           fiscalToken: (data as any).fiscal_token || '',
+          balancaModelo: ((data as any).balanca_modelo as any) || 'generic',
+          balancaBaudRate: Number((data as any).balanca_baud_rate ?? 9600),
         });
       } else {
         setSettingsId(null);

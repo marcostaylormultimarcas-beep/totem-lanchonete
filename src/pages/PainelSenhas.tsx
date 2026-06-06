@@ -53,11 +53,7 @@ const PainelSenhas = () => {
   const atual = senhas[0];
   const anteriores = senhas.slice(1, 5);
 
-  const senhaRef = useRef<HTMLDivElement>(null);
-  const senhaSize = useFitty(senhaRef, atual?.numero || '\u2014', 24, 22);
-
-  const dashRef = useRef<HTMLDivElement>(null);
-  const dashSize = useFitty(dashRef, '\u2014', 24, 16);
+  // (responsivo via classes Tailwind, sem cálculo dinâmico)
 
   // Relógio
   useEffect(() => {

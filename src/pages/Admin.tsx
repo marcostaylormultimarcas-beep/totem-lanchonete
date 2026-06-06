@@ -1134,7 +1134,12 @@ const AdminPage = () => {
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Preview:</span>
                     {isImageUrl(banner.image) ? (
-                      <img src={banner.image} alt="Preview" className="w-16 h-16 object-cover rounded-lg" />
+                      <img
+                        src={banner.image}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-lg filter-none opacity-100"
+                        style={{ colorScheme: 'light', forcedColorAdjust: 'none', filter: 'none', mixBlendMode: 'normal', backgroundColor: 'transparent' } as React.CSSProperties}
+                      />
                     ) : (
                       <span className="text-3xl">{banner.image}</span>
                     )}
@@ -1323,7 +1328,12 @@ const AdminPage = () => {
             {settings.coverImage && (
               <div className="mt-2">
                 <span className="text-xs text-muted-foreground">Preview:</span>
-                <img src={settings.coverImage} alt="Capa preview" className="w-full h-32 object-cover rounded-lg mt-1" />
+                <img
+                  src={settings.coverImage}
+                  alt="Capa preview"
+                  className="w-full h-32 object-cover rounded-lg mt-1 filter-none opacity-100"
+                  style={{ colorScheme: 'light', forcedColorAdjust: 'none', filter: 'none', mixBlendMode: 'normal', backgroundColor: 'transparent' } as React.CSSProperties}
+                />
               </div>
             )}
           </div>

@@ -216,7 +216,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                   i === activeBanner ? 'opacity-100 translate-x-0' : i < activeBanner ? 'opacity-0 -translate-x-full' : 'opacity-0 translate-x-full'
                 }`}>
                 {isUrl(banner.image) ? (
-                  <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" />
+                  <img
+                    src={banner.image}
+                    alt={banner.title || 'Banner'}
+                    className="w-full h-full object-cover filter-none opacity-100"
+                    style={{ colorScheme: 'light', forcedColorAdjust: 'none', filter: 'none', mixBlendMode: 'normal', backgroundColor: 'transparent' } as React.CSSProperties}
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-6xl"
                     style={{

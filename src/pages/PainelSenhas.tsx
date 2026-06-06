@@ -169,9 +169,7 @@ const PainelSenhas = () => {
           {atual ? (
             <>
               <div
-                ref={senhaRef}
-                className="text-amber-500 font-black leading-none tracking-tight pulse-num w-full max-w-full break-words"
-                style={{ fontSize: senhaSize }}
+                className="text-amber-500 font-black leading-none tracking-tight pulse-num w-full max-w-full break-all text-center px-4 text-[12vw] sm:text-[15vw] md:text-8xl lg:text-[12rem]"
               >
                 {atual.numero}
               </div>
@@ -182,11 +180,7 @@ const PainelSenhas = () => {
               )}
             </>
           ) : (
-            <div
-              ref={dashRef}
-              className="text-zinc-700 font-black w-full max-w-full break-words"
-              style={{ fontSize: dashSize }}
-            >
+            <div className="text-zinc-700 font-black w-full max-w-full break-all text-center px-4 text-[12vw] sm:text-[15vw] md:text-8xl lg:text-[12rem]">
               —
             </div>
           )}
@@ -203,11 +197,11 @@ const PainelSenhas = () => {
             )}
             {anteriores.map((s) => (
               <div key={s.id}
-                className="flex items-baseline justify-between px-3 md:px-5 py-2 md:py-3 rounded-xl md:rounded-2xl bg-zinc-950/60 border border-zinc-800/80">
-                <span className="text-zinc-400 font-black tracking-tight text-3xl md:text-[clamp(2rem,4vw,3.5rem)] break-words max-w-[70%] leading-none">
+                className="flex flex-col xs:flex-row items-center xs:items-baseline justify-between gap-1 xs:gap-2 px-3 md:px-5 py-2 md:py-3 rounded-xl md:rounded-2xl bg-zinc-950/60 border border-zinc-800/80 w-full min-w-0">
+                <span className="text-zinc-400 font-black tracking-tight text-2xl sm:text-3xl md:text-[clamp(2rem,4vw,3.5rem)] break-all leading-none min-w-0 max-w-full text-center xs:text-left">
                   {s.numero}
                 </span>
-                <span className="text-zinc-600 font-mono text-sm md:text-lg tabular-nums shrink-0 ml-2">
+                <span className="text-zinc-600 font-mono text-xs sm:text-sm md:text-lg tabular-nums shrink-0">
                   {new Date(s.called_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>

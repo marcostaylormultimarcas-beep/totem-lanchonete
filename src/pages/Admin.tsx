@@ -995,7 +995,12 @@ const AdminPage = () => {
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Preview:</span>
                     {isImageUrl(form.image) ? (
-                      <img src={form.image} alt="Preview" className="w-16 h-16 object-cover rounded-lg" />
+                      <img
+                        src={form.image}
+                        alt="Preview"
+                        className="w-16 h-16 object-cover rounded-lg invert-0 dark:invert-0 filter-none"
+                        style={{ filter: 'none', mixBlendMode: 'normal', colorScheme: 'light', forcedColorAdjust: 'none', backgroundColor: 'transparent', opacity: 1 } as React.CSSProperties}
+                      />
                     ) : (
                       <span className="text-3xl">{form.image}</span>
                     )}

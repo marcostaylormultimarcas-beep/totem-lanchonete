@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -9,87 +9,36 @@ interface SenhaRow {
   called_at: string;
 }
 
+const playSingleChime = (ctx: AudioContext) => {
+  const now = ctx.currentTime;
+  const beep = (start: number, freq: number, dur = 0.2) => {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, now + start);
+    g.gain.exponentialRampToValueAtTime(1.0, now + start + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(now + start);
+    o.stop(now + start + dur + 0.05);
+  };
+  beep(0, 1175);
+  beep(0.22, 1568);
+};
+
 const playChime = () => {
   try {
     const Ctx = (window.AudioContext || (window as any).webkitAudioContext);
     if (!Ctx) return;
     const ctx = new Ctx();
-    const now = ctx.currentTime;
-    const beep = (start: number, freq: number, dur = 0.18) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'sine';
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, now + start);
-      g.gain.exponentialRampToValueAtTime(0.45, now + start + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
-      o.connect(g).connect(ctx.destination);
-      o.start(now + start);
-      o.stop(now + start + dur + 0.05);
-    };
-    beep(0, 1175);
-    beep(0.22, 1568);
-    setTimeout(() => ctx.close().catch(() => {}), 1200);
+    // Repete 3 vezes com intervalo de ~700ms entre cada apito
+    playSingleChime(ctx);
+    setTimeout(() => playSingleChime(ctx), 700);
+    setTimeout(() => playSingleChime(ctx), 1400);
+    setTimeout(() => ctx.close().catch(() => {}), 2600);
   } catch {}
 };
-
-/* ─── ajusta font-size para que o texto caiba dentro do container ─── */
-function useFitty(containerRef: React.RefObject<HTMLDivElement>, text: string, minPx = 24, maxVw = 22) {
-  const [fontSize, setFontSize] = useState(`${maxVw}vw`);
-
-  const fit = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const parent = el.parentElement as HTMLElement;
-    if (!parent) return;
-
-    // tenta começar com a fonte em vw e reduz proporcionalmente
-    const maxW = parent.clientWidth - 32; // px-4 de folga
-    const maxH = parent.clientHeight;
-
-    let lo = minPx;
-    let hi = Math.min(window.innerWidth * (maxVw / 100), maxH * 0.8);
-    let best = lo;
-
-    // cria um medidor escondido com o mesmo estilo
-    const measure = document.createElement('span');
-    measure.style.visibility = 'hidden';
-    measure.style.position = 'absolute';
-    measure.style.whiteSpace = 'nowrap';
-    measure.style.fontFamily = getComputedStyle(el).fontFamily;
-    measure.style.fontWeight = getComputedStyle(el).fontWeight;
-    measure.style.letterSpacing = getComputedStyle(el).letterSpacing;
-    measure.textContent = text || '\u2014';
-    document.body.appendChild(measure);
-
-    for (let i = 0; i < 20; i++) {
-      const mid = (lo + hi) / 2;
-      measure.style.fontSize = `${mid}px`;
-      if (measure.scrollWidth <= maxW && measure.scrollHeight <= maxH) {
-        best = mid;
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-    document.body.removeChild(measure);
-    setFontSize(`${best}px`);
-  }, [containerRef, text, minPx, maxVw]);
-
-  useEffect(() => {
-    fit();
-    const ro = new ResizeObserver(() => fit());
-    const parent = containerRef.current?.parentElement;
-    if (parent) ro.observe(parent);
-    window.addEventListener('resize', fit);
-    return () => {
-      if (parent) ro.unobserve(parent);
-      window.removeEventListener('resize', fit);
-    };
-  }, [fit, containerRef]);
-
-  return fontSize;
-}
 
 const PainelSenhas = () => {
   const { slug } = useParams<{ slug: string }>();

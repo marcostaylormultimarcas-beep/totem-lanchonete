@@ -357,6 +357,7 @@ const AdminPage = () => {
     ingredients: '', description: '',
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
     soldByWeight: false,
+    codigoBarras: '',
   });
 
   // Carrega sessão atual e contexto do admin

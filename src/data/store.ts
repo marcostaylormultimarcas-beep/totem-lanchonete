@@ -14,6 +14,8 @@ export interface Product {
   lowStockThreshold?: number;
   /** Marcado pelo lojista: produto vendido por quilo (balança) */
   soldByWeight?: boolean;
+  /** Código de barras EAN/UPC capturado por leitor */
+  codigoBarras?: string;
 }
 
 

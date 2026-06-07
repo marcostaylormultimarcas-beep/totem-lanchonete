@@ -1,6 +1,6 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import CrmPanel from '@/components/admin/CrmPanel';
 import ClientesLeadsPanel from '@/components/admin/ClientesLeadsPanel';
@@ -119,6 +119,7 @@ const AdminPage = () => {
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
           soldByWeight: Boolean((p as any).sold_by_weight),
+          codigoBarras: (p as any).codigo_barras || '',
         })));
       }
     };
@@ -357,6 +358,7 @@ const AdminPage = () => {
     ingredients: '', description: '',
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
     soldByWeight: false,
+    codigoBarras: '',
   });
 
   // Carrega sessão atual e contexto do admin
@@ -498,7 +500,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -518,6 +520,7 @@ const AdminPage = () => {
       stockQuantity: String(p.stockQuantity ?? 0),
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
       soldByWeight: Boolean(p.soldByWeight),
+      codigoBarras: (p as any).codigoBarras || '',
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -570,6 +573,7 @@ const AdminPage = () => {
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
       sold_by_weight: form.soldByWeight,
+      codigo_barras: form.codigoBarras.trim() || null,
     };
 
     if (editingProduct) {
@@ -578,6 +582,7 @@ const AdminPage = () => {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
         soldByWeight: dbPayload.sold_by_weight,
+        codigoBarras: dbPayload.codigo_barras || '',
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -594,6 +599,7 @@ const AdminPage = () => {
           stockQuantity: Number((data as any).stock_quantity ?? 0),
           lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
           soldByWeight: Boolean((data as any).sold_by_weight),
+          codigoBarras: (data as any).codigo_barras || '',
         }]);
       }
     }
@@ -983,6 +989,34 @@ const AdminPage = () => {
                 {form.soldByWeight && (
                   <p className="text-[11px] text-amber-400/80">O totem multiplicará o peso lido na balança pelo preço por Kg.</p>
                 )}
+              </div>
+              {/* Código de Barras (EAN) — leitor físico */}
+              <div className="rounded-xl p-3 bg-zinc-900 border border-zinc-800 space-y-2">
+                <label className="text-xs text-zinc-400 block">Código de Barras (EAN)</label>
+                <div className="relative">
+                  <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" size={18} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Bipe ou digite o EAN-13"
+                    value={form.codigoBarras}
+                    onChange={e => setForm({ ...form, codigoBarras: e.target.value.replace(/\D/g, '').slice(0, 14) })}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const v = (e.target as HTMLInputElement).value.replace(/\D/g, '');
+                        if (v.length >= 8 && v.length <= 14) {
+                          setForm(f => ({ ...f, codigoBarras: v }));
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }
+                    }}
+                    maxLength={14}
+                    className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-800 text-white rounded-lg outline-none focus:ring-2 focus:ring-amber-500 font-mono tracking-wider"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500">Foque neste campo e bipe o produto. O leitor envia o código e pressiona Enter automaticamente.</p>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço (R$)'}</label>

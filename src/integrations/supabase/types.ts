@@ -1036,6 +1036,7 @@ export type Database = {
         Row: {
           available: boolean
           category: string
+          codigo_barras: string | null
           created_at: string
           description: string
           extras: Json
@@ -1056,6 +1057,7 @@ export type Database = {
         Insert: {
           available?: boolean
           category?: string
+          codigo_barras?: string | null
           created_at?: string
           description?: string
           extras?: Json
@@ -1076,6 +1078,7 @@ export type Database = {
         Update: {
           available?: boolean
           category?: string
+          codigo_barras?: string | null
           created_at?: string
           description?: string
           extras?: Json

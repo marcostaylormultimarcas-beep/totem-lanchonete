@@ -990,6 +990,34 @@ const AdminPage = () => {
                   <p className="text-[11px] text-amber-400/80">O totem multiplicará o peso lido na balança pelo preço por Kg.</p>
                 )}
               </div>
+              {/* Código de Barras (EAN) — leitor físico */}
+              <div className="rounded-xl p-3 bg-zinc-900 border border-zinc-800 space-y-2">
+                <label className="text-xs text-zinc-400 block">Código de Barras (EAN)</label>
+                <div className="relative">
+                  <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-500" size={18} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Bipe ou digite o EAN-13"
+                    value={form.codigoBarras}
+                    onChange={e => setForm({ ...form, codigoBarras: e.target.value.replace(/\D/g, '').slice(0, 14) })}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const v = (e.target as HTMLInputElement).value.replace(/\D/g, '');
+                        if (v.length >= 8 && v.length <= 14) {
+                          setForm(f => ({ ...f, codigoBarras: v }));
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }
+                    }}
+                    maxLength={14}
+                    className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-800 text-white rounded-lg outline-none focus:ring-2 focus:ring-amber-500 font-mono tracking-wider"
+                  />
+                </div>
+                <p className="text-[11px] text-zinc-500">Foque neste campo e bipe o produto. O leitor envia o código e pressiona Enter automaticamente.</p>
+              </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço (R$)'}</label>
                 <input placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'} type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />

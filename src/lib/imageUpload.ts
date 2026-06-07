@@ -12,6 +12,8 @@ export interface ImageUploadOptions {
   kind?: ImageKind;
   /** Quando true, aplica ajuste leve de contraste/saturação ("Dark Premium"). Padrão: true */
   enhance?: boolean;
+  /** Quando true, envia o arquivo original sem canvas/conversão/compressão */
+  preserveOriginal?: boolean;
 }
 
 const MAX_DIM_DEFAULT = 800;
@@ -125,6 +127,28 @@ function processImage(file: File, kind: ImageKind, enhance: boolean): Promise<Bl
   });
 }
 
+function getOriginalExtension(file: File): string {
+  const fromName = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (fromName) return fromName;
+
+  switch (file.type) {
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/avif':
+      return 'avif';
+    case 'image/heic':
+      return 'heic';
+    default:
+      return 'bin';
+  }
+}
+
 /**
  * Soma o tamanho (bytes) de todos os arquivos da loja no bucket de imagens.
  */
@@ -157,19 +181,21 @@ export async function uploadProductImage(
   if (!orgId) throw new Error('Loja não identificada para upload.');
   const kind = options.kind ?? 'product';
   const enhance = options.enhance ?? true;
-
-  const optimized = await processImage(file, kind, enhance);
+  const preserveOriginal = options.preserveOriginal ?? false;
+  const uploadPayload = preserveOriginal ? file : await processImage(file, kind, enhance);
+  const contentType = preserveOriginal ? (file.type || 'application/octet-stream') : 'image/webp';
+  const fileExtension = preserveOriginal ? getOriginalExtension(file) : 'webp';
 
   // Validação: total atual + novo arquivo
   const used = await getOrgStorageUsage(orgId);
-  if (used + optimized.size > STORAGE_LIMIT_BYTES) {
+  if (used + uploadPayload.size > STORAGE_LIMIT_BYTES) {
     throw new StorageLimitError();
   }
 
-  const fileName = `${orgId}/${crypto.randomUUID()}.webp`;
+  const fileName = `${orgId}/${crypto.randomUUID()}.${fileExtension}`;
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(fileName, optimized, { contentType: 'image/webp', upsert: true });
+    .upload(fileName, uploadPayload, { contentType, upsert: true });
 
   if (error) throw error;
 

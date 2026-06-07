@@ -573,6 +573,7 @@ const AdminPage = () => {
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
       sold_by_weight: form.soldByWeight,
+      codigo_barras: form.codigoBarras.trim() || null,
     };
 
     if (editingProduct) {

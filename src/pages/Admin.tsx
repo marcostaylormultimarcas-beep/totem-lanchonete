@@ -599,6 +599,7 @@ const AdminPage = () => {
           stockQuantity: Number((data as any).stock_quantity ?? 0),
           lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
           soldByWeight: Boolean((data as any).sold_by_weight),
+          codigoBarras: (data as any).codigo_barras || '',
         }]);
       }
     }

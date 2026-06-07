@@ -98,6 +98,12 @@ const AdminPage = () => {
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
   const [productPreviewUrl, setProductPreviewUrl] = useState<string | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    };
+  }, [productPreviewUrl]);
+
   // Load products from Supabase (scoped by activeOrgId)
   useEffect(() => {
     if (!activeOrgId) { setProducts([]); return; }

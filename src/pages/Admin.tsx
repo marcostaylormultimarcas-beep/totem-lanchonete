@@ -1005,13 +1005,22 @@ const AdminPage = () => {
                   </label>
                   <input placeholder="Ou emoji: 🍔" value={isImageUrl(form.image) ? '' : form.image} onChange={e => setForm({ ...form, image: e.target.value })} className="w-24 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
                 </div>
-                {form.image && (
+                {(productPreviewUrl || form.image) && (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Preview:</span>
-                    {isImageUrl(form.image) ? (
+                    {productPreviewUrl ? (
+                      <img
+                        src={productPreviewUrl}
+                        alt="Preview"
+                        decoding="async"
+                        className="w-16 h-16 object-cover rounded-lg invert-0 dark:invert-0 filter-none"
+                        style={{ filter: 'none', mixBlendMode: 'normal', colorScheme: 'light', forcedColorAdjust: 'none', backgroundColor: 'transparent', opacity: 1 } as React.CSSProperties}
+                      />
+                    ) : isImageUrl(form.image) ? (
                       <img
                         src={form.image}
                         alt="Preview"
+                        decoding="async"
                         className="w-16 h-16 object-cover rounded-lg invert-0 dark:invert-0 filter-none"
                         style={{ filter: 'none', mixBlendMode: 'normal', colorScheme: 'light', forcedColorAdjust: 'none', backgroundColor: 'transparent', opacity: 1 } as React.CSSProperties}
                       />

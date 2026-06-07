@@ -96,6 +96,7 @@ const AdminPage = () => {
   const [masterError, setMasterError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
+  const [productPreviewUrl, setProductPreviewUrl] = useState<string | null>(null);
 
   // Load products from Supabase (scoped by activeOrgId)
   useEffect(() => {
@@ -489,12 +490,18 @@ const AdminPage = () => {
 
 
   const resetForm = () => {
+    if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    setProductPreviewUrl(null);
     setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false });
     setEditingProduct(null);
     setShowForm(false);
   };
 
   const editProduct = (p: Product) => {
+    if (productPreviewUrl) {
+      URL.revokeObjectURL(productPreviewUrl);
+      setProductPreviewUrl(null);
+    }
     setForm({
       name: p.name, price: p.price.toString(), category: p.category,
       image: p.image, removableIngredients: p.removableIngredients.join(', '),
@@ -513,15 +520,22 @@ const AdminPage = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    const url = URL.createObjectURL(file);
+    console.log('URL do Preview:', url);
+    setProductPreviewUrl(url);
     setUploading(true);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
-      setForm(prev => ({ ...prev, image: url }));
+      const uploadedUrl = await uploadProductImage(file, activeOrgId!, { preserveOriginal: true });
+      setForm(prev => ({ ...prev, image: uploadedUrl }));
     } catch (err) {
       alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
       console.error(err);
+      URL.revokeObjectURL(url);
+      setProductPreviewUrl(null);
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 

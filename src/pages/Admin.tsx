@@ -119,6 +119,7 @@ const AdminPage = () => {
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
           soldByWeight: Boolean((p as any).sold_by_weight),
+          codigoBarras: (p as any).codigo_barras || '',
         })));
       }
     };

@@ -582,6 +582,7 @@ const AdminPage = () => {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
         soldByWeight: dbPayload.sold_by_weight,
+        codigoBarras: dbPayload.codigo_barras || '',
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();

@@ -499,7 +499,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '' });
     setEditingProduct(null);
     setShowForm(false);
   };

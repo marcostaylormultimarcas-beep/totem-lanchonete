@@ -96,6 +96,13 @@ const AdminPage = () => {
   const [masterError, setMasterError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadingBannerIdx, setUploadingBannerIdx] = useState<number | null>(null);
+  const [productPreviewUrl, setProductPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    };
+  }, [productPreviewUrl]);
 
   // Load products from Supabase (scoped by activeOrgId)
   useEffect(() => {
@@ -489,12 +496,18 @@ const AdminPage = () => {
 
 
   const resetForm = () => {
+    if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    setProductPreviewUrl(null);
     setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false });
     setEditingProduct(null);
     setShowForm(false);
   };
 
   const editProduct = (p: Product) => {
+    if (productPreviewUrl) {
+      URL.revokeObjectURL(productPreviewUrl);
+      setProductPreviewUrl(null);
+    }
     setForm({
       name: p.name, price: p.price.toString(), category: p.category,
       image: p.image, removableIngredients: p.removableIngredients.join(', '),
@@ -513,15 +526,22 @@ const AdminPage = () => {
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
+    const url = URL.createObjectURL(file);
+    console.log('URL do Preview:', url);
+    setProductPreviewUrl(url);
     setUploading(true);
     try {
-      const url = await uploadProductImage(file, activeOrgId!);
-      setForm(prev => ({ ...prev, image: url }));
+      const uploadedUrl = await uploadProductImage(file, activeOrgId!, { preserveOriginal: true });
+      setForm(prev => ({ ...prev, image: uploadedUrl }));
     } catch (err) {
       alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
       console.error(err);
+      URL.revokeObjectURL(url);
+      setProductPreviewUrl(null);
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -989,15 +1009,30 @@ const AdminPage = () => {
                     <span className="text-sm">{uploading ? 'Enviando...' : 'Subir Foto'}</span>
                     <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
                   </label>
-                  <input placeholder="Ou emoji: 🍔" value={isImageUrl(form.image) ? '' : form.image} onChange={e => setForm({ ...form, image: e.target.value })} className="w-24 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
+                  <input placeholder="Ou emoji: 🍔" value={isImageUrl(form.image) ? '' : form.image} onChange={e => {
+                    if (productPreviewUrl) {
+                      URL.revokeObjectURL(productPreviewUrl);
+                      setProductPreviewUrl(null);
+                    }
+                    setForm({ ...form, image: e.target.value });
+                  }} className="w-24 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
                 </div>
-                {form.image && (
+                {(productPreviewUrl || form.image) && (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Preview:</span>
-                    {isImageUrl(form.image) ? (
+                    {productPreviewUrl ? (
+                      <img
+                        src={productPreviewUrl}
+                        alt="Preview"
+                        decoding="async"
+                        className="w-16 h-16 object-cover rounded-lg invert-0 dark:invert-0 filter-none"
+                        style={{ filter: 'none', mixBlendMode: 'normal', colorScheme: 'light', forcedColorAdjust: 'none', backgroundColor: 'transparent', opacity: 1 } as React.CSSProperties}
+                      />
+                    ) : isImageUrl(form.image) ? (
                       <img
                         src={form.image}
                         alt="Preview"
+                        decoding="async"
                         className="w-16 h-16 object-cover rounded-lg invert-0 dark:invert-0 filter-none"
                         style={{ filter: 'none', mixBlendMode: 'normal', colorScheme: 'light', forcedColorAdjust: 'none', backgroundColor: 'transparent', opacity: 1 } as React.CSSProperties}
                       />

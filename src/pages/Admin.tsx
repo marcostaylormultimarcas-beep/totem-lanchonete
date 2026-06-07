@@ -1009,7 +1009,13 @@ const AdminPage = () => {
                     <span className="text-sm">{uploading ? 'Enviando...' : 'Subir Foto'}</span>
                     <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
                   </label>
-                  <input placeholder="Ou emoji: 🍔" value={isImageUrl(form.image) ? '' : form.image} onChange={e => setForm({ ...form, image: e.target.value })} className="w-24 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
+                  <input placeholder="Ou emoji: 🍔" value={isImageUrl(form.image) ? '' : form.image} onChange={e => {
+                    if (productPreviewUrl) {
+                      URL.revokeObjectURL(productPreviewUrl);
+                      setProductPreviewUrl(null);
+                    }
+                    setForm({ ...form, image: e.target.value });
+                  }} className="w-24 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-center text-2xl" maxLength={4} />
                 </div>
                 {(productPreviewUrl || form.image) && (
                   <div className="mt-2 flex items-center gap-2">

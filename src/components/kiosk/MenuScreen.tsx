@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
-import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
+import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
+import { toast } from 'sonner';
 
 interface MenuScreenProps {
   cart: CartItem[];

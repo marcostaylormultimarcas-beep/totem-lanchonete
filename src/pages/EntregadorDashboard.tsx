@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock } from 'lucide-react';
+import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin';
 import { formatCurrency } from '@/data/store';
+import LiveDeliveryMap from '@/components/LiveDeliveryMap';
+import { geocodeAddress } from '@/lib/cep';
 
 interface DeliveryOrder {
   id: string;

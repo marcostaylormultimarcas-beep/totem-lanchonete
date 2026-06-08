@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
+import LiveDeliveryMap from '@/components/LiveDeliveryMap';
+import { geocodeAddress } from '@/lib/cep';
 
 type PrintFormat = 'cupom' | 'a4';
 const PRINT_PREF_KEY = 'print_format_pref';
@@ -72,6 +74,47 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [dateTo, setDateTo] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [onlyLowStock, setOnlyLowStock] = useState(false);
+
+  // Live tracking modal
+  const [trackOrder, setTrackOrder] = useState<Order | null>(null);
+  const [trackRider, setTrackRider] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [trackDest, setTrackDest] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!trackOrder || !trackOrder.entregador_id) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from('entregadores' as any)
+        .select('last_lat,last_lng,last_location_at')
+        .eq('id', trackOrder.entregador_id)
+        .maybeSingle();
+      const row: any = data;
+      if (!cancelled && row?.last_lat != null && row?.last_lng != null) {
+        setTrackRider({ lat: Number(row.last_lat), lng: Number(row.last_lng), updatedAt: row.last_location_at });
+      }
+    };
+    load();
+    // geocode destino
+    if (trackOrder.delivery_address) {
+      geocodeAddress(trackOrder.delivery_address).then(c => { if (!cancelled && c) setTrackDest(c); });
+    }
+    const ch = supabase
+      .channel(`track-${trackOrder.entregador_id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'entregadores',
+        filter: `id=eq.${trackOrder.entregador_id}`,
+      }, (payload: any) => {
+        const r = payload.new;
+        if (r?.last_lat != null && r?.last_lng != null) {
+          setTrackRider({ lat: Number(r.last_lat), lng: Number(r.last_lng), updatedAt: r.last_location_at });
+        }
+      })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [trackOrder]);
+
+  const closeTrack = () => { setTrackOrder(null); setTrackRider(null); setTrackDest(null); };
 
   useEffect(() => {
     if (!organizationId) { setStoreName(''); setEntregadores([]); return; }
@@ -506,9 +549,44 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                 </button>
               </div>
             )}
+
+            {order.status === 'out_for_delivery' && order.entregador_id && (
+              <button
+                onClick={() => setTrackOrder(order)}
+                className="w-full touch-btn py-2.5 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black border border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)] hover:brightness-110 flex items-center justify-center gap-2"
+              >
+                <MapPin className="w-4 h-4" /> 📍 Ver Moto em Tempo Real
+              </button>
+            )}
           </div>
         );
       })}
+
+      {trackOrder && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={closeTrack}>
+          <div className="bg-zinc-950 border border-amber-500/40 rounded-2xl w-full max-w-3xl p-4 shadow-[0_0_40px_-5px_rgba(245,158,11,0.5)]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-black text-amber-400 flex items-center gap-2">
+                  <MapPin className="w-5 h-5" /> Rastreio em tempo real
+                </h3>
+                <p className="text-xs text-zinc-400">Pedido #{trackOrder.order_number} • {trackOrder.customer_name}</p>
+              </div>
+              <button onClick={closeTrack} className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400"><X className="w-4 h-4" /></button>
+            </div>
+            <LiveDeliveryMap
+              rider={trackRider}
+              destination={trackDest ? { ...trackDest, label: trackOrder.delivery_address || 'Destino' } : null}
+              height={460}
+            />
+            <p className="text-[11px] text-zinc-500 text-center mt-2">
+              {trackRider
+                ? `🛵 Última posição: ${trackRider.updatedAt ? new Date(trackRider.updatedAt).toLocaleTimeString('pt-BR') : '—'}`
+                : '⏳ Aguardando o entregador iniciar o rastreio no app...'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat === 'a4' ? 'print-a4' : 'print-cupom'} />
 

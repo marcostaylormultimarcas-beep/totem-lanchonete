@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock } from 'lucide-react';
+import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin';
 import { formatCurrency } from '@/data/store';
+import LiveDeliveryMap from '@/components/LiveDeliveryMap';
+import { geocodeAddress } from '@/lib/cep';
 
 interface DeliveryOrder {
   id: string;
@@ -44,6 +46,77 @@ const EntregadorDashboard = () => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
   const [, forceRender] = useState(0);
+  const [mapOpenId, setMapOpenId] = useState<string | null>(null);
+  const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const watchIdRef = useRef<number | null>(null);
+  const sendTimerRef = useRef<number | null>(null);
+  const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  const stopTracking = useCallback(() => {
+    if (watchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (sendTimerRef.current !== null) {
+      clearInterval(sendTimerRef.current);
+      sendTimerRef.current = null;
+    }
+  }, []);
+
+  const startTracking = useCallback((orderId: string) => {
+    if (!session) return;
+    if (!('geolocation' in navigator)) {
+      toast.error('Seu dispositivo não suporta geolocalização.');
+      return;
+    }
+    stopTracking();
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        lastSampleRef.current = { lat, lng };
+        setRiderPos({ lat, lng, updatedAt: new Date().toISOString() });
+      },
+      (err) => {
+        toast.error('Permissão de localização negada.');
+        console.warn('geolocation error', err);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+    // envia a cada 15s
+    const send = async () => {
+      const p = lastSampleRef.current;
+      if (!p) return;
+      await supabase.rpc('entregador_update_location' as any, {
+        _entregador_id: session.id,
+        _password: session.password,
+        _lat: p.lat,
+        _lng: p.lng,
+        _order_id: orderId,
+      });
+    };
+    sendTimerRef.current = window.setInterval(send, 15000);
+    // primeiro envio rápido
+    setTimeout(send, 2500);
+  }, [session, stopTracking]);
+
+  useEffect(() => () => stopTracking(), [stopTracking]);
+
+  const toggleMap = async (order: DeliveryOrder) => {
+    if (mapOpenId === order.id) {
+      setMapOpenId(null);
+      stopTracking();
+      return;
+    }
+    setMapOpenId(order.id);
+    setRiderPos(null);
+    startTracking(order.id);
+    if (order.delivery_address && !destCoords[order.id]) {
+      const coords = await geocodeAddress(order.delivery_address);
+      if (coords) setDestCoords(prev => ({ ...prev, [order.id]: coords }));
+    }
+  };
 
   useEffect(() => {
     if (!session) navigate('/entregador/login');
@@ -409,6 +482,26 @@ const EntregadorDashboard = () => {
                       </button>
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => toggleMap(o)}
+                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
+                  >
+                    <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : '🗺️ Abrir Rota no Mapa'}
+                  </button>
+
+                  {mapOpenId === o.id && (
+                    <div className="space-y-2">
+                      <LiveDeliveryMap
+                        rider={riderPos}
+                        destination={destCoords[o.id] ? { ...destCoords[o.id], label: o.delivery_address || 'Destino' } : null}
+                        height={300}
+                      />
+                      <p className="text-[11px] text-amber-400/90 text-center">
+                        📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })

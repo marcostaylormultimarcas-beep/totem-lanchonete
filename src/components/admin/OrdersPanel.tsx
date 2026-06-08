@@ -549,9 +549,44 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
                 </button>
               </div>
             )}
+
+            {order.status === 'out_for_delivery' && order.entregador_id && (
+              <button
+                onClick={() => setTrackOrder(order)}
+                className="w-full touch-btn py-2.5 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black border border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)] hover:brightness-110 flex items-center justify-center gap-2"
+              >
+                <MapPin className="w-4 h-4" /> 📍 Ver Moto em Tempo Real
+              </button>
+            )}
           </div>
         );
       })}
+
+      {trackOrder && (
+        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={closeTrack}>
+          <div className="bg-zinc-950 border border-amber-500/40 rounded-2xl w-full max-w-3xl p-4 shadow-[0_0_40px_-5px_rgba(245,158,11,0.5)]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="text-lg font-black text-amber-400 flex items-center gap-2">
+                  <MapPin className="w-5 h-5" /> Rastreio em tempo real
+                </h3>
+                <p className="text-xs text-zinc-400">Pedido #{trackOrder.order_number} • {trackOrder.customer_name}</p>
+              </div>
+              <button onClick={closeTrack} className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400"><X className="w-4 h-4" /></button>
+            </div>
+            <LiveDeliveryMap
+              rider={trackRider}
+              destination={trackDest ? { ...trackDest, label: trackOrder.delivery_address || 'Destino' } : null}
+              height={460}
+            />
+            <p className="text-[11px] text-zinc-500 text-center mt-2">
+              {trackRider
+                ? `🛵 Última posição: ${trackRider.updatedAt ? new Date(trackRider.updatedAt).toLocaleTimeString('pt-BR') : '—'}`
+                : '⏳ Aguardando o entregador iniciar o rastreio no app...'}
+            </p>
+          </div>
+        </div>
+      )}
 
       <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat === 'a4' ? 'print-a4' : 'print-cupom'} />
 

@@ -46,6 +46,77 @@ const EntregadorDashboard = () => {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
   const [, forceRender] = useState(0);
+  const [mapOpenId, setMapOpenId] = useState<string | null>(null);
+  const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const watchIdRef = useRef<number | null>(null);
+  const sendTimerRef = useRef<number | null>(null);
+  const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  const stopTracking = useCallback(() => {
+    if (watchIdRef.current !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (sendTimerRef.current !== null) {
+      clearInterval(sendTimerRef.current);
+      sendTimerRef.current = null;
+    }
+  }, []);
+
+  const startTracking = useCallback((orderId: string) => {
+    if (!session) return;
+    if (!('geolocation' in navigator)) {
+      toast.error('Seu dispositivo não suporta geolocalização.');
+      return;
+    }
+    stopTracking();
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        lastSampleRef.current = { lat, lng };
+        setRiderPos({ lat, lng, updatedAt: new Date().toISOString() });
+      },
+      (err) => {
+        toast.error('Permissão de localização negada.');
+        console.warn('geolocation error', err);
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+    );
+    // envia a cada 15s
+    const send = async () => {
+      const p = lastSampleRef.current;
+      if (!p) return;
+      await supabase.rpc('entregador_update_location' as any, {
+        _entregador_id: session.id,
+        _password: session.password,
+        _lat: p.lat,
+        _lng: p.lng,
+        _order_id: orderId,
+      });
+    };
+    sendTimerRef.current = window.setInterval(send, 15000);
+    // primeiro envio rápido
+    setTimeout(send, 2500);
+  }, [session, stopTracking]);
+
+  useEffect(() => () => stopTracking(), [stopTracking]);
+
+  const toggleMap = async (order: DeliveryOrder) => {
+    if (mapOpenId === order.id) {
+      setMapOpenId(null);
+      stopTracking();
+      return;
+    }
+    setMapOpenId(order.id);
+    setRiderPos(null);
+    startTracking(order.id);
+    if (order.delivery_address && !destCoords[order.id]) {
+      const coords = await geocodeAddress(order.delivery_address);
+      if (coords) setDestCoords(prev => ({ ...prev, [order.id]: coords }));
+    }
+  };
 
   useEffect(() => {
     if (!session) navigate('/entregador/login');

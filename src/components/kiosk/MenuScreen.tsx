@@ -48,6 +48,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
           soldByWeight: Boolean(p.sold_by_weight),
+          codigoBarras: p.codigo_barras || undefined,
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);

@@ -75,6 +75,47 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [productQuery, setProductQuery] = useState('');
   const [onlyLowStock, setOnlyLowStock] = useState(false);
 
+  // Live tracking modal
+  const [trackOrder, setTrackOrder] = useState<Order | null>(null);
+  const [trackRider, setTrackRider] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [trackDest, setTrackDest] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (!trackOrder || !trackOrder.entregador_id) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data } = await supabase
+        .from('entregadores' as any)
+        .select('last_lat,last_lng,last_location_at')
+        .eq('id', trackOrder.entregador_id)
+        .maybeSingle();
+      const row: any = data;
+      if (!cancelled && row?.last_lat != null && row?.last_lng != null) {
+        setTrackRider({ lat: Number(row.last_lat), lng: Number(row.last_lng), updatedAt: row.last_location_at });
+      }
+    };
+    load();
+    // geocode destino
+    if (trackOrder.delivery_address) {
+      geocodeAddress(trackOrder.delivery_address).then(c => { if (!cancelled && c) setTrackDest(c); });
+    }
+    const ch = supabase
+      .channel(`track-${trackOrder.entregador_id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'entregadores',
+        filter: `id=eq.${trackOrder.entregador_id}`,
+      }, (payload: any) => {
+        const r = payload.new;
+        if (r?.last_lat != null && r?.last_lng != null) {
+          setTrackRider({ lat: Number(r.last_lat), lng: Number(r.last_lng), updatedAt: r.last_location_at });
+        }
+      })
+      .subscribe();
+    return () => { cancelled = true; supabase.removeChannel(ch); };
+  }, [trackOrder]);
+
+  const closeTrack = () => { setTrackOrder(null); setTrackRider(null); setTrackDest(null); };
+
   useEffect(() => {
     if (!organizationId) { setStoreName(''); setEntregadores([]); return; }
     supabase.from('settings').select('store_name').eq('organization_id', organizationId).maybeSingle()

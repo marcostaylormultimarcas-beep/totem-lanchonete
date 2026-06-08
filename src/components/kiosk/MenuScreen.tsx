@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
-import { getItemTotal, CartItem, Product, CategoryItem } from '@/data/store';
+import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
+import { toast } from 'sonner';
 
 interface MenuScreenProps {
   cart: CartItem[];
@@ -47,6 +48,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
           soldByWeight: Boolean(p.sold_by_weight),
+          codigoBarras: p.codigo_barras || undefined,
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);
@@ -69,6 +71,90 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       onInitialProductHandled?.();
     }
   }, [initialProduct, onInitialProductHandled]);
+
+  // === Leitor global de código de barras (scanner físico USB/Bluetooth) ===
+  const scanBufferRef = useRef<string>('');
+  const lastKeyTimeRef = useRef<number>(0);
+
+  const playScanBeep = () => {
+    try {
+      const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(2100, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.13);
+      setTimeout(() => ctx.close(), 200);
+    } catch {}
+  };
+
+  const handleBarcodeScanned = (code: string) => {
+    const clean = code.replace(/\D/g, '');
+    if (clean.length < 6) return;
+    const product = products.find(p => (p.codigoBarras || '').replace(/\D/g, '') === clean);
+    if (!product) {
+      toast.error(`Código ${clean} não encontrado`, {
+        style: { background: '#18181b', color: '#fbbf24', border: '1px solid #27272a' },
+      });
+      return;
+    }
+    playScanBeep();
+    if (isByWeight(product)) {
+      setActiveCategory(product.category);
+      setSelectedProduct(product);
+      toast(`⚖️ Pese: ${product.name}`, {
+        style: { background: '#18181b', color: '#fbbf24', border: '1px solid #27272a' },
+      });
+      return;
+    }
+    const item: CartItem = {
+      id: crypto.randomUUID(),
+      product,
+      quantity: 1,
+      removedIngredients: [],
+      selectedExtras: [],
+    };
+    onAddToCart(item);
+    toast(`🛒 ${product.name} adicionado ao carrinho!`, {
+      style: { background: '#18181b', color: '#fbbf24', border: '1px solid #27272a' },
+    });
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const editing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+      const now = Date.now();
+      const delta = now - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = now;
+
+      if (e.key === 'Enter') {
+        const buf = scanBufferRef.current;
+        scanBufferRef.current = '';
+        if (buf.length >= 6 && !editing) {
+          e.preventDefault();
+          handleBarcodeScanned(buf);
+        }
+        return;
+      }
+      if (e.key.length !== 1) return;
+      // Scanners emit characters very fast (<30ms typical between keys)
+      if (delta > 80) scanBufferRef.current = '';
+      scanBufferRef.current += e.key;
+      // Cap buffer
+      if (scanBufferRef.current.length > 32) scanBufferRef.current = scanBufferRef.current.slice(-32);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products]);
+
 
   const filtered = products.filter(p => p.category === activeCategory);
   const cartTotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);

@@ -482,6 +482,26 @@ const EntregadorDashboard = () => {
                       </button>
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => toggleMap(o)}
+                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
+                  >
+                    <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : '🗺️ Abrir Rota no Mapa'}
+                  </button>
+
+                  {mapOpenId === o.id && (
+                    <div className="space-y-2">
+                      <LiveDeliveryMap
+                        rider={riderPos}
+                        destination={destCoords[o.id] ? { ...destCoords[o.id], label: o.delivery_address || 'Destino' } : null}
+                        height={300}
+                      />
+                      <p className="text-[11px] text-amber-400/90 text-center">
+                        📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
+                      </p>
+                    </div>
+                  )}
                 </div>
               );
             })

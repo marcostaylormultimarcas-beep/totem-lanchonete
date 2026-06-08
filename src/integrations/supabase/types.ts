@@ -398,6 +398,10 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
+          last_lat: number | null
+          last_lng: number | null
+          last_location_at: string | null
+          last_location_order_id: string | null
           name: string
           organization_id: string
           password: string
@@ -408,6 +412,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          last_lat?: number | null
+          last_lng?: number | null
+          last_location_at?: string | null
+          last_location_order_id?: string | null
           name: string
           organization_id: string
           password: string
@@ -418,6 +426,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
+          last_lat?: number | null
+          last_lng?: number | null
+          last_location_at?: string | null
+          last_location_order_id?: string | null
           name?: string
           organization_id?: string
           password?: string
@@ -1662,6 +1674,16 @@ export type Database = {
       }
       entregador_orders: {
         Args: { _entregador_id: string; _password: string }
+        Returns: Json
+      }
+      entregador_update_location: {
+        Args: {
+          _entregador_id: string
+          _lat: number
+          _lng: number
+          _order_id?: string
+          _password: string
+        }
         Returns: Json
       }
       get_master_mp_token_internal: { Args: never; Returns: string }

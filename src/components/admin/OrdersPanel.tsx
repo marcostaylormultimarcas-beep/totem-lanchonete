@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing } from 'lucide-react';
+import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
+import LiveDeliveryMap from '@/components/LiveDeliveryMap';
+import { geocodeAddress } from '@/lib/cep';
 
 type PrintFormat = 'cupom' | 'a4';
 const PRINT_PREF_KEY = 'print_format_pref';

@@ -558,6 +558,30 @@ function PDVMain({
     toast.success(`Venda registrada — ${fmt(snapTotal)}`);
     beep();
 
+    // 📱 Persiste telefone do cliente no pedido + dispara WhatsApp automático
+    const phoneDigits = customerPhone.replace(/\D/g, "");
+    if (phoneDigits.length >= 10 && res.order_id) {
+      try {
+        // garante DDI 55 (Brasil) quando o operador digita só DDD+número
+        const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
+
+        await supabase
+          .from("orders")
+          .update({ customer_phone: phoneDigits })
+          .eq("id", res.order_id);
+
+        const trackUrl = `${window.location.origin}/acompanhar/${res.order_id}`;
+        const msg =
+          `Olá! Seu pedido na ${BRAND_NAME} já foi recebido e já está em preparo na cozinha! 🍳 ` +
+          `Confira seu cupom fiscal digital e acompanhe o status em tempo real por este link: ${trackUrl}`;
+        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(msg)}`;
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+        toast.success("WhatsApp aberto para envio ao cliente 📲");
+      } catch (e) {
+        console.error("[PDV] whatsapp dispatch", e);
+      }
+    }
+
     setLastReceipt({
       orderNumber: res.order_number,
       createdAt: res.created_at || new Date().toISOString(),
@@ -574,6 +598,7 @@ function PDVMain({
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");
+    setCustomerPhone("");
     setForma("dinheiro");
     searchRef.current?.focus();
   };

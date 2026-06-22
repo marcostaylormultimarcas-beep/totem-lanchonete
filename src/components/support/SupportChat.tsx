@@ -27,6 +27,33 @@ const SupportChat = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
 
+  // Resolve org context dinamicamente: contexto > slug na URL > localStorage
+  useEffect(() => {
+    let cancelled = false;
+    const resolve = async () => {
+      try {
+        const slug = (params as any)?.slug
+          || location.pathname.match(/\/(?:loja|cardapio|pdv|painel-senhas)\/([^/]+)/)?.[1]
+          || null;
+        let query = supabase.from('organizations').select(ORG_FIELDS).limit(1);
+        if (ctxOrgId) query = query.eq('id', ctxOrgId);
+        else if (slug) query = query.eq('slug', slug);
+        else {
+          const stored = localStorage.getItem('kiosk_org_id');
+          if (stored) query = query.eq('id', stored);
+          else { setOrgCtx(null); return; }
+        }
+        const { data } = await query.maybeSingle();
+        if (!cancelled) setOrgCtx((data as any) || null);
+      } catch {
+        if (!cancelled) setOrgCtx(null);
+      }
+    };
+    resolve();
+    return () => { cancelled = true; };
+  }, [ctxOrgId, location.pathname, params]);
+
+
   const send = async () => {
     const text = input.trim();
     if (!text || streaming) return;

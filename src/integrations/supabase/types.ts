@@ -627,36 +627,45 @@ export type Database = {
       }
       ingredientes: {
         Row: {
+          alerta_vencimento: boolean
           created_at: string
+          data_vencimento: string | null
           disponivel: boolean
           estoque_atual: number
           estoque_minimo: number
           id: string
           last_alert_at: string | null
+          lote: string | null
           nome: string
           organization_id: string
           unidade: string
           updated_at: string
         }
         Insert: {
+          alerta_vencimento?: boolean
           created_at?: string
+          data_vencimento?: string | null
           disponivel?: boolean
           estoque_atual?: number
           estoque_minimo?: number
           id?: string
           last_alert_at?: string | null
+          lote?: string | null
           nome: string
           organization_id: string
           unidade?: string
           updated_at?: string
         }
         Update: {
+          alerta_vencimento?: boolean
           created_at?: string
+          data_vencimento?: string | null
           disponivel?: boolean
           estoque_atual?: number
           estoque_minimo?: number
           id?: string
           last_alert_at?: string | null
+          lote?: string | null
           nome?: string
           organization_id?: string
           unidade?: string
@@ -1238,16 +1247,19 @@ export type Database = {
       }
       products: {
         Row: {
+          alerta_vencimento: boolean
           available: boolean
           category: string
           codigo_barras: string | null
           created_at: string
+          data_vencimento: string | null
           description: string
           extras: Json
           id: string
           image: string
           ingredients: Json
           is_combo: boolean | null
+          lote: string | null
           low_stock_threshold: number
           manage_stock: boolean
           name: string
@@ -1259,16 +1271,19 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          alerta_vencimento?: boolean
           available?: boolean
           category?: string
           codigo_barras?: string | null
           created_at?: string
+          data_vencimento?: string | null
           description?: string
           extras?: Json
           id?: string
           image?: string
           ingredients?: Json
           is_combo?: boolean | null
+          lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
           name: string
@@ -1280,16 +1295,19 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          alerta_vencimento?: boolean
           available?: boolean
           category?: string
           codigo_barras?: string | null
           created_at?: string
+          data_vencimento?: string | null
           description?: string
           extras?: Json
           id?: string
           image?: string
           ingredients?: Json
           is_combo?: boolean | null
+          lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
           name?: string

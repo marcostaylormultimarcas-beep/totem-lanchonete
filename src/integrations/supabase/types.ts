@@ -1335,7 +1335,9 @@ export type Database = {
         Row: {
           created_at: string
           display_name: string | null
+          email: string | null
           id: string
+          organization_id: string | null
           origem_assinatura_empresa_id: string | null
           phone: string | null
           recovery_pin_hash: string | null
@@ -1345,7 +1347,9 @@ export type Database = {
         Insert: {
           created_at?: string
           display_name?: string | null
+          email?: string | null
           id?: string
+          organization_id?: string | null
           origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null
@@ -1355,7 +1359,9 @@ export type Database = {
         Update: {
           created_at?: string
           display_name?: string | null
+          email?: string | null
           id?: string
+          organization_id?: string | null
           origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null
@@ -1873,6 +1879,7 @@ export type Database = {
         }
         Returns: Json
       }
+      email_already_registered: { Args: { _email: string }; Returns: boolean }
       entregador_available_orders: {
         Args: { _entregador_id: string; _password: string }
         Returns: Json

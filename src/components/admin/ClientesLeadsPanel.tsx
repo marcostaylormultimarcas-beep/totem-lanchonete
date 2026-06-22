@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Users, MessageCircle, Search, TrendingUp, Calendar, DollarSign, ShoppingBag, Target } from 'lucide-react';
 import { formatCurrency } from '@/data/store';
+import { BRAND_NAME } from '@/config/brandConfig';
 
 interface Props { organizationId: string | null; storeName?: string }
 
 interface OrderRow {
   id: string;
+  user_id: string | null;
   customer_name: string;
   customer_phone: string;
   total: number;
@@ -19,6 +21,7 @@ interface CustomerSummary {
   key: string;
   phone: string;
   name: string;
+  email: string;
   orders: number;
   totalSpent: number;
   lastOrderAt: string | null;
@@ -50,60 +53,46 @@ const fallbackContactUrl = (msg: string) => `https://wa.me/?text=${encodeURIComp
 const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [leadPhones, setLeadPhones] = useState<Array<{ key: string; phone: string; name?: string; source: string; created_at: string }>>([]);
+  const [profileContacts, setProfileContacts] = useState<Array<{ key: string; userId: string; email: string; phone: string; name: string; source: string; created_at: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (!organizationId) { setOrders([]); setLeadPhones([]); setLoading(false); return; }
+    if (!organizationId) { setOrders([]); setProfileContacts([]); setLoading(false); return; }
     setLoading(true);
     setLoadError(null);
     (async () => {
-      const [ordersRes, fidRes, notifRes, profRes] = await Promise.all([
+      const [profilesRes, ordersRes] = await Promise.all([
+        supabase.from('profiles')
+          .select('user_id, display_name, email, phone, created_at, organization_id, origem_assinatura_empresa_id')
+          .or(`organization_id.eq.${organizationId},origem_assinatura_empresa_id.eq.${organizationId}`)
+          .order('created_at', { ascending: false })
+          .limit(5000),
         supabase.from('orders')
-          .select('id, customer_name, customer_phone, total, created_at, items, status')
+          .select('id, user_id, customer_name, customer_phone, total, created_at, items, status')
           .eq('organization_id', organizationId)
           .neq('status', 'cancelled')
           .order('created_at', { ascending: false })
-          .limit(2000),
-        supabase.from('progresso_fidelidade')
-          .select('telefone_cliente, created_at')
-          .eq('organization_id', organizationId)
-          .limit(2000),
-        supabase.from('cliente_notificacoes')
-          .select('customer_phone, created_at')
-          .eq('organization_id', organizationId)
-          .limit(2000),
-        supabase.from('profiles')
-          .select('user_id, display_name, phone, created_at')
-          .eq('origem_assinatura_empresa_id', organizationId)
-          .limit(2000),
+          .limit(5000),
       ]);
 
-      const errors = [ordersRes.error, fidRes.error, notifRes.error, profRes.error].filter(Boolean);
+      const errors = [profilesRes.error, ordersRes.error].filter(Boolean);
       if (errors.length) {
         console.error('[ClientesLeadsPanel] load failed', errors);
-        setLoadError('Não foi possível carregar todos os clientes/leads. Verifique as permissões da loja e tente atualizar.');
+        setLoadError('Não foi possível carregar clientes/leads. Verifique as permissões da loja e tente atualizar.');
       }
 
-      const leads: Array<{ key: string; phone: string; name?: string; source: string; created_at: string }> = [];
-      (fidRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.telefone_cliente);
-        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Fidelidade', created_at: r.created_at });
-      });
-      (notifRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.customer_phone);
-        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Cardápio', created_at: r.created_at });
-      });
-      (profRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.phone || '');
-        const key = p.length >= 8 ? p : `profile:${r.user_id}`;
-        leads.push({ key, phone: p, name: r.display_name, source: 'Cadastro', created_at: r.created_at });
-      });
-
       setOrders((ordersRes.data as OrderRow[]) || []);
-      setLeadPhones(leads);
+      setProfileContacts(((profilesRes.data || []) as any[]).map((p) => ({
+        key: `profile:${p.user_id}`,
+        userId: p.user_id,
+        email: p.email || '',
+        phone: normalizePhone(p.phone || ''),
+        name: p.display_name || 'Lead sem nome',
+        source: 'Cadastro',
+        created_at: p.created_at,
+      })));
       setLoading(false);
     })();
   }, [organizationId]);
@@ -111,16 +100,35 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const customers = useMemo<CustomerSummary[]>(() => {
     const now = Date.now();
     const map = new Map<string, CustomerSummary & { productCounts: Map<string, number> }>();
+    const keyByUserId = new Map(profileContacts.map((p) => [p.userId, p.key]));
+    const keyByPhone = new Map(profileContacts.filter((p) => p.phone.length >= 8).map((p) => [p.phone, p.key]));
 
-    // Clientes (com pedidos)
+    for (const p of profileContacts) {
+      map.set(p.key, {
+        key: p.key,
+        phone: p.phone,
+        name: p.name,
+        email: p.email,
+        orders: 0,
+        totalSpent: 0,
+        lastOrderAt: null,
+        daysSince: null,
+        topProduct: '-',
+        isLead: true,
+        source: p.source,
+        productCounts: new Map(),
+      });
+    }
+
     for (const o of orders) {
       const phone = normalizePhone(o.customer_phone);
-      if (!phone || phone.length < 8) continue;
-      let entry = map.get(phone);
+      const key = (o.user_id && keyByUserId.get(o.user_id)) || keyByPhone.get(phone) || (phone.length >= 8 ? phone : `order:${o.id}`);
+      let entry = map.get(key);
       if (!entry) {
         entry = {
-          key: phone,
+          key,
           phone,
+          email: '',
           name: o.customer_name || 'Sem nome',
           orders: 0,
           totalSpent: 0,
@@ -131,8 +139,11 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
           source: 'Pedidos',
           productCounts: new Map(),
         };
-        map.set(phone, entry);
+        map.set(key, entry);
       }
+      entry.isLead = false;
+      entry.source = entry.source === 'Cadastro' ? 'Cadastro + Pedidos' : 'Pedidos';
+      if (!entry.phone && phone) entry.phone = phone;
       entry.orders += 1;
       entry.totalSpent += Number(o.total) || 0;
       const created = new Date(o.created_at);
@@ -149,25 +160,6 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       }
     }
 
-    // Leads (sem pedidos)
-    for (const l of leadPhones) {
-      if (l.phone && map.has(l.phone)) continue;
-      if (map.has(l.key)) continue;
-      map.set(l.key, {
-        key: l.key,
-        phone: l.phone,
-        name: l.name || 'Lead sem nome',
-        orders: 0,
-        totalSpent: 0,
-        lastOrderAt: null,
-        daysSince: null,
-        topProduct: '-',
-        isLead: true,
-        source: l.source,
-        productCounts: new Map(),
-      });
-    }
-
     const list: CustomerSummary[] = [];
     for (const c of map.values()) {
       let top = '-'; let topQty = 0;
@@ -179,6 +171,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
         key: c.key,
         phone: c.phone,
         name: c.name,
+        email: c.email,
         orders: c.orders,
         totalSpent: c.totalSpent,
         lastOrderAt: c.lastOrderAt,
@@ -192,7 +185,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       if (a.isLead !== b.isLead) return a.isLead ? 1 : -1;
       return b.totalSpent - a.totalSpent;
     });
-  }, [orders, leadPhones]);
+  }, [orders, profileContacts]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -200,7 +193,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       if (filter === 'clientes' && c.isLead) return false;
       if (filter === 'leads' && !c.isLead) return false;
       if (term) {
-        const hay = `${c.name} ${c.phone}`.toLowerCase();
+        const hay = `${c.name} ${c.email} ${c.phone}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;
@@ -215,7 +208,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   }, [customers]);
 
   const waMessageFor = (c: CustomerSummary) => {
-    const store = storeName || 'Vision Food';
+    const store = storeName || BRAND_NAME;
     if (c.isLead) {
       return `Olá ${c.name !== 'Lead sem nome' ? c.name : ''}! 👋 Aqui é da ${store}. Vimos que você se interessou pelo nosso cardápio e queremos te dar um cupom especial de boas-vindas pra você experimentar 🍔✨. Quer aproveitar?`;
     }
@@ -328,6 +321,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                   <tr key={c.key} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-zinc-100">{c.name}</div>
+                      {c.email && <div className="text-[10px] text-zinc-500">{c.email}</div>}
                       <div className="text-[10px] text-zinc-500">Origem: {c.source}</div>
                     </td>
                     <td className="px-4 py-3">

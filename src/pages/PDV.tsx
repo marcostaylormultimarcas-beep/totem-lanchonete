@@ -751,6 +751,18 @@ function PDVMain({
             ))}
           </div>
 
+          {/* WhatsApp do cliente — dispara mensagem automática com link de acompanhamento */}
+          <div className="mt-3 flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2 focus-within:border-amber-500/50">
+            <MessageCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <input
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="WhatsApp do cliente (DDD + número)"
+              inputMode="tel"
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-zinc-500"
+            />
+          </div>
+
           {/* Cupom */}
           <div className="mt-3 flex items-center gap-2">
             <div className="flex-1 flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2">

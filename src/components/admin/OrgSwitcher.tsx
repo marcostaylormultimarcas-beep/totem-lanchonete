@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Check, ChevronsUpDown, Building2, ExternalLink, Pause } from 'lucide-react';
+import { Check, ChevronsUpDown, Building2, ExternalLink, Pause, BarChart3 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -11,6 +11,8 @@ interface Props {
   orgs: Org[];
   activeOrgId: string | null;
   onChange: (id: string) => void;
+  onConsolidated?: () => void;
+  consolidatedActive?: boolean;
 }
 
 const OrgSwitcher = ({ orgs, activeOrgId, onChange }: Props) => {

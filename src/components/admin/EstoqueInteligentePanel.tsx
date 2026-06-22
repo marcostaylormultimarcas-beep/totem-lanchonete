@@ -159,6 +159,12 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
     load();
   };
 
+  const updateIngrediente = async (id: string, patch: Partial<Ingrediente>) => {
+    setIngs(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
+    const { error } = await supabase.from('ingredientes' as any).update(patch as any).eq('id', id);
+    if (error) { toast.error(error.message); load(); }
+  };
+
   const saveWebhook = async () => {
     if (!organizationId) return;
     const { error } = await supabase.from('settings').update({ estoque_webhook_url: webhook } as any)

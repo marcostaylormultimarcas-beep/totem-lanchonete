@@ -49,9 +49,40 @@ const EntregadorDashboard = () => {
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
+  const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Raio máximo permitido para confirmar a entrega (metros)
+  const MAX_DELIVERY_RADIUS_M = 200;
+
+  // Haversine (JS puro) — distância em metros entre duas coordenadas
+  const haversineMeters = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+
+  const getCurrentPositionAsync = () =>
+    new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+      if (!('geolocation' in navigator)) {
+        reject(new Error('Geolocalização não suportada neste dispositivo.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => reject(err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current !== null && navigator.geolocation) {
@@ -277,6 +308,54 @@ const EntregadorDashboard = () => {
       toast.error('Digite o código de 4 dígitos.');
       return;
     }
+
+    // ====== TRAVA DE SEGURANÇA (Geofence 200m) ======
+    const order = orders.find((o) => o.id === orderId);
+    if (order?.delivery_address) {
+      setGeoChecking(orderId);
+      setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      try {
+        let dest = destCoords[orderId];
+        if (!dest) {
+          const c = await geocodeAddress(order.delivery_address);
+          if (c) {
+            dest = c;
+            setDestCoords((prev) => ({ ...prev, [orderId]: c }));
+          }
+        }
+        if (!dest) {
+          setGeoChecking(null);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa. Confirme o endereço com a loja.',
+          }));
+          return;
+        }
+        const me = await getCurrentPositionAsync();
+        const distM = haversineMeters(me, dest);
+        if (distM > MAX_DELIVERY_RADIUS_M) {
+          setGeoChecking(null);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: `📍 Ação Bloqueada! Você precisa estar próximo ao endereço do cliente para finalizar esta entrega. Vá até o local. (você está a ${Math.round(distM)} m)`,
+          }));
+          return;
+        }
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      } catch (err: any) {
+        setGeoChecking(null);
+        const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: denied
+            ? '📍 Ative a permissão de localização do navegador para finalizar a entrega.'
+            : '📍 Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
+        }));
+        return;
+      }
+      setGeoChecking(null);
+    }
+
     setConfirming(orderId);
     const { data, error } = await supabase.rpc('confirm_delivery_with_code' as any, {
       _entregador_id: session.id,
@@ -474,13 +553,18 @@ const EntregadorDashboard = () => {
                       />
                       <button
                         onClick={() => handleConfirm(o.id)}
-                        disabled={confirming === o.id || (codeInputs[o.id] || '').length !== 4}
+                        disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
                         className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-5 h-5" />
-                        {confirming === o.id ? '...' : 'OK'}
+                        {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
                       </button>
                     </div>
+                    {geofenceError[o.id] && (
+                      <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
+                        {geofenceError[o.id]}
+                      </div>
+                    )}
                   </div>
 
                   <button

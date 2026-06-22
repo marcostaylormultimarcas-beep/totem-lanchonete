@@ -1337,6 +1337,7 @@ export type Database = {
           display_name: string | null
           email: string | null
           id: string
+          organization_id: string | null
           origem_assinatura_empresa_id: string | null
           phone: string | null
           recovery_pin_hash: string | null
@@ -1348,6 +1349,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          organization_id?: string | null
           origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null
@@ -1359,6 +1361,7 @@ export type Database = {
           display_name?: string | null
           email?: string | null
           id?: string
+          organization_id?: string | null
           origem_assinatura_empresa_id?: string | null
           phone?: string | null
           recovery_pin_hash?: string | null

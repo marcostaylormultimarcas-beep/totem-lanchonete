@@ -99,16 +99,35 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const customers = useMemo<CustomerSummary[]>(() => {
     const now = Date.now();
     const map = new Map<string, CustomerSummary & { productCounts: Map<string, number> }>();
+    const keyByUserId = new Map(profileContacts.map((p) => [p.userId, p.key]));
+    const keyByPhone = new Map(profileContacts.filter((p) => p.phone.length >= 8).map((p) => [p.phone, p.key]));
 
-    // Clientes (com pedidos)
+    for (const p of profileContacts) {
+      map.set(p.key, {
+        key: p.key,
+        phone: p.phone,
+        name: p.name,
+        email: p.email,
+        orders: 0,
+        totalSpent: 0,
+        lastOrderAt: null,
+        daysSince: null,
+        topProduct: '-',
+        isLead: true,
+        source: p.source,
+        productCounts: new Map(),
+      });
+    }
+
     for (const o of orders) {
       const phone = normalizePhone(o.customer_phone);
-      if (!phone || phone.length < 8) continue;
-      let entry = map.get(phone);
+      const key = (o.user_id && keyByUserId.get(o.user_id)) || keyByPhone.get(phone) || (phone.length >= 8 ? phone : `order:${o.id}`);
+      let entry = map.get(key);
       if (!entry) {
         entry = {
-          key: phone,
+          key,
           phone,
+          email: '',
           name: o.customer_name || 'Sem nome',
           orders: 0,
           totalSpent: 0,
@@ -119,8 +138,11 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
           source: 'Pedidos',
           productCounts: new Map(),
         };
-        map.set(phone, entry);
+        map.set(key, entry);
       }
+      entry.isLead = false;
+      entry.source = entry.source === 'Cadastro' ? 'Cadastro + Pedidos' : 'Pedidos';
+      if (!entry.phone && phone) entry.phone = phone;
       entry.orders += 1;
       entry.totalSpent += Number(o.total) || 0;
       const created = new Date(o.created_at);
@@ -137,25 +159,6 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       }
     }
 
-    // Leads (sem pedidos)
-    for (const l of leadPhones) {
-      if (l.phone && map.has(l.phone)) continue;
-      if (map.has(l.key)) continue;
-      map.set(l.key, {
-        key: l.key,
-        phone: l.phone,
-        name: l.name || 'Lead sem nome',
-        orders: 0,
-        totalSpent: 0,
-        lastOrderAt: null,
-        daysSince: null,
-        topProduct: '-',
-        isLead: true,
-        source: l.source,
-        productCounts: new Map(),
-      });
-    }
-
     const list: CustomerSummary[] = [];
     for (const c of map.values()) {
       let top = '-'; let topQty = 0;
@@ -167,6 +170,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
         key: c.key,
         phone: c.phone,
         name: c.name,
+        email: c.email,
         orders: c.orders,
         totalSpent: c.totalSpent,
         lastOrderAt: c.lastOrderAt,
@@ -180,7 +184,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       if (a.isLead !== b.isLead) return a.isLead ? 1 : -1;
       return b.totalSpent - a.totalSpent;
     });
-  }, [orders, leadPhones]);
+  }, [orders, profileContacts]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -188,7 +192,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       if (filter === 'clientes' && c.isLead) return false;
       if (filter === 'leads' && !c.isLead) return false;
       if (term) {
-        const hay = `${c.name} ${c.phone}`.toLowerCase();
+        const hay = `${c.name} ${c.email} ${c.phone}`.toLowerCase();
         if (!hay.includes(term)) return false;
       }
       return true;

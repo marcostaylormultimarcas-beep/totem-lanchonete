@@ -4,21 +4,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const SYSTEM_PROMPT = `CONTEXTO DO SISTEMA: Você é o suporte da Vision Lanchonete, parte do grupo Vision Tech. Tom: prestativo, profissional e técnico. Responda sempre em português do Brasil, de forma objetiva e curta (máx. 6 linhas). Use a base de conhecimento abaixo como fonte primária. Se a pergunta fugir do escopo, oriente o usuário a abrir um chamado com o suporte humano.
+const BASE_PROMPT = `Você é o assistente virtual inteligente da Vision Food. Tom: prestativo, educado, profissional e amigável. Responda sempre em português do Brasil, objetivo e curto (máx. 6 linhas). Use markdown leve quando útil.
 
-BASE DE CONHECIMENTO (FAQ):
-1) O que é o sistema? Ecossistema completo: Totem de autoatendimento, KDS (cozinha), Programa de Fidelidade e automação fiscal — tudo em nuvem.
-2) Como configurar a Maquininha? Integrada via API Mercado Pago. Verifique pareamento Bluetooth/USB, conexão de internet e se o Terminal ID está cadastrado em Configurações > Pagamentos.
-3) Como ativar a Nota Fiscal? Painel do Lojista > Configurações Fiscais > ativar o toggle e preencher CNPJ, Razão Social, IE, Regime, CSC e Token Fiscal.
-4) Modelo de licenciamento: Licenças Master (parceiros regionais) e Super Master (Vision Tech, dono da plataforma). Status "Pausado" bloqueia o acesso da loja imediatamente.
-5) Offline: O foco é nuvem. Em queda de internet, recomendamos um roteador 4G de backup ao lado do totem.
-6) Segurança: Banco protegido com Supabase RLS. Cada loja só enxerga seus próprios dados — isolamento total por ID da organização.`;
+Você ajuda o cliente com QUALQUER dúvida sobre a unidade (loja) usando EXCLUSIVAMENTE as informações reais fornecidas no bloco "DADOS DA LOJA". Se um dado não estiver preenchido, diga educadamente que ainda não foi cadastrado e ofereça outro canal disponível. Nunca invente endereço, telefone, CNPJ ou redes sociais.
+
+Quando o cliente perguntar por horários, localização ou contato → responda com os dados reais. Quando o cliente pedir redes sociais ou contato humano → forneça o link do Instagram e o WhatsApp da unidade de forma amigável e convide a seguir a página. Para WhatsApp use formato https://wa.me/55<DDD+numero> (apenas dígitos). Para Instagram, se vier só o @, monte https://instagram.com/<handle>.
+
+Se a loja estiver "Fechada temporariamente", avise antes de qualquer informação de pedido.`;
+
+const onlyDigits = (s: string) => (s || '').replace(/\D/g, '');
+
+const buildStoreBlock = (org: Record<string, any> | null) => {
+  if (!org) {
+    return 'DADOS DA LOJA: (contexto não disponível — responda apenas sobre o sistema Vision Food de forma genérica e oriente o cliente a abrir o cardápio da loja).';
+  }
+  const tel = org.telefone || '';
+  const telDigits = onlyDigits(tel);
+  const waLink = telDigits ? `https://wa.me/${telDigits.length <= 11 ? '55' + telDigits : telDigits}` : '—';
+  const ig = (org.instagram || '').trim();
+  const igLink = !ig ? '—' : ig.startsWith('http') ? ig : `https://instagram.com/${ig.replace(/^@/, '')}`;
+  const endereco = [
+    org.endereco_rua && `${org.endereco_rua}${org.endereco_numero ? ', Nº ' + org.endereco_numero : ''}`,
+    org.endereco_bairro && `Bairro ${org.endereco_bairro}`,
+    org.city && `${org.city}${org.endereco_estado ? '/' + org.endereco_estado : ''}`,
+    org.endereco_cep && `CEP ${org.endereco_cep}`,
+  ].filter(Boolean).join(' - ') || '(não cadastrado)';
+  return `DADOS DA LOJA (use APENAS estes valores):
+- Nome da Loja: ${org.name || '(não cadastrado)'}
+- Endereço: ${endereco}
+- WhatsApp/Telefone: ${tel || '(não cadastrado)'}  → Link: ${waLink}
+- Instagram: ${ig || '(não cadastrado)'}  → Link: ${igLink}
+- CNPJ: ${org.cnpj || '(não cadastrado)'}
+- Categoria: ${org.categoria || '—'}
+- Status Atual: ${org.paused ? 'Fechada temporariamente' : 'Aberta para pedidos'}`;
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const { messages } = await req.json();
+    const { messages, org } = await req.json();
     if (!Array.isArray(messages)) {
       return new Response(JSON.stringify({ error: 'messages must be an array' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -32,6 +57,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    const systemPrompt = `${BASE_PROMPT}\n\n${buildStoreBlock(org)}`;
+
     const res = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -41,7 +68,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'system', content: systemPrompt },
           ...messages,
         ],
         stream: true,

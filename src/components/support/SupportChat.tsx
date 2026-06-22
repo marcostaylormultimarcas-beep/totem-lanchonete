@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrg } from '@/contexts/OrgContext';
 
 interface Msg { role: 'user' | 'assistant'; content: string }
 
 const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/support-chat`;
 
+const ORG_FIELDS = 'id,name,slug,paused,categoria,cnpj,telefone,instagram,endereco_cep,endereco_rua,endereco_numero,endereco_bairro,endereco_estado,city';
+
 const SupportChat = () => {
+  const { orgId: ctxOrgId } = useOrg();
+  const params = useParams();
+  const location = useLocation();
+  const [orgCtx, setOrgCtx] = useState<Record<string, any> | null>(null);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([
@@ -17,6 +26,33 @@ const SupportChat = () => {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
+
+  // Resolve org context dinamicamente: contexto > slug na URL > localStorage
+  useEffect(() => {
+    let cancelled = false;
+    const resolve = async () => {
+      try {
+        const slug = (params as any)?.slug
+          || location.pathname.match(/\/(?:loja|cardapio|pdv|painel-senhas)\/([^/]+)/)?.[1]
+          || null;
+        let query = supabase.from('organizations').select(ORG_FIELDS).limit(1);
+        if (ctxOrgId) query = query.eq('id', ctxOrgId);
+        else if (slug) query = query.eq('slug', slug);
+        else {
+          const stored = localStorage.getItem('kiosk_org_id');
+          if (stored) query = query.eq('id', stored);
+          else { setOrgCtx(null); return; }
+        }
+        const { data } = await query.maybeSingle();
+        if (!cancelled) setOrgCtx((data as any) || null);
+      } catch {
+        if (!cancelled) setOrgCtx(null);
+      }
+    };
+    resolve();
+    return () => { cancelled = true; };
+  }, [ctxOrgId, location.pathname, params]);
+
 
   const send = async () => {
     const text = input.trim();
@@ -31,7 +67,7 @@ const SupportChat = () => {
       const res = await fetch(FUNCTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, org: orgCtx }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: 'Erro de rede' }));

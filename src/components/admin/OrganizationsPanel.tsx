@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon, Layers, ChevronDown, ChevronUp, Save, MapPin, Phone, FileText } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon, Layers, ChevronDown, ChevronUp, Save, MapPin, Phone, FileText, Instagram } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Org {
@@ -11,6 +11,7 @@ interface Org {
   plan_id: string | null;
   cnpj?: string;
   telefone?: string;
+  instagram?: string;
   city?: string;
   endereco_cep?: string;
   endereco_rua?: string;
@@ -42,6 +43,7 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
   const [form, setForm] = useState({
     cnpj: org.cnpj || '',
     telefone: org.telefone || '',
+    instagram: org.instagram || '',
     endereco_cep: org.endereco_cep || '',
     endereco_rua: org.endereco_rua || '',
     endereco_numero: org.endereco_numero || '',
@@ -75,6 +77,7 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
     const { error } = await supabase.from('organizations').update({
       cnpj: form.cnpj,
       telefone: form.telefone,
+      instagram: form.instagram.trim(),
       endereco_cep: form.endereco_cep,
       endereco_rua: form.endereco_rua,
       endereco_numero: form.endereco_numero,
@@ -97,8 +100,14 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
             className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
         </label>
         <label className="space-y-1 col-span-2">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Phone className="w-3 h-3" /> Telefone da unidade</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Phone className="w-3 h-3" /> WhatsApp / Telefone da unidade</span>
           <input value={form.telefone} onChange={e => upd('telefone', maskPhone(e.target.value))} placeholder="(62) 99999-9999"
+            className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
+          <span className="text-[10px] text-muted-foreground">Usado também como link direto do WhatsApp.</span>
+        </label>
+        <label className="space-y-1 col-span-2">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Instagram className="w-3 h-3" /> Instagram</span>
+          <input value={form.instagram} onChange={e => upd('instagram', e.target.value)} placeholder="@sualoja  ou  https://instagram.com/sualoja"
             className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
         </label>
         <label className="space-y-1">

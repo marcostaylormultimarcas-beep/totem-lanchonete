@@ -152,50 +152,79 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
               <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">{product.description}</p>
             </div>
           )}
-          {/* Remove Ingredients */}
+          {/* Remove Ingredients — toggles */}
           {product.removableIngredients.length > 0 && (
             <div>
-              <h4 className="font-semibold text-sm text-muted-foreground mb-3">REMOVER INGREDIENTES</h4>
+              <h4 className="font-semibold text-xs text-zinc-400 mb-3 uppercase tracking-wider">Remover ingredientes</h4>
               <div className="space-y-2">
-                {product.removableIngredients.map(ing => (
-                  <label key={ing} className="flex items-center gap-3 p-3 rounded-xl bg-muted/50 cursor-pointer active:bg-muted">
-                    <input
-                      type="checkbox"
-                      checked={removedIngredients.includes(ing)}
-                      onChange={() => toggleIngredient(ing)}
-                      className="w-5 h-5 rounded accent-secondary"
-                    />
-                    <span className="text-sm">Sem {ing}</span>
-                  </label>
-                ))}
+                {product.removableIngredients.map(ing => {
+                  const on = removedIngredients.includes(ing);
+                  return (
+                    <button
+                      type="button"
+                      key={ing}
+                      onClick={() => toggleIngredient(ing)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-200 active:scale-[0.98] ${
+                        on
+                          ? "bg-red-500/10 border-red-500/60"
+                          : "bg-zinc-900/60 border-zinc-800 hover:border-zinc-700"
+                      }`}
+                    >
+                      <span className="text-sm font-semibold text-white">Sem {ing}</span>
+                      <span
+                        className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${
+                          on ? "bg-red-500" : "bg-zinc-700"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                            on ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Extras */}
+          {/* Extras — toggles */}
           {product.extras.length > 0 && (
             <div>
-              <h4 className="font-semibold text-sm text-muted-foreground mb-3">ADICIONAIS</h4>
+              <h4 className="font-semibold text-xs text-zinc-400 mb-3 uppercase tracking-wider">Adicionais</h4>
               <div className="space-y-2">
-                {product.extras.map(extra => (
-                  <label
-                    key={extra.name}
-                    className={`flex items-center justify-between p-3 rounded-xl cursor-pointer active:bg-muted transition-all ${
-                      selectedExtras.find(e => e.name === extra.name) ? 'bg-primary/20 border border-primary' : 'bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={!!selectedExtras.find(e => e.name === extra.name)}
-                        onChange={() => toggleExtra(extra)}
-                        className="w-5 h-5 rounded accent-primary"
-                      />
-                      <span className="text-sm font-medium">{extra.name}</span>
-                    </div>
-                    <span className="text-primary font-bold text-sm">+{formatCurrency(extra.price)}</span>
-                  </label>
-                ))}
+                {product.extras.map(extra => {
+                  const on = !!selectedExtras.find(e => e.name === extra.name);
+                  return (
+                    <button
+                      type="button"
+                      key={extra.name}
+                      onClick={() => toggleExtra(extra)}
+                      className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-200 active:scale-[0.98] ${
+                        on
+                          ? "bg-gradient-to-br from-amber-500/15 to-orange-600/10 border-amber-500"
+                          : "bg-zinc-900/60 border-zinc-800 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span className="text-sm font-semibold text-white">{extra.name}</span>
+                        <span className="text-xs text-amber-400 font-bold">+{formatCurrency(extra.price)}</span>
+                      </div>
+                      <span
+                        className={`relative w-12 h-7 rounded-full transition-colors duration-200 ${
+                          on ? "bg-amber-500" : "bg-zinc-700"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform duration-200 ${
+                            on ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -205,27 +234,27 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
             <div className="flex items-center justify-center gap-6">
               <button
                 onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center active:scale-90"
+                className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center active:scale-90"
               >
                 <Minus className="w-5 h-5" />
               </button>
               <span className="text-2xl font-black w-8 text-center">{quantity}</span>
               <button
                 onClick={() => setQuantity(q => q + 1)}
-                className="w-12 h-12 rounded-xl bg-primary text-primary-foreground flex items-center justify-center active:scale-90"
+                className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 text-zinc-950 flex items-center justify-center active:scale-90"
               >
-                <Plus className="w-5 h-5" />
+                <Plus className="w-5 h-5" strokeWidth={3} />
               </button>
             </div>
           )}
         </div>
 
         {/* Add Button */}
-        <div className="p-5 border-t border-border">
+        <div className="p-5 border-t border-zinc-800">
           <button
             onClick={handleAdd}
             disabled={!canAdd}
-            className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-premium w-full py-4 text-lg"
           >
             {byWeight && balanca.pesoAtual <= 0
               ? 'Coloque o produto na balança'

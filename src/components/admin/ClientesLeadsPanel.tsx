@@ -65,8 +65,8 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
     (async () => {
       const [profilesRes, ordersRes] = await Promise.all([
         supabase.from('profiles')
-          .select('user_id, display_name, email, phone, created_at, origem_assinatura_empresa_id')
-          .eq('origem_assinatura_empresa_id', organizationId)
+          .select('user_id, display_name, email, phone, created_at, organization_id, origem_assinatura_empresa_id')
+          .or(`organization_id.eq.${organizationId},origem_assinatura_empresa_id.eq.${organizationId}`)
           .order('created_at', { ascending: false })
           .limit(5000),
         supabase.from('orders')

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Users, MessageCircle, Search, TrendingUp, Calendar, DollarSign, ShoppingBag, Target } from 'lucide-react';
 import { formatCurrency } from '@/data/store';
+import { BRAND_NAME } from '@/config/brandConfig';
 
 interface Props { organizationId: string | null; storeName?: string }
 
@@ -207,7 +208,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   }, [customers]);
 
   const waMessageFor = (c: CustomerSummary) => {
-    const store = storeName || 'Vision Food';
+    const store = storeName || BRAND_NAME;
     if (c.isLead) {
       return `Olá ${c.name !== 'Lead sem nome' ? c.name : ''}! 👋 Aqui é da ${store}. Vimos que você se interessou pelo nosso cardápio e queremos te dar um cupom especial de boas-vindas pra você experimentar 🍔✨. Quer aproveitar?`;
     }
@@ -320,6 +321,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                   <tr key={c.key} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-zinc-100">{c.name}</div>
+                      {c.email && <div className="text-[10px] text-zinc-500">{c.email}</div>}
                       <div className="text-[10px] text-zinc-500">Origem: {c.source}</div>
                     </td>
                     <td className="px-4 py-3">

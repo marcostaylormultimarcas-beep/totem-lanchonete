@@ -62,10 +62,14 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply text-foreground font-sans;
     font-family: 'Poppins', sans-serif;
     overflow-wrap: break-word;
     word-wrap: break-word;
+    background-color: #09090b;
+    background-image: radial-gradient(ellipse at top, #18181b 0%, #09090b 55%, #000000 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 }
 
@@ -90,6 +94,28 @@ span[data-state="loaded"] > img {
     @apply bg-card rounded-2xl border border-border overflow-hidden transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10;
   }
 
+  /* === Vision Dark Premium — utilitários globais === */
+  .card-premium {
+    @apply rounded-2xl border border-zinc-800/80 bg-zinc-900/70 backdrop-blur-xl shadow-[0_8px_40px_-12px_rgba(0,0,0,0.6)];
+  }
+
+  .input-premium {
+    @apply w-full rounded-xl bg-zinc-950/60 border border-zinc-800 px-4 py-2.5 text-sm text-white placeholder:text-zinc-500 outline-none transition-all duration-200
+           focus:border-amber-500/60 focus:ring-2 focus:ring-amber-500/30 focus:bg-zinc-950/80;
+  }
+
+  .input-premium-wrap {
+    @apply flex items-center gap-2 rounded-xl bg-zinc-950/60 border border-zinc-800 px-3 py-2 transition-all duration-200
+           focus-within:border-amber-500/60 focus-within:ring-2 focus-within:ring-amber-500/30 focus-within:bg-zinc-950/80;
+  }
+
+  .btn-premium {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-bold text-zinc-950
+           bg-gradient-to-r from-amber-400 to-orange-600 shadow-[0_8px_24px_-6px_rgba(245,158,11,0.55)]
+           hover:from-amber-300 hover:to-orange-500 active:scale-[0.98] transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
   .glow-primary {
     box-shadow: 0 0 30px hsl(25 95% 53% / 0.3), 0 0 60px hsl(25 95% 53% / 0.1);
   }
@@ -97,6 +123,15 @@ span[data-state="loaded"] > img {
   .pulse-glow {
     animation: pulseGlow 2s ease-in-out infinite;
   }
+
+  .pulse-amber-ring {
+    animation: pulseAmberRing 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes pulseAmberRing {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55), 0 0 18px -4px rgba(245, 158, 11, 0.45); }
+  50%      { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.0),  0 0 28px -2px rgba(245, 158, 11, 0.75); }
 }
 
 @keyframes pulseGlow {

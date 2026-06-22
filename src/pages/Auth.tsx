@@ -112,6 +112,7 @@ const Auth = () => {
         data: {
           display_name: name.trim(),
           phone: cleanPhoneValue || phone.trim(),
+          organization_id: origemOrgId,
           origem_assinatura_empresa_id: origemOrgId,
         },
         emailRedirectTo: window.location.origin,
@@ -146,6 +147,7 @@ const Auth = () => {
             display_name: name.trim(),
             email: cleanEmailValue,
             phone: cleanPhoneValue || phone.trim(),
+            organization_id: origemOrgId,
             origem_assinatura_empresa_id: origemOrgId,
           } as any, { onConflict: 'user_id' });
 

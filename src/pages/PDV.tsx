@@ -517,9 +517,9 @@ function PDVMain({
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       {/* Header */}
-      <header className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between gap-3 sticky top-0 bg-zinc-950/95 backdrop-blur z-20">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+      <header className="px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 bg-zinc-950/95 backdrop-blur z-20">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
             <Receipt className="w-5 h-5 text-amber-500" />
           </div>
           <div className="min-w-0">
@@ -529,27 +529,28 @@ function PDVMain({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
             onClick={() => setShowSangria(true)}
-            className="touch-btn px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
+            className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
           >
             <Banknote className="w-4 h-4" /> Sangria / Suprimento
           </button>
           <button
             onClick={() => setShowDevolucao(true)}
-            className="touch-btn px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
+            className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
           >
             <RotateCcw className="w-4 h-4" /> Devoluções
           </button>
           <button
             onClick={() => setShowFechar(true)}
-            className="touch-btn px-3 py-2 rounded-lg text-xs font-semibold bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 inline-flex items-center gap-1.5"
+            className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 inline-flex items-center gap-1.5"
           >
             <LogOut className="w-4 h-4" /> Fechar Caixa
           </button>
         </div>
       </header>
+
 
       {/* Main */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-4 p-4">

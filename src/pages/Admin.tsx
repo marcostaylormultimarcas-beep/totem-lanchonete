@@ -507,7 +507,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '' });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false });
     setEditingProduct(null);
     setShowForm(false);
   };

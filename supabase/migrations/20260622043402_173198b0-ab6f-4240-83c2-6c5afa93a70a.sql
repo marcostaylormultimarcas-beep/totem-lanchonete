@@ -1,0 +1,8 @@
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS cnpj text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS telefone text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS endereco_cep text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS endereco_rua text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS endereco_numero text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS endereco_bairro text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS endereco_estado text NOT NULL DEFAULT '';

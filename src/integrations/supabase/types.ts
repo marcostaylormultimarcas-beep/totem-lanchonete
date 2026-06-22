@@ -927,7 +927,13 @@ export type Database = {
         Row: {
           categoria: string
           city: string
+          cnpj: string
           created_at: string
+          endereco_bairro: string
+          endereco_cep: string
+          endereco_estado: string
+          endereco_numero: string
+          endereco_rua: string
           id: string
           logo_url: string
           master_id: string | null
@@ -940,12 +946,19 @@ export type Database = {
           plan_id: string | null
           slug: string
           status_assinatura: string
+          telefone: string
           updated_at: string
         }
         Insert: {
           categoria?: string
           city?: string
+          cnpj?: string
           created_at?: string
+          endereco_bairro?: string
+          endereco_cep?: string
+          endereco_estado?: string
+          endereco_numero?: string
+          endereco_rua?: string
           id?: string
           logo_url?: string
           master_id?: string | null
@@ -958,12 +971,19 @@ export type Database = {
           plan_id?: string | null
           slug: string
           status_assinatura?: string
+          telefone?: string
           updated_at?: string
         }
         Update: {
           categoria?: string
           city?: string
+          cnpj?: string
           created_at?: string
+          endereco_bairro?: string
+          endereco_cep?: string
+          endereco_estado?: string
+          endereco_numero?: string
+          endereco_rua?: string
           id?: string
           logo_url?: string
           master_id?: string | null
@@ -976,6 +996,7 @@ export type Database = {
           plan_id?: string | null
           slug?: string
           status_assinatura?: string
+          telefone?: string
           updated_at?: string
         }
         Relationships: [

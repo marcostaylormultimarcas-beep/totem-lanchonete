@@ -528,6 +528,9 @@ const AdminPage = () => {
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
       soldByWeight: Boolean(p.soldByWeight),
       codigoBarras: (p as any).codigoBarras || '',
+      dataVencimento: (p as any).dataVencimento || '',
+      lote: (p as any).lote || '',
+      alertaVencimento: Boolean((p as any).alertaVencimento),
     });
     setEditingProduct(p);
     setShowForm(true);

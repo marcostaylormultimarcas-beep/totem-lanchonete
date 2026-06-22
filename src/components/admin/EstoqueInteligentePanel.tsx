@@ -43,6 +43,9 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const [novaUnidade, setNovaUnidade] = useState('un');
   const [novoEstoque, setNovoEstoque] = useState<number>(0);
   const [novoMin, setNovoMin] = useState<number>(0);
+  const [novaValidade, setNovaValidade] = useState<string>('');
+  const [novoLote, setNovoLote] = useState<string>('');
+  const [novoAlertaVenc, setNovoAlertaVenc] = useState<boolean>(false);
 
   const [linkProd, setLinkProd] = useState<string>('');
   const [linkIng, setLinkIng] = useState<string>('');

@@ -260,14 +260,22 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-muted-foreground border-b border-border">
-                <th className="py-2">Nome</th><th>Estoque</th><th>Mínimo</th><th>Status</th><th></th>
+                <th className="py-2">Nome</th><th>Estoque</th><th>Mínimo</th><th>Status</th><th>Validade / Lote</th><th></th>
               </tr></thead>
               <tbody>
                 {ings.map(i => {
                   const low = i.estoque_atual <= i.estoque_minimo;
+                  const vencSt = i.alerta_vencimento ? vencimentoStatus(i.data_vencimento) : 'ok';
                   return (
                     <tr key={i.id} className="border-b border-border/40">
-                      <td className="py-2 font-medium">{i.nome}</td>
+                      <td className="py-2 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {i.nome}
+                          {i.alerta_vencimento && vencSt !== 'ok' && (
+                            <AlertTriangle className={`w-3.5 h-3.5 animate-pulse ${vencSt === 'vencido' ? 'text-destructive' : 'text-amber-500'}`} />
+                          )}
+                        </div>
+                      </td>
                       <td>{i.estoque_atual} {i.unidade}</td>
                       <td>{i.estoque_minimo}</td>
                       <td>
@@ -279,6 +287,35 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
                           <span className="text-xs text-amber-400">Baixo</span>
                         ) : (
                           <span className="text-xs text-emerald-400">OK</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={i.data_vencimento || ''}
+                            onChange={e => updateIngrediente(i.id, { data_vencimento: e.target.value || null })}
+                            className="px-2 py-1 rounded bg-background border border-input text-[11px] w-[120px]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Lote"
+                            value={i.lote || ''}
+                            onChange={e => updateIngrediente(i.id, { lote: e.target.value })}
+                            className="px-2 py-1 rounded bg-background border border-input text-[11px] w-[80px]"
+                          />
+                          <button
+                            onClick={() => updateIngrediente(i.id, { alerta_vencimento: !i.alerta_vencimento })}
+                            title={i.alerta_vencimento ? 'Alerta de vencimento ativo' : 'Ativar alerta de vencimento'}
+                            className={`px-1.5 py-1 rounded text-[10px] font-bold ${i.alerta_vencimento ? 'bg-amber-500/20 text-amber-400' : 'bg-muted text-muted-foreground'}`}
+                          >
+                            ⚠️
+                          </button>
+                        </div>
+                        {i.alerta_vencimento && i.data_vencimento && (
+                          <div className={`text-[10px] mt-0.5 ${vencSt === 'vencido' ? 'text-destructive' : vencSt === 'proximo' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {vencimentoLabel(i.data_vencimento)}
+                          </div>
                         )}
                       </td>
                       <td className="text-right space-x-1">

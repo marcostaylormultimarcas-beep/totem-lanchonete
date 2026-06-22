@@ -832,45 +832,53 @@ function PDVMain({
             </button>
           </div>
 
-          {/* Forma de pagamento */}
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            {(["dinheiro", "pix", "cartao"] as Forma[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setForma(f)}
-                className={`py-2 rounded-lg text-xs font-bold uppercase transition-colors border ${
-                  forma === f
-                    ? "bg-amber-500 text-zinc-950 border-amber-500"
-                    : "bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-amber-500/30"
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+          {/* Forma de pagamento — grid tátil */}
+          <div className="mt-4 grid grid-cols-3 gap-2.5">
+            {([
+              { id: "dinheiro" as Forma, label: "Dinheiro", Icon: Banknote },
+              { id: "pix" as Forma, label: "Pix", Icon: QrCode },
+              { id: "cartao" as Forma, label: "Cartão", Icon: CreditCard },
+            ]).map(({ id, label, Icon }) => {
+              const active = forma === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setForma(id)}
+                  className={`aspect-square rounded-2xl border-2 flex flex-col items-center justify-between p-3 transition-all duration-200 ${
+                    active
+                      ? "bg-gradient-to-br from-amber-500/15 to-orange-600/10 border-amber-500 text-white pulse-amber-ring"
+                      : "bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-amber-500/40 hover:bg-zinc-900/60"
+                  }`}
+                >
+                  <Icon className={`w-7 h-7 mt-1 ${active ? "text-amber-400" : "text-zinc-400"}`} strokeWidth={2} />
+                  <span className="text-xs font-extrabold uppercase tracking-wider">{label}</span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Totais */}
-          <div className="mt-3 space-y-1 text-sm">
+          <div className="mt-4 space-y-1 text-sm">
             <div className="flex justify-between text-zinc-400">
               <span>Subtotal</span>
-              <span>{fmt(subtotal)}</span>
+              <span className="tabular-nums">{fmt(subtotal)}</span>
             </div>
             {desconto > 0 && (
               <div className="flex justify-between text-emerald-400">
                 <span>Desconto ({cupomDesc?.codigo})</span>
-                <span>- {fmt(desconto)}</span>
+                <span className="tabular-nums">- {fmt(desconto)}</span>
               </div>
             )}
-            <div className="flex justify-between text-white font-bold text-lg pt-2 border-t border-zinc-800 mt-1">
-              <span>Total</span>
-              <span className="text-amber-400">{fmt(total)}</span>
+            <div className="flex justify-between items-end pt-2 border-t border-zinc-800 mt-1">
+              <span className="text-zinc-400">Total</span>
+              <span className="text-amber-400 font-black text-2xl tabular-nums">{fmt(total)}</span>
             </div>
           </div>
 
           <button
             disabled={saleLoading || cart.length === 0}
             onClick={finalizar}
-            className="mt-3 touch-btn w-full py-3 rounded-xl bg-amber-500 text-zinc-950 font-bold hover:bg-amber-400 disabled:opacity-60 inline-flex items-center justify-center gap-2"
+            className="btn-premium mt-4 w-full py-3.5 text-base"
           >
             {saleLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
             Finalizar venda

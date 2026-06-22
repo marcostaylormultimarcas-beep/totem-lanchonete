@@ -481,6 +481,47 @@ function PDVMain({
     toast.success(`Cupom ${(data as any).codigo} aplicado`);
   };
 
+  // ---- Espelhamento p/ tela do cliente ----
+  const bcRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    try { bcRef.current = new BroadcastChannel("pdv-cliente"); } catch {}
+    return () => { bcRef.current?.close(); };
+  }, []);
+  useEffect(() => {
+    const payload = {
+      storeName: operador.org_name,
+      items: cart,
+      subtotal,
+      desconto,
+      total,
+      forma,
+    };
+    try {
+      localStorage.setItem("pdv_cliente_mirror_v1", JSON.stringify(payload));
+      bcRef.current?.postMessage({ type: "update", payload });
+    } catch {}
+  }, [cart, subtotal, desconto, total, forma, operador.org_name]);
+
+  // ---- Recibo p/ impressão ----
+  const [lastReceipt, setLastReceipt] = useState<null | {
+    orderNumber: string;
+    createdAt: string;
+    items: CartItem[];
+    subtotal: number;
+    desconto: number;
+    total: number;
+    forma: string;
+    cupom: string;
+  }>(null);
+
+  const triggerPrint = () => {
+    document.body.classList.add("printing-cupom");
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => document.body.classList.remove("printing-cupom"), 300);
+    }, 80);
+  };
+
   const finalizar = async () => {
     if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
@@ -491,6 +532,12 @@ function PDVMain({
       price: x.price,
       quantity: x.quantity,
     }));
+    const snapshot = [...cart];
+    const snapSubtotal = subtotal;
+    const snapDesconto = desconto;
+    const snapTotal = total;
+    const snapForma = forma;
+    const snapCupom = cupomDesc?.codigo || "";
     const { data, error } = await supabase.rpc("pdv_registrar_venda", {
       _operador_id: operador.id,
       _password: password,
@@ -498,15 +545,29 @@ function PDVMain({
       _items: items,
       _forma: forma,
       _total: total,
-      _cupom_code: cupomDesc?.codigo || "",
+      _cupom_code: snapCupom,
       _desconto: desconto,
     });
     setSaleLoading(false);
     if (error) return toast.error(error.message);
     const res = data as any;
     if (!res?.ok) return toast.error("Falha ao registrar venda");
-    toast.success(`Venda registrada — ${fmt(total)}`);
+    toast.success(`Venda registrada — ${fmt(snapTotal)}`);
     beep();
+
+    setLastReceipt({
+      orderNumber: res.order_number,
+      createdAt: res.created_at || new Date().toISOString(),
+      items: snapshot,
+      subtotal: snapSubtotal,
+      desconto: snapDesconto,
+      total: snapTotal,
+      forma: snapForma,
+      cupom: snapCupom,
+    });
+    // dispara impressão após render do recibo
+    setTimeout(triggerPrint, 60);
+
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");

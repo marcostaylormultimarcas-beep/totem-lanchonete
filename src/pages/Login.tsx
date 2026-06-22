@@ -36,38 +36,73 @@ const Login = () => {
   };
 
   const routeUser = async (userId: string) => {
-    const { data: roles } = await supabase
-      .from('user_roles' as any)
-      .select('role')
-      .eq('user_id', userId);
-    const list = (roles || []).map((r: any) => r.role);
-    const isSuper = list.includes('super_admin') || list.includes('master');
-    const isMasterAdmin = list.includes('master_admin');
-    const isAdmin = list.includes('admin');
-
     let returnTo: string | null = null;
     try { returnTo = sessionStorage.getItem('post_login_return_to'); } catch {}
     if (returnTo) {
       try { sessionStorage.removeItem('post_login_return_to'); } catch {}
     }
 
-    if (isSuper || isMasterAdmin || isAdmin) {
-      navigate('/admin');
-      return;
+    // 1) Papéis administrativos (super / master_admin / admin)
+    let isAdminTier = false;
+    try {
+      const { data: roles } = await supabase
+        .from('user_roles' as any)
+        .select('role')
+        .eq('user_id', userId);
+      const list = (roles || []).map((r: any) => r.role);
+      isAdminTier =
+        list.includes('super_admin') ||
+        list.includes('master') ||
+        list.includes('master_admin') ||
+        list.includes('admin');
+    } catch (e) {
+      console.warn('[login] falha consultando user_roles', e);
     }
-    // Cliente sem papel administrativo → segue para o fluxo público
-    if (returnTo && returnTo !== '/') {
-      navigate(returnTo);
+
+    if (isAdminTier) {
+      navigate('/admin', { replace: true });
       return;
     }
 
-    navigate(getKioskHomePath());
+    // 2) Dono de organização (owner) → /admin mesmo sem linha em user_roles
+    try {
+      const { data: org } = await supabase
+        .from('organizations')
+        .select('id')
+        .eq('owner_id', userId)
+        .maybeSingle();
+      if (org?.id) {
+        navigate('/admin', { replace: true });
+        return;
+      }
+    } catch (e) {
+      console.warn('[login] falha consultando organizations', e);
+    }
+
+    // 3) returnTo explícito (ex.: voltou de uma rota pública protegida)
+    if (returnTo && returnTo !== '/') {
+      navigate(returnTo, { replace: true });
+      return;
+    }
+
+    // 4) Fallback: cliente final → fluxo público (kiosk)
+    navigate(getKioskHomePath(), { replace: true });
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) routeUser(session.user.id);
+    let mounted = true;
+    // Listener primeiro (síncrono) para capturar SIGNED_IN sem race condition
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      if (event === 'SIGNED_IN' && session?.user) {
+        // defer p/ não bloquear o callback
+        setTimeout(() => routeUser(session.user.id), 0);
+      }
     });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (mounted && session) routeUser(session.user.id);
+    });
+    return () => { mounted = false; sub.subscription.unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

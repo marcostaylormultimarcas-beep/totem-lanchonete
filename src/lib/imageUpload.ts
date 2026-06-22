@@ -181,7 +181,10 @@ export async function uploadProductImage(
   if (!orgId) throw new Error('Loja não identificada para upload.');
   const kind = options.kind ?? 'product';
   const enhance = options.enhance ?? true;
-  const preserveOriginal = options.preserveOriginal ?? false;
+  // Padrão = TRUE: envia o arquivo bruto direto ao Storage, sem canvas/compressão.
+  // Canvas estava invertendo canais de cor (RGB→BGR) em fotos de celulares modernos
+  // (iPhone HEIC→JPEG com perfil Display P3), gerando imagem "negativada".
+  const preserveOriginal = options.preserveOriginal ?? true;
   const uploadPayload = preserveOriginal ? file : await processImage(file, kind, enhance);
   const contentType = preserveOriginal ? (file.type || 'application/octet-stream') : 'image/webp';
   const fileExtension = preserveOriginal ? getOriginalExtension(file) : 'webp';

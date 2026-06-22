@@ -45,6 +45,8 @@ const formatPhone = (raw: string) => {
   return raw || '-';
 };
 
+const fallbackContactUrl = (msg: string) => `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
 const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -259,6 +261,11 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
 
       {/* Filters */}
       <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-4 space-y-3">
+        {loadError && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {loadError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {([
             { k: 'all', label: 'Todos', icon: Users },
@@ -318,7 +325,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
               </thead>
               <tbody>
                 {filtered.map((c) => (
-                  <tr key={c.phone} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
+                  <tr key={c.key} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-zinc-100">{c.name}</div>
                       <div className="text-[10px] text-zinc-500">Origem: {c.source}</div>
@@ -338,7 +345,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                       <div className="inline-flex items-center gap-2">
                         <span className="text-zinc-400 font-mono text-xs">{formatPhone(c.phone)}</span>
                         <a
-                          href={buildWaUrl(c.phone, waMessageFor(c))}
+                          href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
                           target="_blank"
                           rel="noreferrer"
                           title="Abrir WhatsApp"
@@ -369,7 +376,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <a
-                        href={buildWaUrl(c.phone, waMessageFor(c))}
+                        href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
                         target="_blank"
                         rel="noreferrer"
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${

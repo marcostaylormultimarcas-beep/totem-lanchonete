@@ -11,6 +11,7 @@ interface Org {
   plan_id: string | null;
   cnpj?: string;
   telefone?: string;
+  instagram?: string;
   city?: string;
   endereco_cep?: string;
   endereco_rua?: string;

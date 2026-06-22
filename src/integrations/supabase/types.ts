@@ -823,6 +823,7 @@ export type Database = {
           nfe_numero: string
           nfe_status: string
           nfe_url: string
+          notes: string | null
           order_number: string
           order_type: string
           organization_id: string | null
@@ -859,6 +860,7 @@ export type Database = {
           nfe_numero?: string
           nfe_status?: string
           nfe_url?: string
+          notes?: string | null
           order_number: string
           order_type?: string
           organization_id?: string | null
@@ -895,6 +897,7 @@ export type Database = {
           nfe_numero?: string
           nfe_status?: string
           nfe_url?: string
+          notes?: string | null
           order_number?: string
           order_type?: string
           organization_id?: string | null

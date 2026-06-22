@@ -268,23 +268,22 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
               <Marker position={center}>
                 <Popup>🏪 Loja</Popup>
               </Marker>
-              {routes.map((r, idx) => {
+              {routes.flatMap((r, idx) => {
                 const pts: [number, number][] = [center, ...r.orders.map((_, sub) => fakePin(r, idx, sub))];
-                return (
-                  <>
-                    <Polyline key={`pl-${r.id}`} positions={pts} pathOptions={{ color: ROUTE_COLORS[idx % ROUTE_COLORS.length], weight: 4, opacity: 0.85 }} />
-                    {r.orders.map((o, sub) => (
-                      <Marker key={`mk-${o.id}`} position={fakePin(r, idx, sub)}>
-                        <Popup>
-                          <b>#{o.order_number}</b><br />
-                          {o.customer_name}<br />
-                          {o.bairro_nome}
-                        </Popup>
-                      </Marker>
-                    ))}
-                  </>
-                );
+                return [
+                  <Polyline key={`pl-${r.id}`} positions={pts} pathOptions={{ color: ROUTE_COLORS[idx % ROUTE_COLORS.length], weight: 4, opacity: 0.85 }} />,
+                  ...r.orders.map((o, sub) => (
+                    <Marker key={`mk-${o.id}`} position={fakePin(r, idx, sub)}>
+                      <Popup>
+                        <b>#{o.order_number}</b><br />
+                        {o.customer_name}<br />
+                        {o.bairro_nome}
+                      </Popup>
+                    </Marker>
+                  )),
+                ];
               })}
+
             </MapContainer>
           </div>
 

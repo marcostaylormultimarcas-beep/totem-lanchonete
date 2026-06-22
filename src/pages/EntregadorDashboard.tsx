@@ -553,13 +553,18 @@ const EntregadorDashboard = () => {
                       />
                       <button
                         onClick={() => handleConfirm(o.id)}
-                        disabled={confirming === o.id || (codeInputs[o.id] || '').length !== 4}
+                        disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
                         className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
                       >
                         <CheckCircle2 className="w-5 h-5" />
-                        {confirming === o.id ? '...' : 'OK'}
+                        {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
                       </button>
                     </div>
+                    {geofenceError[o.id] && (
+                      <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
+                        {geofenceError[o.id]}
+                      </div>
+                    )}
                   </div>
 
                   <button

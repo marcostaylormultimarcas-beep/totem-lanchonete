@@ -223,6 +223,25 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
             <input type="number" value={novoMin} onChange={(e) => setNovoMin(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
           </div>
+          <div className="col-span-2 md:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-3 items-end pt-1 border-t border-border/40 mt-1">
+            <div>
+              <label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3 text-amber-400" /> Validade</label>
+              <input type="date" value={novaValidade} onChange={(e) => setNovaValidade(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Lote</label>
+              <input value={novoLote} onChange={(e) => setNovoLote(e.target.value)} placeholder="Ex: L2026-A"
+                className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
+            </div>
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs">⚠️ Alerta de vencimento</span>
+              <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${novoAlertaVenc ? 'bg-amber-500' : 'bg-muted'}`}>
+                <input type="checkbox" checked={novoAlertaVenc} onChange={e => setNovoAlertaVenc(e.target.checked)} className="sr-only" />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${novoAlertaVenc ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </span>
+            </label>
+          </div>
           <button onClick={addIngrediente}
             className="col-span-2 md:col-span-5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm inline-flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> Adicionar

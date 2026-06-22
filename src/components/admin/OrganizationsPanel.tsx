@@ -77,6 +77,7 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
     const { error } = await supabase.from('organizations').update({
       cnpj: form.cnpj,
       telefone: form.telefone,
+      instagram: form.instagram.trim(),
       endereco_cep: form.endereco_cep,
       endereco_rua: form.endereco_rua,
       endereco_numero: form.endereco_numero,

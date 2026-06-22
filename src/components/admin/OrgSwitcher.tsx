@@ -32,11 +32,15 @@ const OrgSwitcher = ({ orgs, activeOrgId, onChange, onConsolidated, consolidated
           aria-expanded={open}
           className="touch-btn flex items-center gap-2 bg-muted hover:bg-muted/70 px-3 py-2 rounded-lg text-sm flex-1 max-w-xs min-w-0 transition-colors"
         >
-          <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+          {consolidatedActive ? (
+            <BarChart3 className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          ) : (
+            <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+          )}
           <span className="truncate font-semibold flex-1 text-left">
-            {active?.name || 'Selecionar loja'}
+            {consolidatedActive ? '📊 Todas as lojas (consolidado)' : (active?.name || 'Selecionar loja')}
           </span>
-          {active?.paused && (
+          {!consolidatedActive && active?.paused && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/20 text-destructive flex items-center gap-1">
               <Pause className="w-2.5 h-2.5" />pausada
             </span>
@@ -49,6 +53,25 @@ const OrgSwitcher = ({ orgs, activeOrgId, onChange, onConsolidated, consolidated
           <CommandInput placeholder="Buscar loja..." className="h-10" />
           <CommandList>
             <CommandEmpty>Nenhuma loja encontrada.</CommandEmpty>
+            {onConsolidated && (
+              <>
+                <CommandGroup heading="Visão geral">
+                  <CommandItem
+                    value="todas as lojas consolidado rede multi"
+                    onSelect={() => { onConsolidated(); setOpen(false); }}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <Check className={cn('w-4 h-4', consolidatedActive ? 'opacity-100 text-amber-400' : 'opacity-0')} />
+                    <BarChart3 className="w-4 h-4 text-amber-400" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold truncate">📊 Todas as lojas</div>
+                      <div className="text-xs text-muted-foreground truncate">Faturamento, pedidos e estoque consolidados</div>
+                    </div>
+                  </CommandItem>
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            )}
             <CommandGroup heading={`${orgs.length} loja(s)`}>
               {orgs.map(o => (
                 <CommandItem

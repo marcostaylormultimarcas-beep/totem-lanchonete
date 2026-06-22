@@ -117,7 +117,9 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     resolve();
     const { data: sub } = supabase.auth.onAuthStateChange((_event) => {
-      resolve();
+      setTimeout(() => {
+        resolve();
+      }, 0);
     });
     return () => { sub.subscription.unsubscribe(); };
   }, []);

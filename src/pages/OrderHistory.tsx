@@ -60,13 +60,27 @@ const OrderHistory = () => {
     return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success('Você saiu da sua conta.');
+    navigate(getKioskHomePath());
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <div className="flex items-center gap-4 p-4 border-b border-border">
-        <button onClick={() => navigate(getKioskHomePath())} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft className="w-6 h-6" />
+      <div className="flex items-center justify-between gap-4 p-4 border-b border-border">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate(getKioskHomePath())} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft className="w-6 h-6" />
+          </button>
+          <h1 className="text-xl font-bold">Meus Pedidos</h1>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground hover:text-foreground text-sm font-semibold transition"
+        >
+          <LogOut className="w-4 h-4" /> Sair
         </button>
-        <h1 className="text-xl font-bold">Meus Pedidos</h1>
       </div>
 
       <div className="flex-1 px-4 py-4 max-w-2xl mx-auto w-full space-y-3">

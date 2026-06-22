@@ -112,10 +112,14 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
       nome: novoNome.trim(), unidade: novaUnidade.trim() || 'un',
       estoque_atual: novoEstoque, estoque_minimo: novoMin,
       disponivel: novoEstoque > 0,
+      data_vencimento: novaValidade || null,
+      lote: novoLote.trim() || null,
+      alerta_vencimento: novoAlertaVenc,
     });
     if (error) { toast.error(error.message); return; }
     toast.success('Ingrediente cadastrado');
     setNovoNome(''); setNovoEstoque(0); setNovoMin(0);
+    setNovaValidade(''); setNovoLote(''); setNovoAlertaVenc(false);
     load();
   };
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon, Layers, ChevronDown, ChevronUp, Save, MapPin, Phone, FileText } from 'lucide-react';
+import { Plus, Trash2, Pause, Play, Loader2, Building2, Link as LinkIcon, Layers, ChevronDown, ChevronUp, Save, MapPin, Phone, FileText, Instagram } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Org {

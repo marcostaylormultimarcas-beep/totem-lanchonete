@@ -811,6 +811,45 @@ function PDVMain({
           }}
         />
       )}
+
+      {/* Cupom oculto p/ impressão térmica */}
+      {lastReceipt && (
+        <div id="print-receipt-area" className="print-receipt print-cupom">
+          <div className="pr-header">
+            <h1>VisionFood</h1>
+            <p>{operador.org_name}</p>
+            <p>
+              {new Date(lastReceipt.createdAt).toLocaleDateString("pt-BR")}{" "}
+              {new Date(lastReceipt.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+            <p className="pr-order-num">PEDIDO #{lastReceipt.orderNumber}</p>
+            <p>Operador: {operador.name}</p>
+          </div>
+          <div className="pr-divider" />
+          <div className="pr-section">
+            <p className="pr-section-title">ITENS</p>
+            {lastReceipt.items.map((it, i) => (
+              <div key={i} className="pr-item">
+                <div className="pr-item-row">
+                  <span>{it.quantity}x {it.name}</span>
+                  <span>{fmt(it.price * it.quantity)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="pr-divider" />
+          <div className="pr-section pr-totals">
+            <div className="pr-item-row"><span>Subtotal</span><span>{fmt(lastReceipt.subtotal)}</span></div>
+            {lastReceipt.desconto > 0 && (
+              <div className="pr-item-row"><span>Desconto {lastReceipt.cupom && `(${lastReceipt.cupom})`}</span><span>- {fmt(lastReceipt.desconto)}</span></div>
+            )}
+            <div className="pr-item-row pr-total"><span>TOTAL</span><span>{fmt(lastReceipt.total)}</span></div>
+            <p className="pr-payment"><strong>Pagamento:</strong> {lastReceipt.forma.toUpperCase()}</p>
+          </div>
+          <div className="pr-divider" />
+          <p className="pr-footer">Obrigado pela preferência!</p>
+        </div>
+      )}
     </div>
   );
 }

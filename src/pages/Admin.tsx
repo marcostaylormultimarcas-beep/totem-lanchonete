@@ -121,6 +121,9 @@ const AdminPage = () => {
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
           soldByWeight: Boolean((p as any).sold_by_weight),
           codigoBarras: (p as any).codigo_barras || '',
+          dataVencimento: (p as any).data_vencimento || null,
+          lote: (p as any).lote || '',
+          alertaVencimento: Boolean((p as any).alerta_vencimento),
         })));
       }
     };

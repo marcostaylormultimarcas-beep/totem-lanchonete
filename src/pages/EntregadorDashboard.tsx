@@ -308,6 +308,54 @@ const EntregadorDashboard = () => {
       toast.error('Digite o código de 4 dígitos.');
       return;
     }
+
+    // ====== TRAVA DE SEGURANÇA (Geofence 200m) ======
+    const order = orders.find((o) => o.id === orderId);
+    if (order?.delivery_address) {
+      setGeoChecking(orderId);
+      setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      try {
+        let dest = destCoords[orderId];
+        if (!dest) {
+          const c = await geocodeAddress(order.delivery_address);
+          if (c) {
+            dest = c;
+            setDestCoords((prev) => ({ ...prev, [orderId]: c }));
+          }
+        }
+        if (!dest) {
+          setGeoChecking(null);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa. Confirme o endereço com a loja.',
+          }));
+          return;
+        }
+        const me = await getCurrentPositionAsync();
+        const distM = haversineMeters(me, dest);
+        if (distM > MAX_DELIVERY_RADIUS_M) {
+          setGeoChecking(null);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: `📍 Ação Bloqueada! Você precisa estar próximo ao endereço do cliente para finalizar esta entrega. Vá até o local. (você está a ${Math.round(distM)} m)`,
+          }));
+          return;
+        }
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      } catch (err: any) {
+        setGeoChecking(null);
+        const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: denied
+            ? '📍 Ative a permissão de localização do navegador para finalizar a entrega.'
+            : '📍 Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
+        }));
+        return;
+      }
+      setGeoChecking(null);
+    }
+
     setConfirming(orderId);
     const { data, error } = await supabase.rpc('confirm_delivery_with_code' as any, {
       _entregador_id: session.id,

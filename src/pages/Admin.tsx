@@ -45,6 +45,7 @@ import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 import SenhasPanel from '@/components/admin/SenhasPanel';
+import OperadoresPdvPanel from '@/components/admin/OperadoresPdvPanel';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -89,7 +90,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -739,6 +740,7 @@ const AdminPage = () => {
           { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
           { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
+          { key: 'pdv_operadores' as const, label: 'Operadores PDV', icon: Users, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },
@@ -1535,6 +1537,13 @@ const AdminPage = () => {
             <Save className="w-4 h-4" /> Salvar Configurações
           </button>
         </div>
+      )}
+
+      {tab === 'pdv_operadores' && (
+        <OperadoresPdvPanel
+          organizationId={activeOrgId}
+          orgSlug={allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug || null}
+        />
       )}
 
       {tab === 'fiscal' && (

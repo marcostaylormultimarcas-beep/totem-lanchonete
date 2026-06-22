@@ -69,6 +69,18 @@
   }
 }
 
+/* Trava SRGB — impede inversão de cores do Dark Mode nativo do navegador
+   (especialmente em celulares) sobre imagens de produtos/avatars */
+img,
+[data-radix-avatar-image],
+span[data-state="loaded"] > img {
+  color-scheme: light !important;
+  forced-color-adjust: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+  mix-blend-mode: normal !important;
+}
+
 @layer utilities {
   .touch-btn {
     @apply min-h-[56px] text-lg font-semibold rounded-xl transition-all duration-200 active:scale-95;

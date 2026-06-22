@@ -654,7 +654,7 @@ function PDVMain({
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+    <div className="min-h-screen text-zinc-100 flex flex-col">
       {/* Header */}
       <header className="px-4 py-3 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3 sticky top-0 bg-zinc-950/95 backdrop-blur z-20">
         <div className="flex items-center gap-3 min-w-0 flex-1">

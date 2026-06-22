@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { triggerRupturaNotification } from '@/lib/onesignal';
+import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 
 interface Ingrediente {
   id: string;
@@ -11,6 +12,9 @@ interface Ingrediente {
   estoque_atual: number;
   estoque_minimo: number;
   disponivel: boolean;
+  data_vencimento?: string | null;
+  lote?: string | null;
+  alerta_vencimento?: boolean;
 }
 interface Receita {
   id: string;
@@ -39,6 +43,9 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const [novaUnidade, setNovaUnidade] = useState('un');
   const [novoEstoque, setNovoEstoque] = useState<number>(0);
   const [novoMin, setNovoMin] = useState<number>(0);
+  const [novaValidade, setNovaValidade] = useState<string>('');
+  const [novoLote, setNovoLote] = useState<string>('');
+  const [novoAlertaVenc, setNovoAlertaVenc] = useState<boolean>(false);
 
   const [linkProd, setLinkProd] = useState<string>('');
   const [linkIng, setLinkIng] = useState<string>('');
@@ -105,10 +112,14 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
       nome: novoNome.trim(), unidade: novaUnidade.trim() || 'un',
       estoque_atual: novoEstoque, estoque_minimo: novoMin,
       disponivel: novoEstoque > 0,
+      data_vencimento: novaValidade || null,
+      lote: novoLote.trim() || null,
+      alerta_vencimento: novoAlertaVenc,
     });
     if (error) { toast.error(error.message); return; }
     toast.success('Ingrediente cadastrado');
     setNovoNome(''); setNovoEstoque(0); setNovoMin(0);
+    setNovaValidade(''); setNovoLote(''); setNovoAlertaVenc(false);
     load();
   };
 
@@ -146,6 +157,12 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const removeReceita = async (id: string) => {
     await supabase.from('receitas' as any).delete().eq('id', id);
     load();
+  };
+
+  const updateIngrediente = async (id: string, patch: Partial<Ingrediente>) => {
+    setIngs(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
+    const { error } = await supabase.from('ingredientes' as any).update(patch as any).eq('id', id);
+    if (error) { toast.error(error.message); load(); }
   };
 
   const saveWebhook = async () => {
@@ -206,6 +223,25 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
             <input type="number" value={novoMin} onChange={(e) => setNovoMin(Number(e.target.value))}
               className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
           </div>
+          <div className="col-span-2 md:col-span-5 grid grid-cols-2 md:grid-cols-3 gap-3 items-end pt-1 border-t border-border/40 mt-1">
+            <div>
+              <label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3 text-amber-400" /> Validade</label>
+              <input type="date" value={novaValidade} onChange={(e) => setNovaValidade(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Lote</label>
+              <input value={novoLote} onChange={(e) => setNovoLote(e.target.value)} placeholder="Ex: L2026-A"
+                className="w-full px-3 py-2 rounded-lg bg-background border border-input text-sm" />
+            </div>
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <span className="text-xs">⚠️ Alerta de vencimento</span>
+              <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${novoAlertaVenc ? 'bg-amber-500' : 'bg-muted'}`}>
+                <input type="checkbox" checked={novoAlertaVenc} onChange={e => setNovoAlertaVenc(e.target.checked)} className="sr-only" />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${novoAlertaVenc ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </span>
+            </label>
+          </div>
           <button onClick={addIngrediente}
             className="col-span-2 md:col-span-5 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm inline-flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> Adicionar
@@ -224,14 +260,22 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-muted-foreground border-b border-border">
-                <th className="py-2">Nome</th><th>Estoque</th><th>Mínimo</th><th>Status</th><th></th>
+                <th className="py-2">Nome</th><th>Estoque</th><th>Mínimo</th><th>Status</th><th>Validade / Lote</th><th></th>
               </tr></thead>
               <tbody>
                 {ings.map(i => {
                   const low = i.estoque_atual <= i.estoque_minimo;
+                  const vencSt = i.alerta_vencimento ? vencimentoStatus(i.data_vencimento) : 'ok';
                   return (
                     <tr key={i.id} className="border-b border-border/40">
-                      <td className="py-2 font-medium">{i.nome}</td>
+                      <td className="py-2 font-medium">
+                        <div className="flex items-center gap-1.5">
+                          {i.nome}
+                          {i.alerta_vencimento && vencSt !== 'ok' && (
+                            <AlertTriangle className={`w-3.5 h-3.5 animate-pulse ${vencSt === 'vencido' ? 'text-destructive' : 'text-amber-500'}`} />
+                          )}
+                        </div>
+                      </td>
                       <td>{i.estoque_atual} {i.unidade}</td>
                       <td>{i.estoque_minimo}</td>
                       <td>
@@ -243,6 +287,35 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
                           <span className="text-xs text-amber-400">Baixo</span>
                         ) : (
                           <span className="text-xs text-emerald-400">OK</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            value={i.data_vencimento || ''}
+                            onChange={e => updateIngrediente(i.id, { data_vencimento: e.target.value || null })}
+                            className="px-2 py-1 rounded bg-background border border-input text-[11px] w-[120px]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Lote"
+                            value={i.lote || ''}
+                            onChange={e => updateIngrediente(i.id, { lote: e.target.value })}
+                            className="px-2 py-1 rounded bg-background border border-input text-[11px] w-[80px]"
+                          />
+                          <button
+                            onClick={() => updateIngrediente(i.id, { alerta_vencimento: !i.alerta_vencimento })}
+                            title={i.alerta_vencimento ? 'Alerta de vencimento ativo' : 'Ativar alerta de vencimento'}
+                            className={`px-1.5 py-1 rounded text-[10px] font-bold ${i.alerta_vencimento ? 'bg-amber-500/20 text-amber-400' : 'bg-muted text-muted-foreground'}`}
+                          >
+                            ⚠️
+                          </button>
+                        </div>
+                        {i.alerta_vencimento && i.data_vencimento && (
+                          <div className={`text-[10px] mt-0.5 ${vencSt === 'vencido' ? 'text-destructive' : vencSt === 'proximo' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {vencimentoLabel(i.data_vencimento)}
+                          </div>
                         )}
                       </td>
                       <td className="text-right space-x-1">

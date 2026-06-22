@@ -604,6 +604,12 @@ function PDVMain({
             <RotateCcw className="w-4 h-4" /> Devoluções
           </button>
           <button
+            onClick={() => window.open("/pdv-cliente", "pdv-cliente", "width=900,height=700")}
+            className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
+          >
+            <Receipt className="w-4 h-4" /> Tela Cliente
+          </button>
+          <button
             onClick={() => setShowFechar(true)}
             className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-red-500/10 border border-red-500/30 text-red-300 hover:bg-red-500/20 inline-flex items-center gap-1.5"
           >

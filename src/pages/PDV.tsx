@@ -333,6 +333,7 @@ function PDVMain({
 
   const [cupomCode, setCupomCode] = useState("");
   const [cupomDesc, setCupomDesc] = useState<{ codigo: string; tipo: string; valor: number } | null>(null);
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const [showSangria, setShowSangria] = useState(false);
   const [showFechar, setShowFechar] = useState(false);

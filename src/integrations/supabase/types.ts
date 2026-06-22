@@ -944,6 +944,7 @@ export type Database = {
           endereco_numero: string
           endereco_rua: string
           id: string
+          instagram: string | null
           logo_url: string
           master_id: string | null
           mp_next_charge_at: string | null
@@ -969,6 +970,7 @@ export type Database = {
           endereco_numero?: string
           endereco_rua?: string
           id?: string
+          instagram?: string | null
           logo_url?: string
           master_id?: string | null
           mp_next_charge_at?: string | null
@@ -994,6 +996,7 @@ export type Database = {
           endereco_numero?: string
           endereco_rua?: string
           id?: string
+          instagram?: string | null
           logo_url?: string
           master_id?: string | null
           mp_next_charge_at?: string | null

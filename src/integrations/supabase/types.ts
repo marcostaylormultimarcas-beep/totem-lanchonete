@@ -1876,6 +1876,7 @@ export type Database = {
         }
         Returns: Json
       }
+      email_already_registered: { Args: { _email: string }; Returns: boolean }
       entregador_available_orders: {
         Args: { _entregador_id: string; _password: string }
         Returns: Json

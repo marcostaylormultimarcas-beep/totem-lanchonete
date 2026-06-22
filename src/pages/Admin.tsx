@@ -870,6 +870,7 @@ const AdminPage = () => {
         </div>
       ) : (
       <>
+      <VencimentoBanner organizationId={activeOrgId} />
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'senhas' && (

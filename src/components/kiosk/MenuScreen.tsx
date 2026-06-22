@@ -273,32 +273,33 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
             return (
               <div
                 key={product.id}
-                className="relative bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col text-left transition-all hover:border-amber-500/40 hover:shadow-[0_8px_30px_rgba(0,0,0,0.5)]"
+                className="group relative bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-visible flex flex-col text-left transition-all hover:border-amber-500/50 hover:-translate-y-1 hover:shadow-[0_18px_40px_-10px_rgba(245,158,11,0.25)]"
               >
                 <button
                   onClick={() => setSelectedProduct(product)}
-                  className="w-full aspect-square bg-zinc-950/60 overflow-hidden block"
+                  className="w-full aspect-square bg-zinc-950/60 overflow-hidden block rounded-t-2xl"
                 >
                   {isUrlImg ? (
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-300 hover:scale-105" />
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   ) : (
                     <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>
                   )}
                 </button>
-                <div className="p-3 flex flex-col gap-1">
+
+                {/* Botão + flutuante */}
+                <button
+                  onClick={() => setSelectedProduct(product)}
+                  aria-label={`Adicionar ${product.name}`}
+                  className="absolute -bottom-4 right-3 w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-600 text-zinc-950 shadow-[0_8px_22px_rgba(245,158,11,0.55)] ring-2 ring-zinc-950 active:scale-90 hover:scale-105 transition-transform z-10"
+                >
+                  <Plus className="w-6 h-6" strokeWidth={3.5} />
+                </button>
+
+                <div className="p-3 pb-4 flex flex-col gap-1">
                   <span className="font-bold text-sm sm:text-base leading-tight line-clamp-2 text-white">{product.name}</span>
-                  <div className="flex items-end justify-between gap-2 mt-1">
-                    <span className="text-amber-400 font-black text-base sm:text-lg tracking-tight">
-                      {formatCurrency(product.price)}
-                    </span>
-                    <button
-                      onClick={() => setSelectedProduct(product)}
-                      aria-label={`Adicionar ${product.name}`}
-                      className="touch-btn w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-[0_4px_14px_rgba(245,158,11,0.4)] active:scale-90 transition-transform"
-                    >
-                      <Plus className="w-5 h-5" strokeWidth={3} />
-                    </button>
-                  </div>
+                  <span className="text-amber-400 font-black text-lg sm:text-xl tracking-tight tabular-nums">
+                    {formatCurrency(product.price)}
+                  </span>
                 </div>
               </div>
             );

@@ -190,6 +190,133 @@ export type Database = {
         }
         Relationships: []
       }
+      caixa_movimentos: {
+        Row: {
+          caixa_id: string
+          created_at: string
+          forma_pagamento: string | null
+          id: string
+          metadata: Json | null
+          motivo: string | null
+          operador_id: string | null
+          operador_nome: string | null
+          order_id: string | null
+          organization_id: string
+          tipo: string
+          valor: number
+        }
+        Insert: {
+          caixa_id: string
+          created_at?: string
+          forma_pagamento?: string | null
+          id?: string
+          metadata?: Json | null
+          motivo?: string | null
+          operador_id?: string | null
+          operador_nome?: string | null
+          order_id?: string | null
+          organization_id: string
+          tipo: string
+          valor?: number
+        }
+        Update: {
+          caixa_id?: string
+          created_at?: string
+          forma_pagamento?: string | null
+          id?: string
+          metadata?: Json | null
+          motivo?: string | null
+          operador_id?: string | null
+          operador_nome?: string | null
+          order_id?: string | null
+          organization_id?: string
+          tipo?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caixa_movimentos_caixa_id_fkey"
+            columns: ["caixa_id"]
+            isOneToOne: false
+            referencedRelation: "caixas_pdv"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caixa_movimentos_operador_id_fkey"
+            columns: ["operador_id"]
+            isOneToOne: false
+            referencedRelation: "operadores_pdv"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caixa_movimentos_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      caixas_pdv: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          id: string
+          opened_at: string
+          operador_id: string
+          operador_nome: string
+          organization_id: string
+          resumo: Json | null
+          saldo_final: number | null
+          saldo_inicial: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          opened_at?: string
+          operador_id: string
+          operador_nome: string
+          organization_id: string
+          resumo?: Json | null
+          saldo_final?: number | null
+          saldo_inicial?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          opened_at?: string
+          operador_id?: string
+          operador_nome?: string
+          organization_id?: string
+          resumo?: Json | null
+          saldo_final?: number | null
+          saldo_inicial?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "caixas_pdv_operador_id_fkey"
+            columns: ["operador_id"]
+            isOneToOne: false
+            referencedRelation: "operadores_pdv"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "caixas_pdv_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cep_atendidos: {
         Row: {
           cep: string
@@ -599,6 +726,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      operadores_pdv: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          password: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          password: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          password?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "operadores_pdv_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       order_cancellations: {
         Row: {
@@ -1735,6 +1903,78 @@ export type Database = {
       parceria_sweep_suspended: { Args: never; Returns: number }
       parceria_toggle: {
         Args: { _enabled: boolean; _parceria_id: string }
+        Returns: Json
+      }
+      pdv_abrir_caixa: {
+        Args: {
+          _operador_id: string
+          _password: string
+          _saldo_inicial: number
+        }
+        Returns: Json
+      }
+      pdv_check: {
+        Args: { _operador_id: string; _password: string }
+        Returns: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          password: string
+          updated_at: string
+          username: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "operadores_pdv"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      pdv_devolver_pedido: {
+        Args: {
+          _caixa_id: string
+          _items_devolvidos: Json
+          _motivo: string
+          _operador_id: string
+          _order_id: string
+          _password: string
+          _valor_devolucao: number
+        }
+        Returns: Json
+      }
+      pdv_fechar_caixa: {
+        Args: { _caixa_id: string; _operador_id: string; _password: string }
+        Returns: Json
+      }
+      pdv_operador_login: {
+        Args: { _org_slug: string; _password: string; _username: string }
+        Returns: Json
+      }
+      pdv_registrar_movimento: {
+        Args: {
+          _caixa_id: string
+          _forma: string
+          _motivo: string
+          _operador_id: string
+          _password: string
+          _tipo: string
+          _valor: number
+        }
+        Returns: Json
+      }
+      pdv_registrar_venda: {
+        Args: {
+          _caixa_id: string
+          _cupom_code: string
+          _desconto: number
+          _forma: string
+          _items: Json
+          _operador_id: string
+          _password: string
+          _total: number
+        }
         Returns: Json
       }
       print_agent_ack: {

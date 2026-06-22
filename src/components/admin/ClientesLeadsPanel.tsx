@@ -16,6 +16,7 @@ interface OrderRow {
 }
 
 interface CustomerSummary {
+  key: string;
   phone: string;
   name: string;
   orders: number;
@@ -44,16 +45,20 @@ const formatPhone = (raw: string) => {
   return raw || '-';
 };
 
+const fallbackContactUrl = (msg: string) => `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
 const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [leadPhones, setLeadPhones] = useState<Array<{ phone: string; name?: string; source: string; created_at: string }>>([]);
+  const [leadPhones, setLeadPhones] = useState<Array<{ key: string; phone: string; name?: string; source: string; created_at: string }>>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!organizationId) { setOrders([]); setLeadPhones([]); setLoading(false); return; }
     setLoading(true);
+    setLoadError(null);
     (async () => {
       const [ordersRes, fidRes, notifRes, profRes] = await Promise.all([
         supabase.from('orders')
@@ -71,23 +76,30 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
           .eq('organization_id', organizationId)
           .limit(2000),
         supabase.from('profiles')
-          .select('display_name, phone, created_at')
+          .select('user_id, display_name, phone, created_at')
           .eq('origem_assinatura_empresa_id', organizationId)
           .limit(2000),
       ]);
 
-      const leads: Array<{ phone: string; name?: string; source: string; created_at: string }> = [];
+      const errors = [ordersRes.error, fidRes.error, notifRes.error, profRes.error].filter(Boolean);
+      if (errors.length) {
+        console.error('[ClientesLeadsPanel] load failed', errors);
+        setLoadError('Não foi possível carregar todos os clientes/leads. Verifique as permissões da loja e tente atualizar.');
+      }
+
+      const leads: Array<{ key: string; phone: string; name?: string; source: string; created_at: string }> = [];
       (fidRes.data || []).forEach((r: any) => {
         const p = normalizePhone(r.telefone_cliente);
-        if (p.length >= 8) leads.push({ phone: p, source: 'Fidelidade', created_at: r.created_at });
+        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Fidelidade', created_at: r.created_at });
       });
       (notifRes.data || []).forEach((r: any) => {
         const p = normalizePhone(r.customer_phone);
-        if (p.length >= 8) leads.push({ phone: p, source: 'Cardápio', created_at: r.created_at });
+        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Cardápio', created_at: r.created_at });
       });
       (profRes.data || []).forEach((r: any) => {
         const p = normalizePhone(r.phone || '');
-        if (p.length >= 8) leads.push({ phone: p, name: r.display_name, source: 'Cadastro', created_at: r.created_at });
+        const key = p.length >= 8 ? p : `profile:${r.user_id}`;
+        leads.push({ key, phone: p, name: r.display_name, source: 'Cadastro', created_at: r.created_at });
       });
 
       setOrders((ordersRes.data as OrderRow[]) || []);
@@ -107,6 +119,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       let entry = map.get(phone);
       if (!entry) {
         entry = {
+          key: phone,
           phone,
           name: o.customer_name || 'Sem nome',
           orders: 0,
@@ -138,8 +151,10 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
 
     // Leads (sem pedidos)
     for (const l of leadPhones) {
-      if (map.has(l.phone)) continue;
-      map.set(l.phone, {
+      if (l.phone && map.has(l.phone)) continue;
+      if (map.has(l.key)) continue;
+      map.set(l.key, {
+        key: l.key,
         phone: l.phone,
         name: l.name || 'Lead sem nome',
         orders: 0,
@@ -161,6 +176,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
       }
       const daysSince = c.lastOrderAt ? Math.floor((now - new Date(c.lastOrderAt).getTime()) / 86400000) : null;
       list.push({
+        key: c.key,
         phone: c.phone,
         name: c.name,
         orders: c.orders,
@@ -245,6 +261,11 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
 
       {/* Filters */}
       <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-4 space-y-3">
+        {loadError && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            {loadError}
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {([
             { k: 'all', label: 'Todos', icon: Users },
@@ -304,7 +325,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
               </thead>
               <tbody>
                 {filtered.map((c) => (
-                  <tr key={c.phone} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
+                  <tr key={c.key} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-semibold text-zinc-100">{c.name}</div>
                       <div className="text-[10px] text-zinc-500">Origem: {c.source}</div>
@@ -324,7 +345,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                       <div className="inline-flex items-center gap-2">
                         <span className="text-zinc-400 font-mono text-xs">{formatPhone(c.phone)}</span>
                         <a
-                          href={buildWaUrl(c.phone, waMessageFor(c))}
+                          href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
                           target="_blank"
                           rel="noreferrer"
                           title="Abrir WhatsApp"
@@ -355,7 +376,7 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <a
-                        href={buildWaUrl(c.phone, waMessageFor(c))}
+                        href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
                         target="_blank"
                         rel="noreferrer"
                         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${

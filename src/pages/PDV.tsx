@@ -481,6 +481,47 @@ function PDVMain({
     toast.success(`Cupom ${(data as any).codigo} aplicado`);
   };
 
+  // ---- Espelhamento p/ tela do cliente ----
+  const bcRef = useRef<BroadcastChannel | null>(null);
+  useEffect(() => {
+    try { bcRef.current = new BroadcastChannel("pdv-cliente"); } catch {}
+    return () => { bcRef.current?.close(); };
+  }, []);
+  useEffect(() => {
+    const payload = {
+      storeName: operador.org_name,
+      items: cart,
+      subtotal,
+      desconto,
+      total,
+      forma,
+    };
+    try {
+      localStorage.setItem("pdv_cliente_mirror_v1", JSON.stringify(payload));
+      bcRef.current?.postMessage({ type: "update", payload });
+    } catch {}
+  }, [cart, subtotal, desconto, total, forma, operador.org_name]);
+
+  // ---- Recibo p/ impressão ----
+  const [lastReceipt, setLastReceipt] = useState<null | {
+    orderNumber: string;
+    createdAt: string;
+    items: CartItem[];
+    subtotal: number;
+    desconto: number;
+    total: number;
+    forma: string;
+    cupom: string;
+  }>(null);
+
+  const triggerPrint = () => {
+    document.body.classList.add("printing-cupom");
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => document.body.classList.remove("printing-cupom"), 300);
+    }, 80);
+  };
+
   const finalizar = async () => {
     if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
@@ -491,6 +532,12 @@ function PDVMain({
       price: x.price,
       quantity: x.quantity,
     }));
+    const snapshot = [...cart];
+    const snapSubtotal = subtotal;
+    const snapDesconto = desconto;
+    const snapTotal = total;
+    const snapForma = forma;
+    const snapCupom = cupomDesc?.codigo || "";
     const { data, error } = await supabase.rpc("pdv_registrar_venda", {
       _operador_id: operador.id,
       _password: password,
@@ -498,15 +545,29 @@ function PDVMain({
       _items: items,
       _forma: forma,
       _total: total,
-      _cupom_code: cupomDesc?.codigo || "",
+      _cupom_code: snapCupom,
       _desconto: desconto,
     });
     setSaleLoading(false);
     if (error) return toast.error(error.message);
     const res = data as any;
     if (!res?.ok) return toast.error("Falha ao registrar venda");
-    toast.success(`Venda registrada — ${fmt(total)}`);
+    toast.success(`Venda registrada — ${fmt(snapTotal)}`);
     beep();
+
+    setLastReceipt({
+      orderNumber: res.order_number,
+      createdAt: res.created_at || new Date().toISOString(),
+      items: snapshot,
+      subtotal: snapSubtotal,
+      desconto: snapDesconto,
+      total: snapTotal,
+      forma: snapForma,
+      cupom: snapCupom,
+    });
+    // dispara impressão após render do recibo
+    setTimeout(triggerPrint, 60);
+
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");
@@ -541,6 +602,12 @@ function PDVMain({
             className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
           >
             <RotateCcw className="w-4 h-4" /> Devoluções
+          </button>
+          <button
+            onClick={() => window.open("/pdv-cliente", "pdv-cliente", "width=900,height=700")}
+            className="touch-btn flex-1 sm:flex-none justify-center px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-amber-400 hover:border-amber-500/30 inline-flex items-center gap-1.5"
+          >
+            <Receipt className="w-4 h-4" /> Tela Cliente
           </button>
           <button
             onClick={() => setShowFechar(true)}
@@ -749,6 +816,45 @@ function PDVMain({
             onLogout();
           }}
         />
+      )}
+
+      {/* Cupom oculto p/ impressão térmica */}
+      {lastReceipt && (
+        <div id="print-receipt-area" className="print-receipt print-cupom">
+          <div className="pr-header">
+            <h1>VisionFood</h1>
+            <p>{operador.org_name}</p>
+            <p>
+              {new Date(lastReceipt.createdAt).toLocaleDateString("pt-BR")}{" "}
+              {new Date(lastReceipt.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+            <p className="pr-order-num">PEDIDO #{lastReceipt.orderNumber}</p>
+            <p>Operador: {operador.name}</p>
+          </div>
+          <div className="pr-divider" />
+          <div className="pr-section">
+            <p className="pr-section-title">ITENS</p>
+            {lastReceipt.items.map((it, i) => (
+              <div key={i} className="pr-item">
+                <div className="pr-item-row">
+                  <span>{it.quantity}x {it.name}</span>
+                  <span>{fmt(it.price * it.quantity)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="pr-divider" />
+          <div className="pr-section pr-totals">
+            <div className="pr-item-row"><span>Subtotal</span><span>{fmt(lastReceipt.subtotal)}</span></div>
+            {lastReceipt.desconto > 0 && (
+              <div className="pr-item-row"><span>Desconto {lastReceipt.cupom && `(${lastReceipt.cupom})`}</span><span>- {fmt(lastReceipt.desconto)}</span></div>
+            )}
+            <div className="pr-item-row pr-total"><span>TOTAL</span><span>{fmt(lastReceipt.total)}</span></div>
+            <p className="pr-payment"><strong>Pagamento:</strong> {lastReceipt.forma.toUpperCase()}</p>
+          </div>
+          <div className="pr-divider" />
+          <p className="pr-footer">Obrigado pela preferência!</p>
+        </div>
       )}
     </div>
   );

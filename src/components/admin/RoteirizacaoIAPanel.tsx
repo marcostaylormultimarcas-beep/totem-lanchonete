@@ -247,35 +247,41 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
           )}
         </aside>
 
-        {/* Mapa + Rotas */}
+        {/* Resumo das rotas (sem mapa pesado) */}
         <section className="space-y-4">
-          <div className="rounded-2xl overflow-hidden border border-zinc-800/80 bg-zinc-900" style={{ height: 360 }}>
-            <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} ref={mapRef as any}>
-              <TileLayer
-                attribution='&copy; OpenStreetMap'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <Marker position={center}>
-                <Popup>🏪 Loja</Popup>
-              </Marker>
-              {routes.flatMap((r, idx) => {
-                const pts: [number, number][] = [center, ...r.orders.map((_, sub) => fakePin(r, idx, sub))];
-                return [
-                  <Polyline key={`pl-${r.id}`} positions={pts} pathOptions={{ color: ROUTE_COLORS[idx % ROUTE_COLORS.length], weight: 4, opacity: 0.85 }} />,
-                  ...r.orders.map((o, sub) => (
-                    <Marker key={`mk-${o.id}`} position={fakePin(r, idx, sub)}>
-                      <Popup>
-                        <b>#{o.order_number}</b><br />
-                        {o.customer_name}<br />
-                        {o.bairro_nome}
-                      </Popup>
-                    </Marker>
-                  )),
-                ];
-              })}
-
-            </MapContainer>
+          <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900 p-4 space-y-3">
+            <p className="text-sm font-bold text-amber-400 flex items-center gap-2">
+              <Route className="w-4 h-4" /> Rotas geradas
+            </p>
+            {routes.length === 0 ? (
+              <p className="text-xs text-zinc-500">Nenhuma rota gerada ainda. Use o botão acima para agrupar os pedidos por bairro.</p>
+            ) : (
+              <div className="space-y-2">
+                {routes.map((r, idx) => (
+                  <div key={r.id} className="rounded-xl bg-zinc-950/50 border border-zinc-800 p-3">
+                    <p className="text-xs font-bold text-zinc-200">
+                      Rota {idx + 1} · {r.bairros.join(', ')} · {r.orders.length} pedido(s)
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                      {r.orders.map((o) => (
+                        <li key={o.id} className="text-[11px] text-zinc-400 flex items-center justify-between gap-2">
+                          <span className="truncate">#{o.order_number} — {o.customer_name}</span>
+                          {o.delivery_address && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}
+                              target="_blank" rel="noopener noreferrer"
+                              className="text-amber-400 hover:underline shrink-0"
+                            >📍 GPS</a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
 
           {!store.lat && (
             <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 px-3 py-2 text-xs flex items-center gap-2">

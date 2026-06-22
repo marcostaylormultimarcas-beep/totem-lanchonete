@@ -67,7 +67,7 @@ const SupportChat = () => {
       const res = await fetch(FUNCTION_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({ messages: next, org: orgCtx }),
       });
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: 'Erro de rede' }));

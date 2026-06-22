@@ -363,6 +363,9 @@ const AdminPage = () => {
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
     soldByWeight: false,
     codigoBarras: '',
+    dataVencimento: '' as string,
+    lote: '' as string,
+    alertaVencimento: false,
   });
 
   // Carrega sessão atual e contexto do admin

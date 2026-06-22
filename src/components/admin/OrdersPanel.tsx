@@ -265,6 +265,16 @@ const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
     }
 
     await supabase.from('orders').update({ status }).eq('id', id);
+
+    // 🔔 Quando o pedido vira "Pronto", dispara senha na TV do salão
+    // (toca o som + pisca o número no painel /senhas)
+    if (status === 'ready') {
+      const order = orders.find(o => o.id === id);
+      if (order) {
+        await callPassword(order);
+      }
+    }
+
     if (status === 'delivered') {
       const order = orders.find(o => o.id === id);
       const { data, error } = await supabase.rpc('grant_loyalty_stamp' as any, { _order_id: id });

@@ -685,7 +685,13 @@ const AdminPage = () => {
       <div className="flex items-center gap-2 px-4 pt-3 overflow-x-auto whitespace-nowrap pb-2">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
           <div className="[&_button]:!bg-zinc-900 [&_button]:!border-zinc-800 [&_button]:!text-zinc-100">
-            <OrgSwitcher orgs={allOrgs as any} activeOrgId={activeOrgId} onChange={switchOrg} />
+            <OrgSwitcher
+              orgs={allOrgs as any}
+              activeOrgId={activeOrgId}
+              onChange={switchOrg}
+              onConsolidated={() => setTab('multilojas')}
+              consolidatedActive={tab === 'multilojas'}
+            />
           </div>
         ) : (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100">

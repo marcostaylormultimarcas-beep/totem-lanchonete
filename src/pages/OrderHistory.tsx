@@ -1,9 +1,10 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Clock, FileText } from 'lucide-react';
+import { ArrowLeft, Package, Clock, FileText, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
+import { toast } from 'sonner';
 
 interface Order {
   id: string;

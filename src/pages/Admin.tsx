@@ -1152,6 +1152,47 @@ const AdminPage = () => {
                 <p className="text-[11px] text-muted-foreground">Quando um pedido é criado, a quantidade é debitada automaticamente.</p>
               </div>
 
+              {/* Validade & Lote */}
+              <div className="kiosk-card p-3 space-y-2 bg-muted/30 border border-border">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">📅 Controle de validade</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Data de vencimento</label>
+                    <input
+                      type="date"
+                      value={form.dataVencimento}
+                      onChange={e => setForm({ ...form, dataVencimento: e.target.value })}
+                      className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Lote</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: L2026-A"
+                      value={form.lote}
+                      onChange={e => setForm({ ...form, lote: e.target.value })}
+                      className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center justify-between gap-2 cursor-pointer pt-1">
+                  <span className="text-xs">⚠️ Ativar alerta de vencimento (≤ 7 dias)</span>
+                  <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.alertaVencimento ? 'bg-amber-500' : 'bg-muted'}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.alertaVencimento}
+                      onChange={e => setForm({ ...form, alertaVencimento: e.target.checked })}
+                      className="sr-only"
+                    />
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${form.alertaVencimento ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </span>
+                </label>
+              </div>
+
+
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>

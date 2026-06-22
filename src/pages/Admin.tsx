@@ -584,6 +584,9 @@ const AdminPage = () => {
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
       sold_by_weight: form.soldByWeight,
       codigo_barras: form.codigoBarras.trim() || null,
+      data_vencimento: form.dataVencimento || null,
+      lote: form.lote.trim() || null,
+      alerta_vencimento: form.alertaVencimento,
     };
 
     if (editingProduct) {
@@ -593,6 +596,9 @@ const AdminPage = () => {
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
         soldByWeight: dbPayload.sold_by_weight,
         codigoBarras: dbPayload.codigo_barras || '',
+        dataVencimento: dbPayload.data_vencimento,
+        lote: dbPayload.lote || '',
+        alertaVencimento: dbPayload.alerta_vencimento,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -610,6 +616,9 @@ const AdminPage = () => {
           lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
           soldByWeight: Boolean((data as any).sold_by_weight),
           codigoBarras: (data as any).codigo_barras || '',
+          dataVencimento: (data as any).data_vencimento || null,
+          lote: (data as any).lote || '',
+          alertaVencimento: Boolean((data as any).alerta_vencimento),
         }]);
       }
     }

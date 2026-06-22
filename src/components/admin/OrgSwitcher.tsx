@@ -54,24 +54,23 @@ const OrgSwitcher = ({ orgs, activeOrgId, onChange, onConsolidated, consolidated
           <CommandList>
             <CommandEmpty>Nenhuma loja encontrada.</CommandEmpty>
             {onConsolidated && (
-              <>
-                <CommandGroup heading="Visão geral">
-                  <CommandItem
-                    value="todas as lojas consolidado rede multi"
-                    onSelect={() => { onConsolidated(); setOpen(false); }}
-                    className="flex items-center gap-2 cursor-pointer"
-                  >
-                    <Check className={cn('w-4 h-4', consolidatedActive ? 'opacity-100 text-amber-400' : 'opacity-0')} />
-                    <BarChart3 className="w-4 h-4 text-amber-400" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold truncate">📊 Todas as lojas</div>
-                      <div className="text-xs text-muted-foreground truncate">Faturamento, pedidos e estoque consolidados</div>
-                    </div>
-                  </CommandItem>
-                </CommandGroup>
-                <CommandSeparator />
-              </>
+              <CommandGroup heading="Visão geral">
+                <CommandItem
+                  value="todas as lojas consolidado rede multi"
+                  onSelect={() => { onConsolidated(); setOpen(false); }}
+                  className="flex items-center gap-2 cursor-pointer"
+                >
+                  <Check className={cn('w-4 h-4', consolidatedActive ? 'opacity-100 text-amber-400' : 'opacity-0')} />
+                  <BarChart3 className="w-4 h-4 text-amber-400" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate">📊 Todas as lojas</div>
+                    <div className="text-xs text-muted-foreground truncate">Faturamento, pedidos e estoque consolidados</div>
+                  </div>
+                </CommandItem>
+              </CommandGroup>
             )}
+            {onConsolidated && <CommandSeparator />}
+
             <CommandGroup heading={`${orgs.length} loja(s)`}>
               {orgs.map(o => (
                 <CommandItem

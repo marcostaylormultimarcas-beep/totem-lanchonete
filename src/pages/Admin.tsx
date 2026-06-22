@@ -1222,8 +1222,27 @@ const AdminPage = () => {
                         <span className="text-2xl flex-shrink-0">{p.image}</span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm truncate">{p.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-sm truncate">{p.name}</p>
+                          {p.alertaVencimento && (() => {
+                            const st = vencimentoStatus(p.dataVencimento);
+                            if (st === 'ok') return null;
+                            return (
+                              <span
+                                title={vencimentoLabel(p.dataVencimento) + (p.lote ? ` · Lote ${p.lote}` : '')}
+                                className={`flex-shrink-0 ${st === 'vencido' ? 'text-destructive' : 'text-amber-500'} animate-pulse`}
+                              >
+                                <AlertTriangle className="w-4 h-4" />
+                              </span>
+                            );
+                          })()}
+                        </div>
                         <p className="text-primary font-bold text-sm">{formatCurrency(p.price)}</p>
+                        {p.alertaVencimento && p.dataVencimento && (
+                          <p className={`text-[11px] font-semibold mt-0.5 ${vencimentoStatus(p.dataVencimento) === 'vencido' ? 'text-destructive' : vencimentoStatus(p.dataVencimento) === 'proximo' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            📅 {vencimentoLabel(p.dataVencimento)}{p.lote ? ` · Lote ${p.lote}` : ''}
+                          </p>
+                        )}
                         {p.manageStock && (
                           <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-destructive' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-accent' : 'text-muted-foreground'}`}>
                             📦 {p.stockQuantity ?? 0} em estoque

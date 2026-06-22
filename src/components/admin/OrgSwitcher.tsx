@@ -15,7 +15,7 @@ interface Props {
   consolidatedActive?: boolean;
 }
 
-const OrgSwitcher = ({ orgs, activeOrgId, onChange }: Props) => {
+const OrgSwitcher = ({ orgs, activeOrgId, onChange, onConsolidated, consolidatedActive }: Props) => {
   const [open, setOpen] = useState(false);
   const active = orgs.find(o => o.id === activeOrgId);
 

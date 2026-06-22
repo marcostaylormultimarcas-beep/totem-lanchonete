@@ -17,7 +17,9 @@ import {
   Lock,
   Receipt,
   Loader2,
+  MessageCircle,
 } from "lucide-react";
+import { BRAND_NAME } from "@/config/brandConfig";
 
 type Operador = {
   id: string;

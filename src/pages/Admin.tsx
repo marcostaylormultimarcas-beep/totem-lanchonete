@@ -401,8 +401,12 @@ const AdminPage = () => {
         .eq('owner_id', user.id)
         .maybeSingle();
 
-      if (!tier) {
-        await supabase.auth.signOut();
+      // Fallback: dono de org sem linha em user_roles → trata como admin
+      let effectiveTier: 'super' | 'master' | 'admin' | null = tier;
+      if (!effectiveTier && ownOrg?.id) effectiveTier = 'admin';
+
+      if (!effectiveTier) {
+        // NÃO desloga — mantém sessão e apenas indica falta de permissão.
         setAuthenticated(false);
         setCurrentAdmin(null);
         setActiveOrgId(null);
@@ -413,7 +417,7 @@ const AdminPage = () => {
       const adminCtx: AdminUser = {
         id: user.id,
         username: user.email || '',
-        tier,
+        tier: effectiveTier,
         organization_id: ownOrg?.id ?? null,
       };
       setCurrentAdmin(adminCtx);

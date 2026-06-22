@@ -39,24 +39,35 @@ const Auth = () => {
   const handleSignup = async () => {
     if (!name.trim()) { toast.error('Informe seu nome'); return; }
     setLoading(true);
+    const origemOrgId = localStorage.getItem('kiosk_org_id') || '';
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { display_name: name },
+        // Os metadados são lidos pelo trigger handle_new_user para popular o profile,
+        // garantindo que mesmo sem update posterior o organization_id fique vinculado.
+        data: {
+          display_name: name,
+          phone,
+          ...(origemOrgId ? { origem_assinatura_empresa_id: origemOrgId } : {}),
+        },
         emailRedirectTo: window.location.origin,
       },
     });
     if (error) {
       toast.error(error.message);
     } else {
+      // Best-effort: também tenta atualizar via RLS (caso o trigger não esteja sincronizado)
       if (data.user) {
-        const origemOrgId = localStorage.getItem('kiosk_org_id');
-        await supabase.from('profiles').update({
-          display_name: name,
-          phone,
-          ...(origemOrgId ? { origem_assinatura_empresa_id: origemOrgId } : {}),
-        } as any).eq('user_id', data.user.id);
+        try {
+          await supabase.from('profiles').update({
+            display_name: name,
+            phone,
+            ...(origemOrgId ? { origem_assinatura_empresa_id: origemOrgId } : {}),
+          } as any).eq('user_id', data.user.id);
+        } catch (e) {
+          console.warn('[signup] profile update fallback failed', e);
+        }
       }
       toast.success('Conta criada com sucesso!');
       navigate(returnTo);

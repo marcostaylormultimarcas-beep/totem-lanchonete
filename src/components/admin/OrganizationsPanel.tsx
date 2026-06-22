@@ -100,8 +100,14 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
             className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
         </label>
         <label className="space-y-1 col-span-2">
-          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Phone className="w-3 h-3" /> Telefone da unidade</span>
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Phone className="w-3 h-3" /> WhatsApp / Telefone da unidade</span>
           <input value={form.telefone} onChange={e => upd('telefone', maskPhone(e.target.value))} placeholder="(62) 99999-9999"
+            className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
+          <span className="text-[10px] text-muted-foreground">Usado também como link direto do WhatsApp.</span>
+        </label>
+        <label className="space-y-1 col-span-2">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1"><Instagram className="w-3 h-3" /> Instagram</span>
+          <input value={form.instagram} onChange={e => upd('instagram', e.target.value)} placeholder="@sualoja  ou  https://instagram.com/sualoja"
             className="w-full px-2.5 py-2 bg-muted rounded-md text-sm outline-none focus:ring-2 focus:ring-primary" />
         </label>
         <label className="space-y-1">

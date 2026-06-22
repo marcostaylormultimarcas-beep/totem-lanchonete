@@ -490,6 +490,51 @@ function PDVMain({
     try { bcRef.current = new BroadcastChannel("pdv-cliente"); } catch {}
     return () => { bcRef.current?.close(); };
   }, []);
+
+  // 🟢 Gera Pix real (Mercado Pago) quando o operador escolhe PIX no PDV.
+  // O QR + Copia-e-Cola viaja no broadcast e aparece GIGANTE na tela do cliente.
+  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number } | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
+  const pixReqId = useRef(0);
+  useEffect(() => {
+    // Limpa Pix quando o operador troca de forma ou zera carrinho
+    if (forma !== "pix" || total <= 0) {
+      setPixData(null);
+      setPixLoading(false);
+      return;
+    }
+    // Reutiliza o QR se o valor não mudou
+    if (pixData && Math.abs(pixData.amount - total) < 0.005) return;
+
+    const myReq = ++pixReqId.current;
+    setPixLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
+          body: {
+            organization_id: operador.organization_id,
+            amount: total,
+            description: `PDV ${operador.org_name}`,
+          },
+        });
+        if (myReq !== pixReqId.current) return; // resposta atrasada — ignora
+        if (error || !(data as any)?.ok) {
+          setPixData(null);
+          return;
+        }
+        const d = data as any;
+        setPixData({
+          qrBase64: d.qr_code_base64 || "",
+          copiaECola: d.qr_code || "",
+          amount: total,
+        });
+      } finally {
+        if (myReq === pixReqId.current) setPixLoading(false);
+      }
+    }, 350); // pequeno debounce p/ não disparar a cada centavo
+    return () => clearTimeout(t);
+  }, [forma, total, operador.organization_id, operador.org_name, pixData]);
+
   useEffect(() => {
     const payload = {
       storeName: operador.org_name,
@@ -498,12 +543,15 @@ function PDVMain({
       desconto,
       total,
       forma,
+      pixQrBase64: pixData?.qrBase64 || "",
+      pixCopiaECola: pixData?.copiaECola || "",
+      pixLoading,
     };
     try {
       localStorage.setItem("pdv_cliente_mirror_v1", JSON.stringify(payload));
       bcRef.current?.postMessage({ type: "update", payload });
     } catch {}
-  }, [cart, subtotal, desconto, total, forma, operador.org_name]);
+  }, [cart, subtotal, desconto, total, forma, operador.org_name, pixData, pixLoading]);
 
   // ---- Recibo p/ impressão ----
   const [lastReceipt, setLastReceipt] = useState<null | {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Receipt, QrCode } from "lucide-react";
+import { Receipt, QrCode, Copy, Check, Loader2 } from "lucide-react";
 
 type CartItem = { id: string; name: string; price: number; quantity: number };
 type Payload = {
@@ -9,7 +9,9 @@ type Payload = {
   desconto: number;
   total: number;
   forma: string;
-  pixPayload?: string;
+  pixQrBase64?: string;
+  pixCopiaECola?: string;
+  pixLoading?: boolean;
 };
 
 const fmt = (n: number) =>
@@ -26,6 +28,7 @@ export default function PDVCliente() {
     total: 0,
     forma: "dinheiro",
   });
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     try {
@@ -51,9 +54,97 @@ export default function PDVCliente() {
     };
   }, []);
 
-  const pix = data.pixPayload || `${data.storeName} - Total ${fmt(data.total)}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(pix)}`;
+  // Reset estado de "copiado" quando o pix muda
+  useEffect(() => {
+    setCopied(false);
+  }, [data.pixCopiaECola]);
 
+  const isPix = data.forma === "pix" && data.total > 0;
+  const hasRealPix = !!data.pixQrBase64 && !!data.pixCopiaECola;
+  const fallbackText = `${data.storeName} - Total ${fmt(data.total)}`;
+  const copiaECola = data.pixCopiaECola || fallbackText;
+  const qrSrc = hasRealPix
+    ? `data:image/png;base64,${data.pixQrBase64}`
+    : `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(fallbackText)}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(copiaECola);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {}
+  };
+
+  // ====== TELA CHEIA DE PIX (modo balcão) ======
+  if (isPix) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
+        <header className="px-8 py-5 border-b border-zinc-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+              <Receipt className="w-6 h-6 text-amber-500" />
+            </div>
+            <div>
+              <div className="text-xl font-bold">{data.storeName}</div>
+              <div className="text-xs text-zinc-400 uppercase tracking-widest">Pagamento Pix</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs text-zinc-500 uppercase">Total a pagar</div>
+            <div className="text-4xl font-extrabold text-amber-400">{fmt(data.total)}</div>
+          </div>
+        </header>
+
+        <main className="flex-1 flex flex-col items-center justify-center px-6 py-8">
+          <div className="flex items-center gap-2 mb-6 text-amber-400">
+            <QrCode className="w-7 h-7" />
+            <span className="font-bold uppercase text-lg tracking-[0.3em]">
+              Aponte a câmera do seu celular
+            </span>
+          </div>
+
+          <div className="relative bg-white rounded-3xl p-6 shadow-[0_0_60px_-10px_rgba(245,158,11,0.4)] border-4 border-amber-500/40">
+            {data.pixLoading && !hasRealPix ? (
+              <div className="w-[420px] h-[420px] sm:w-[520px] sm:h-[520px] flex flex-col items-center justify-center gap-4 text-zinc-700">
+                <Loader2 className="w-16 h-16 animate-spin text-amber-500" />
+                <span className="text-lg font-bold">Gerando seu Pix…</span>
+              </div>
+            ) : (
+              <img
+                src={qrSrc}
+                alt="QR Code Pix"
+                className="w-[420px] h-[420px] sm:w-[520px] sm:h-[520px] object-contain"
+              />
+            )}
+          </div>
+
+          <button
+            onClick={copy}
+            disabled={!hasRealPix && copiaECola.length < 20}
+            className="mt-8 inline-flex items-center gap-3 px-8 py-4 rounded-2xl bg-amber-500 text-zinc-950 font-extrabold text-lg uppercase tracking-wider hover:bg-amber-400 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-amber-500/30"
+          >
+            {copied ? (
+              <>
+                <Check className="w-6 h-6" /> Copiado!
+              </>
+            ) : (
+              <>
+                <Copy className="w-6 h-6" /> Copia e Cola
+              </>
+            )}
+          </button>
+
+          {!hasRealPix && !data.pixLoading && (
+            <p className="mt-4 text-xs text-zinc-500 max-w-md text-center">
+              QR de demonstração — configure o Mercado Pago no painel para gerar Pix reais.
+            </p>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  // ====== TELA NORMAL DE PEDIDO ======
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col">
       <header className="px-8 py-6 border-b border-zinc-800 flex items-center gap-4">
@@ -114,25 +205,6 @@ export default function PDVCliente() {
               </span>
             </div>
           </div>
-
-          {data.forma === "pix" && data.total > 0 && (
-            <div className="bg-zinc-950 border border-amber-500/30 rounded-2xl p-5 text-center">
-              <div className="flex items-center justify-center gap-2 mb-3 text-amber-400">
-                <QrCode className="w-5 h-5" />
-                <span className="font-bold uppercase text-sm tracking-wider">
-                  Pague com Pix
-                </span>
-              </div>
-              <img
-                src={qrUrl}
-                alt="QR Code Pix"
-                className="w-full max-w-[280px] mx-auto rounded-lg bg-white p-3"
-              />
-              <p className="mt-3 text-xs text-zinc-500">
-                Aponte a câmera do seu celular
-              </p>
-            </div>
-          )}
         </aside>
       </div>
     </div>

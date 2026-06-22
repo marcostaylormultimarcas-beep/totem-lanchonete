@@ -131,6 +131,7 @@ export function getItemTotal(item: CartItem): number {
   return unit * item.quantity;
 }
 
-export function formatCurrency(value: number): string {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+export function formatCurrency(value: number | null | undefined): string {
+  const n = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }

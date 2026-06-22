@@ -17,7 +17,9 @@ import {
   Lock,
   Receipt,
   Loader2,
+  MessageCircle,
 } from "lucide-react";
+import { BRAND_NAME } from "@/config/brandConfig";
 
 type Operador = {
   id: string;
@@ -331,6 +333,7 @@ function PDVMain({
 
   const [cupomCode, setCupomCode] = useState("");
   const [cupomDesc, setCupomDesc] = useState<{ codigo: string; tipo: string; valor: number } | null>(null);
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const [showSangria, setShowSangria] = useState(false);
   const [showFechar, setShowFechar] = useState(false);
@@ -555,6 +558,30 @@ function PDVMain({
     toast.success(`Venda registrada — ${fmt(snapTotal)}`);
     beep();
 
+    // 📱 Persiste telefone do cliente no pedido + dispara WhatsApp automático
+    const phoneDigits = customerPhone.replace(/\D/g, "");
+    if (phoneDigits.length >= 10 && res.order_id) {
+      try {
+        // garante DDI 55 (Brasil) quando o operador digita só DDD+número
+        const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
+
+        await supabase
+          .from("orders")
+          .update({ customer_phone: phoneDigits })
+          .eq("id", res.order_id);
+
+        const trackUrl = `${window.location.origin}/acompanhar/${res.order_id}`;
+        const msg =
+          `Olá! Seu pedido na ${BRAND_NAME} já foi recebido e já está em preparo na cozinha! 🍳 ` +
+          `Confira seu cupom fiscal digital e acompanhe o status em tempo real por este link: ${trackUrl}`;
+        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(msg)}`;
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+        toast.success("WhatsApp aberto para envio ao cliente 📲");
+      } catch (e) {
+        console.error("[PDV] whatsapp dispatch", e);
+      }
+    }
+
     setLastReceipt({
       orderNumber: res.order_number,
       createdAt: res.created_at || new Date().toISOString(),
@@ -571,6 +598,7 @@ function PDVMain({
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");
+    setCustomerPhone("");
     setForma("dinheiro");
     searchRef.current?.focus();
   };
@@ -721,6 +749,18 @@ function PDVMain({
                 </button>
               </div>
             ))}
+          </div>
+
+          {/* WhatsApp do cliente — dispara mensagem automática com link de acompanhamento */}
+          <div className="mt-3 flex items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-2 focus-within:border-amber-500/50">
+            <MessageCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <input
+              value={customerPhone}
+              onChange={(e) => setCustomerPhone(e.target.value)}
+              placeholder="WhatsApp do cliente (DDD + número)"
+              inputMode="tel"
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-zinc-500"
+            />
           </div>
 
           {/* Cupom */}

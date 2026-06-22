@@ -16,6 +16,12 @@ export interface Product {
   soldByWeight?: boolean;
   /** Código de barras EAN/UPC capturado por leitor */
   codigoBarras?: string;
+  /** Data de validade (YYYY-MM-DD) */
+  dataVencimento?: string | null;
+  /** Identificador do lote do fornecedor */
+  lote?: string;
+  /** Liga o aviso de vencimento próximo */
+  alertaVencimento?: boolean;
 }
 
 

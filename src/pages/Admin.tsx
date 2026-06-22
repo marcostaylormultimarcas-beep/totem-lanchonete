@@ -1,6 +1,8 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
+import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
+import VencimentoBanner from '@/components/admin/VencimentoBanner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import CrmPanel from '@/components/admin/CrmPanel';
 import ClientesLeadsPanel from '@/components/admin/ClientesLeadsPanel';
@@ -121,6 +123,9 @@ const AdminPage = () => {
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
           soldByWeight: Boolean((p as any).sold_by_weight),
           codigoBarras: (p as any).codigo_barras || '',
+          dataVencimento: (p as any).data_vencimento || null,
+          lote: (p as any).lote || '',
+          alertaVencimento: Boolean((p as any).alerta_vencimento),
         })));
       }
     };
@@ -360,6 +365,9 @@ const AdminPage = () => {
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
     soldByWeight: false,
     codigoBarras: '',
+    dataVencimento: '' as string,
+    lote: '' as string,
+    alertaVencimento: false,
   });
 
   // Carrega sessão atual e contexto do admin
@@ -501,7 +509,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '' });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -522,6 +530,9 @@ const AdminPage = () => {
       lowStockThreshold: String(p.lowStockThreshold ?? 5),
       soldByWeight: Boolean(p.soldByWeight),
       codigoBarras: (p as any).codigoBarras || '',
+      dataVencimento: (p as any).dataVencimento || '',
+      lote: (p as any).lote || '',
+      alertaVencimento: Boolean((p as any).alertaVencimento),
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -575,6 +586,9 @@ const AdminPage = () => {
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
       sold_by_weight: form.soldByWeight,
       codigo_barras: form.codigoBarras.trim() || null,
+      data_vencimento: form.dataVencimento || null,
+      lote: form.lote.trim() || null,
+      alerta_vencimento: form.alertaVencimento,
     };
 
     if (editingProduct) {
@@ -584,6 +598,9 @@ const AdminPage = () => {
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
         soldByWeight: dbPayload.sold_by_weight,
         codigoBarras: dbPayload.codigo_barras || '',
+        dataVencimento: dbPayload.data_vencimento,
+        lote: dbPayload.lote || '',
+        alertaVencimento: dbPayload.alerta_vencimento,
       } as Product : p));
     } else {
       const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
@@ -601,6 +618,9 @@ const AdminPage = () => {
           lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
           soldByWeight: Boolean((data as any).sold_by_weight),
           codigoBarras: (data as any).codigo_barras || '',
+          dataVencimento: (data as any).data_vencimento || null,
+          lote: (data as any).lote || '',
+          alertaVencimento: Boolean((data as any).alerta_vencimento),
         }]);
       }
     }
@@ -850,6 +870,7 @@ const AdminPage = () => {
         </div>
       ) : (
       <>
+      <VencimentoBanner organizationId={activeOrgId} />
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
       {tab === 'senhas' && (
@@ -1134,6 +1155,47 @@ const AdminPage = () => {
                 <p className="text-[11px] text-muted-foreground">Quando um pedido é criado, a quantidade é debitada automaticamente.</p>
               </div>
 
+              {/* Validade & Lote */}
+              <div className="kiosk-card p-3 space-y-2 bg-muted/30 border border-border">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">📅 Controle de validade</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Data de vencimento</label>
+                    <input
+                      type="date"
+                      value={form.dataVencimento}
+                      onChange={e => setForm({ ...form, dataVencimento: e.target.value })}
+                      className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Lote</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: L2026-A"
+                      value={form.lote}
+                      onChange={e => setForm({ ...form, lote: e.target.value })}
+                      className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center justify-between gap-2 cursor-pointer pt-1">
+                  <span className="text-xs">⚠️ Ativar alerta de vencimento (≤ 7 dias)</span>
+                  <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${form.alertaVencimento ? 'bg-amber-500' : 'bg-muted'}`}>
+                    <input
+                      type="checkbox"
+                      checked={form.alertaVencimento}
+                      onChange={e => setForm({ ...form, alertaVencimento: e.target.checked })}
+                      className="sr-only"
+                    />
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${form.alertaVencimento ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </span>
+                </label>
+              </div>
+
+
               <div className="flex gap-2 pt-2">
                 <button onClick={saveProduct} className="touch-btn flex-1 bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"><Save className="w-4 h-4" /> Salvar</button>
                 <button onClick={resetForm} className="touch-btn flex-1 bg-muted text-muted-foreground py-3 rounded-xl">Cancelar</button>
@@ -1163,8 +1225,27 @@ const AdminPage = () => {
                         <span className="text-2xl flex-shrink-0">{p.image}</span>
                       )}
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-sm truncate">{p.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-bold text-sm truncate">{p.name}</p>
+                          {p.alertaVencimento && (() => {
+                            const st = vencimentoStatus(p.dataVencimento);
+                            if (st === 'ok') return null;
+                            return (
+                              <span
+                                title={vencimentoLabel(p.dataVencimento) + (p.lote ? ` · Lote ${p.lote}` : '')}
+                                className={`flex-shrink-0 ${st === 'vencido' ? 'text-destructive' : 'text-amber-500'} animate-pulse`}
+                              >
+                                <AlertTriangle className="w-4 h-4" />
+                              </span>
+                            );
+                          })()}
+                        </div>
                         <p className="text-primary font-bold text-sm">{formatCurrency(p.price)}</p>
+                        {p.alertaVencimento && p.dataVencimento && (
+                          <p className={`text-[11px] font-semibold mt-0.5 ${vencimentoStatus(p.dataVencimento) === 'vencido' ? 'text-destructive' : vencimentoStatus(p.dataVencimento) === 'proximo' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            📅 {vencimentoLabel(p.dataVencimento)}{p.lote ? ` · Lote ${p.lote}` : ''}
+                          </p>
+                        )}
                         {p.manageStock && (
                           <p className={`text-[11px] font-semibold mt-0.5 ${(p.stockQuantity ?? 0) <= 0 ? 'text-destructive' : (p.stockQuantity ?? 0) <= (p.lowStockThreshold ?? 5) ? 'text-accent' : 'text-muted-foreground'}`}>
                             📦 {p.stockQuantity ?? 0} em estoque

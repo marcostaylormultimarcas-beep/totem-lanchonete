@@ -1539,6 +1539,13 @@ const AdminPage = () => {
         </div>
       )}
 
+      {tab === 'pdv_operadores' && (
+        <OperadoresPdvPanel
+          organizationId={activeOrgId}
+          orgSlug={allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug || null}
+        />
+      )}
+
       {tab === 'fiscal' && (
         <div className="px-4 space-y-4">
           <FiscalExportCard organizationId={activeOrgId} />

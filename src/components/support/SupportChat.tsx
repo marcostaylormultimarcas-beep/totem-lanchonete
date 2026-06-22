@@ -1,11 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useOrg } from '@/contexts/OrgContext';
 
 interface Msg { role: 'user' | 'assistant'; content: string }
 
 const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/support-chat`;
 
+const ORG_FIELDS = 'id,name,slug,paused,categoria,cnpj,telefone,instagram,endereco_cep,endereco_rua,endereco_numero,endereco_bairro,endereco_estado,city';
+
 const SupportChat = () => {
+  const { orgId: ctxOrgId } = useOrg();
+  const params = useParams();
+  const location = useLocation();
+  const [orgCtx, setOrgCtx] = useState<Record<string, any> | null>(null);
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([

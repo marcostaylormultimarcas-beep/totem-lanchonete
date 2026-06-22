@@ -43,6 +43,7 @@ const UnidadeFicha = ({ org, onSaved }: { org: Org; onSaved: () => void }) => {
   const [form, setForm] = useState({
     cnpj: org.cnpj || '',
     telefone: org.telefone || '',
+    instagram: org.instagram || '',
     endereco_cep: org.endereco_cep || '',
     endereco_rua: org.endereco_rua || '',
     endereco_numero: org.endereco_numero || '',

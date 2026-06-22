@@ -762,30 +762,30 @@ function PDVMain({
                 Nenhum item. Adicione um produto ou bipe o código.
               </div>
             )}
-            {cart.map((it) => (
+            {cart.map((it, idx) => (
               <div
                 key={it.id}
-                className="bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 flex items-center gap-2"
+                className={`flex items-center gap-2 py-3 ${idx > 0 ? "border-t border-zinc-800/70" : ""}`}
               >
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm text-white truncate">{it.name}</div>
-                  <div className="text-xs text-zinc-400">
+                  <div className="text-sm text-white font-semibold truncate">{it.name}</div>
+                  <div className="text-xs text-zinc-500">
                     {fmt(it.price)} × {it.quantity} ={" "}
-                    <span className="text-amber-400 font-semibold">
+                    <span className="text-amber-400 font-bold tabular-nums">
                       {fmt(it.price * it.quantity)}
                     </span>
                   </div>
                 </div>
                 <button
                   onClick={() => changeQty(it.id, -1)}
-                  className="w-7 h-7 rounded-md bg-zinc-800 hover:bg-zinc-700 inline-flex items-center justify-center"
+                  className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
                 >
                   <Minus className="w-3.5 h-3.5" />
                 </button>
                 <div className="w-6 text-center text-sm font-bold">{it.quantity}</div>
                 <button
                   onClick={() => changeQty(it.id, 1)}
-                  className="w-7 h-7 rounded-md bg-zinc-800 hover:bg-zinc-700 inline-flex items-center justify-center"
+                  className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
                 >
                   <Plus className="w-3.5 h-3.5" />
                 </button>

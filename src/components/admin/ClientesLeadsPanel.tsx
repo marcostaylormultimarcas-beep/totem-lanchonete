@@ -7,6 +7,7 @@ interface Props { organizationId: string | null; storeName?: string }
 
 interface OrderRow {
   id: string;
+  user_id: string | null;
   customer_name: string;
   customer_phone: string;
   total: number;
@@ -19,6 +20,7 @@ interface CustomerSummary {
   key: string;
   phone: string;
   name: string;
+  email: string;
   orders: number;
   totalSpent: number;
   lastOrderAt: string | null;
@@ -50,60 +52,46 @@ const fallbackContactUrl = (msg: string) => `https://wa.me/?text=${encodeURIComp
 const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [leadPhones, setLeadPhones] = useState<Array<{ key: string; phone: string; name?: string; source: string; created_at: string }>>([]);
+  const [profileContacts, setProfileContacts] = useState<Array<{ key: string; userId: string; email: string; phone: string; name: string; source: string; created_at: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (!organizationId) { setOrders([]); setLeadPhones([]); setLoading(false); return; }
+    if (!organizationId) { setOrders([]); setProfileContacts([]); setLoading(false); return; }
     setLoading(true);
     setLoadError(null);
     (async () => {
-      const [ordersRes, fidRes, notifRes, profRes] = await Promise.all([
+      const [profilesRes, ordersRes] = await Promise.all([
+        supabase.from('profiles')
+          .select('user_id, display_name, email, phone, created_at, origem_assinatura_empresa_id')
+          .eq('origem_assinatura_empresa_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(5000),
         supabase.from('orders')
-          .select('id, customer_name, customer_phone, total, created_at, items, status')
+          .select('id, user_id, customer_name, customer_phone, total, created_at, items, status')
           .eq('organization_id', organizationId)
           .neq('status', 'cancelled')
           .order('created_at', { ascending: false })
-          .limit(2000),
-        supabase.from('progresso_fidelidade')
-          .select('telefone_cliente, created_at')
-          .eq('organization_id', organizationId)
-          .limit(2000),
-        supabase.from('cliente_notificacoes')
-          .select('customer_phone, created_at')
-          .eq('organization_id', organizationId)
-          .limit(2000),
-        supabase.from('profiles')
-          .select('user_id, display_name, phone, created_at')
-          .eq('origem_assinatura_empresa_id', organizationId)
-          .limit(2000),
+          .limit(5000),
       ]);
 
-      const errors = [ordersRes.error, fidRes.error, notifRes.error, profRes.error].filter(Boolean);
+      const errors = [profilesRes.error, ordersRes.error].filter(Boolean);
       if (errors.length) {
         console.error('[ClientesLeadsPanel] load failed', errors);
-        setLoadError('Não foi possível carregar todos os clientes/leads. Verifique as permissões da loja e tente atualizar.');
+        setLoadError('Não foi possível carregar clientes/leads. Verifique as permissões da loja e tente atualizar.');
       }
 
-      const leads: Array<{ key: string; phone: string; name?: string; source: string; created_at: string }> = [];
-      (fidRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.telefone_cliente);
-        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Fidelidade', created_at: r.created_at });
-      });
-      (notifRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.customer_phone);
-        if (p.length >= 8) leads.push({ key: p, phone: p, source: 'Cardápio', created_at: r.created_at });
-      });
-      (profRes.data || []).forEach((r: any) => {
-        const p = normalizePhone(r.phone || '');
-        const key = p.length >= 8 ? p : `profile:${r.user_id}`;
-        leads.push({ key, phone: p, name: r.display_name, source: 'Cadastro', created_at: r.created_at });
-      });
-
       setOrders((ordersRes.data as OrderRow[]) || []);
-      setLeadPhones(leads);
+      setProfileContacts(((profilesRes.data || []) as any[]).map((p) => ({
+        key: `profile:${p.user_id}`,
+        userId: p.user_id,
+        email: p.email || '',
+        phone: normalizePhone(p.phone || ''),
+        name: p.display_name || 'Lead sem nome',
+        source: 'Cadastro',
+        created_at: p.created_at,
+      })));
       setLoading(false);
     })();
   }, [organizationId]);

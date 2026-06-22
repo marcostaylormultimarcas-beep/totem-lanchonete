@@ -49,9 +49,40 @@ const EntregadorDashboard = () => {
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
+  const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Raio máximo permitido para confirmar a entrega (metros)
+  const MAX_DELIVERY_RADIUS_M = 200;
+
+  // Haversine (JS puro) — distância em metros entre duas coordenadas
+  const haversineMeters = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(b.lat - a.lat);
+    const dLng = toRad(b.lng - a.lng);
+    const lat1 = toRad(a.lat);
+    const lat2 = toRad(b.lat);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+
+  const getCurrentPositionAsync = () =>
+    new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+      if (!('geolocation' in navigator)) {
+        reject(new Error('Geolocalização não suportada neste dispositivo.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => reject(err),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current !== null && navigator.geolocation) {

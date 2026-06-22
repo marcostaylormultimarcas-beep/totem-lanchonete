@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { triggerRupturaNotification } from '@/lib/onesignal';
+import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 
 interface Ingrediente {
   id: string;
@@ -11,6 +12,9 @@ interface Ingrediente {
   estoque_atual: number;
   estoque_minimo: number;
   disponivel: boolean;
+  data_vencimento?: string | null;
+  lote?: string | null;
+  alerta_vencimento?: boolean;
 }
 interface Receita {
   id: string;

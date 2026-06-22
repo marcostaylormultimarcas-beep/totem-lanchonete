@@ -74,6 +74,7 @@ const App = () => {
               <Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
               <Route path="/pdv" element={<PDV />} />
               <Route path="/pdv/:slug" element={<PDV />} />
+              <Route path="/pdv-cliente" element={<PDVCliente />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

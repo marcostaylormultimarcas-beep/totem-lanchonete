@@ -45,6 +45,7 @@ import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 import SenhasPanel from '@/components/admin/SenhasPanel';
+import OperadoresPdvPanel from '@/components/admin/OperadoresPdvPanel';
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -739,6 +740,7 @@ const AdminPage = () => {
           { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
           { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
           { key: 'fiscal' as const, label: 'Fiscal', icon: FileText, requires: 'admin' as const },
+          { key: 'pdv_operadores' as const, label: 'Operadores PDV', icon: Users, requires: 'admin' as const },
           { key: 'admins' as const, label: 'Lojas', icon: Shield, requires: 'master' as const },
           { key: 'multilojas' as const, label: 'Multi-Lojas', icon: Building2, requires: 'master' as const },
           { key: 'plans' as const, label: 'Planos', icon: Shield, requires: 'super' as const },

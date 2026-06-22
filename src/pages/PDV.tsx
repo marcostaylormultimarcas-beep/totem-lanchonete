@@ -18,6 +18,8 @@ import {
   Receipt,
   Loader2,
   MessageCircle,
+  QrCode,
+  CreditCard,
 } from "lucide-react";
 import { BRAND_NAME } from "@/config/brandConfig";
 

@@ -607,6 +607,27 @@ const EntregadorDashboard = () => {
                         {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
                       </button>
                     </div>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
+                      <div className="text-xs">
+                        <span className="text-slate-400">Distância até o cliente: </span>
+                        {currentDistance[o.id] != null ? (
+                          <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {Math.round(currentDistance[o.id])} m
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 italic">não verificada</span>
+                        )}
+                        <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => refreshDistance(o.id)}
+                        disabled={refreshingLoc === o.id}
+                        className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
+                      </button>
+                    </div>
                     {geofenceError[o.id] && (
                       <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
                         {geofenceError[o.id]}

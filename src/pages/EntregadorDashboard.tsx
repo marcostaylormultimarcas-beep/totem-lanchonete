@@ -379,6 +379,7 @@ const EntregadorDashboard = () => {
         }
         const me = await getCurrentPositionAsync();
         const distM = haversineMeters(me, dest);
+        setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
         if (distM > MAX_DELIVERY_RADIUS_M) {
           setGeoChecking(null);
           setGeofenceError((p) => ({

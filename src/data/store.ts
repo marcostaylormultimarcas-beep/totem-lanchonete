@@ -22,6 +22,8 @@ export interface Product {
   lote?: string;
   /** Liga o aviso de vencimento próximo */
   alertaVencimento?: boolean;
+  /** Tempo de preparo adicional do produto (minutos) */
+  prepTimeMin?: number;
 }
 
 

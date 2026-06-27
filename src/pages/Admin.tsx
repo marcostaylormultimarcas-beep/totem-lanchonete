@@ -126,6 +126,7 @@ const AdminPage = () => {
           dataVencimento: (p as any).data_vencimento || null,
           lote: (p as any).lote || '',
           alertaVencimento: Boolean((p as any).alerta_vencimento),
+          prepTimeMin: Number((p as any).prep_time_min ?? 0),
         })));
       }
     };
@@ -368,6 +369,7 @@ const AdminPage = () => {
     dataVencimento: '' as string,
     lote: '' as string,
     alertaVencimento: false,
+    prepTimeMin: '0',
   });
 
   // Carrega sessão atual e contexto do admin
@@ -513,7 +515,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false });
+    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false, prepTimeMin: '0' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -537,6 +539,7 @@ const AdminPage = () => {
       dataVencimento: (p as any).dataVencimento || '',
       lote: (p as any).lote || '',
       alertaVencimento: Boolean((p as any).alertaVencimento),
+      prepTimeMin: String((p as any).prepTimeMin ?? 0),
     });
     setEditingProduct(p);
     setShowForm(true);
@@ -593,6 +596,7 @@ const AdminPage = () => {
       data_vencimento: form.dataVencimento || null,
       lote: form.lote.trim() || null,
       alerta_vencimento: form.alertaVencimento,
+      prep_time_min: Math.max(0, parseInt(form.prepTimeMin, 10) || 0),
     };
 
     if (editingProduct) {
@@ -1185,6 +1189,20 @@ const AdminPage = () => {
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground">Quando um pedido é criado, a quantidade é debitada automaticamente.</p>
+              </div>
+
+              {/* Tempo de preparo */}
+              <div className="kiosk-card p-3 space-y-2 bg-muted/30 border border-border">
+                <label className="text-sm font-semibold flex items-center gap-2">⏱️ Tempo de preparo deste produto (min)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.prepTimeMin}
+                  onChange={e => setForm({ ...form, prepTimeMin: e.target.value })}
+                  className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm"
+                  placeholder="0"
+                />
+                <p className="text-[11px] text-muted-foreground">Somado ao tempo base da loja por unidade. Ex.: Pizza 15, Hambúrguer 8.</p>
               </div>
 
               {/* Validade & Lote */}

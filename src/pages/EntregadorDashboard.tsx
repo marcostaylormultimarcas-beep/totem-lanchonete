@@ -51,6 +51,8 @@ const EntregadorDashboard = () => {
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
+  const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
+  const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -82,6 +84,50 @@ const EntregadorDashboard = () => {
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     });
+
+  const refreshDistance = async (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order?.delivery_address) return;
+    setRefreshingLoc(orderId);
+    try {
+      let dest = destCoords[orderId];
+      if (!dest) {
+        const c = await geocodeAddress(order.delivery_address);
+        if (c) {
+          dest = c;
+          setDestCoords((prev) => ({ ...prev, [orderId]: c }));
+        }
+      }
+      if (!dest) {
+        setGeofenceError((p) => ({ ...p, [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa.' }));
+        return;
+      }
+      const me = await getCurrentPositionAsync();
+      const distM = haversineMeters(me, dest);
+      setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
+      if (distM > MAX_DELIVERY_RADIUS_M) {
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: `📍 Ainda fora do raio permitido. Você está a ${Math.round(distM)} m (máx. ${MAX_DELIVERY_RADIUS_M} m).`,
+        }));
+      } else {
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+        toast.success(`Localização OK — ${Math.round(distM)} m do cliente.`);
+      }
+    } catch (err: any) {
+      const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      setGeofenceError((p) => ({
+        ...p,
+        [orderId]: denied
+          ? '📍 Ative a permissão de localização do navegador.'
+          : '📍 Não foi possível obter sua localização. Verifique o GPS.',
+      }));
+    } finally {
+      setRefreshingLoc(null);
+    }
+  };
+
+
 
 
   const stopTracking = useCallback(() => {
@@ -333,6 +379,7 @@ const EntregadorDashboard = () => {
         }
         const me = await getCurrentPositionAsync();
         const distM = haversineMeters(me, dest);
+        setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
         if (distM > MAX_DELIVERY_RADIUS_M) {
           setGeoChecking(null);
           setGeofenceError((p) => ({
@@ -558,6 +605,27 @@ const EntregadorDashboard = () => {
                       >
                         <CheckCircle2 className="w-5 h-5" />
                         {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
+                      <div className="text-xs">
+                        <span className="text-slate-400">Distância até o cliente: </span>
+                        {currentDistance[o.id] != null ? (
+                          <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {Math.round(currentDistance[o.id])} m
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 italic">não verificada</span>
+                        )}
+                        <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => refreshDistance(o.id)}
+                        disabled={refreshingLoc === o.id}
+                        className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
                       </button>
                     </div>
                     {geofenceError[o.id] && (

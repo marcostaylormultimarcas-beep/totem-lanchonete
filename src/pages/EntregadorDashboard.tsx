@@ -85,6 +85,50 @@ const EntregadorDashboard = () => {
       );
     });
 
+  const refreshDistance = async (orderId: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    if (!order?.delivery_address) return;
+    setRefreshingLoc(orderId);
+    try {
+      let dest = destCoords[orderId];
+      if (!dest) {
+        const c = await geocodeAddress(order.delivery_address);
+        if (c) {
+          dest = c;
+          setDestCoords((prev) => ({ ...prev, [orderId]: c }));
+        }
+      }
+      if (!dest) {
+        setGeofenceError((p) => ({ ...p, [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa.' }));
+        return;
+      }
+      const me = await getCurrentPositionAsync();
+      const distM = haversineMeters(me, dest);
+      setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
+      if (distM > MAX_DELIVERY_RADIUS_M) {
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: `📍 Ainda fora do raio permitido. Você está a ${Math.round(distM)} m (máx. ${MAX_DELIVERY_RADIUS_M} m).`,
+        }));
+      } else {
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+        toast.success(`Localização OK — ${Math.round(distM)} m do cliente.`);
+      }
+    } catch (err: any) {
+      const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      setGeofenceError((p) => ({
+        ...p,
+        [orderId]: denied
+          ? '📍 Ative a permissão de localização do navegador.'
+          : '📍 Não foi possível obter sua localização. Verifique o GPS.',
+      }));
+    } finally {
+      setRefreshingLoc(null);
+    }
+  };
+
+
+
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current !== null && navigator.geolocation) {

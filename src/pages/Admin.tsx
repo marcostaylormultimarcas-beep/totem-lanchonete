@@ -690,25 +690,44 @@ const AdminPage = () => {
   return (
     <div className="admin-shell min-h-screen pb-8 text-zinc-100">
       <InstallAppButton />
-      <div className="flex items-center justify-between p-4 border-b border-zinc-800 bg-zinc-950">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link to={getKioskHomePath()} className="text-zinc-400 hover:text-white"><ArrowLeft className="w-6 h-6" /></Link>
-          <h1 className="text-xl font-bold text-white">Painel Admin</h1>
-          {currentAdmin && (
-            <span className="text-xs px-2 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-300">
-              {currentAdmin.tier === 'super' ? '👑 ' : currentAdmin.tier === 'master' ? '⭐ ' : ''}{currentAdmin.username}
-            </span>
-          )}
-        </div>
-        <button onClick={handleLogout} className="text-zinc-400 hover:text-red-400 flex items-center gap-1 text-sm">
-          <LogOut className="w-4 h-4" /> Sair
-        </button>
-      </div>
 
-      {/* Active org indicator + switcher (Super/Master) + Open Store button */}
-      <div className="flex items-center gap-2 px-4 pt-3 overflow-x-auto whitespace-nowrap pb-2">
+      {/* === Header premium === */}
+      <header className="sticky top-0 z-40 px-5 pt-5 pb-3 bg-[#0B0B0D]/85 backdrop-blur-xl border-b border-white/[0.04] flex items-center justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link to={getKioskHomePath()} aria-label="Voltar" className="md:hidden text-zinc-500 hover:text-white">
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#FF7A00] to-[#FF9D42] flex items-center justify-center shadow-[0_8px_24px_-6px_rgba(255,122,0,0.55)]">
+            <Crown className="w-5 h-5 text-white" strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-base font-bold tracking-tight text-white truncate">Painel Admin</h1>
+            {currentAdmin && (
+              <p className="text-[11px] text-zinc-500 truncate">
+                {currentAdmin.tier === 'super' ? 'Super Admin' : currentAdmin.tier === 'master' ? 'Master' : 'Lojista'} · {currentAdmin.username}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Notificações">
+            <Bell className="w-4 h-4 text-zinc-300" />
+            <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF7A00] rounded-full ring-2 ring-[#0B0B0D]"></span>
+          </button>
+          <button
+            onClick={handleLogout}
+            className="p-2.5 rounded-full bg-white/5 border border-white/10 text-zinc-400 hover:text-red-400 hover:border-red-400/30 transition-colors"
+            aria-label="Sair"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* === Store row + Abrir loja === */}
+      <div className="px-5 pt-5 flex items-center gap-2">
         {(currentAdmin?.tier === 'super' || currentAdmin?.tier === 'master') ? (
-          <div className="[&_button]:!bg-zinc-900 [&_button]:!border-zinc-800 [&_button]:!text-zinc-100">
+          <div className="flex-1 [&_button]:!bg-white/[0.04] [&_button]:!border-white/10 [&_button]:!rounded-2xl [&_button]:!text-zinc-100">
             <OrgSwitcher
               orgs={allOrgs as any}
               activeOrgId={activeOrgId}
@@ -718,9 +737,11 @@ const AdminPage = () => {
             />
           </div>
         ) : (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-100">
-            <Building2 className="w-4 h-4 text-amber-500 flex-shrink-0" />
-            <span className="text-sm text-zinc-400">Loja: <span className="text-zinc-100 font-semibold">{org?.name || '—'}</span></span>
+          <div className="flex-1 flex items-center justify-between px-4 py-3 rounded-2xl bg-white/[0.04] border border-white/10">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Store className="w-4 h-4 text-[#FF7A00] flex-shrink-0" />
+              <span className="text-sm font-medium text-white truncate">{org?.name || 'Loja'}</span>
+            </div>
           </div>
         )}
         {(() => {
@@ -731,29 +752,29 @@ const AdminPage = () => {
               href={`/loja/${activeSlug}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="touch-btn ml-auto text-xs px-3 py-2 rounded-lg bg-amber-500/10 text-amber-500 border border-amber-500/40 hover:bg-amber-500/20 flex items-center gap-1.5 font-semibold flex-shrink-0"
+              className="px-4 py-3 border border-[#FF7A00]/40 rounded-2xl text-[#FF7A00] font-bold text-[11px] uppercase tracking-widest whitespace-nowrap flex items-center gap-1.5 hover:bg-[#FF7A00]/10 transition-colors active:scale-95"
               title="Abrir minha loja em nova aba"
             >
-              <ExternalLink className="w-3.5 h-3.5" /> Abrir minha loja
+              <ExternalLink className="w-3.5 h-3.5" /> Abrir loja
             </a>
           );
         })()}
       </div>
 
-
-      {/* Quick Access Bar + Drawer */}
+      {/* === Tab card grid (primary nav) === */}
       {(() => {
         const ALL_TABS = [
-          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
-          { key: 'settings' as const, label: 'Configuração', icon: Settings, requires: 'admin' as const, quick: true },
+          { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
+          { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const, quick: true },
+          { key: 'leads' as const, label: 'Clientes', icon: Users, requires: 'admin' as const, quick: true },
+          { key: 'financeiro' as const, label: 'Financeiro', icon: CreditCard, requires: 'admin' as const, quick: true },
+          { key: 'settings' as const, label: 'Configuração', icon: Settings, requires: 'admin' as const },
           { key: 'senhas' as const, label: 'Painel de Senhas (TV)', icon: Bell, requires: 'admin' as const },
-          { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const },
           { key: 'banners' as const, label: 'Banners', icon: Megaphone, requires: 'admin' as const },
           { key: 'coupons' as const, label: 'Cupons', icon: Ticket, requires: 'admin' as const },
           { key: 'loyalty' as const, label: 'Fidelidade', icon: Award, requires: 'admin' as const },
           { key: 'crm' as const, label: 'CRM', icon: Users, requires: 'admin' as const },
-          { key: 'leads' as const, label: 'Clientes & Leads', icon: Users, requires: 'admin' as const },
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
@@ -765,7 +786,6 @@ const AdminPage = () => {
           { key: 'assistente' as const, label: 'Assistente Vision', icon: Sparkles, requires: 'admin' as const },
           { key: 'tema' as const, label: 'Personalização Visual', icon: Palette, requires: 'admin' as const },
           { key: 'impressao' as const, label: 'Impressão Térmica', icon: Printer, requires: 'admin' as const },
-          { key: 'financeiro' as const, label: 'Financeiro', icon: Zap, requires: 'admin' as const },
           { key: 'estoque' as const, label: 'Estoque Inteligente', icon: Boxes, requires: 'admin' as const },
           { key: 'preditivo' as const, label: 'IA Estoque Preditivo', icon: Sparkles, requires: 'admin' as const },
           { key: 'assinatura' as const, label: 'Assinatura', icon: Crown, requires: 'admin' as const },
@@ -788,50 +808,58 @@ const AdminPage = () => {
         });
         const quickTabs = allowed.filter(t => (t as any).quick);
         const drawerTabs = allowed.filter(t => !(t as any).quick);
-        const renderQuickBtn = (t: typeof ALL_TABS[number]) => {
-          const active = tab === t.key;
-          return (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`touch-btn px-5 py-2.5 rounded-xl text-sm whitespace-nowrap flex items-center gap-2 border transition-all flex-shrink-0 font-semibold ${
-                active
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 border-transparent shadow-[0_0_15px_rgba(245,158,11,0.3)]'
-                  : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30'
-              }`}>
-              {t.icon && <t.icon className="w-4 h-4" />} {t.label}
-            </button>
-          );
-        };
+
         return (
-          <div className="flex items-center gap-2 px-4 py-3 overflow-x-auto whitespace-nowrap">
-            {quickTabs.map(renderQuickBtn)}
+          <div className="flex gap-3 px-5 pt-6 pb-2 overflow-x-auto no-scrollbar">
+            {quickTabs.map(t => {
+              const active = tab === t.key;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`flex flex-col items-center justify-center min-w-[76px] h-[76px] rounded-2xl transition-all duration-200 active:scale-95 ${
+                    active
+                      ? 'bg-white/[0.06] border-b-2 border-[#FF7A00] ring-1 ring-[#FF7A00]/30 shadow-[0_0_20px_-8px_rgba(255,122,0,0.6)]'
+                      : 'bg-white/[0.03] border border-white/[0.06] hover:border-white/15'
+                  }`}
+                >
+                  <Icon className={`w-5 h-5 mb-1.5 ${active ? 'text-[#FF7A00]' : 'text-zinc-400'}`} strokeWidth={2} />
+                  <span className={`text-[10px] font-bold uppercase tracking-wide ${active ? 'text-[#FF7A00]' : 'text-zinc-400'}`}>
+                    {t.label.length > 9 ? t.label.slice(0, 8) : t.label}
+                  </span>
+                </button>
+              );
+            })}
             <Sheet>
               <SheetTrigger asChild>
-                <button
-                  className="touch-btn px-4 py-2.5 rounded-xl text-sm flex items-center gap-2 border bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30 flex-shrink-0 font-semibold"
-                  aria-label="Abrir menu">
-                  <Menu className="w-4 h-4" /> Menu
+                <button className="flex flex-col items-center justify-center min-w-[76px] h-[76px] rounded-2xl bg-white/[0.03] border border-white/[0.06] text-zinc-400 hover:border-white/15 transition-all active:scale-95">
+                  <Menu className="w-5 h-5 mb-1.5" strokeWidth={2} />
+                  <span className="text-[10px] font-bold uppercase tracking-wide">Mais</span>
                 </button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[300px] sm:w-[340px] bg-zinc-950 border-r border-zinc-800 text-zinc-100 p-0 overflow-y-auto">
-                <SheetHeader className="px-5 py-4 border-b border-zinc-800">
+              <SheetContent side="left" className="w-[300px] sm:w-[340px] bg-[#0B0B0D] border-r border-white/[0.06] text-zinc-100 p-0 overflow-y-auto">
+                <SheetHeader className="px-5 py-4 border-b border-white/[0.06]">
                   <SheetTitle className="text-white text-left flex items-center gap-2">
-                    <Menu className="w-5 h-5 text-amber-500" /> Mais ferramentas
+                    <Menu className="w-5 h-5 text-[#FF7A00]" /> Mais ferramentas
                   </SheetTitle>
                 </SheetHeader>
-                <div className="p-3 flex flex-col gap-1">
+                <div className="p-3 flex flex-col gap-1.5">
                   {drawerTabs.map(t => {
                     const active = tab === t.key;
+                    const Icon = t.icon;
                     return (
                       <button
                         key={t.key}
                         onClick={() => setTab(t.key)}
-                        className={`w-full text-left px-4 py-3 rounded-lg text-sm flex items-center gap-3 border transition-colors ${
+                        className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
                           active
-                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/40'
-                            : 'bg-zinc-900 text-zinc-300 border-zinc-800 hover:text-white hover:border-amber-500/30'
-                        }`}>
-                        {t.icon && <t.icon className="w-4 h-4 flex-shrink-0" />}
-                        <span className="truncate">{t.label}</span>
+                            ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
+                            : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
+                        }`}
+                      >
+                        {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+                        <span className="truncate font-medium">{t.label}</span>
                       </button>
                     );
                   })}

@@ -51,6 +51,8 @@ const EntregadorDashboard = () => {
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
+  const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
+  const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);

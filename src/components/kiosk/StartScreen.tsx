@@ -69,6 +69,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [],
           description: p.description || '',
+          prepTimeMin: Number((p as any).prep_time_min ?? 0),
         }));
         setProducts(mapped);
       }

@@ -49,6 +49,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
           soldByWeight: Boolean(p.sold_by_weight),
           codigoBarras: p.codigo_barras || undefined,
+          prepTimeMin: Number(p.prep_time_min ?? 0),
         })));
       }
       if (settingsData?.combo) setCombo(settingsData.combo as any);

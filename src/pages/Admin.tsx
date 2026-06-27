@@ -904,7 +904,7 @@ const AdminPage = () => {
       <>
       <VencimentoBanner organizationId={activeOrgId} />
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
-      {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} />}
+      {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} onNavigate={(t) => setTab(t as any)} />}
       {tab === 'senhas' && (
         <SenhasPanel
           organizationId={activeOrgId}

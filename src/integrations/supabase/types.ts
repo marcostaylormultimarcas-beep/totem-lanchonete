@@ -1248,6 +1248,68 @@ export type Database = {
         }
         Relationships: []
       }
+      product_reviews: {
+        Row: {
+          comment: string
+          created_at: string
+          id: string
+          order_id: string | null
+          organization_id: string | null
+          product_id: string
+          rating: number
+          user_id: string
+        }
+        Insert: {
+          comment?: string
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          organization_id?: string | null
+          product_id: string
+          rating: number
+          user_id: string
+        }
+        Update: {
+          comment?: string
+          created_at?: string
+          id?: string
+          order_id?: string | null
+          organization_id?: string | null
+          product_id?: string
+          rating?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_reviews_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_reviews_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "v_financeiro_detalhado"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "product_reviews_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_reviews_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           alerta_vencimento: boolean
@@ -1267,6 +1329,7 @@ export type Database = {
           manage_stock: boolean
           name: string
           organization_id: string | null
+          prep_time_min: number
           price: number
           removable_ingredients: Json
           sold_by_weight: boolean
@@ -1291,6 +1354,7 @@ export type Database = {
           manage_stock?: boolean
           name: string
           organization_id?: string | null
+          prep_time_min?: number
           price?: number
           removable_ingredients?: Json
           sold_by_weight?: boolean
@@ -1315,6 +1379,7 @@ export type Database = {
           manage_stock?: boolean
           name?: string
           organization_id?: string | null
+          prep_time_min?: number
           price?: number
           removable_ingredients?: Json
           sold_by_weight?: boolean

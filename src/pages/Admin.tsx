@@ -1747,7 +1747,45 @@ const AdminPage = () => {
       </>
       )}
 
-      <footer className="mt-8 pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
+      <footer className="mt-8 pb-28 md:pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
+
+      {/* Bottom mobile nav */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-[#0B0B0D]/95 backdrop-blur-xl border-t border-white/[0.06] px-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="flex items-end justify-around max-w-md mx-auto">
+          {[
+            { k: 'dashboard', l: 'Início', i: Zap },
+            { k: 'orders', l: 'Pedidos', i: ClipboardList },
+            { k: '__plus', l: '', i: Plus },
+            { k: 'products', l: 'Produtos', i: Boxes },
+            { k: 'leads', l: 'Clientes', i: Users },
+          ].map((n) => {
+            const Icon = n.i;
+            const active = tab === n.k;
+            if (n.k === '__plus') {
+              return (
+                <button
+                  key="plus"
+                  onClick={() => navigate('/pdv')}
+                  aria-label="Novo pedido (PDV)"
+                  className="-mt-5 w-14 h-14 rounded-full bg-gradient-to-tr from-[#FF7A00] to-[#FF9D42] text-white flex items-center justify-center shadow-[0_10px_30px_-6px_rgba(255,122,0,0.6)] active:scale-95 transition-transform"
+                >
+                  <Plus className="w-6 h-6" strokeWidth={2.6} />
+                </button>
+              );
+            }
+            return (
+              <button
+                key={n.k}
+                onClick={() => setTab(n.k as any)}
+                className="flex flex-col items-center gap-1 px-2 py-1.5 min-w-[56px] transition-colors"
+              >
+                <Icon className={`w-5 h-5 ${active ? 'text-[#FF7A00]' : 'text-zinc-500'}`} strokeWidth={2} />
+                <span className={`text-[10px] font-bold ${active ? 'text-[#FF7A00]' : 'text-zinc-500'}`}>{n.l}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 };

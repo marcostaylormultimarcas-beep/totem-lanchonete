@@ -184,8 +184,16 @@ function LoginScreen({
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 space-y-5 shadow-2xl"
+        className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 space-y-5 shadow-2xl relative"
       >
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? window.history.back() : (window.location.href = "/"))}
+          className="absolute left-4 top-4 inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-amber-400 transition-colors"
+          aria-label="Voltar"
+        >
+          ← Voltar
+        </button>
         <div className="text-center space-y-1">
           <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
             <Lock className="w-7 h-7 text-amber-500" />
@@ -193,6 +201,7 @@ function LoginScreen({
           <h1 className="text-2xl font-bold text-white">PDV — Balcão</h1>
           <p className="text-sm text-zinc-400">Acesso restrito a operadores</p>
         </div>
+
 
         <input
           value={orgSlug}

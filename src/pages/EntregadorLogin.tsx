@@ -67,7 +67,16 @@ const EntregadorLogin = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-slate-900 border border-orange-600/40 rounded-2xl p-6 space-y-5 shadow-[0_0_40px_-10px_rgba(234,88,12,0.4)]">
+      <div className="w-full max-w-md bg-slate-900 border border-orange-600/40 rounded-2xl p-6 space-y-5 shadow-[0_0_40px_-10px_rgba(234,88,12,0.4)] relative">
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}
+          className="absolute left-4 top-4 inline-flex items-center gap-1 text-xs text-slate-400 hover:text-orange-400 transition-colors"
+          aria-label="Voltar"
+        >
+          ← Voltar
+        </button>
+
         <div className="text-center space-y-2">
           <div className="inline-flex w-14 h-14 rounded-2xl bg-orange-600 items-center justify-center">
             <Truck className="w-7 h-7 text-white" />

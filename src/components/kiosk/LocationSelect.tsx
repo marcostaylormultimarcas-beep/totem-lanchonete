@@ -40,14 +40,18 @@ const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 
         <div className="flex items-center gap-4 sm:gap-5">
           <div className="relative shrink-0 w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
             <div className={`absolute inset-0 rounded-2xl blur-2xl transition-opacity duration-300 ${active && !disabled ? 'opacity-60' : 'opacity-0'} bg-orange-500/40`} />
-            <img
-              src={icon}
-              alt=""
-              loading="lazy"
-              width={256}
-              height={256}
-              className="relative w-full h-full object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]"
-            />
+            {iconNode ? (
+              <div className="relative w-full h-full flex items-center justify-center text-orange-500">{iconNode}</div>
+            ) : (
+              <img
+                src={icon}
+                alt=""
+                loading="lazy"
+                width={256}
+                height={256}
+                className="relative w-full h-full object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]"
+              />
+            )}
           </div>
 
           <div className="flex-1 min-w-0">

@@ -1584,7 +1584,10 @@ export type Database = {
           created_at: string
           delivery_assignment_mode: string
           delivery_enabled: boolean
+          delivery_horario_fim: string | null
+          delivery_horario_inicio: string | null
           delivery_mode: string
+          delivery_pedido_minimo: number
           delivery_raio_km: number
           delivery_taxa_base: number
           delivery_taxa_por_km: number
@@ -1638,7 +1641,10 @@ export type Database = {
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          delivery_horario_fim?: string | null
+          delivery_horario_inicio?: string | null
           delivery_mode?: string
+          delivery_pedido_minimo?: number
           delivery_raio_km?: number
           delivery_taxa_base?: number
           delivery_taxa_por_km?: number
@@ -1692,7 +1698,10 @@ export type Database = {
           created_at?: string
           delivery_assignment_mode?: string
           delivery_enabled?: boolean
+          delivery_horario_fim?: string | null
+          delivery_horario_inicio?: string | null
           delivery_mode?: string
+          delivery_pedido_minimo?: number
           delivery_raio_km?: number
           delivery_taxa_base?: number
           delivery_taxa_por_km?: number

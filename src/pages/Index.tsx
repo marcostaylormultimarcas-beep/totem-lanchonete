@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
+import AddressSelect from '@/components/kiosk/AddressSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
 import CheckoutScreen from '@/components/kiosk/CheckoutScreen';

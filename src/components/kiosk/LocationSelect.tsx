@@ -1,10 +1,12 @@
-import { ArrowLeft, ArrowRight, ShoppingCart, ShieldCheck, Ban } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ShoppingCart, ShieldCheck, Ban, Bike } from 'lucide-react';
 import { useState } from 'react';
 import iconComerLocal from '@/assets/icon-comer-local.png';
 import iconParaViagem from '@/assets/icon-para-viagem.png';
 
+type Mode = 'local' | 'viagem' | 'delivery';
+
 interface LocationSelectProps {
-  onSelect: (type: 'local' | 'viagem') => void;
+  onSelect: (type: Mode) => void;
   onBack: () => void;
   deliveryEnabled?: boolean;
   cartCount?: number;
@@ -12,7 +14,7 @@ interface LocationSelectProps {
 }
 
 const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 0, onGoToCart }: LocationSelectProps) => {
-  const [hovered, setHovered] = useState<'local' | 'viagem' | null>(null);
+  const [hovered, setHovered] = useState<Mode | null>(null);
 
   const Card = ({
     type, title, desc, icon, disabled,

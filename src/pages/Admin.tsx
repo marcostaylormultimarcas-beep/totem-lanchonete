@@ -42,6 +42,7 @@ import EstoquePreditivPanel from '@/components/admin/EstoquePreditivPanel';
 import RoteirizacaoIAPanel from '@/components/admin/RoteirizacaoIAPanel';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
+import DeliveryPanel from '@/components/admin/DeliveryPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';

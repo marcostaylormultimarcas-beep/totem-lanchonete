@@ -944,6 +944,9 @@ const AdminPage = () => {
       {tab === 'area_cep' && (
         <AreaAtendimentoPanel organizationId={activeOrgId} />
       )}
+      {tab === 'delivery' && (
+        <DeliveryPanel organizationId={activeOrgId} />
+      )}
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />
       )}

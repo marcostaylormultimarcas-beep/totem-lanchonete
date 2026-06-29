@@ -248,7 +248,7 @@ const Index = () => {
         />
       )}
       {step === 'location' && (
-        <LocationSelect deliveryEnabled={deliveryEnabled} onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+        <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
       )}
       {step === 'menu' && (
         <MenuScreen

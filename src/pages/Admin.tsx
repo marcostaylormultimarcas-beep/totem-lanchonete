@@ -42,6 +42,7 @@ import EstoquePreditivPanel from '@/components/admin/EstoquePreditivPanel';
 import RoteirizacaoIAPanel from '@/components/admin/RoteirizacaoIAPanel';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
+import DeliveryPanel from '@/components/admin/DeliveryPanel';
 import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
 import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
 import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
@@ -92,7 +93,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'delivery' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -782,6 +783,7 @@ const AdminPage = () => {
           { key: 'entregadores' as const, label: 'Entregadores', icon: Truck, requires: 'admin' as const },
           { key: 'bairros' as const, label: 'Bairros', icon: Truck, requires: 'admin' as const },
           { key: 'area_cep' as const, label: 'Área CEP', icon: MapPin, requires: 'admin' as const },
+          { key: 'delivery' as const, label: 'Delivery', icon: Truck, requires: 'admin' as const },
           { key: 'logistica' as const, label: 'Logística', icon: Truck, requires: 'admin' as const },
           { key: 'rotaIA' as const, label: 'Roteirização IA', icon: Sparkles, requires: 'admin' as const },
           { key: 'prime' as const, label: 'Vision Prime', icon: Crown, requires: 'admin' as const },
@@ -941,6 +943,9 @@ const AdminPage = () => {
       )}
       {tab === 'area_cep' && (
         <AreaAtendimentoPanel organizationId={activeOrgId} />
+      )}
+      {tab === 'delivery' && (
+        <DeliveryPanel organizationId={activeOrgId} />
       )}
       {tab === 'logistica' && (
         <LogisticaPanel organizationId={activeOrgId} />

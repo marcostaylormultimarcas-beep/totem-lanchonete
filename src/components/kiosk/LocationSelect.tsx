@@ -1,10 +1,12 @@
-import { ArrowLeft, ArrowRight, ShoppingCart, ShieldCheck, Ban } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ShoppingCart, ShieldCheck, Ban, Bike } from 'lucide-react';
 import { useState } from 'react';
 import iconComerLocal from '@/assets/icon-comer-local.png';
 import iconParaViagem from '@/assets/icon-para-viagem.png';
 
+type Mode = 'local' | 'viagem' | 'delivery';
+
 interface LocationSelectProps {
-  onSelect: (type: 'local' | 'viagem') => void;
+  onSelect: (type: Mode) => void;
   onBack: () => void;
   deliveryEnabled?: boolean;
   cartCount?: number;
@@ -12,11 +14,11 @@ interface LocationSelectProps {
 }
 
 const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 0, onGoToCart }: LocationSelectProps) => {
-  const [hovered, setHovered] = useState<'local' | 'viagem' | null>(null);
+  const [hovered, setHovered] = useState<Mode | null>(null);
 
   const Card = ({
-    type, title, desc, icon, disabled,
-  }: { type: 'local' | 'viagem'; title: string; desc: string; icon: string; disabled?: boolean }) => {
+    type, title, desc, icon, iconNode, disabled,
+  }: { type: Mode; title: string; desc: string; icon?: string; iconNode?: React.ReactNode; disabled?: boolean }) => {
     const active = hovered === type;
     return (
       <button
@@ -38,14 +40,18 @@ const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 
         <div className="flex items-center gap-4 sm:gap-5">
           <div className="relative shrink-0 w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
             <div className={`absolute inset-0 rounded-2xl blur-2xl transition-opacity duration-300 ${active && !disabled ? 'opacity-60' : 'opacity-0'} bg-orange-500/40`} />
-            <img
-              src={icon}
-              alt=""
-              loading="lazy"
-              width={256}
-              height={256}
-              className="relative w-full h-full object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]"
-            />
+            {iconNode ? (
+              <div className="relative w-full h-full flex items-center justify-center text-orange-500">{iconNode}</div>
+            ) : (
+              <img
+                src={icon}
+                alt=""
+                loading="lazy"
+                width={256}
+                height={256}
+                className="relative w-full h-full object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.6)]"
+              />
+            )}
           </div>
 
           <div className="flex-1 min-w-0">
@@ -130,12 +136,19 @@ const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 
           title="Para Viagem"
           desc="Leve seu pedido para onde quiser."
           icon={iconParaViagem}
-          disabled={!deliveryEnabled}
         />
+        {deliveryEnabled && (
+          <Card
+            type="delivery"
+            title="Delivery"
+            desc="Receba seu pedido no endereço que escolher."
+            iconNode={<Bike className="w-20 h-20" strokeWidth={1.6} />}
+          />
+        )}
 
         {!deliveryEnabled && (
           <p className="text-center text-xs text-zinc-500 bg-[#18181B]/60 border border-zinc-800 rounded-xl px-4 py-3">
-            As entregas estão temporariamente indisponíveis. Você ainda pode comer no local.
+            As entregas estão temporariamente indisponíveis. Você ainda pode comer no local ou pegar para viagem.
           </p>
         )}
       </div>

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
+import AddressSelect from '@/components/kiosk/AddressSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
 import CheckoutScreen from '@/components/kiosk/CheckoutScreen';
@@ -16,7 +17,7 @@ import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-type Step = 'landing' | 'start' | 'location' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 
@@ -248,7 +249,16 @@ const Index = () => {
         />
       )}
       {step === 'location' && (
-        <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+        <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => {
+          if (type === 'delivery') { setOrderType('viagem'); setStep('address'); }
+          else { setOrderType(type); setStep('menu'); }
+        }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+      )}
+      {step === 'address' && (
+        <AddressSelect
+          onConfirm={(addr, ref) => { setDeliveryAddress(addr); setDeliveryReference(ref); setStep('menu'); }}
+          onBack={() => setStep('location')}
+        />
       )}
       {step === 'menu' && (
         <MenuScreen

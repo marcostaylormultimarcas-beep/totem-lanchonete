@@ -136,12 +136,19 @@ const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 
           title="Para Viagem"
           desc="Leve seu pedido para onde quiser."
           icon={iconParaViagem}
-          disabled={!deliveryEnabled}
         />
+        {deliveryEnabled && (
+          <Card
+            type="delivery"
+            title="Delivery"
+            desc="Receba seu pedido no endereço que escolher."
+            iconNode={<Bike className="w-20 h-20" strokeWidth={1.6} />}
+          />
+        )}
 
         {!deliveryEnabled && (
           <p className="text-center text-xs text-zinc-500 bg-[#18181B]/60 border border-zinc-800 rounded-xl px-4 py-3">
-            As entregas estão temporariamente indisponíveis. Você ainda pode comer no local.
+            As entregas estão temporariamente indisponíveis. Você ainda pode comer no local ou pegar para viagem.
           </p>
         )}
       </div>

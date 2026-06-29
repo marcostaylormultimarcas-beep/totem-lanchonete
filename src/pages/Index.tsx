@@ -248,7 +248,16 @@ const Index = () => {
         />
       )}
       {step === 'location' && (
-        <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => { setOrderType(type); setStep('menu'); }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+        <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => {
+          if (type === 'delivery') { setOrderType('viagem'); setStep('address'); }
+          else { setOrderType(type); setStep('menu'); }
+        }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+      )}
+      {step === 'address' && (
+        <AddressSelect
+          onConfirm={(addr, ref) => { setDeliveryAddress(addr); setDeliveryReference(ref); setStep('menu'); }}
+          onBack={() => setStep('location')}
+        />
       )}
       {step === 'menu' && (
         <MenuScreen

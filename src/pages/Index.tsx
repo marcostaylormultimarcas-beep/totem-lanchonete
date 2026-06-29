@@ -16,7 +16,7 @@ import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-type Step = 'landing' | 'start' | 'location' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 

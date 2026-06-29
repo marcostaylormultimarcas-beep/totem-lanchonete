@@ -17,8 +17,8 @@ const LocationSelect = ({ onSelect, onBack, deliveryEnabled = true, cartCount = 
   const [hovered, setHovered] = useState<Mode | null>(null);
 
   const Card = ({
-    type, title, desc, icon, disabled,
-  }: { type: 'local' | 'viagem'; title: string; desc: string; icon: string; disabled?: boolean }) => {
+    type, title, desc, icon, iconNode, disabled,
+  }: { type: Mode; title: string; desc: string; icon?: string; iconNode?: React.ReactNode; disabled?: boolean }) => {
     const active = hovered === type;
     return (
       <button

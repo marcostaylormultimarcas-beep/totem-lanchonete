@@ -104,7 +104,8 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
     };
     load();
 
-    const ch = supabase.channel('store-hours-' + orgId)
+    const channelId = `store-hours-${orgId}-${Math.random().toString(36).slice(2, 10)}`;
+    const ch = supabase.channel(channelId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` },
         (payload) => { console.log('[Vitrine] Realtime settings update:', payload.eventType); load(); })
       .subscribe((status) => console.log('[Vitrine] Realtime channel status:', status));

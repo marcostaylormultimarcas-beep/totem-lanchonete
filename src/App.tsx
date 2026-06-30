@@ -50,7 +50,9 @@ const App = () => {
         <BrowserRouter>
           <OrgProvider>
             <Routes>
-              <Route path="/" element={<Login />} />
+              {/* Página principal pública: cardápio da lanchonete */}
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
               {/* Loja pública: abre direto o cardápio/totem quando o slug existir */}
               <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
               {/* Landing institucional só fica no /home */}

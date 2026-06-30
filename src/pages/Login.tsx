@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { getKioskHomePath } from '@/lib/kioskHome';
+import { BRAND_NAME } from '@/config/brandConfig';
 import { Eye, EyeOff, KeyRound, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 

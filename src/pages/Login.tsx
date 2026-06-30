@@ -35,58 +35,11 @@ const Login = () => {
     setForgotPin('');
   };
 
-  const routeUser = async (userId: string) => {
-    let returnTo: string | null = null;
-    try { returnTo = sessionStorage.getItem('post_login_return_to'); } catch {}
-    if (returnTo) {
-      try { sessionStorage.removeItem('post_login_return_to'); } catch {}
-    }
-
-    // 1) Papéis administrativos (super / master_admin / admin)
-    let isAdminTier = false;
-    try {
-      const { data: roles } = await supabase
-        .from('user_roles' as any)
-        .select('role')
-        .eq('user_id', userId);
-      const list = (roles || []).map((r: any) => r.role);
-      isAdminTier =
-        list.includes('super_admin') ||
-        list.includes('master') ||
-        list.includes('master_admin') ||
-        list.includes('admin');
-    } catch (e) {
-      console.warn('[login] falha consultando user_roles', e);
-    }
-
-    if (isAdminTier) {
-      navigate('/admin', { replace: true });
-      return;
-    }
-
-    // 2) Dono de organização (owner) → /admin mesmo sem linha em user_roles
-    try {
-      const { data: org } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('owner_id', userId)
-        .maybeSingle();
-      if (org?.id) {
-        navigate('/admin', { replace: true });
-        return;
-      }
-    } catch (e) {
-      console.warn('[login] falha consultando organizations', e);
-    }
-
-    // 3) returnTo explícito (ex.: voltou de uma rota pública protegida)
-    if (returnTo && returnTo !== '/') {
-      navigate(returnTo, { replace: true });
-      return;
-    }
-
-    // 4) Fallback: cliente final → fluxo público (kiosk)
-    navigate(getKioskHomePath(), { replace: true });
+  const routeUser = async (_userId: string) => {
+    // Autenticação limpa: após login válido, vai direto ao painel administrativo.
+    // A criação do registro em `profiles` é feita pelo trigger `handle_new_user`
+    // no Supabase quando o usuário ainda não existe na tabela real.
+    navigate('/admin', { replace: true });
   };
 
   useEffect(() => {

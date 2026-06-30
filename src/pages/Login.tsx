@@ -77,10 +77,10 @@ const Login = () => {
       <div className="flex-1 flex items-center justify-center px-6 py-12">
         <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl p-8 space-y-6">
           <div className="text-center space-y-2">
-            <h1 className="text-3xl font-black tracking-tight">
-              <span className="text-primary">Vision</span> Mídia Digital
+            <h1 className="text-3xl font-black tracking-tight text-primary">
+              {BRAND_NAME}
             </h1>
-            <p className="text-sm text-muted-foreground">Acesso ao sistema de autoatendimento</p>
+            <p className="text-sm text-muted-foreground">Acesso ao painel administrativo</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">

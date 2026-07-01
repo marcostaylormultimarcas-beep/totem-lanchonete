@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { CreditCard, Save, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, DollarSign, Link as LinkIcon, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
 const MasterBillingPanel = () => {
   const [loading, setLoading] = useState(true);
@@ -12,10 +13,7 @@ const MasterBillingPanel = () => {
   const [hasToken, setHasToken] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
 
-  const projectRef = (import.meta.env.VITE_SUPABASE_PROJECT_ID as string) || '';
-  const webhookUrl = projectRef
-    ? `https://${projectRef}.supabase.co/functions/v1/mp-webhook`
-    : '';
+  const webhookUrl = getSupabaseFunctionUrl('mp-webhook');
 
   const load = async () => {
     setLoading(true);

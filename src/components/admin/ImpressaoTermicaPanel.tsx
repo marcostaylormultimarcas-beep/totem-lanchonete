@@ -4,6 +4,7 @@ import { Printer, Save, Loader2, RotateCcw, Copy, CheckCircle2, AlertCircle, Dow
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { BRAND_NAME } from '@/config/brandConfig';
+import { getSupabaseFunctionsHostUrl } from '@/config/supabaseConfig';
 
 interface Props { organizationId: string | null; }
 
@@ -130,8 +131,7 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
   };
 
   const downloadAgent = () => {
-    const projectId = (import.meta.env.VITE_SUPABASE_PROJECT_ID as string) || '';
-    const endpoint = `https://${projectId}.functions.supabase.co/print-agent`;
+    const endpoint = getSupabaseFunctionsHostUrl('print-agent');
     const script = `// ${BRAND_NAME} — Agente Local de Impressão Térmica
 // Requisitos: Node.js 18+ (já tem fetch nativo). Não precisa instalar nada.
 // Uso: defina o IP/porta da impressora no painel admin, copie o TOKEN abaixo,

@@ -18,6 +18,7 @@ import {
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 import { CATEGORIAS_LOJA } from '@/lib/categorias';
 import { CARDAPIO_TEMPLATES, CardapioTemplateKey, getTemplate } from '@/lib/cardapioTemplates';
 import { uploadProductImage } from '@/lib/imageUpload';
@@ -113,8 +114,7 @@ export default function Onboarding() {
   }, [appId, apiKey]);
 
   const webhookUrl = useMemo(() => {
-    const ref = (import.meta as any).env?.VITE_SUPABASE_PROJECT_ID;
-    const base = `https://${ref}.supabase.co/functions/v1/mp-webhook`;
+    const base = getSupabaseFunctionUrl('mp-webhook');
     return orgId ? `${base}?store_id=${orgId}` : base;
   }, [orgId]);
 

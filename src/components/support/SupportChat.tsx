@@ -3,10 +3,11 @@ import { useParams, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrg } from '@/contexts/OrgContext';
+import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
 interface Msg { role: 'user' | 'assistant'; content: string }
 
-const FUNCTION_URL = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/support-chat`;
+const FUNCTION_URL = getSupabaseFunctionUrl('support-chat');
 
 const ORG_FIELDS = 'id,name,slug,paused,categoria,cnpj,telefone,instagram,endereco_cep,endereco_rua,endereco_numero,endereco_bairro,endereco_estado,city';
 

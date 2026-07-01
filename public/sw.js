@@ -2,7 +2,7 @@
 // Estratégia: sempre tenta rede primeiro. Cache só é usado como fallback offline.
 // Nunca cacheia chamadas ao Supabase, edge functions ou rotas internas.
 
-const VERSION = 'vf-sw-v3';
+const VERSION = 'vf-sw-v4';
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const NAV_TIMEOUT_MS = 3000;
 

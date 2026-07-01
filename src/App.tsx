@@ -25,7 +25,7 @@ import PDVCliente from "./pages/PDVCliente.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
 
-const APP_VERSION = "1.0.1";
+const APP_VERSION = "1.0.2";
 
 const queryClient = new QueryClient();
 

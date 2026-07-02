@@ -1809,6 +1809,24 @@ export type Database = {
         }
         Relationships: []
       }
+      teste_conexao: {
+        Row: {
+          created_at: string
+          id: string
+          resultado: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          resultado?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          resultado?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string

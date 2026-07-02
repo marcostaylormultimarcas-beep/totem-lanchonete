@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Navigate } from "react-router-dom";
 import Index from "./pages/Index.tsx";
 import Login from "./pages/Login.tsx";
 import Home from "./pages/Home.tsx";
@@ -52,7 +53,10 @@ const App = () => {
             <Routes>
               {/* Página principal pública: cardápio da lanchonete */}
               <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
+              {/* Rota oculta de login administrativo */}
+              <Route path="/gerencia-vision-x" element={<Login />} />
+              {/* Rotas antigas de login redirecionam para a raiz pública */}
+              <Route path="/login" element={<Navigate to="/" replace />} />
               {/* Loja pública: abre direto o cardápio/totem quando o slug existir */}
               <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
               {/* Landing institucional só fica no /home */}

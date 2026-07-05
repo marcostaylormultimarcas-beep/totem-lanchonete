@@ -1,19 +1,18 @@
 // Configuração canônica do backend do VisionFood.
 //
-// O deploy publicado estava compilando com variáveis antigas do Netlify
-// e apontando para outro projeto Supabase. Isso fazia o login autenticar
-// em um banco diferente, sem as roles administrativas corretas.
-//
-// Como a aplicação e as migrations deste repositório pertencem ao projeto
-// abaixo, mantemos estes valores como fonte da verdade do frontend.
+// Projeto Supabase EXTERNO oficial: "Lanchonete final" (udhcnpauymevkylldkir).
+// Auth, tabelas em português, functions e triggers já foram migrados nas Etapas 1 e 2.
 
-export const SUPABASE_PROJECT_ID = 'upwstbeimnlgohbqogzz';
+export const SUPABASE_PROJECT_ID = 'udhcnpauymevkylldkir';
 
 export const SUPABASE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co`;
 
-// Publishable/anon key: chave pública própria para uso no browser.
+// ⚠️ Cole abaixo a ANON KEY completa do projeto externo (Settings → API → anon public).
+// A chave enviada anteriormente no chat veio truncada, então mantenha o valor abaixo
+// atualizado com a string completa (começa com "eyJ..." e tem ~200+ caracteres).
 export const SUPABASE_PUBLISHABLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd3N0YmVpbW5sZ29oYnFvZ3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTQ4NDQsImV4cCI6MjA5MDY3MDg0NH0.jTK21_zbLLcqPWAVSjOJCwAVrGJ7L6iftFyoppmdtJE';
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'COLE_AQUI_A_ANON_KEY_COMPLETA_DO_PROJETO_EXTERNO';
 
 export const getSupabaseFunctionUrl = (functionName: string) =>
   `${SUPABASE_URL}/functions/v1/${functionName}`;

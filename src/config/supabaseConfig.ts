@@ -1,16 +1,18 @@
 // Configuração canônica do backend do VisionFood.
 //
-// Projeto Supabase EXTERNO oficial: "Lanchonete final".
-// Toda a stack (Auth, Tabelas em português, Functions e Triggers)
-// foi migrada para este projeto nas Etapas 1 e 2.
+// Projeto Supabase EXTERNO oficial: "Lanchonete final" (udhcnpauymevkylldkir).
+// Auth, tabelas em português, functions e triggers já foram migrados nas Etapas 1 e 2.
 
 export const SUPABASE_PROJECT_ID = 'udhcnpauymevkylldkir';
 
 export const SUPABASE_URL = `https://${SUPABASE_PROJECT_ID}.supabase.co`;
 
-// Publishable/anon key oficial do projeto externo.
+// ⚠️ Cole abaixo a ANON KEY completa do projeto externo (Settings → API → anon public).
+// A chave enviada anteriormente no chat veio truncada, então mantenha o valor abaixo
+// atualizado com a string completa (começa com "eyJ..." e tem ~200+ caracteres).
 export const SUPABASE_PUBLISHABLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkaGNucGF1eW1ldmt5bGxka2lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5MzIzODYsImV4cCI6MjA3NzUwODM4Nn0.dQz4ZUeXNu3vLDGaqLh8vLZAqDrqoLwvXcHiiLR7cLM';
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'COLE_AQUI_A_ANON_KEY_COMPLETA_DO_PROJETO_EXTERNO';
 
 export const getSupabaseFunctionUrl = (functionName: string) =>
   `${SUPABASE_URL}/functions/v1/${functionName}`;

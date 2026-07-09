@@ -4,9 +4,9 @@
 
 import type { Context } from "https://edge.netlify.com/";
 
-const SUPABASE_URL = "https://upwstbeimnlgohbqogzz.supabase.co";
+const SUPABASE_URL = "https://udhcnpauymevkylldkir.supabase.co";
 const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVwd3N0YmVpbW5sZ29oYnFvZ3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwOTQ4NDQsImV4cCI6MjA5MDY3MDg0NH0.jTK21_zbLLcqPWAVSjOJCwAVrGJ7L6iftFyoppmdtJE";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVkaGNucGF1eW1ldmt5bGxka2lyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMjc3MTMsImV4cCI6MjA5NDYwMzcxM30.4cRtA8yYnSi4VjXrmr605VmIgY8W0EfF0jqP9aiwwBk";
 
 const DEFAULT_TITLE = "VisionFood - Autoatendimento";
 const DEFAULT_DESC = "Sistema de pedidos inteligente para lanchonetes e totens.";

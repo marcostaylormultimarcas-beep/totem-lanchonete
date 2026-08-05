@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft, CreditCard, ShieldAlert, ExternalLink } from 'lucide-react';
+import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft, CreditCard, ShieldAlert, ExternalLink, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }
@@ -20,22 +20,25 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const [showChange, setShowChange] = useState(false);
   const [saving, setSaving] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState<string>('');
 
   const load = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }, { data: sys }] = await Promise.all([
+    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }, { data: sys }, { data: st }] = await Promise.all([
       supabase.from('organizations').select('plan_id, status_assinatura').eq('id', organizationId).maybeSingle(),
       supabase.from('plans' as any).select('*').order('sort_order'),
       supabase.from('features' as any).select('*').order('sort_order'),
       supabase.from('plan_features' as any).select('plan_id, feature_id, enabled'),
       supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
+      supabase.from('settings').select('whatsapp_number').eq('organization_id', organizationId).maybeSingle(),
     ]);
     setCurrentPlanId((org as any)?.plan_id ?? null);
     setStatusAssinatura((org as any)?.status_assinatura ?? 'ativo');
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
     setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
+    setWhatsappNumber(((st as any)?.whatsapp_number || '').replace(/\D/g, ''));
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);
@@ -43,6 +46,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [organizationId]);
+
 
   // Realtime: caso o Super Master altere a matriz ou outro admin mude o plano
   useEffect(() => {
@@ -63,17 +67,17 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
       ? features.filter(f => matrix[`${planId}:${f.id}`])
       : [];
 
-  const changePlan = async (newPlanId: string) => {
-    if (!organizationId) return;
-    if (newPlanId === currentPlanId) { setShowChange(false); return; }
-    setSaving(true);
-    const { error } = await supabase.from('organizations').update({ plan_id: newPlanId } as any).eq('id', organizationId);
-    setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Plano alterado com sucesso!');
+  const solicitarPlano = (plan: Plan) => {
+    if (!whatsappNumber) {
+      toast.error('Nenhum número de WhatsApp cadastrado nas configurações da loja.');
+      return;
+    }
+    const digits = whatsappNumber.length <= 11 ? `55${whatsappNumber}` : whatsappNumber;
+    const msg = `Olá, gostaria de solicitar a alteração do meu plano para o plano ${plan.name}. Poderia me ajudar?`;
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
     setShowChange(false);
-    await load();
   };
+
 
   if (!organizationId) {
     return <div className="px-4 py-10 text-center text-sm text-muted-foreground">Selecione uma loja.</div>;
@@ -199,33 +203,39 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">Compare os planos abaixo e clique para alterar. A mudança é aplicada imediatamente.</p>
+            <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
             <div className="space-y-2">
               {plans.map(p => {
                 const isCurrent = p.id === currentPlanId;
                 const feats = featuresForPlan(p.id);
                 return (
-                  <button key={p.id} onClick={() => !saving && !isCurrent && changePlan(p.id)} disabled={saving || isCurrent}
+                  <div key={p.id}
                     className={`w-full text-left p-3 rounded-xl border-2 transition ${
                       isCurrent
-                        ? 'border-primary bg-primary/10 cursor-default'
-                        : 'border-border bg-muted/30 hover:border-primary/60 hover:bg-muted/60'
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-muted/30'
                     }`}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <p className="font-black text-sm uppercase">{p.name}</p>
                       {isCurrent && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary text-primary-foreground font-bold">ATUAL</span>}
-                      {saving && !isCurrent && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                     </div>
                     {p.description && <p className="text-xs text-muted-foreground mb-2">{p.description}</p>}
-                    <div className="flex items-center gap-1.5 text-xs">
+                    <div className="flex items-center gap-1.5 text-xs mb-2">
                       <Check className="w-3.5 h-3.5 text-success" />
                       <span className="font-semibold">{feats.length}</span>
                       <span className="text-muted-foreground">funcionalidades incluídas</span>
                     </div>
-                  </button>
+                    {!isCurrent && (
+                      <button onClick={() => solicitarPlano(p)}
+                        className="touch-btn w-full bg-success text-white py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 hover:opacity-90">
+                        <MessageCircle className="w-4 h-4" /> Mudar para este plano
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
+
           </div>
         </div>
       )}

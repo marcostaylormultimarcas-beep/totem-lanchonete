@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon, Lock } from 'lucide-react';
+import { Loader2, Layers, History, Check, X, ShieldCheck, User as UserIcon, Lock, Plus, Pencil, Trash2, Settings2 } from 'lucide-react';
+
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }
@@ -27,7 +28,10 @@ const PlansMatrixPanel = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
-  const [tab, setTab] = useState<'grid' | 'audit'>('grid');
+  const [tab, setTab] = useState<'grid' | 'audit' | 'crud'>('grid');
+  const [editPlan, setEditPlan] = useState<Partial<Plan> | null>(null);
+  const [editFeature, setEditFeature] = useState<Partial<Feature> | null>(null);
+  const [busy, setBusy] = useState(false);
   const [currentEmail, setCurrentEmail] = useState<string>('');
 
   const canWrite = currentEmail.toLowerCase() === SUPER_MASTER_EMAIL;
@@ -99,6 +103,72 @@ const PlansMatrixPanel = () => {
     return g;
   }, [features]);
 
+  const requireWrite = () => {
+    if (!canWrite) { toast.error('Apenas o Super Master pode gerenciar planos e funcionalidades.'); return false; }
+    return true;
+  };
+
+  const savePlan = async () => {
+    if (!requireWrite() || !editPlan) return;
+    const name = (editPlan.name || '').trim();
+    const key = (editPlan.key || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name || !key) { toast.error('Informe nome e chave do plano.'); return; }
+    setBusy(true);
+    const payload = { key, name, description: editPlan.description || '', sort_order: Number(editPlan.sort_order) || 0 };
+    const { error } = editPlan.id
+      ? await supabase.from('plans' as any).update(payload as any).eq('id', editPlan.id)
+      : await supabase.from('plans' as any).insert(payload as any);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editPlan.id ? 'Plano atualizado!' : 'Plano criado!');
+    setEditPlan(null);
+    loadAll();
+  };
+
+  const deletePlan = async (p: Plan) => {
+    if (!requireWrite()) return;
+    if (!confirm(`Remover o plano "${p.name}"? Lojas vinculadas ficarão sem plano.`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('plans' as any).delete().eq('id', p.id);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Plano removido.');
+    loadAll();
+  };
+
+  const saveFeature = async () => {
+    if (!requireWrite() || !editFeature) return;
+    const name = (editFeature.name || '').trim();
+    const key = (editFeature.key || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name || !key) { toast.error('Informe nome e chave da funcionalidade.'); return; }
+    setBusy(true);
+    const payload = {
+      key, name,
+      description: editFeature.description || '',
+      category: (editFeature.category || 'Geral').trim(),
+      sort_order: Number(editFeature.sort_order) || 0,
+    };
+    const { error } = editFeature.id
+      ? await supabase.from('features' as any).update(payload as any).eq('id', editFeature.id)
+      : await supabase.from('features' as any).insert(payload as any);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(editFeature.id ? 'Funcionalidade atualizada!' : 'Funcionalidade criada!');
+    setEditFeature(null);
+    loadAll();
+  };
+
+  const deleteFeature = async (f: Feature) => {
+    if (!requireWrite()) return;
+    if (!confirm(`Remover a funcionalidade "${f.name}"?`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('features' as any).delete().eq('id', f.id);
+    setBusy(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success('Funcionalidade removida.');
+    loadAll();
+  };
+
   return (
     <div className="px-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -110,12 +180,124 @@ const PlansMatrixPanel = () => {
             className={`text-xs px-3 py-1.5 rounded-md font-semibold ${tab === 'grid' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
             Matriz
           </button>
+          <button onClick={() => setTab('crud')}
+            className={`text-xs px-3 py-1.5 rounded-md font-semibold flex items-center gap-1 ${tab === 'crud' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+            <Settings2 className="w-3.5 h-3.5" /> Cadastros
+          </button>
           <button onClick={() => setTab('audit')}
             className={`text-xs px-3 py-1.5 rounded-md font-semibold flex items-center gap-1 ${tab === 'audit' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
             <History className="w-3.5 h-3.5" /> Auditoria
           </button>
         </div>
       </div>
+
+      {tab === 'crud' && (
+        loading ? (
+          <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : (
+          <div className="space-y-4">
+            {!canWrite && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-300 text-xs p-3 flex items-start gap-2">
+                <Lock className="w-4 h-4 mt-0.5 shrink-0" />
+                <p>Somente o Super Master pode criar, editar ou remover planos e funcionalidades.</p>
+              </div>
+            )}
+
+            <div className="kiosk-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-sm flex items-center gap-2"><Layers className="w-4 h-4 text-primary" /> Planos</h3>
+                <button disabled={!canWrite} onClick={() => setEditPlan({ sort_order: plans.length + 1 })}
+                  className="touch-btn text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50">
+                  <Plus className="w-3.5 h-3.5" /> Novo plano
+                </button>
+              </div>
+              <div className="divide-y divide-border/50">
+                {plans.length === 0 && <p className="text-sm text-muted-foreground py-3">Nenhum plano cadastrado.</p>}
+                {plans.map(p => (
+                  <div key={p.id} className="py-2.5 flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm">{p.name} <span className="text-[11px] text-muted-foreground font-mono">({p.key})</span></p>
+                      {p.description && <p className="text-[11px] text-muted-foreground">{p.description}</p>}
+                    </div>
+                    <button disabled={!canWrite} onClick={() => setEditPlan(p)} className="p-2 rounded-lg hover:bg-muted disabled:opacity-40"><Pencil className="w-4 h-4" /></button>
+                    <button disabled={!canWrite} onClick={() => deletePlan(p)} className="p-2 rounded-lg hover:bg-destructive/15 text-destructive disabled:opacity-40"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="kiosk-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-sm flex items-center gap-2"><Settings2 className="w-4 h-4 text-primary" /> Funcionalidades</h3>
+                <button disabled={!canWrite} onClick={() => setEditFeature({ sort_order: features.length + 1, category: 'Geral' })}
+                  className="touch-btn text-xs font-bold bg-primary text-primary-foreground px-3 py-1.5 rounded-lg flex items-center gap-1 disabled:opacity-50">
+                  <Plus className="w-3.5 h-3.5" /> Nova funcionalidade
+                </button>
+              </div>
+              <div className="divide-y divide-border/50">
+                {features.length === 0 && <p className="text-sm text-muted-foreground py-3">Nenhuma funcionalidade cadastrada.</p>}
+                {features.map(f => (
+                  <div key={f.id} className="py-2.5 flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm">{f.name} <span className="text-[11px] text-muted-foreground font-mono">({f.key})</span></p>
+                      <p className="text-[11px] text-muted-foreground">{f.category}{f.description ? ` · ${f.description}` : ''}</p>
+                    </div>
+                    <button disabled={!canWrite} onClick={() => setEditFeature(f)} className="p-2 rounded-lg hover:bg-muted disabled:opacity-40"><Pencil className="w-4 h-4" /></button>
+                    <button disabled={!canWrite} onClick={() => deleteFeature(f)} className="p-2 rounded-lg hover:bg-destructive/15 text-destructive disabled:opacity-40"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )
+      )}
+
+      {editPlan && (
+        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => !busy && setEditPlan(null)}>
+          <div className="kiosk-card w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black text-base">{editPlan.id ? 'Editar plano' : 'Novo plano'}</h3>
+            <input className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" placeholder="Nome do plano"
+              value={editPlan.name || ''} onChange={e => setEditPlan({ ...editPlan, name: e.target.value })} />
+            <input className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm font-mono" placeholder="chave_unica (ex: premium)"
+              value={editPlan.key || ''} onChange={e => setEditPlan({ ...editPlan, key: e.target.value })} />
+            <textarea className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" rows={2} placeholder="Descrição"
+              value={editPlan.description || ''} onChange={e => setEditPlan({ ...editPlan, description: e.target.value })} />
+            <input type="number" className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" placeholder="Ordem"
+              value={editPlan.sort_order ?? 0} onChange={e => setEditPlan({ ...editPlan, sort_order: Number(e.target.value) })} />
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setEditPlan(null)} disabled={busy} className="flex-1 bg-muted py-2.5 rounded-xl text-sm font-bold">Cancelar</button>
+              <button onClick={savePlan} disabled={busy} className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50">
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />} Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editFeature && (
+        <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => !busy && setEditFeature(null)}>
+          <div className="kiosk-card w-full max-w-md p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <h3 className="font-black text-base">{editFeature.id ? 'Editar funcionalidade' : 'Nova funcionalidade'}</h3>
+            <input className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" placeholder="Nome"
+              value={editFeature.name || ''} onChange={e => setEditFeature({ ...editFeature, name: e.target.value })} />
+            <input className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm font-mono" placeholder="chave_unica (ex: pdv_balcao)"
+              value={editFeature.key || ''} onChange={e => setEditFeature({ ...editFeature, key: e.target.value })} />
+            <input className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" placeholder="Categoria"
+              value={editFeature.category || ''} onChange={e => setEditFeature({ ...editFeature, category: e.target.value })} />
+            <textarea className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" rows={2} placeholder="Descrição"
+              value={editFeature.description || ''} onChange={e => setEditFeature({ ...editFeature, description: e.target.value })} />
+            <input type="number" className="w-full bg-muted rounded-xl px-3 py-2.5 text-sm" placeholder="Ordem"
+              value={editFeature.sort_order ?? 0} onChange={e => setEditFeature({ ...editFeature, sort_order: Number(e.target.value) })} />
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setEditFeature(null)} disabled={busy} className="flex-1 bg-muted py-2.5 rounded-xl text-sm font-bold">Cancelar</button>
+              <button onClick={saveFeature} disabled={busy} className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-xl text-sm font-black flex items-center justify-center gap-2 disabled:opacity-50">
+                {busy && <Loader2 className="w-4 h-4 animate-spin" />} Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {tab === 'grid' && (
         loading ? (

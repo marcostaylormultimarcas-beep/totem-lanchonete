@@ -67,17 +67,17 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
       ? features.filter(f => matrix[`${planId}:${f.id}`])
       : [];
 
-  const changePlan = async (newPlanId: string) => {
-    if (!organizationId) return;
-    if (newPlanId === currentPlanId) { setShowChange(false); return; }
-    setSaving(true);
-    const { error } = await supabase.from('organizations').update({ plan_id: newPlanId } as any).eq('id', organizationId);
-    setSaving(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Plano alterado com sucesso!');
+  const solicitarPlano = (plan: Plan) => {
+    if (!whatsappNumber) {
+      toast.error('Nenhum número de WhatsApp cadastrado nas configurações da loja.');
+      return;
+    }
+    const digits = whatsappNumber.length <= 11 ? `55${whatsappNumber}` : whatsappNumber;
+    const msg = `Olá, gostaria de solicitar a alteração do meu plano para o plano ${plan.name}. Poderia me ajudar?`;
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
     setShowChange(false);
-    await load();
   };
+
 
   if (!organizationId) {
     return <div className="px-4 py-10 text-center text-sm text-muted-foreground">Selecione uma loja.</div>;

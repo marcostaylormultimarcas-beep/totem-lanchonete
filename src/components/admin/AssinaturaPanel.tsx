@@ -20,22 +20,25 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const [showChange, setShowChange] = useState(false);
   const [saving, setSaving] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [whatsappNumber, setWhatsappNumber] = useState<string>('');
 
   const load = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }, { data: sys }] = await Promise.all([
+    const [{ data: org }, { data: ps }, { data: fs }, { data: pfs }, { data: sys }, { data: st }] = await Promise.all([
       supabase.from('organizations').select('plan_id, status_assinatura').eq('id', organizationId).maybeSingle(),
       supabase.from('plans' as any).select('*').order('sort_order'),
       supabase.from('features' as any).select('*').order('sort_order'),
       supabase.from('plan_features' as any).select('plan_id, feature_id, enabled'),
       supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
+      supabase.from('settings').select('whatsapp_number').eq('organization_id', organizationId).maybeSingle(),
     ]);
     setCurrentPlanId((org as any)?.plan_id ?? null);
     setStatusAssinatura((org as any)?.status_assinatura ?? 'ativo');
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
     setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
+    setWhatsappNumber(((st as any)?.whatsapp_number || '').replace(/\D/g, ''));
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);
@@ -43,6 +46,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [organizationId]);
+
 
   // Realtime: caso o Super Master altere a matriz ou outro admin mude o plano
   useEffect(() => {

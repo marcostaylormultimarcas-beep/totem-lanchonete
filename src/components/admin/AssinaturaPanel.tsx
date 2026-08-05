@@ -203,33 +203,39 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground">Compare os planos abaixo e clique para alterar. A mudança é aplicada imediatamente.</p>
+            <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
             <div className="space-y-2">
               {plans.map(p => {
                 const isCurrent = p.id === currentPlanId;
                 const feats = featuresForPlan(p.id);
                 return (
-                  <button key={p.id} onClick={() => !saving && !isCurrent && changePlan(p.id)} disabled={saving || isCurrent}
+                  <div key={p.id}
                     className={`w-full text-left p-3 rounded-xl border-2 transition ${
                       isCurrent
-                        ? 'border-primary bg-primary/10 cursor-default'
-                        : 'border-border bg-muted/30 hover:border-primary/60 hover:bg-muted/60'
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-muted/30'
                     }`}>
                     <div className="flex items-center justify-between gap-2 mb-1.5">
                       <p className="font-black text-sm uppercase">{p.name}</p>
                       {isCurrent && <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary text-primary-foreground font-bold">ATUAL</span>}
-                      {saving && !isCurrent && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
                     </div>
                     {p.description && <p className="text-xs text-muted-foreground mb-2">{p.description}</p>}
-                    <div className="flex items-center gap-1.5 text-xs">
+                    <div className="flex items-center gap-1.5 text-xs mb-2">
                       <Check className="w-3.5 h-3.5 text-success" />
                       <span className="font-semibold">{feats.length}</span>
                       <span className="text-muted-foreground">funcionalidades incluídas</span>
                     </div>
-                  </button>
+                    {!isCurrent && (
+                      <button onClick={() => solicitarPlano(p)}
+                        className="touch-btn w-full bg-success text-white py-2.5 rounded-xl text-xs font-black flex items-center justify-center gap-2 hover:opacity-90">
+                        <MessageCircle className="w-4 h-4" /> Mudar para este plano
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
+
           </div>
         </div>
       )}

@@ -28,7 +28,10 @@ const PlansMatrixPanel = () => {
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
-  const [tab, setTab] = useState<'grid' | 'audit'>('grid');
+  const [tab, setTab] = useState<'grid' | 'audit' | 'crud'>('grid');
+  const [editPlan, setEditPlan] = useState<Partial<Plan> | null>(null);
+  const [editFeature, setEditFeature] = useState<Partial<Feature> | null>(null);
+  const [busy, setBusy] = useState(false);
   const [currentEmail, setCurrentEmail] = useState<string>('');
 
   const canWrite = currentEmail.toLowerCase() === SUPER_MASTER_EMAIL;

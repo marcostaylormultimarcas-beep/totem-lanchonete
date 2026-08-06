@@ -30,7 +30,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
       supabase.from('plans' as any).select('*').order('sort_order'),
       supabase.from('features' as any).select('*').order('sort_order'),
       supabase.from('plan_features' as any).select('plan_id, feature_id, enabled'),
-      supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
+      supabase.from('system_settings').select('*').eq('id', 'global').maybeSingle(),
       supabase.from('settings').select('whatsapp_number').eq('organization_id', organizationId).maybeSingle(),
     ]);
     setCurrentPlanId((org as any)?.plan_id ?? null);
@@ -38,7 +38,10 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
     setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
-    setWhatsappNumber(((st as any)?.whatsapp_number || '').replace(/\D/g, ''));
+    // Prioridade: WhatsApp da loja → WhatsApp central do Super Master
+    const lojaWpp = ((st as any)?.whatsapp_number || '').replace(/\D/g, '');
+    const masterWpp = ((sys as any)?.whatsapp_suporte || '').replace(/\D/g, '');
+    setWhatsappNumber(lojaWpp || masterWpp);
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);
@@ -69,7 +72,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
 
   const solicitarPlano = (plan: Plan) => {
     if (!whatsappNumber) {
-      toast.error('Nenhum número de WhatsApp cadastrado nas configurações da loja.');
+      toast.error('Nenhum WhatsApp de atendimento configurado. Peça ao suporte master para cadastrar o número central.');
       return;
     }
     const digits = whatsappNumber.length <= 11 ? `55${whatsappNumber}` : whatsappNumber;
@@ -77,6 +80,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
     window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
     setShowChange(false);
   };
+
 
 
   if (!organizationId) {
@@ -194,17 +198,20 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
 
       {showChange && (
         <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => !saving && setShowChange(false)}>
-          <div className="kiosk-card max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <ArrowRightLeft className="w-5 h-5 text-primary" /> Escolha um plano
-              </h3>
-              <button onClick={() => !saving && setShowChange(false)} className="p-1.5 rounded-lg hover:bg-muted">
-                <X className="w-4 h-4" />
-              </button>
+          <div className="kiosk-card max-w-lg w-full max-h-[85dvh] flex flex-col p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-5 pb-3 space-y-2 border-b border-border flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-lg flex items-center gap-2">
+                  <ArrowRightLeft className="w-5 h-5 text-primary" /> Escolha um plano
+                </h3>
+                <button onClick={() => !saving && setShowChange(false)} className="p-1.5 rounded-lg hover:bg-muted">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
             </div>
-            <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
-            <div className="space-y-2">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 pt-3 space-y-2">
+
               {plans.map(p => {
                 const isCurrent = p.id === currentPlanId;
                 const feats = featuresForPlan(p.id);

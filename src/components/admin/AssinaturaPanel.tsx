@@ -198,17 +198,20 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
 
       {showChange && (
         <div className="fixed inset-0 z-[100] bg-background/80 backdrop-blur-md flex items-center justify-center p-4" onClick={() => !saving && setShowChange(false)}>
-          <div className="kiosk-card max-w-lg w-full max-h-[85vh] overflow-y-auto p-5 space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-black text-lg flex items-center gap-2">
-                <ArrowRightLeft className="w-5 h-5 text-primary" /> Escolha um plano
-              </h3>
-              <button onClick={() => !saving && setShowChange(false)} className="p-1.5 rounded-lg hover:bg-muted">
-                <X className="w-4 h-4" />
-              </button>
+          <div className="kiosk-card max-w-lg w-full max-h-[85dvh] flex flex-col p-0 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-5 pb-3 space-y-2 border-b border-border flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <h3 className="font-black text-lg flex items-center gap-2">
+                  <ArrowRightLeft className="w-5 h-5 text-primary" /> Escolha um plano
+                </h3>
+                <button onClick={() => !saving && setShowChange(false)} className="p-1.5 rounded-lg hover:bg-muted">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
             </div>
-            <p className="text-xs text-muted-foreground">Compare os planos abaixo e solicite a mudança pelo WhatsApp. Nossa equipe faz a alteração para você.</p>
-            <div className="space-y-2">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-5 pt-3 space-y-2">
+
               {plans.map(p => {
                 const isCurrent = p.id === currentPlanId;
                 const feats = featuresForPlan(p.id);

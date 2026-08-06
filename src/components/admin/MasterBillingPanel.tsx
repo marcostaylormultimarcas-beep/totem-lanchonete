@@ -98,6 +98,35 @@ const MasterBillingPanel = () => {
         </div>
       </div>
 
+      <div className="kiosk-card p-5 space-y-4 border-2 border-success/30">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl bg-success/20 text-success flex items-center justify-center">
+            <MessageCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-black text-lg leading-tight">WhatsApp Central de Atendimento</h3>
+            <p className="text-xs text-muted-foreground">Usado quando a loja não tem WhatsApp próprio (ex.: solicitação de troca de plano).</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1 flex items-center bg-muted rounded-lg px-3">
+            <span className="text-sm text-muted-foreground mr-2">+55</span>
+            <input
+              type="tel" inputMode="numeric" placeholder="11999998888"
+              value={whatsapp} onChange={e => setWhatsapp(e.target.value)}
+              className="w-full py-3 bg-transparent outline-none font-mono text-lg font-bold"
+            />
+          </div>
+          <button onClick={salvarWhatsapp} disabled={savingWpp}
+            className="touch-btn bg-success text-white px-4 rounded-lg flex items-center gap-1.5 disabled:opacity-50 font-bold">
+            {savingWpp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Salvar
+          </button>
+        </div>
+      </div>
+
+
+
       <div className="kiosk-card p-5 space-y-4 border-2 border-primary/20">
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-xl bg-primary/20 text-primary flex items-center justify-center">

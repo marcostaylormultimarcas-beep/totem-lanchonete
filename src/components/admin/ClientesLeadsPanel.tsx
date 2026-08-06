@@ -247,11 +247,6 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
 
       {/* Filters */}
       <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-4 space-y-3">
-        {loadError && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-            {loadError}
-          </div>
-        )}
         <div className="flex flex-wrap items-center gap-2">
           {([
             { k: 'all', label: 'Todos', icon: Users },

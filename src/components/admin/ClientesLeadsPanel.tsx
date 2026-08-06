@@ -54,19 +54,17 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [profileContacts, setProfileContacts] = useState<Array<{ key: string; userId: string; email: string; phone: string; name: string; source: string; created_at: string }>>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
     if (!organizationId) { setOrders([]); setProfileContacts([]); setLoading(false); return; }
     setLoading(true);
-    setLoadError(null);
     (async () => {
-      const [profilesRes, ordersRes] = await Promise.all([
-        supabase.from('profiles')
-          .select('user_id, display_name, email, phone, created_at, organization_id, origem_assinatura_empresa_id')
-          .or(`organization_id.eq.${organizationId},origem_assinatura_empresa_id.eq.${organizationId}`)
+      const [clientesRes, ordersRes] = await Promise.all([
+        supabase.from('clientes' as any)
+          .select('*')
+          .eq('organization_id', organizationId)
           .order('created_at', { ascending: false })
           .limit(5000),
         supabase.from('orders')
@@ -77,25 +75,20 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
           .limit(5000),
       ]);
 
-      const errors = [profilesRes.error, ordersRes.error].filter(Boolean);
-      if (errors.length) {
-        console.error('[ClientesLeadsPanel] load failed', errors);
-        setLoadError('Não foi possível carregar clientes/leads. Verifique as permissões da loja e tente atualizar.');
-      }
-
       setOrders((ordersRes.data as OrderRow[]) || []);
-      setProfileContacts(((profilesRes.data || []) as any[]).map((p) => ({
-        key: `profile:${p.user_id}`,
-        userId: p.user_id,
-        email: p.email || '',
-        phone: normalizePhone(p.phone || ''),
-        name: p.display_name || 'Lead sem nome',
+      setProfileContacts(((clientesRes.data || []) as any[]).map((c, i) => ({
+        key: `cliente:${c.id ?? c.user_id ?? i}`,
+        userId: c.user_id || '',
+        email: c.email || '',
+        phone: normalizePhone(c.telefone || c.phone || ''),
+        name: c.nome || c.name || c.display_name || 'Lead sem nome',
         source: 'Cadastro',
-        created_at: p.created_at,
+        created_at: c.created_at,
       })));
       setLoading(false);
     })();
   }, [organizationId]);
+
 
   const customers = useMemo<CustomerSummary[]>(() => {
     const now = Date.now();

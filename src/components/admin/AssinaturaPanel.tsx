@@ -72,7 +72,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
 
   const solicitarPlano = (plan: Plan) => {
     if (!whatsappNumber) {
-      toast.error('Nenhum número de WhatsApp cadastrado nas configurações da loja.');
+      toast.error('Nenhum WhatsApp de atendimento configurado. Peça ao suporte master para cadastrar o número central.');
       return;
     }
     const digits = whatsappNumber.length <= 11 ? `55${whatsappNumber}` : whatsappNumber;
@@ -80,6 +80,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
     window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
     setShowChange(false);
   };
+
 
 
   if (!organizationId) {

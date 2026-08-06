@@ -52,7 +52,9 @@ export function usePlanFeatures() {
   return {
     loading,
     planKey,
-    has: (key: string) => enabled.has(key),
+    // Paywall removido: todos os recursos liberados.
+    has: (_key: string) => true,
     enabledKeys: enabled,
   };
+
 }

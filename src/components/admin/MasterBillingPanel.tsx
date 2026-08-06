@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { CreditCard, Save, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, DollarSign, Link as LinkIcon, Copy } from 'lucide-react';
+import { CreditCard, Save, Loader2, ShieldCheck, KeyRound, DollarSign, Link as LinkIcon, Copy, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
@@ -8,7 +8,9 @@ const MasterBillingPanel = () => {
   const [loading, setLoading] = useState(true);
   const [savingValor, setSavingValor] = useState(false);
   const [savingToken, setSavingToken] = useState(false);
+  const [savingWpp, setSavingWpp] = useState(false);
   const [valor, setValor] = useState<number>(197);
+  const [whatsapp, setWhatsapp] = useState('');
   const [token, setToken] = useState('');
   const [hasToken, setHasToken] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -18,10 +20,11 @@ const MasterBillingPanel = () => {
   const load = async () => {
     setLoading(true);
     const [{ data: sys }, { data: hasT }] = await Promise.all([
-      supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
+      supabase.from('system_settings').select('*').eq('id', 'global').maybeSingle(),
       supabase.rpc('has_master_mp_token' as any),
     ]);
     setValor(Number((sys as any)?.valor_plano_padrao ?? 197));
+    setWhatsapp(((sys as any)?.whatsapp_suporte || '') as string);
     setHasToken(Boolean(hasT));
     setLoading(false);
   };
@@ -36,6 +39,19 @@ const MasterBillingPanel = () => {
     toast.success('Valor do plano atualizado!');
   };
 
+  const salvarWhatsapp = async () => {
+    const digits = whatsapp.replace(/\D/g, '');
+    if (digits.length < 10) { toast.error('Informe o número com DDD (ex: 11999998888)'); return; }
+    setSavingWpp(true);
+    const { error } = await supabase
+      .from('system_settings')
+      .upsert({ id: 'global', whatsapp_suporte: digits } as any, { onConflict: 'id' });
+    setSavingWpp(false);
+    if (error) { toast.error(error.message || 'Erro ao salvar WhatsApp'); return; }
+    setWhatsapp(digits);
+    toast.success('WhatsApp central de atendimento salvo!');
+  };
+
   const salvarToken = async () => {
     if (!token.trim()) { toast.error('Cole o Access Token do Mercado Pago'); return; }
     setSavingToken(true);
@@ -46,6 +62,7 @@ const MasterBillingPanel = () => {
     setToken('');
     setHasToken(true);
   };
+
 
   if (loading) {
     return <div className="px-4 py-10 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;

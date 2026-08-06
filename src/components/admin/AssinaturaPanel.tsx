@@ -30,7 +30,7 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
       supabase.from('plans' as any).select('*').order('sort_order'),
       supabase.from('features' as any).select('*').order('sort_order'),
       supabase.from('plan_features' as any).select('plan_id, feature_id, enabled'),
-      supabase.from('system_settings').select('valor_plano_padrao').eq('id', 'global').maybeSingle(),
+      supabase.from('system_settings').select('*').eq('id', 'global').maybeSingle(),
       supabase.from('settings').select('whatsapp_number').eq('organization_id', organizationId).maybeSingle(),
     ]);
     setCurrentPlanId((org as any)?.plan_id ?? null);
@@ -38,7 +38,10 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
     setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
-    setWhatsappNumber(((st as any)?.whatsapp_number || '').replace(/\D/g, ''));
+    // Prioridade: WhatsApp da loja → WhatsApp central do Super Master
+    const lojaWpp = ((st as any)?.whatsapp_number || '').replace(/\D/g, '');
+    const masterWpp = ((sys as any)?.whatsapp_suporte || '').replace(/\D/g, '');
+    setWhatsappNumber(lojaWpp || masterWpp);
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);

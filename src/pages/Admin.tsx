@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
@@ -569,8 +570,19 @@ const AdminPage = () => {
   };
 
   const saveProduct = async () => {
-    if (!form.name.trim() || !form.price) return;
-    if (!activeOrgId) { alert('Selecione uma loja primeiro.'); return; }
+    if (!form.name.trim() || !form.price) {
+      toast.error('Preencha nome e preço do produto.');
+      return;
+    }
+    if (!activeOrgId) { toast.error('Selecione uma loja primeiro.'); return; }
+
+    // Garante que a requisição carrega o token do usuário logado (RLS)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast.error('Sessão expirada. Faça login novamente para salvar produtos.');
+      return;
+    }
+
     const parsedExtras = form.extras.split(',').map(s => s.trim()).filter(Boolean).map(s => {
       const [name, price] = s.split(':');
       return { name: name?.trim() || '', price: parseFloat(price) || 0 };
@@ -583,12 +595,13 @@ const AdminPage = () => {
       organization_id: activeOrgId,
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
-      category: form.category,
+      category: form.category || 'outros',
       image: form.image.trim() || '🍔',
       removable_ingredients: removable,
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
+      available: true,
       manage_stock: form.manageStock,
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
@@ -600,8 +613,55 @@ const AdminPage = () => {
       prep_time_min: Math.max(0, parseInt(form.prepTimeMin, 10) || 0),
     };
 
+    // Colunas obrigatórias — nunca podem ser removidas pelo retry
+    const REQUIRED = new Set(['organization_id', 'name', 'price', 'category', 'image']);
+
+    /**
+     * Executa a gravação e, se o banco não tiver alguma coluna opcional
+     * (schema drift → PGRST204 / "column ... does not exist"),
+     * remove somente essa coluna e tenta novamente.
+     */
+    const runWrite = async (): Promise<any> => {
+      const payload = { ...dbPayload };
+      for (let attempt = 0; attempt < 15; attempt++) {
+        const res = editingProduct
+          ? await supabase.from('products').update(payload).eq('id', editingProduct.id).select().maybeSingle()
+          : await supabase.from('products').insert(payload).select().maybeSingle();
+
+        if (!res.error) return res.data;
+
+        const err: any = res.error;
+        console.error('[saveProduct] Supabase error', {
+          code: err.code,
+          message: err.message,
+          details: err.details,
+          hint: err.hint,
+          payload,
+        });
+
+        const match = /'([a-z0-9_]+)' column|column "?([a-z0-9_]+)"?/i.exec(`${err.message} ${err.details || ''}`);
+        const badCol = match?.[1] || match?.[2];
+        if (badCol && !REQUIRED.has(badCol) && badCol in payload) {
+          delete payload[badCol];
+          continue;
+        }
+        throw err;
+      }
+      throw new Error('Não foi possível salvar o produto após múltiplas tentativas.');
+    };
+
+    let data: any;
+    try {
+      data = await runWrite();
+    } catch (err: any) {
+      console.error('[saveProduct] falha final', err);
+      toast.error(err?.message || 'Erro ao salvar produto', {
+        description: [err?.details, err?.hint, err?.code].filter(Boolean).join(' · ') || undefined,
+      });
+      return;
+    }
+
     if (editingProduct) {
-      await supabase.from('products').update(dbPayload).eq('id', editingProduct.id);
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
@@ -611,30 +671,29 @@ const AdminPage = () => {
         lote: dbPayload.lote || '',
         alertaVencimento: dbPayload.alerta_vencimento,
       } as Product : p));
-    } else {
-      const { data } = await supabase.from('products').insert(dbPayload).select().maybeSingle();
-      if (data) {
-        setProducts(prev => [...prev, {
-          id: data.id, name: data.name, price: Number(data.price),
-          category: data.category as Product['category'], image: data.image,
-          removableIngredients: (data.removable_ingredients as string[]) || [],
-          extras: (data.extras as { name: string; price: number }[]) || [],
-          isCombo: data.is_combo || false,
-          ingredients: ((data as any).ingredients as string[]) || [],
-          description: (data as any).description || '',
-          manageStock: Boolean((data as any).manage_stock),
-          stockQuantity: Number((data as any).stock_quantity ?? 0),
-          lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
-          soldByWeight: Boolean((data as any).sold_by_weight),
-          codigoBarras: (data as any).codigo_barras || '',
-          dataVencimento: (data as any).data_vencimento || null,
-          lote: (data as any).lote || '',
-          alertaVencimento: Boolean((data as any).alerta_vencimento),
-        }]);
-      }
+    } else if (data) {
+      setProducts(prev => [...prev, {
+        id: data.id, name: data.name, price: Number(data.price),
+        category: data.category as Product['category'], image: data.image,
+        removableIngredients: (data.removable_ingredients as string[]) || [],
+        extras: (data.extras as { name: string; price: number }[]) || [],
+        isCombo: data.is_combo || false,
+        ingredients: ((data as any).ingredients as string[]) || [],
+        description: (data as any).description || '',
+        manageStock: Boolean((data as any).manage_stock),
+        stockQuantity: Number((data as any).stock_quantity ?? 0),
+        lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
+        soldByWeight: Boolean((data as any).sold_by_weight),
+        codigoBarras: (data as any).codigo_barras || '',
+        dataVencimento: (data as any).data_vencimento || null,
+        lote: (data as any).lote || '',
+        alertaVencimento: Boolean((data as any).alerta_vencimento),
+      }]);
     }
+    toast.success(editingProduct ? 'Produto atualizado!' : 'Produto cadastrado!');
     resetForm();
   };
+
 
   const deleteProduct = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir este produto?')) return;

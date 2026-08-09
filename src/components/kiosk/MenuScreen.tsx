@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';

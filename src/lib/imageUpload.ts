@@ -203,5 +203,6 @@ export async function uploadProductImage(
   if (error) throw error;
 
   const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
-  return data.publicUrl;
+  // Cache-busting: garante que navegadores/CDN não sirvam a versão antiga da imagem.
+  return `${data.publicUrl}?v=${Date.now()}`;
 }

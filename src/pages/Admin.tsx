@@ -205,7 +205,10 @@ const AdminPage = () => {
 
   // Save settings to Supabase (scoped by activeOrgId)
   const saveSettingsToDb = async (s: StoreSettings) => {
-    if (!activeOrgId) return;
+    if (!activeOrgId) throw new Error('Loja não identificada para salvar as configurações.');
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    if (!session) throw new Error('Sessão expirada. Faça login novamente para salvar.');
     const payload: any = {
       organization_id: activeOrgId,
       store_name: s.storeName,
@@ -236,10 +239,31 @@ const AdminPage = () => {
       balanca_baud_rate: s.balancaBaudRate || 9600,
     };
     if (settingsId) {
-      await supabase.from('settings').update(payload).eq('id', settingsId);
+      const { error } = await supabase.from('settings').update(payload).eq('id', settingsId);
+      if (error) throw error;
     } else {
-      const { data } = await supabase.from('settings').insert(payload).select().maybeSingle();
+      const { data, error } = await supabase.from('settings').insert(payload).select().maybeSingle();
+      if (error) throw error;
       if (data) setSettingsId(data.id);
+    }
+  };
+
+  const showDatabaseError = (context: string, error: unknown) => {
+    const dbError = error as { message?: string; details?: string; hint?: string; code?: string };
+    const message = dbError?.message || 'Erro desconhecido ao gravar no banco de dados.';
+    console.error(`[${context}]`, { ...dbError, organization_id: activeOrgId });
+    toast.error(message, {
+      description: [dbError?.details, dbError?.hint, dbError?.code].filter(Boolean).join(' · ') || undefined,
+    });
+  };
+
+  const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
+    try {
+      await saveSettingsToDb(updated);
+    } catch (error) {
+      setSettings(previous);
+      showDatabaseError('saveCategories', error);
+      throw error;
     }
   };
 
@@ -269,15 +293,16 @@ const AdminPage = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingCategoryIcon(key);
+    const previous = settings;
     try {
       const url = await uploadProductImage(file, activeOrgId!);
       const cats = (settings.categories || DEFAULT_CATEGORIES).map(c => c.key === key ? { ...c, icon: url } : c);
       const updated = { ...settings, categories: cats, categoryIcons: { ...settings.categoryIcons, [key]: url } };
       setSettings(updated);
-      await saveSettingsToDb(updated);
+      await saveCategories(updated, previous);
+      toast.success('Imagem da categoria atualizada!');
     } catch (err) {
-      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar ícone. Tente novamente.');
-      console.error(err);
+      if (err instanceof StorageLimitError) toast.error(err.message);
     } finally {
       setUploadingCategoryIcon(null);
     }
@@ -301,27 +326,30 @@ const AdminPage = () => {
   };
 
   const updateCategory = async (idx: number, field: 'label' | 'icon' | 'key', value: string) => {
+    const previous = settings;
     const cats = [...(settings.categories || DEFAULT_CATEGORIES)];
     cats[idx] = { ...cats[idx], [field]: value };
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveSettingsToDb(updated);
+    await saveCategories(updated, previous).catch(() => undefined);
   };
 
   const addCategory = async () => {
+    const previous = settings;
     const key = 'cat_' + Math.random().toString(36).slice(2, 8);
     const cats = [...(settings.categories || DEFAULT_CATEGORIES), { key, label: 'Nova Categoria', icon: '🍽️' }];
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveSettingsToDb(updated);
+    await saveCategories(updated, previous).catch(() => undefined);
   };
 
   const removeCategory = async (key: string) => {
     if (!confirm('Remover esta categoria? Os produtos vinculados a ela ficarão sem categoria visível.')) return;
+    const previous = settings;
     const cats = (settings.categories || DEFAULT_CATEGORIES).filter(c => c.key !== key);
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveSettingsToDb(updated);
+    await saveCategories(updated, previous).catch(() => undefined);
   };
 
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -613,51 +641,15 @@ const AdminPage = () => {
       prep_time_min: Math.max(0, parseInt(form.prepTimeMin, 10) || 0),
     };
 
-    // Colunas obrigatórias — nunca podem ser removidas pelo retry
-    const REQUIRED = new Set(['organization_id', 'name', 'price', 'category', 'image']);
-
-    /**
-     * Executa a gravação e, se o banco não tiver alguma coluna opcional
-     * (schema drift → PGRST204 / "column ... does not exist"),
-     * remove somente essa coluna e tenta novamente.
-     */
-    const runWrite = async (): Promise<any> => {
-      const payload = { ...dbPayload };
-      for (let attempt = 0; attempt < 15; attempt++) {
-        const res = editingProduct
-          ? await supabase.from('products').update(payload).eq('id', editingProduct.id).select().maybeSingle()
-          : await supabase.from('products').insert(payload).select().maybeSingle();
-
-        if (!res.error) return res.data;
-
-        const err: any = res.error;
-        console.error('[saveProduct] Supabase error', {
-          code: err.code,
-          message: err.message,
-          details: err.details,
-          hint: err.hint,
-          payload,
-        });
-
-        const match = /'([a-z0-9_]+)' column|column "?([a-z0-9_]+)"?/i.exec(`${err.message} ${err.details || ''}`);
-        const badCol = match?.[1] || match?.[2];
-        if (badCol && !REQUIRED.has(badCol) && badCol in payload) {
-          delete payload[badCol];
-          continue;
-        }
-        throw err;
-      }
-      throw new Error('Não foi possível salvar o produto após múltiplas tentativas.');
-    };
-
     let data: any;
     try {
-      data = await runWrite();
-    } catch (err: any) {
-      console.error('[saveProduct] falha final', err);
-      toast.error(err?.message || 'Erro ao salvar produto', {
-        description: [err?.details, err?.hint, err?.code].filter(Boolean).join(' · ') || undefined,
-      });
+      const { data: savedProduct, error } = editingProduct
+        ? await supabase.from('products').update(dbPayload).eq('id', editingProduct.id).select().maybeSingle()
+        : await supabase.from('products').insert(dbPayload).select().maybeSingle();
+      if (error) throw error;
+      data = savedProduct;
+    } catch (err) {
+      showDatabaseError('saveProduct', err);
       return;
     }
 

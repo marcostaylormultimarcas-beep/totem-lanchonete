@@ -260,10 +260,11 @@ const AdminPage = () => {
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
     try {
       await saveSettingsToDb(updated);
+      return true;
     } catch (error) {
       setSettings(previous);
       showDatabaseError('saveCategories', error);
-      throw error;
+      return false;
     }
   };
 
@@ -299,10 +300,12 @@ const AdminPage = () => {
       const cats = (settings.categories || DEFAULT_CATEGORIES).map(c => c.key === key ? { ...c, icon: url } : c);
       const updated = { ...settings, categories: cats, categoryIcons: { ...settings.categoryIcons, [key]: url } };
       setSettings(updated);
-      await saveCategories(updated, previous);
+      const saved = await saveCategories(updated, previous);
+      if (!saved) return;
       toast.success('Imagem da categoria atualizada!');
     } catch (err) {
       if (err instanceof StorageLimitError) toast.error(err.message);
+      else showDatabaseError('uploadCategoryImage', err);
     } finally {
       setUploadingCategoryIcon(null);
     }
@@ -331,7 +334,7 @@ const AdminPage = () => {
     cats[idx] = { ...cats[idx], [field]: value };
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveCategories(updated, previous).catch(() => undefined);
+    await saveCategories(updated, previous);
   };
 
   const addCategory = async () => {
@@ -340,7 +343,7 @@ const AdminPage = () => {
     const cats = [...(settings.categories || DEFAULT_CATEGORIES), { key, label: 'Nova Categoria', icon: '🍽️' }];
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveCategories(updated, previous).catch(() => undefined);
+    await saveCategories(updated, previous);
   };
 
   const removeCategory = async (key: string) => {
@@ -349,7 +352,7 @@ const AdminPage = () => {
     const cats = (settings.categories || DEFAULT_CATEGORIES).filter(c => c.key !== key);
     const updated = { ...settings, categories: cats };
     setSettings(updated);
-    await saveCategories(updated, previous).catch(() => undefined);
+    await saveCategories(updated, previous);
   };
 
   const [uploadingCover, setUploadingCover] = useState(false);

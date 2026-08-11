@@ -205,13 +205,22 @@ const AdminPage = () => {
 
   type SettingsPayload = Record<string, string | number | boolean | null | object>;
 
-  const persistSettingsFields = async (payload: SettingsPayload, context: string) => {
-    if (!activeOrgId) throw new Error('Loja não identificada para salvar as configurações.');
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) throw new Error('Sessão expirada. Faça login novamente para salvar.');
+  const showDatabaseError = (context: string, error: unknown) => {
+    const dbError = error as { message?: string; details?: string; hint?: string; code?: string };
+    const message = dbError?.message || 'Erro desconhecido ao gravar no banco de dados.';
+    console.error(`[${context}]`, { ...dbError, organization_id: activeOrgId });
+    toast.error(message, {
+      description: [dbError?.details, dbError?.hint, dbError?.code].filter(Boolean).join(' · ') || undefined,
+    });
+  };
 
+  const persistSettingsFields = async (payload: SettingsPayload, context: string) => {
     try {
+      if (!activeOrgId) throw new Error('Loja não identificada para salvar as configurações.');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('Sessão expirada. Faça login novamente para salvar.');
+
       if (settingsId) {
         const { error } = await supabase.from('settings').update(payload as any).eq('id', settingsId);
         if (error) throw error;
@@ -234,33 +243,30 @@ const AdminPage = () => {
   // Somente colunas estáveis da tabela externa. Delivery, balança, fiscal e
   // pagamentos são persistidos pelos painéis específicos e nunca entram aqui.
   const saveSettingsToDb = async (s: StoreSettings) => {
-    const payload: SettingsPayload = {
-      store_name: s.storeName,
-      whatsapp_number: s.whatsappNumber,
-      combo: s.combo as any,
-      banners: s.banners as any,
-      category_icons: s.categoryIcons as any,
-      categories: s.categories as any,
-      instagram_url: s.instagramUrl || '',
-    };
-    await persistSettingsFields(payload, 'saveSettings');
-  };
-
-  const showDatabaseError = (context: string, error: unknown) => {
-    const dbError = error as { message?: string; details?: string; hint?: string; code?: string };
-    const message = dbError?.message || 'Erro desconhecido ao gravar no banco de dados.';
-    console.error(`[${context}]`, { ...dbError, organization_id: activeOrgId });
-    toast.error(message, {
-      description: [dbError?.details, dbError?.hint, dbError?.code].filter(Boolean).join(' · ') || undefined,
-    });
+    const fields: Array<[string, SettingsPayload]> = [
+      ['storeName', { store_name: s.storeName }],
+      ['whatsapp', { whatsapp_number: s.whatsappNumber }],
+      ['combo', { combo: s.combo as any }],
+      ['banners', { banners: s.banners as any }],
+      ['categoryIcons', { category_icons: s.categoryIcons as any }],
+      ['categories', { categories: s.categories as any }],
+      ['instagram', { instagram_url: s.instagramUrl || '' }],
+    ];
+    const results = await Promise.allSettled(
+      fields.map(([field, payload]) => persistSettingsFields(payload, `saveSettings.${field}`)),
+    );
+    if (results.some(result => result.status === 'rejected')) {
+      throw new Error('Uma ou mais preferências não puderam ser salvas.');
+    }
   };
 
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
     try {
-      await persistSettingsFields({
-        categories: updated.categories as any,
-        category_icons: updated.categoryIcons as any,
-      }, 'saveCategories');
+      const results = await Promise.allSettled([
+        persistSettingsFields({ categories: updated.categories as any }, 'saveCategories.list'),
+        persistSettingsFields({ category_icons: updated.categoryIcons as any }, 'saveCategories.icons'),
+      ]);
+      if (results.every(result => result.status === 'rejected')) throw new Error('Categorias não foram salvas.');
       return true;
     } catch (error) {
       setSettings(previous);

@@ -366,10 +366,10 @@ const AdminPage = () => {
       const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, shareImage: url };
       setSettings(updated);
-      await saveSettingsToDb(updated);
+      await persistSettingsFields({ share_image: url }, 'saveShareImage');
+      toast.success('Imagem de compartilhamento atualizada!');
     } catch (err) {
-      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
-      console.error(err);
+      if (err instanceof StorageLimitError) toast.error(err.message);
     } finally {
       setUploadingShare(false);
     }

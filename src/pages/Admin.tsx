@@ -203,50 +203,7 @@ const AdminPage = () => {
     fetch();
   }, [activeOrgId]);
 
-  // Save settings to Supabase (scoped by activeOrgId)
-  const saveSettingsToDb = async (s: StoreSettings) => {
-    if (!activeOrgId) throw new Error('Loja não identificada para salvar as configurações.');
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) throw new Error('Sessão expirada. Faça login novamente para salvar.');
-    const payload: any = {
-      organization_id: activeOrgId,
-      store_name: s.storeName,
-      whatsapp_number: s.whatsappNumber,
-      cover_image: s.coverImage,
-      combo: s.combo as any,
-      banners: s.banners as any,
-      category_icons: s.categoryIcons as any,
-      categories: s.categories as any,
-      instagram_url: s.instagramUrl || '',
-      delivery_enabled: s.deliveryEnabled !== false,
-      share_image: s.shareImage || '',
-      pix_key_manual: s.pixKeyManual || '',
-      // mp_access_token / mp_public_key agora vivem no Vault (set_mp_credentials RPC)
-      mp_terminal_id: s.mpTerminalId || '',
-      pay_cash_enabled: s.payCashEnabled !== false,
-      pay_pix_enabled: s.payPixEnabled !== false,
-      pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled),
-      pay_card_online_enabled: Boolean(s.payCardOnlineEnabled),
-      fiscal_enabled: Boolean(s.fiscalEnabled),
-      fiscal_cnpj: s.fiscalCnpj || '',
-      fiscal_razao: s.fiscalRazao || '',
-      fiscal_ie: s.fiscalIe || '',
-      fiscal_regime: s.fiscalRegime || '',
-      fiscal_csc: s.fiscalCsc || '',
-      fiscal_token: s.fiscalToken || '',
-      balanca_modelo: s.balancaModelo || 'generic',
-      balanca_baud_rate: s.balancaBaudRate || 9600,
-    };
-    if (settingsId) {
-      const { error } = await supabase.from('settings').update(payload).eq('id', settingsId);
-      if (error) throw error;
-    } else {
-      const { data, error } = await supabase.from('settings').insert(payload).select().maybeSingle();
-      if (error) throw error;
-      if (data) setSettingsId(data.id);
-    }
-  };
+  type SettingsPayload = Record<string, string | number | boolean | null | object>;
 
   const showDatabaseError = (context: string, error: unknown) => {
     const dbError = error as { message?: string; details?: string; hint?: string; code?: string };
@@ -257,13 +214,72 @@ const AdminPage = () => {
     });
   };
 
+  const persistSettingsFields = async (payload: SettingsPayload, context: string) => {
+    try {
+      if (!activeOrgId) throw new Error('Loja não identificada para salvar as configurações.');
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('Sessão expirada. Faça login novamente para salvar.');
+
+      if (settingsId) {
+        const { error } = await supabase.from('settings').update(payload as any).eq('id', settingsId);
+        if (error) throw error;
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('settings')
+        .insert({ organization_id: activeOrgId, ...payload } as any)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.id) setSettingsId(data.id);
+    } catch (error) {
+      showDatabaseError(context, error);
+      throw error;
+    }
+  };
+
+  // Somente colunas estáveis da tabela externa. Delivery, balança, fiscal e
+  // pagamentos são persistidos pelos painéis específicos e nunca entram aqui.
+  const saveSettingsToDb = async (s: StoreSettings) => {
+    const fields: Array<[string, SettingsPayload]> = [
+      ['storeName', { store_name: s.storeName }],
+      ['whatsapp', { whatsapp_number: s.whatsappNumber }],
+      ['combo', { combo: s.combo as any }],
+      ['banners', { banners: s.banners as any }],
+      ['categoryIcons', { category_icons: s.categoryIcons as any }],
+      ['categories', { categories: s.categories as any }],
+      ['instagram', { instagram_url: s.instagramUrl || '' }],
+    ];
+    let failed = false;
+    for (const [field, payload] of fields) {
+      try {
+        await persistSettingsFields(payload, `saveSettings.${field}`);
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) {
+      throw new Error('Uma ou mais preferências não puderam ser salvas.');
+    }
+  };
+
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
     try {
-      await saveSettingsToDb(updated);
+      let saved = false;
+      try {
+        await persistSettingsFields({ categories: updated.categories as any }, 'saveCategories.list');
+        saved = true;
+      } catch { /* o ícone ainda pode ser salvo */ }
+      try {
+        await persistSettingsFields({ category_icons: updated.categoryIcons as any }, 'saveCategories.icons');
+        saved = true;
+      } catch { /* o erro exato já foi exibido */ }
+      if (!saved) throw new Error('Categorias não foram salvas.');
       return true;
     } catch (error) {
       setSettings(previous);
-      showDatabaseError('saveCategories', error);
       return false;
     }
   };
@@ -366,10 +382,10 @@ const AdminPage = () => {
       const url = await uploadProductImage(file, activeOrgId!);
       const updated = { ...settings, shareImage: url };
       setSettings(updated);
-      await saveSettingsToDb(updated);
+      await persistSettingsFields({ share_image: url }, 'saveShareImage');
+      toast.success('Imagem de compartilhamento atualizada!');
     } catch (err) {
-      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem. Tente novamente.');
-      console.error(err);
+      if (err instanceof StorageLimitError) toast.error(err.message);
     } finally {
       setUploadingShare(false);
     }
@@ -383,10 +399,10 @@ const AdminPage = () => {
       const url = await uploadProductImage(file, activeOrgId!, { kind: 'cover' });
       const updated = { ...settings, coverImage: url };
       setSettings(updated);
-      await saveSettingsToDb(updated);
+      await persistSettingsFields({ cover_image: url }, 'saveCoverImage');
+      toast.success('Imagem de capa atualizada!');
     } catch (err) {
-      alert(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem de capa. Tente novamente.');
-      console.error(err);
+      if (err instanceof StorageLimitError) toast.error(err.message);
     } finally {
       setUploadingCover(false);
     }
@@ -697,8 +713,12 @@ const AdminPage = () => {
   };
 
   const saveSettingsHandler = async () => {
-    await saveSettingsToDb(settings);
-    alert('Configurações salvas com sucesso!');
+    try {
+      await saveSettingsToDb(settings);
+      toast.success('Configurações salvas com sucesso!');
+    } catch {
+      // persistSettingsFields já exibe o erro exato; os uploads salvos continuam válidos.
+    }
   };
 
   const updateBannerField = async (idx: number, field: string, value: any) => {

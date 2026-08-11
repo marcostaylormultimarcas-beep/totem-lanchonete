@@ -252,21 +252,31 @@ const AdminPage = () => {
       ['categories', { categories: s.categories as any }],
       ['instagram', { instagram_url: s.instagramUrl || '' }],
     ];
-    const results = await Promise.allSettled(
-      fields.map(([field, payload]) => persistSettingsFields(payload, `saveSettings.${field}`)),
-    );
-    if (results.some(result => result.status === 'rejected')) {
+    let failed = false;
+    for (const [field, payload] of fields) {
+      try {
+        await persistSettingsFields(payload, `saveSettings.${field}`);
+      } catch {
+        failed = true;
+      }
+    }
+    if (failed) {
       throw new Error('Uma ou mais preferências não puderam ser salvas.');
     }
   };
 
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
     try {
-      const results = await Promise.allSettled([
-        persistSettingsFields({ categories: updated.categories as any }, 'saveCategories.list'),
-        persistSettingsFields({ category_icons: updated.categoryIcons as any }, 'saveCategories.icons'),
-      ]);
-      if (results.every(result => result.status === 'rejected')) throw new Error('Categorias não foram salvas.');
+      let saved = false;
+      try {
+        await persistSettingsFields({ categories: updated.categories as any }, 'saveCategories.list');
+        saved = true;
+      } catch { /* o ícone ainda pode ser salvo */ }
+      try {
+        await persistSettingsFields({ category_icons: updated.categoryIcons as any }, 'saveCategories.icons');
+        saved = true;
+      } catch { /* o erro exato já foi exibido */ }
+      if (!saved) throw new Error('Categorias não foram salvas.');
       return true;
     } catch (error) {
       setSettings(previous);

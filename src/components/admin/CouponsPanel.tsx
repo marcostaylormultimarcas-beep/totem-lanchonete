@@ -33,14 +33,22 @@ const CouponsPanel = ({ organizationId }: Props) => {
   const [dataFim, setDataFim] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const showDbError = (prefix: string, error: any) => {
+    const parts = [error?.message, error?.details, error?.hint, error?.code ? `código: ${error.code}` : null]
+      .filter(Boolean);
+    console.error(prefix, error);
+    toast.error(`${prefix}: ${parts.join(' | ') || 'erro desconhecido'}`);
+  };
+
   const load = async () => {
     if (!organizationId) { setCupons([]); return; }
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('cupons' as any)
       .select('*')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false });
+    if (error) showDbError('Erro ao carregar cupons', error);
     setCupons((data as any) || []);
     setLoading(false);
   };
@@ -48,7 +56,10 @@ const CouponsPanel = ({ organizationId }: Props) => {
   useEffect(() => { load(); }, [organizationId]);
 
   const handleCreate = async () => {
-    if (!organizationId) return;
+    if (!organizationId) {
+      toast.error('Nenhuma loja selecionada. Selecione uma loja antes de criar cupons.');
+      return;
+    }
     const code = codigo.trim().toUpperCase();
     const v = parseFloat(valor);
     if (!code || !v || v <= 0) {
@@ -71,7 +82,11 @@ const CouponsPanel = ({ organizationId }: Props) => {
     });
     setSaving(false);
     if (error) {
-      toast.error(error.message.includes('duplicate') ? 'Já existe um cupom com este código.' : 'Erro ao criar cupom.');
+      if ((error.message || '').includes('duplicate')) {
+        toast.error('Já existe um cupom com este código.');
+      } else {
+        showDbError('Erro ao criar cupom', error);
+      }
       return;
     }
     toast.success('Cupom criado!');
@@ -82,16 +97,19 @@ const CouponsPanel = ({ organizationId }: Props) => {
 
   const toggleStatus = async (c: Cupom) => {
     const novo = c.status === 'ativo' ? 'inativo' : 'ativo';
-    await supabase.from('cupons' as any).update({ status: novo }).eq('id', c.id);
+    const { error } = await supabase.from('cupons' as any).update({ status: novo }).eq('id', c.id);
+    if (error) { showDbError('Erro ao atualizar cupom', error); return; }
     setCupons(prev => prev.map(x => x.id === c.id ? { ...x, status: novo } : x));
   };
 
   const remove = async (c: Cupom) => {
     if (!confirm(`Excluir o cupom "${c.codigo}"?`)) return;
-    await supabase.from('cupons' as any).delete().eq('id', c.id);
+    const { error } = await supabase.from('cupons' as any).delete().eq('id', c.id);
+    if (error) { showDbError('Erro ao excluir cupom', error); return; }
     setCupons(prev => prev.filter(x => x.id !== c.id));
     toast.success('Cupom excluído.');
   };
+
 
   return (
     <div className="px-4 space-y-4">

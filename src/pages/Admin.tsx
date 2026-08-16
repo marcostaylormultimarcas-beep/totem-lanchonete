@@ -660,17 +660,38 @@ const AdminPage = () => {
       prep_time_min: Math.max(0, parseInt(form.prepTimeMin, 10) || 0),
     };
 
+    // Colunas que não podem ser removidas do payload (essenciais)
+    const REQUIRED_PRODUCT_COLUMNS = new Set(['organization_id', 'name', 'price', 'category', 'image']);
+    const payload: any = { ...dbPayload };
+    const droppedColumns: string[] = [];
+
     let data: any;
     try {
-      const { data: savedProduct, error } = editingProduct
-        ? await supabase.from('products').update(dbPayload).eq('id', editingProduct.id).select().maybeSingle()
-        : await supabase.from('products').insert(dbPayload).select().maybeSingle();
-      if (error) throw error;
-      data = savedProduct;
+      // Auto-cura: se o banco externo não tiver alguma coluna opcional (PGRST204),
+      // removemos a coluna do payload e tentamos de novo.
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const { data: savedProduct, error } = editingProduct
+          ? await supabase.from('products').update(payload).eq('id', editingProduct.id).select().maybeSingle()
+          : await supabase.from('products').insert(payload).select().maybeSingle();
+        if (!error) { data = savedProduct; break; }
+
+        const missing = error.code === 'PGRST204'
+          ? (error.message.match(/'([^']+)' column/) || [])[1]
+          : undefined;
+        if (!missing || REQUIRED_PRODUCT_COLUMNS.has(missing) || !(missing in payload)) throw error;
+        delete payload[missing];
+        droppedColumns.push(missing);
+      }
     } catch (err) {
       showDatabaseError('saveProduct', err);
       return;
     }
+
+    if (droppedColumns.length) {
+      console.warn('[saveProduct] colunas ausentes no banco e ignoradas:', droppedColumns);
+      toast.warning(`Produto salvo, mas algumas colunas não existem no banco: ${droppedColumns.join(', ')}`);
+    }
+
 
     if (editingProduct) {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {

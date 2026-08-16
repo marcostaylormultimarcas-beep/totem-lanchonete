@@ -227,9 +227,14 @@ const AdminPage = () => {
         return;
       }
 
+      // Usa upsert com onConflict em organization_id para evitar violar a
+      // constraint uniq_settings_org quando já existe um registro para a loja.
       const { data, error } = await supabase
         .from('settings')
-        .insert({ organization_id: activeOrgId, ...payload } as any)
+        .upsert(
+          { organization_id: activeOrgId, ...payload } as any,
+          { onConflict: 'organization_id' }
+        )
         .select('id')
         .maybeSingle();
       if (error) throw error;

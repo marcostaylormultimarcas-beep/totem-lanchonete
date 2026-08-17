@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Award, Save, Loader2, Upload, Image as ImageIcon, Gift, Check, History } from 'lucide-react';
+import { Award, Save, Loader2, Upload, Image as ImageIcon, Gift, Check, History, Trash2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 
@@ -12,6 +12,8 @@ interface Config {
   premio_recompensa: string;
   descricao_premio: string;
   premio_imagem: string;
+  valido_de: string;
+  valido_ate: string;
 }
 
 interface Resgate {
@@ -32,7 +34,16 @@ const DEFAULT: Config = {
   premio_recompensa: 'Ganhe um brinde especial',
   descricao_premio: '',
   premio_imagem: '',
+  valido_de: '',
+  valido_ate: '',
 };
+
+const formatDate = (d: string) => {
+  if (!d) return null;
+  const parsed = new Date(d.length <= 10 ? `${d}T12:00:00` : d);
+  return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
+};
+
 
 const formatPhone = (p: string) => {
   const d = p.replace(/\D/g, '');
@@ -43,8 +54,10 @@ const formatPhone = (p: string) => {
 
 const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [config, setConfig] = useState<Config>(DEFAULT);
+  const [saved, setSaved] = useState<Config | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [resgates, setResgates] = useState<Resgate[]>([]);
   const [filter, setFilter] = useState<'pendente' | 'todos'>('pendente');
@@ -58,7 +71,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     ]);
     if (cfg) {
       const d = cfg as any;
-      setConfig({
+      const loaded: Config = {
         id: d.id,
         ativo: !!d.ativo,
         meta_pedidos: Number(d.meta_pedidos) || 10,
@@ -66,9 +79,14 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         premio_recompensa: d.premio_recompensa || '',
         descricao_premio: d.descricao_premio || '',
         premio_imagem: d.premio_imagem || '',
-      });
+        valido_de: (d.valido_de || '').slice(0, 10),
+        valido_ate: (d.valido_ate || '').slice(0, 10),
+      };
+      setConfig(loaded);
+      setSaved(loaded);
     } else {
       setConfig(DEFAULT);
+      setSaved(null);
     }
     setResgates((rs as any) || []);
     setLoading(false);
@@ -87,8 +105,12 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     if (!organizationId) return;
     if (config.meta_pedidos < 1) { toast.error('Meta deve ser ao menos 1.'); return; }
     if (!config.premio_recompensa.trim()) { toast.error('Informe o prêmio.'); return; }
+    if (config.valido_de && config.valido_ate && config.valido_de > config.valido_ate) {
+      toast.error('A data final deve ser posterior à data inicial.');
+      return;
+    }
     setSaving(true);
-    const payload = {
+    let payload: Record<string, any> = {
       organization_id: organizationId,
       ativo: config.ativo,
       meta_pedidos: config.meta_pedidos,
@@ -96,19 +118,60 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       premio_recompensa: config.premio_recompensa.trim(),
       descricao_premio: config.descricao_premio.trim(),
       premio_imagem: config.premio_imagem,
+      valido_de: config.valido_de || null,
+      valido_ate: config.valido_ate || null,
     };
-    let error;
-    if (config.id) {
-      ({ error } = await supabase.from('config_fidelidade' as any).update(payload).eq('id', config.id));
-    } else {
-      const res = await supabase.from('config_fidelidade' as any).insert(payload).select().maybeSingle();
-      error = res.error;
-      if (res.data) setConfig(c => ({ ...c, id: (res.data as any).id }));
+
+    // Tolerância a colunas ausentes no banco externo (PGRST204)
+    for (let attempt = 0; attempt < 4; attempt++) {
+      let error: any = null;
+      let newId: string | undefined;
+      if (config.id) {
+        ({ error } = await supabase.from('config_fidelidade' as any).update(payload).eq('id', config.id));
+      } else {
+        const res = await supabase.from('config_fidelidade' as any).insert(payload).select().maybeSingle();
+        error = res.error;
+        newId = (res.data as any)?.id;
+      }
+      if (!error) {
+        setSaving(false);
+        const next = { ...config, id: config.id || newId };
+        setConfig(next);
+        setSaved(next);
+        toast.success('Cartão Fidelidade salvo com sucesso!');
+        return;
+      }
+      const missing = error.code === 'PGRST204' && /'([^']+)' column/.exec(error.message || '')?.[1];
+      if (missing && missing in payload) {
+        const { [missing]: _drop, ...rest } = payload;
+        payload = rest;
+        toast.warning(`Campo "${missing}" não existe no banco e foi ignorado.`);
+        continue;
+      }
+      setSaving(false);
+      console.error('[fidelidade] erro ao salvar', error);
+      toast.error('Erro ao salvar: ' + (error.message || 'desconhecido') + (error.hint ? ` (${error.hint})` : ''));
+      return;
     }
     setSaving(false);
-    if (error) toast.error('Erro ao salvar: ' + error.message);
-    else toast.success('Cartão Fidelidade atualizado!');
   };
+
+  const removeProgram = async () => {
+    if (!config.id) return;
+    if (!confirm('Excluir o programa de fidelidade cadastrado? Esta ação não pode ser desfeita.')) return;
+    setDeleting(true);
+    const { error } = await supabase.from('config_fidelidade' as any).delete().eq('id', config.id);
+    setDeleting(false);
+    if (error) {
+      console.error('[fidelidade] erro ao excluir', error);
+      toast.error('Erro ao excluir: ' + error.message);
+      return;
+    }
+    setConfig(DEFAULT);
+    setSaved(null);
+    toast.success('Programa de fidelidade excluído.');
+  };
+
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -224,12 +287,79 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
           </div>
         </div>
 
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Válido a partir de (opcional)</label>
+            <input type="date" value={config.valido_de}
+              onChange={e => setConfig(c => ({ ...c, valido_de: e.target.value }))}
+              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">Válido até (opcional)</label>
+            <input type="date" value={config.valido_ate}
+              onChange={e => setConfig(c => ({ ...c, valido_ate: e.target.value }))}
+              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
+          </div>
+        </div>
+
         <button onClick={save} disabled={saving}
           className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Salvar configurações
+          {saving ? 'Salvando...' : 'Salvar configurações'}
         </button>
       </div>
+
+      {/* Programa Cadastrado */}
+      <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Award className="w-5 h-5 text-primary" />
+          <h3 className="text-base font-bold text-foreground">Programa Cadastrado</h3>
+        </div>
+
+        {!saved ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Nenhum programa de fidelidade cadastrado ainda.</p>
+        ) : (
+          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    saved.ativo ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
+                  }`}>
+                    {saved.ativo ? 'Ativo' : 'Inativo'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-primary/15 text-primary">
+                    {saved.meta_pedidos} carimbos
+                  </span>
+                </div>
+                <div className="mt-2 text-sm font-bold text-foreground break-words">{saved.premio_recompensa}</div>
+                {saved.descricao_premio && (
+                  <div className="text-xs text-muted-foreground break-words">{saved.descricao_premio}</div>
+                )}
+                <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {saved.valido_de || saved.valido_ate ? (
+                    <span>
+                      {saved.valido_de ? formatDate(saved.valido_de) : 'sem início'} — {saved.valido_ate ? formatDate(saved.valido_ate) : 'sem fim'}
+                    </span>
+                  ) : (
+                    <span>Sem período de validade definido</span>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Valor mínimo do pedido: R$ {saved.valor_minimo_pedido.toFixed(2).replace('.', ',')}
+                </div>
+              </div>
+              <button onClick={removeProgram} disabled={deleting}
+                aria-label="Excluir programa de fidelidade"
+                className="touch-btn flex-shrink-0 p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-60">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
 
       {/* Registro de Prêmios */}
       <div className="bg-card border border-border rounded-2xl p-5 space-y-3">

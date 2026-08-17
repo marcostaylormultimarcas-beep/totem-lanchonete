@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Award, Save, Loader2, Upload, Image as ImageIcon, Gift, Check, History } from 'lucide-react';
+import { Award, Save, Loader2, Upload, Image as ImageIcon, Gift, Check, History, Trash2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 
@@ -12,6 +12,8 @@ interface Config {
   premio_recompensa: string;
   descricao_premio: string;
   premio_imagem: string;
+  valido_de: string;
+  valido_ate: string;
 }
 
 interface Resgate {
@@ -32,7 +34,16 @@ const DEFAULT: Config = {
   premio_recompensa: 'Ganhe um brinde especial',
   descricao_premio: '',
   premio_imagem: '',
+  valido_de: '',
+  valido_ate: '',
 };
+
+const formatDate = (d: string) => {
+  if (!d) return null;
+  const parsed = new Date(d.length <= 10 ? `${d}T12:00:00` : d);
+  return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
+};
+
 
 const formatPhone = (p: string) => {
   const d = p.replace(/\D/g, '');

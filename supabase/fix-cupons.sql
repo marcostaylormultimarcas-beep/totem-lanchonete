@@ -6,7 +6,7 @@ create table if not exists public.cupons (
   codigo text not null,
   tipo text not null default 'porcentagem',
   valor numeric not null default 0,
-  status text not null default 'ativo',
+  ativo boolean not null default true,
   data_inicio timestamptz,
   data_fim timestamptz,
   created_at timestamptz not null default now()
@@ -17,7 +17,7 @@ alter table public.cupons add column if not exists organization_id uuid;
 alter table public.cupons add column if not exists codigo text;
 alter table public.cupons add column if not exists tipo text default 'porcentagem';
 alter table public.cupons add column if not exists valor numeric default 0;
-alter table public.cupons add column if not exists status text default 'ativo';
+alter table public.cupons add column if not exists ativo boolean default true;
 alter table public.cupons add column if not exists data_inicio timestamptz;
 alter table public.cupons add column if not exists data_fim timestamptz;
 alter table public.cupons add column if not exists created_at timestamptz default now();

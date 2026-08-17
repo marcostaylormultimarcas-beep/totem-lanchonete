@@ -181,8 +181,8 @@ const CouponsPanel = ({ organizationId }: Props) => {
               )}
             </div>
             <button onClick={() => toggleStatus(c)}
-              className={`text-xs px-3 py-1.5 rounded-full font-semibold ${c.status === 'ativo' ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
-              {c.status === 'ativo' ? 'Ativo' : 'Inativo'}
+              className={`text-xs px-3 py-1.5 rounded-full font-semibold ${c.ativo ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+              {c.ativo ? 'Ativo' : 'Inativo'}
             </button>
             <button onClick={() => remove(c)} className="p-2 text-muted-foreground hover:text-destructive">
               <Trash2 className="w-4 h-4" />

@@ -8,7 +8,7 @@ interface Cupom {
   codigo: string;
   tipo: 'porcentagem' | 'valor_fixo';
   valor: number;
-  status: 'ativo' | 'inativo';
+  ativo: boolean;
   data_inicio: string | null;
   data_fim: string | null;
 }
@@ -76,7 +76,7 @@ const CouponsPanel = ({ organizationId }: Props) => {
       codigo: code,
       tipo,
       valor: v,
-      status: ativo ? 'ativo' : 'inativo',
+      ativo: ativo,
       data_inicio: dataInicio ? new Date(dataInicio).toISOString() : null,
       data_fim: dataFim ? new Date(dataFim).toISOString() : null,
     });
@@ -96,10 +96,10 @@ const CouponsPanel = ({ organizationId }: Props) => {
   };
 
   const toggleStatus = async (c: Cupom) => {
-    const novo = c.status === 'ativo' ? 'inativo' : 'ativo';
-    const { error } = await supabase.from('cupons' as any).update({ status: novo }).eq('id', c.id);
+    const novo = !c.ativo;
+    const { error } = await supabase.from('cupons' as any).update({ ativo: novo }).eq('id', c.id);
     if (error) { showDbError('Erro ao atualizar cupom', error); return; }
-    setCupons(prev => prev.map(x => x.id === c.id ? { ...x, status: novo } : x));
+    setCupons(prev => prev.map(x => x.id === c.id ? { ...x, ativo: novo } : x));
   };
 
   const remove = async (c: Cupom) => {

@@ -325,43 +325,62 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
             Ver tudo <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex gap-4 overflow-x-auto px-5 pb-2 hide-scrollbar snap-x snap-mandatory">
-          {topProducts.map((product, idx) => (
-            <article key={product.id} className="vf-card relative flex-shrink-0 snap-start overflow-hidden flex flex-col" style={{ borderRadius: 20, width: 230 }}>
-              <button onClick={() => onSelectProduct ? onSelectProduct(product) : setSelectedProduct(product)} className="text-left">
-                <div className="relative w-full h-[180px] bg-zinc-900 overflow-hidden">
-                  {isUrl(product.image) ? (
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" style={{ colorScheme: 'light' } as React.CSSProperties} />
-                  ) : (
-                    <span className="w-full h-full flex items-center justify-center text-7xl">{product.image}</span>
-                  )}
-                  {idx === 0 && (
-                    <span className="absolute top-3 left-3 bg-[#FF7A00] text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1">🔥 Mais pedido</span>
-                  )}
-                  <button onClick={(e) => e.preventDefault()} className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/40 backdrop-blur flex items-center justify-center text-white hover:bg-black/60 transition">
-                    <Heart className="w-[14px] h-[14px]" />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-4 sm:px-5 max-w-[1200px] mx-auto">
+          {topProducts.map((product, idx) => {
+            const fav = favorites.includes(product.id);
+            const badge = product.badge || (idx === 0 ? 'Mais pedido' : product.oldPrice ? 'Oferta' : '');
+            const promo = product.oldPrice && product.oldPrice > product.price;
+            const eta = product.prepTimeMin && product.prepTimeMin > 0
+              ? `${product.prepTimeMin}–${product.prepTimeMin + 10} min`
+              : '30–40 min';
+            return (
+              <article key={product.id} className="vf-card relative overflow-hidden flex flex-col w-full min-w-0" style={{ borderRadius: 20 }}>
+                <button onClick={() => onSelectProduct ? onSelectProduct(product) : setSelectedProduct(product)} className="text-left w-full min-w-0">
+                  <div className="relative w-full aspect-[4/3] bg-zinc-900 overflow-hidden">
+                    {isUrl(product.image) ? (
+                      <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 hover:scale-105" style={{ colorScheme: 'light' } as React.CSSProperties} />
+                    ) : (
+                      <span className="w-full h-full flex items-center justify-center text-6xl sm:text-7xl">{product.image}</span>
+                    )}
+                    {badge && (
+                      <span className={`absolute top-2 left-2 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 max-w-[85%] truncate ${promo && !product.badge && idx !== 0 ? 'bg-red-600' : 'bg-[#FF7A00]'}`}>
+                        {idx === 0 && !product.badge ? '🔥 ' : ''}{badge}
+                      </span>
+                    )}
+                  </div>
+                  <div className="p-3 sm:p-4 pb-2">
+                    <h3 className="font-bold text-[13px] sm:text-[15px] text-white leading-tight line-clamp-1">{product.name}</h3>
+                    <p className="text-[11px] sm:text-[12px] text-zinc-500 mt-1 line-clamp-2 leading-snug min-h-[30px]">{product.description || 'Feito na hora, com ingredientes selecionados.'}</p>
+                    <div className="flex items-center gap-2 mt-2 text-[10px] sm:text-[11px] text-zinc-400 flex-wrap">
+                      <span className="flex items-center gap-1"><Star className="w-3 h-3 fill-[#FF7A00] text-[#FF7A00]" /> <span className="text-white font-semibold">4,8</span></span>
+                      <span className="w-px h-3 bg-zinc-700" />
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {eta}</span>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
+                  aria-label={fav ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/45 backdrop-blur flex items-center justify-center text-white hover:bg-black/65 transition z-10"
+                >
+                  <Heart className={`w-[14px] h-[14px] ${fav ? 'fill-[#FF7A00] text-[#FF7A00]' : ''}`} />
+                </button>
+                <div className="px-3 sm:px-4 pb-3 sm:pb-4 mt-auto flex items-end justify-between gap-2 min-w-0">
+                  <div className="min-w-0">
+                    <div className="text-[#FF7A00] font-extrabold text-base sm:text-lg leading-tight truncate">{formatCurrency(product.price)}</div>
+                    {promo && (
+                      <div className="text-[11px] text-zinc-500 line-through leading-tight truncate">{formatCurrency(product.oldPrice!)}</div>
+                    )}
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); handleQuickAdd(product); }}
+                    className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-full bg-[#FF7A00] text-white flex items-center justify-center shadow-[0_6px_20px_rgba(255,122,0,0.45)] active:scale-90 hover:brightness-110 transition"
+                    title="Adicionar">
+                    <Plus className="w-5 h-5" strokeWidth={2.5} />
                   </button>
                 </div>
-                <div className="p-4 pb-3">
-                  <h3 className="font-bold text-[15px] text-white leading-tight line-clamp-1">{product.name}</h3>
-                  <p className="text-[12px] text-zinc-500 mt-1 line-clamp-2 leading-snug min-h-[32px]">{product.description || 'Feito na hora, com ingredientes selecionados.'}</p>
-                  <div className="flex items-center gap-3 mt-2.5 text-[11px] text-zinc-400">
-                    <span className="flex items-center gap-1"><Star className="w-3 h-3 fill-[#FF7A00] text-[#FF7A00]" /> <span className="text-white font-semibold">4,8</span></span>
-                    <span className="w-px h-3 bg-zinc-700" />
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> 30–40 min</span>
-                  </div>
-                </div>
-              </button>
-              <div className="px-4 pb-4 flex items-center justify-between">
-                <span className="text-[#FF7A00] font-extrabold text-lg">{formatCurrency(product.price)}</span>
-                <button onClick={(e) => { e.stopPropagation(); handleQuickAdd(product); }}
-                  className="w-10 h-10 rounded-full bg-[#FF7A00] text-white flex items-center justify-center shadow-[0_6px_20px_rgba(255,122,0,0.45)] active:scale-90 hover:brightness-110 transition"
-                  title="Adicionar">
-                  <Plus className="w-5 h-5" strokeWidth={2.5} />
-                </button>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </section>
 

@@ -24,6 +24,10 @@ export interface Product {
   alertaVencimento?: boolean;
   /** Tempo de preparo adicional do produto (minutos) */
   prepTimeMin?: number;
+  /** Preço antigo (riscado) quando o produto está em promoção */
+  oldPrice?: number;
+  /** Selo exibido no card (Mais pedido, Oferta, Novo...) */
+  badge?: string;
 }
 
 

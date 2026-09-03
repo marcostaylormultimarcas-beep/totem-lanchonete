@@ -334,7 +334,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
               ? `${product.prepTimeMin}–${product.prepTimeMin + 10} min`
               : '30–40 min';
             return (
-              <article key={product.id} className="vf-card relative overflow-hidden flex flex-col w-full min-w-0" style={{ borderRadius: 20 }}>
+              <article key={product.id} className="vf-card relative overflow-hidden flex flex-col w-full min-w-0 h-full" style={{ borderRadius: 20 }}>
                 <button onClick={() => onSelectProduct ? onSelectProduct(product) : setSelectedProduct(product)} className="text-left w-full min-w-0">
                   <div className="relative w-full aspect-[4/3] bg-zinc-900 overflow-hidden">
                     {isUrl(product.image) ? (

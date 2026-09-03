@@ -129,6 +129,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
               isCombo: p.is_combo || false,
               ingredients: (p.ingredients as string[]) || [],
               description: p.description || '',
+              prepTimeMin: Number(p.prep_time_min ?? 0),
+              oldPrice: Number(p.old_price ?? p.preco_antigo ?? 0) || undefined,
+              badge: p.badge || p.selo || undefined,
             }));
             setProducts(mapped);
           }

@@ -233,19 +233,50 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         </button>
       </div>
 
-      {/* Banner */}
+      {/* Banner rotativo */}
       {banners.length > 0 && (
-        <div className="px-5 mt-5 vf-fade-in">
-          <div className="vf-banner relative overflow-hidden rounded-3xl h-44 sm:h-52" style={{ borderRadius: 24 }}>
-            {banners.map((banner, i) => (
-              <div key={banner.id} className={`absolute inset-0 transition-opacity duration-700 ${i === activeBanner ? 'opacity-100' : 'opacity-0'}`}>
-                {isUrl(banner.image) ? (
-                  <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" style={{ colorScheme: 'light' } as React.CSSProperties} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-7xl" style={{ background: 'linear-gradient(135deg, #FF7A00, #B23A00)' }}>{banner.image}</div>
-                )}
-              </div>
-            ))}
+        <div className="px-4 sm:px-5 mt-5 vf-fade-in">
+          <div className="vf-banner relative overflow-hidden h-48 sm:h-56 lg:h-64 max-w-[1200px] mx-auto border border-white/[0.06]" style={{ borderRadius: 24 }}>
+            {banners.map((banner, i) => {
+              const link = (banner as any).link || (banner as any).url || '';
+              const go = () => { if (link) window.open(link, '_blank', 'noopener'); else onStart(); };
+              const hasText = Boolean(banner.title || banner.subtitle || banner.badgeText);
+              return (
+                <button
+                  key={banner.id}
+                  onClick={go}
+                  aria-hidden={i !== activeBanner}
+                  tabIndex={i === activeBanner ? 0 : -1}
+                  className={`absolute inset-0 text-left transition-opacity duration-700 ${i === activeBanner ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                >
+                  {isUrl(banner.image) ? (
+                    <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" style={{ colorScheme: 'light' } as React.CSSProperties} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-7xl" style={{ background: 'linear-gradient(135deg, #FF7A00, #B23A00)' }}>{banner.image}</div>
+                  )}
+                  {hasText && (
+                    <>
+                      <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0) 80%)' }} />
+                      <div className="absolute inset-0 p-4 sm:p-6 flex flex-col justify-center gap-2 max-w-[68%]">
+                        {banner.badgeText && (
+                          <span className="self-start rounded-full border border-[#FF7A00] text-[#FF7A00] text-[10px] sm:text-[11px] font-bold px-3 py-1 uppercase tracking-wide">
+                            🔥 {banner.badgeText}
+                          </span>
+                        )}
+                        {banner.title && (
+                          <h3 className="text-white font-extrabold leading-[0.95] text-2xl sm:text-3xl lg:text-4xl uppercase tracking-tight line-clamp-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
+                            {banner.title}
+                          </h3>
+                        )}
+                        {banner.subtitle && (
+                          <p className="text-zinc-300 text-[11px] sm:text-sm leading-snug line-clamp-2">{banner.subtitle}</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </button>
+              );
+            })}
             {banners.length > 1 && (
               <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-10">
                 {banners.map((_, i) => (

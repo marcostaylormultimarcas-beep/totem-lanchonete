@@ -618,10 +618,16 @@ function PDVMain({
         // garante DDI 55 (Brasil) quando o operador digita só DDD+número
         const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
 
-        await supabase
-          .from("orders")
-          .update({ customer_phone: phoneDigits })
-          .eq("id", res.order_id);
+        const { data: phoneData, error: phoneError } = await pdvRpc.setOrderCustomerPhone(
+          sessionToken,
+          res.order_id,
+          phoneDigits,
+        );
+        const phoneRes = phoneData as any;
+        if (phoneError || !phoneRes?.ok) {
+          console.error("[PDV] secure customer phone update failed", phoneError || phoneRes?.reason);
+          toast.error("Venda concluída, mas não foi possível salvar o telefone do cliente");
+        }
 
         const trackUrl = `${window.location.origin}/acompanhar/${res.order_id}`;
         const msg =

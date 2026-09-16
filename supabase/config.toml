@@ -1,9 +1,12 @@
-project_id = "upwstbeimnlgohbqogzz"
+project_id = "udhcnpauymevkylldkir"
 
 [functions.admin-users]
 verify_jwt = true
 
 [functions.mercadopago-create-pix]
+verify_jwt = false
+
+[functions.mercadopago-pdv-webhook]
 verify_jwt = false
 
 [functions.print-agent]
@@ -14,6 +17,3 @@ verify_jwt = false
 
 [functions.onesignal-validate]
 verify_jwt = true
-
-
-

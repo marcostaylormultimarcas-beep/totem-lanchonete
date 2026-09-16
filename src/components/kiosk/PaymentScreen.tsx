@@ -28,8 +28,6 @@ interface PaymentScreenProps {
   onDone: (orderId?: string) => void;
 }
 
-const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
-const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
 const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
@@ -67,10 +65,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const total = Math.max(0, subtotal - discount + fee);
   const primeSavings = primeDiscount + feeWaived;
 
-  const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
-  const qrImageSrc = mpPix?.qr_code_base64
-    ? `data:image/png;base64,${mpPix.qr_code_base64}`
-    : FALLBACK_QR_URL;
+  const pixKey = mpPix?.qr_code || storeSettings.pixKeyManual || '';
+  const qrImageSrc = mpPix?.qr_code_base64 ? `data:image/png;base64,${mpPix.qr_code_base64}` : '';
+  const pixConfigured = Boolean(storeSettings.pixKeyManual || storeSettings.mpEnabled);
 
   useEffect(() => {
     if (!orgId) return;
@@ -398,7 +395,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
   // Construct the list of allowed methods from store settings
   const availableMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
-    storeSettings.payPix && { key: 'pix' as Method, label: 'Pix (QR Code)', desc: 'Pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
+    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix (QR Code)', desc: 'Pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
     storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
     storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
     storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Pagar com cartão pelo celular', icon: <Globe className="w-6 h-6" /> },
@@ -554,30 +551,40 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         <p className="text-muted-foreground text-sm">
           {mpLoading ? 'Gerando QR Code Pix...' : 'Escaneie o QR Code ou copie a chave'}
         </p>
-        <div className="bg-foreground rounded-2xl p-4">
-          <img src={qrImageSrc} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
-        </div>
+        {qrImageSrc ? (
+          <div className="bg-foreground rounded-2xl p-4">
+            <img src={qrImageSrc} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
+          </div>
+        ) : storeSettings.mpEnabled && mpLoading ? (
+          <Loader2 className="w-10 h-10 text-primary animate-spin" />
+        ) : storeSettings.pixKeyManual ? (
+          <div className="w-full kiosk-card p-4 text-center text-sm text-muted-foreground">Use a chave Pix configurada abaixo.</div>
+        ) : (
+          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">Pix indisponível no momento. Volte e escolha outra forma de pagamento.</div>
+        )}
         {storeSettings.pixKeyManual && (
           <div className="w-full text-center">
             <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
             <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{storeSettings.pixKeyManual}</p>
           </div>
         )}
-        <div className="w-full">
-          <p className="text-sm text-muted-foreground text-center mb-2">
-            {mpPix ? 'Pix copia e cola:' : 'Chave PIX (copia e cola):'}
-          </p>
-          <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
-            {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
-            <span className="font-mono text-xs break-all line-clamp-2">{pixKey}</span>
-          </button>
-        </div>
+        {pixKey && (
+          <div className="w-full">
+            <p className="text-sm text-muted-foreground text-center mb-2">
+              {mpPix ? 'Pix copia e cola:' : 'Chave PIX (copia e cola):'}
+            </p>
+            <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
+              {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
+              <span className="font-mono text-xs break-all line-clamp-2">{pixKey}</span>
+            </button>
+          </div>
+        )}
 
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
         {paymentError && (
           <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
         )}
-        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+        <button onClick={handleConfirmPayment} disabled={saving || (!pixKey && !mpLoading)} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
           <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
         </button>
       </div>

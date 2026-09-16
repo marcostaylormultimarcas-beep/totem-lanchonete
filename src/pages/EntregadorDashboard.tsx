@@ -141,6 +141,15 @@ const EntregadorDashboard = () => {
     }
   }, []);
 
+  const expireSession = useCallback(() => {
+    stopTracking();
+    clearEntregadorSession();
+    toast.error('Sessão expirada. Faça login novamente.');
+    navigate('/entregador/login', { replace: true });
+  }, [navigate, stopTracking]);
+
+  const isInvalidSession = (res: any) => res?.reason === 'invalid_session' || res?.reason === 'invalid_credentials';
+
   const startTracking = useCallback((orderId: string) => {
     if (!session) return;
     if (!('geolocation' in navigator)) {
@@ -165,12 +174,13 @@ const EntregadorDashboard = () => {
     const send = async () => {
       const p = lastSampleRef.current;
       if (!p) return;
-      await supabase.rpc('entregador_update_location_session' as any, {
+      const { data } = await supabase.rpc('entregador_update_location_session' as any, {
         _session_token: session.session_token,
         _lat: p.lat,
         _lng: p.lng,
         _order_id: orderId,
       });
+      if (isInvalidSession(data)) expireSession();
     };
     sendTimerRef.current = window.setInterval(send, 15000);
     // primeiro envio rápido
@@ -224,10 +234,7 @@ const EntregadorDashboard = () => {
     });
     const res: any = data;
     if (error || !res?.ok) {
-      if (['invalid_credentials', 'invalid_session'].includes(res?.reason)) {
-        clearEntregadorSession();
-        navigate('/entregador/login');
-      }
+      if (isInvalidSession(res)) expireSession();
       setLoading(false);
       return;
     }
@@ -264,7 +271,10 @@ const EntregadorDashboard = () => {
       _session_token: session.session_token,
     });
     const res: any = data;
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      if (isInvalidSession(res)) expireSession();
+      return;
+    }
     setMode((res.mode === 'free' ? 'free' : 'manual'));
     setAvailable(res.orders || []);
   }, [session]);
@@ -325,6 +335,7 @@ const EntregadorDashboard = () => {
         already_taken: 'Outro entregador foi mais rápido nesse pedido.',
       };
       toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+      if (isInvalidSession(res)) { expireSession(); return; }
       fetchAvailable();
       return;
     }
@@ -421,6 +432,7 @@ const EntregadorDashboard = () => {
         invalid_code: '❌ Código incorreto! Confirme com o cliente.',
       };
       toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
+      if (isInvalidSession(res)) expireSession();
       return;
     }
     toast.success('✅ Entrega confirmada!');

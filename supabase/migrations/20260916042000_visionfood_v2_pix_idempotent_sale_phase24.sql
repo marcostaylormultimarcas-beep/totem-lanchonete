@@ -2,7 +2,7 @@
 -- Bind one approved PIX intent to exactly one completed order.
 
 alter table public.pdv_pix_intents add column if not exists order_id uuid;
-create unique index if not exists idx_pdv_pix_intents_order_id on public.pdv_pix_intents(order_id) where order_id is not null;
+create unique index if not exists ux_pdv_pix_intents_order_id on public.pdv_pix_intents(order_id) where order_id is not null;
 
 create or replace function public.pdv_registrar_venda_pix_v2(_session_token text, _intent_id uuid)
 returns jsonb language plpgsql security definer set search_path to 'public','extensions'

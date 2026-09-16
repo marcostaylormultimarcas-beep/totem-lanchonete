@@ -1,0 +1,41 @@
+name: PDV canonical refund toast
+on:
+  push:
+    branches: [visionfood-v2-commercial-ready]
+    paths:
+      - '.github/workflows/pdv-canonical-refund-toast.yml'
+      - 'scripts/migrate-pdv-canonical-refund-toast.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pdv-canonical-refund-toast.yml'
+      - 'scripts/migrate-pdv-canonical-refund-toast.py'
+permissions:
+  contents: write
+jobs:
+  migrate-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: visionfood-v2-commercial-ready
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Apply guarded canonical refund migration
+        run: python3 scripts/migrate-pdv-canonical-refund-toast.py
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Build
+        run: npm run build
+      - name: Commit only after successful build
+        run: |
+          if git diff --quiet -- src/pages/PDV.tsx; then echo 'No PDV changes produced'; exit 1; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/PDV.tsx
+          git commit -m 'fix: show server canonical PDV refund amount'
+          git pull --rebase origin visionfood-v2-commercial-ready
+          git push origin HEAD:visionfood-v2-commercial-ready

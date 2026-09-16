@@ -857,7 +857,7 @@ const AdminPage = () => {
           if (!activeSlug) return null;
           return (
             <a
-              href={`/loja/${activeSlug}`}
+              href={getKioskHomePath(activeSlug)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-3 border border-[#FF7A00]/40 rounded-2xl text-[#FF7A00] font-bold text-[11px] uppercase tracking-widest whitespace-nowrap flex items-center gap-1.5 hover:bg-[#FF7A00]/10 transition-colors active:scale-95"

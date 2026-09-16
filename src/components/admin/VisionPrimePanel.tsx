@@ -22,6 +22,7 @@ const VisionPrimePanel = ({ organizationId }: { organizationId: string | null })
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [subscribers, setSubscribers] = useState<number>(0);
+  const [numeric, setNumeric] = useState({ mensalidade: '', desconto: '', frete: '' });
 
   useEffect(() => {
     if (!organizationId) return;
@@ -35,7 +36,9 @@ const VisionPrimePanel = ({ organizationId }: { organizationId: string | null })
           .select('id', { count: 'exact', head: true })
           .eq('organization_id', organizationId).eq('status', 'active'),
       ]);
-      setCfg(row ? { ...DEFAULT, ...(row as any) } : DEFAULT);
+      const next = row ? { ...DEFAULT, ...(row as any) } : DEFAULT;
+      setCfg(next);
+      setNumeric({ mensalidade: String(next.valor_mensalidade), desconto: String(next.desconto_percentual), frete: String(next.frete_gratis_minimo) });
       setSubscribers(count || 0);
       setLoading(false);
     })();
@@ -44,7 +47,12 @@ const VisionPrimePanel = ({ organizationId }: { organizationId: string | null })
   const save = async () => {
     if (!organizationId) return;
     setSaving(true);
-    const payload = { organization_id: organizationId, ...cfg };
+    const parsed = {
+      valor_mensalidade: Math.max(0, Number(numeric.mensalidade || 0)),
+      desconto_percentual: Math.min(100, Math.max(0, Number(numeric.desconto || 0))),
+      frete_gratis_minimo: Math.max(0, Number(numeric.frete || 0)),
+    };
+    const payload = { organization_id: organizationId, ...cfg, ...parsed };
     const { error } = await supabase.from('vision_prime_config' as any)
       .upsert(payload as any, { onConflict: 'organization_id' });
     setSaving(false);
@@ -90,20 +98,20 @@ const VisionPrimePanel = ({ organizationId }: { organizationId: string | null })
         <div className="grid sm:grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Mensalidade (R$)</label>
-            <input type="number" step="0.10" min={0} value={cfg.valor_mensalidade}
-              onChange={e => setCfg({ ...cfg, valor_mensalidade: Number(e.target.value) || 0 })}
+            <input type="number" step="0.10" min={0} value={numeric.mensalidade}
+              onChange={e => setNumeric({ ...numeric, mensalidade: e.target.value })}
               className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Desconto fixo (%)</label>
-            <input type="number" step="1" min={0} max={100} value={cfg.desconto_percentual}
-              onChange={e => setCfg({ ...cfg, desconto_percentual: Number(e.target.value) || 0 })}
+            <input type="number" step="1" min={0} max={100} value={numeric.desconto}
+              onChange={e => setNumeric({ ...numeric, desconto: e.target.value })}
               className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground mb-1 block">Frete grátis a partir de (R$)</label>
-            <input type="number" step="1" min={0} value={cfg.frete_gratis_minimo}
-              onChange={e => setCfg({ ...cfg, frete_gratis_minimo: Number(e.target.value) || 0 })}
+            <input type="number" step="1" min={0} value={numeric.frete}
+              onChange={e => setNumeric({ ...numeric, frete: e.target.value })}
               className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
             <p className="text-[10px] text-muted-foreground mt-1">Use 0 para sempre conceder frete grátis aos Prime.</p>
           </div>

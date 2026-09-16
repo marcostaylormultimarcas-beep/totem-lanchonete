@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, FileText } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,6 +39,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
@@ -151,6 +153,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   };
 
   const handleConfirmPayment = async () => {
+    if (saving) return;
+    setPaymentError('');
     setSaving(true);
 
     try {
@@ -236,9 +240,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           }
         } catch {}
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving order:', err);
-      setConfirmed(true);
+      const message = err?.message || 'Não foi possível registrar o pedido. Tente novamente.';
+      setPaymentError(message);
+      toast.error('Pedido não confirmado', { description: message });
+      setConfirmed(false);
     } finally {
       setSaving(false);
     }
@@ -446,6 +453,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <p className="text-sm text-muted-foreground">Apresente a senha do pedido no caixa e efetue o pagamento em dinheiro ao retirar.</p>
           </div>
           <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
+          {paymentError && (
+            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+          )}
           <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
             <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido'}
           </button>
@@ -469,6 +479,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             )}
           </div>
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          {paymentError && (
+            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+          )}
           <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
             <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Pagamento Aprovado na Maquininha'}
           </button>
@@ -557,6 +570,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         </div>
 
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
+        {paymentError && (
+          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+        )}
         <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
           <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
         </button>

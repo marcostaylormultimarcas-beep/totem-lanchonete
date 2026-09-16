@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles, CalendarClock, Clock } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
@@ -52,7 +52,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [scheduledTime, setScheduledTime] = useState<string>('');
 
   // Defaults para o agendamento = próximo horário de abertura
-  useMemo(() => {
+  useEffect(() => {
     if (storeStatus.nextOpenAt && !scheduledDate) {
       const d = storeStatus.nextOpenAt;
       const pad = (n: number) => String(n).padStart(2, '0');
@@ -140,7 +140,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   );
 
   return (
-    <div className="min-h-screen flex flex-col pb-40 max-w-[1200px] mx-auto">
+    <div className={`min-h-screen flex flex-col max-w-[1200px] mx-auto ${scheduleMode ? 'pb-[34rem]' : 'pb-72'}`}>
       <div className="flex items-center gap-4 p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-7 h-7" />
@@ -240,7 +240,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       )}
 
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border p-4 space-y-2 max-h-[72dvh] overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatCurrency(subtotal)}</span>
@@ -288,7 +288,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                 ) : (
                   <div className="rounded-xl border border-primary/40 p-3 space-y-2 bg-primary/5">
                     <p className="text-sm font-bold flex items-center gap-2"><CalendarClock className="w-4 h-4 text-primary" /> Agendar para:</p>
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)}
                         className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
                       <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}

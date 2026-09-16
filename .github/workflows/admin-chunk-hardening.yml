@@ -1,50 +1,31 @@
-name: Admin Chunk Hardening
+name: Admin chunk hardening audit
 
+# Lazy-loading migration is already applied. Keep this workflow read-only so a
+# historical migration script cannot rewrite the validated Admin implementation.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - 'scripts/lazy-load-admin-panels.py'
-      - '.github/workflows/admin-chunk-hardening.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: admin-chunk-hardening-${{ github.ref }}
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  migrate-and-validate:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Apply guarded lazy-loading migration
-        run: python3 scripts/lazy-load-admin-panels.py
+          cache: npm
+      - name: Verify Admin lazy-loading remains present
+        shell: bash
+        run: |
+          grep -q "lazy(" src/pages/Admin.tsx
+          grep -q "Suspense" src/pages/Admin.tsx
       - name: Install dependencies
         run: npm install --legacy-peer-deps --package-lock=false
       - name: Unit tests
-        run: npm test -- --passWithNoTests
-      - name: Build production bundle
+        run: npm test
+      - name: Production build
         run: npm run build
-      - name: Commit migration if validated
-        shell: bash
-        run: |
-          if git diff --quiet -- src/pages/Admin.tsx; then
-            echo 'No Admin changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/Admin.tsx
-          git commit -m 'perf: lazy-load admin panels'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready

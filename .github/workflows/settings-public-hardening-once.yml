@@ -1,0 +1,35 @@
+name: Settings public hardening once
+on:
+  push:
+    branches: [visionfood-v2-commercial-ready]
+    paths:
+      - '.github/workflows/settings-public-hardening-once.yml'
+permissions:
+  contents: write
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: visionfood-v2-commercial-ready
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply guarded patch
+        run: python scripts/harden-public-settings-select.py
+      - name: Validate no broad settings select in StartScreen
+        run: |
+          ! grep -F "from('settings').select('*')" src/components/kiosk/StartScreen.tsx
+      - name: Install and build
+        run: |
+          npm install --legacy-peer-deps --package-lock=false
+          npm run build
+      - name: Commit hardened query
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/kiosk/StartScreen.tsx
+          git commit -m 'security: restrict public settings query'
+          git push origin HEAD:visionfood-v2-commercial-ready

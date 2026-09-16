@@ -1,0 +1,43 @@
+name: Kiosk Asset Optimization Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Verify optimized kiosk assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          limits = {
+              Path('src/assets/icon-comer-local.png'): 100_000,
+              Path('src/assets/icon-para-viagem.png'): 100_000,
+          }
+          for path, limit in limits.items():
+              size = path.stat().st_size
+              print(f'{path}: {size} bytes')
+              if size > limit:
+                  raise SystemExit(f'{path} exceeds optimized size limit ({limit} bytes)')
+          PY
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build

@@ -1,0 +1,21 @@
+name: Recover PDV and apply idempotent PIX sale
+
+# Historical emergency recovery procedure.
+# Disabled as an executable workflow because running the old procedure would
+# restore PDV.tsx from a historical commit and could overwrite newer fixes.
+# The recovery history remains available in Git history if ever needed.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery-disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recovery workflow intentionally disabled
+        run: |
+          echo 'Legacy PDV recovery is disabled to protect the current validated PDV.'
+          echo 'Use Git history and a new guarded recovery procedure if recovery is ever required.'

@@ -22,7 +22,6 @@ import {
   CreditCard,
 } from "lucide-react";
 import { BRAND_NAME } from "@/config/brandConfig";
-import { createPdvSession, validatePdvSession, revokePdvSession, savePdvSession, readPdvSession, clearPdvSession, pdvRpc } from "@/lib/pdvSession";
 
 type Operador = {
   id: string;
@@ -55,44 +54,46 @@ type Forma = "dinheiro" | "pix" | "cartao";
 const fmt = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+const SESSION_KEY = "pdv_session_v1";
 
 export default function PDV() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
 
   const [operador, setOperador] = useState<Operador | null>(null);
-  const [sessionToken, setSessionToken] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [caixaId, setCaixaId] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
 
-  // Restore only an opaque server-issued session token; discard legacy password persistence.
+  // Restore session
   useEffect(() => {
-    let active = true;
-    (async () => {
-      localStorage.removeItem("pdv_session_v1");
-      const saved = readPdvSession();
-      if (saved) {
-        const ctx = await validatePdvSession(saved.sessionToken);
-        if (active && ctx) {
-          setOperador(saved.operador as Operador);
-          setSessionToken(saved.sessionToken);
-          setCaixaId(saved.caixaId || ctx.caixa_aberto_id || null);
-        } else if (!ctx) clearPdvSession();
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s?.operador && s?.password) {
+          setOperador(s.operador);
+          setPassword(s.password);
+          setCaixaId(s.caixaId || null);
+        }
       }
-      if (active) setBooting(false);
-    })();
-    return () => { active = false; };
+    } catch {}
+    setBooting(false);
   }, []);
 
   useEffect(() => {
-    if (operador && sessionToken) savePdvSession({ operador, sessionToken, caixaId });
-  }, [operador, sessionToken, caixaId]);
+    if (operador) {
+      localStorage.setItem(
+        SESSION_KEY,
+        JSON.stringify({ operador, password, caixaId }),
+      );
+    }
+  }, [operador, password, caixaId]);
 
   const logout = () => {
-    if (sessionToken) void revokePdvSession(sessionToken);
-    clearPdvSession();
+    localStorage.removeItem(SESSION_KEY);
     setOperador(null);
-    setSessionToken("");
+    setPassword("");
     setCaixaId(null);
   };
 
@@ -108,9 +109,9 @@ export default function PDV() {
     return (
       <LoginScreen
         slug={slug}
-        onLogin={(op, token, openCaixa) => {
+        onLogin={(op, pwd, openCaixa) => {
           setOperador(op);
-          setSessionToken(token);
+          setPassword(pwd);
           setCaixaId(openCaixa);
         }}
       />
@@ -121,7 +122,7 @@ export default function PDV() {
     return (
       <AberturaScreen
         operador={operador}
-        sessionToken={sessionToken}
+        password={password}
         onOpen={(id) => setCaixaId(id)}
         onLogout={logout}
       />
@@ -131,7 +132,7 @@ export default function PDV() {
   return (
     <PDVMain
       operador={operador}
-      sessionToken={sessionToken}
+      password={password}
       caixaId={caixaId}
       onClose={() => {
         setCaixaId(null);
@@ -148,7 +149,7 @@ function LoginScreen({
   onLogin,
 }: {
   slug?: string;
-  onLogin: (op: Operador, sessionToken: string, caixaAbertoId: string | null) => void;
+  onLogin: (op: Operador, password: string, caixaAbertoId: string | null) => void;
 }) {
   const [orgSlug, setOrgSlug] = useState(slug || "");
   const [username, setUsername] = useState("");
@@ -159,10 +160,14 @@ function LoginScreen({
     e.preventDefault();
     if (!orgSlug || !username || !password) return;
     setLoading(true);
-    let res: any;
-    try { res = await createPdvSession(orgSlug, username, password); }
-    catch (error: any) { setLoading(false); return toast.error(error?.message || "Falha ao entrar"); }
+    const { data, error } = await supabase.rpc("pdv_operador_login", {
+      _org_slug: orgSlug.trim().toLowerCase(),
+      _username: username.trim().toLowerCase(),
+      _password: password,
+    });
     setLoading(false);
+    if (error) return toast.error(error.message);
+    const res = data as any;
     if (!res?.ok) {
       toast.error(
         res?.reason === "org_not_found"
@@ -172,7 +177,7 @@ function LoginScreen({
       return;
     }
     toast.success(`Bem-vindo, ${res.operador.name}`);
-    onLogin(res.operador, res.session_token, res.caixa_aberto_id || null);
+    onLogin(res.operador, password, res.caixa_aberto_id || null);
   };
 
   return (
@@ -237,12 +242,12 @@ function LoginScreen({
 
 function AberturaScreen({
   operador,
-  sessionToken,
+  password,
   onOpen,
   onLogout,
 }: {
   operador: Operador;
-  sessionToken: string;
+  password: string;
   onOpen: (caixaId: string) => void;
   onLogout: () => void;
 }) {
@@ -253,7 +258,11 @@ function AberturaScreen({
     e.preventDefault();
     const v = parseFloat(valor.replace(/\./g, "").replace(",", ".")) || 0;
     setLoading(true);
-    const { data, error } = await pdvRpc.openCash(sessionToken, v);
+    const { data, error } = await supabase.rpc("pdv_abrir_caixa", {
+      _operador_id: operador.id,
+      _password: password,
+      _saldo_inicial: v,
+    });
     setLoading(false);
     if (error) return toast.error(error.message);
     const res = data as any;
@@ -316,13 +325,13 @@ function AberturaScreen({
 
 function PDVMain({
   operador,
-  sessionToken,
+  password,
   caixaId,
   onClose,
   onLogout,
 }: {
   operador: Operador;
-  sessionToken: string;
+  password: string;
   caixaId: string;
   onClose: () => void;
   onLogout: () => void;
@@ -345,17 +354,15 @@ function PDVMain({
   // Load products
   useEffect(() => {
     (async () => {
-      const { data, error } = await pdvRpc.catalog(sessionToken);
-      const res = data as any;
-      if (error || !res?.ok) {
-        console.error("[PDV] secure catalog load failed", error || res?.reason);
-        setProducts([]);
-        toast.error("Não foi possível carregar os produtos do PDV");
-        return;
-      }
-      setProducts((res.products as Product[]) || []);
+      const { data } = await supabase
+        .from("products")
+        .select("id,name,price,codigo_barras,available,image")
+        .eq("organization_id", operador.organization_id)
+        .eq("available", true)
+        .order("name");
+      setProducts((data as Product[]) || []);
     })();
-  }, [sessionToken]);
+  }, [operador.organization_id]);
 
   // Focus search
   useEffect(() => {
@@ -466,26 +473,26 @@ function PDVMain({
   const aplicarCupom = async () => {
     const c = cupomCode.trim().toUpperCase();
     if (!c) return;
-    const { data, error } = await pdvRpc.validateCoupon(sessionToken, c);
-    const res = data as any;
-    if (error) return toast.error(error.message);
-    if (!res?.ok) {
-      const messages: Record<string, string> = {
-        not_found: "Cupom não encontrado",
-        inactive: "Cupom inativo",
-        not_started: "Cupom ainda não iniciou",
-        expired: "Cupom expirado",
-        invalid_session: "Sessão do PDV expirada",
-      };
-      return toast.error(messages[res?.reason] || "Cupom inválido");
-    }
-    const cupom = res.cupom as any;
+    const { data } = await supabase
+      .from("cupons")
+      .select("codigo,tipo,valor,status,data_inicio,data_fim")
+      .eq("organization_id", operador.organization_id)
+      .ilike("codigo", c)
+      .maybeSingle();
+    if (!data) return toast.error("Cupom não encontrado");
+    if ((data as any).status && (data as any).status !== "ativo")
+      return toast.error("Cupom inativo");
+    const now = new Date();
+    if ((data as any).data_inicio && new Date((data as any).data_inicio) > now)
+      return toast.error("Cupom ainda não iniciou");
+    if ((data as any).data_fim && new Date((data as any).data_fim) < now)
+      return toast.error("Cupom expirado");
     setCupomDesc({
-      codigo: cupom.codigo,
-      tipo: cupom.tipo,
-      valor: Number(cupom.valor) || 0,
+      codigo: (data as any).codigo,
+      tipo: (data as any).tipo,
+      valor: Number((data as any).valor) || 0,
     });
-    toast.success(`Cupom ${cupom.codigo} aplicado`);
+    toast.success(`Cupom ${(data as any).codigo} aplicado`);
   };
 
   // ---- Espelhamento p/ tela do cliente ----
@@ -497,7 +504,7 @@ function PDVMain({
 
   // 🟢 Gera Pix real (Mercado Pago) quando o operador escolhe PIX no PDV.
   // O QR + Copia-e-Cola viaja no broadcast e aparece GIGANTE na tela do cliente.
-  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number; intentId: string; cartSignature: string } | null>(null);
+  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const pixReqId = useRef(0);
   useEffect(() => {
@@ -507,37 +514,19 @@ function PDVMain({
       setPixLoading(false);
       return;
     }
-    const cartSignature = JSON.stringify(
-      cart
-        .map((x) => ({ product_id: x.product_id, quantity: x.quantity }))
-        .sort((a, b) => a.product_id.localeCompare(b.product_id)),
-    );
-    // Reutiliza o QR somente se valor, itens/quantidades e cupom continuarem iguais.
-    if (
-      pixData &&
-      Math.abs(pixData.amount - total) < 0.005 &&
-      pixData.cartSignature === `${cartSignature}|${cupomDesc?.codigo || ""}`
-    ) return;
+    // Reutiliza o QR se o valor não mudou
+    if (pixData && Math.abs(pixData.amount - total) < 0.005) return;
 
     const myReq = ++pixReqId.current;
     setPixLoading(true);
     const t = setTimeout(async () => {
       try {
-        const pixItems = cart.map((x) => ({ product_id: x.product_id, quantity: x.quantity }));
-        const { data: intentData, error: intentError } = await pdvRpc.createPixIntent(
-          sessionToken,
-          caixaId,
-          pixItems,
-          cupomDesc?.codigo || "",
-        );
-        const intent = intentData as any;
-        if (myReq !== pixReqId.current) return;
-        if (intentError || !intent?.ok || !intent?.intent_id) {
-          setPixData(null);
-          return;
-        }
         const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
-          body: { intent_id: intent.intent_id, session_token: sessionToken },
+          body: {
+            organization_id: operador.organization_id,
+            amount: total,
+            description: `PDV ${operador.org_name}`,
+          },
         });
         if (myReq !== pixReqId.current) return; // resposta atrasada — ignora
         if (error || !(data as any)?.ok) {
@@ -548,41 +537,14 @@ function PDVMain({
         setPixData({
           qrBase64: d.qr_code_base64 || "",
           copiaECola: d.qr_code || "",
-          amount: Number(d.amount ?? intent.amount) || 0,
-          intentId: String(d.intent_id || intent.intent_id),
-          cartSignature: `${cartSignature}|${cupomDesc?.codigo || ""}`,
+          amount: total,
         });
       } finally {
         if (myReq === pixReqId.current) setPixLoading(false);
       }
     }, 350); // pequeno debounce p/ não disparar a cada centavo
     return () => clearTimeout(t);
-  }, [forma, total, cart, cupomDesc?.codigo, sessionToken, caixaId, pixData]);
-
-  const [pixConfirmed, setPixConfirmed] = useState(false);
-  useEffect(() => {
-    setPixConfirmed(false);
-    if (forma !== "pix" || !pixData?.intentId || !sessionToken) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const check = async () => {
-      const { data, error } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
-      if (!active) return;
-      const status = data as any;
-      const paid = !error && status?.ok && (status?.paid === true || ["paid", "approved"].includes(String(status?.status || "").toLowerCase()) || String(status?.payment_status || "").toLowerCase() === "approved");
-      if (paid) {
-        setPixConfirmed(true);
-        toast.success("PIX confirmado");
-        return;
-      }
-      timer = setTimeout(check, 2500);
-    };
-    timer = setTimeout(check, 1200);
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [forma, pixData?.intentId, sessionToken]);
+  }, [forma, total, operador.organization_id, operador.org_name, pixData]);
 
   useEffect(() => {
     const payload = {
@@ -623,17 +585,6 @@ function PDVMain({
   };
 
   const finalizar = async () => {
-    if (forma === "pix") {
-      if (!pixData?.intentId) return toast.error("Gere o PIX antes de finalizar");
-      if (!pixConfirmed) {
-        const { data: pixStatusData, error: pixStatusError } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
-        const pixStatus = pixStatusData as any;
-        if (pixStatusError || !pixStatus?.ok || !(pixStatus?.paid === true || ["paid", "approved"].includes(String(pixStatus.status || "").toLowerCase()) || String(pixStatus.payment_status || "").toLowerCase() === "approved")) {
-          return toast.error("Pagamento PIX ainda não confirmado");
-        }
-        setPixConfirmed(true);
-      }
-    }
     if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
     const items = cart.map((x) => ({
@@ -649,27 +600,21 @@ function PDVMain({
     const snapTotal = total;
     const snapForma = forma;
     const snapCupom = cupomDesc?.codigo || "";
-    const saleResult = forma === "pix" && pixData?.intentId
-    ? await pdvRpc.pixSale(sessionToken, pixData.intentId)
-    : await pdvRpc.sale(sessionToken, caixaId, items, forma, total, snapCupom, desconto);
-  const { data, error } = saleResult;
+    const { data, error } = await supabase.rpc("pdv_registrar_venda", {
+      _operador_id: operador.id,
+      _password: password,
+      _caixa_id: caixaId,
+      _items: items,
+      _forma: forma,
+      _total: total,
+      _cupom_code: snapCupom,
+      _desconto: desconto,
+    });
     setSaleLoading(false);
     if (error) return toast.error(error.message);
     const res = data as any;
     if (!res?.ok) return toast.error("Falha ao registrar venda");
-    const canonicalSubtotal = Number(res.subtotal ?? snapSubtotal);
-    const canonicalDesconto = Number(res.desconto ?? snapDesconto);
-    const canonicalTotal = Number(res.total ?? snapTotal);
-    const canonicalItems = Array.isArray(res.items)
-      ? res.items.map((x: any) => ({
-          id: String(x.product_id),
-          product_id: String(x.product_id),
-          name: String(x.name || "Produto"),
-          price: Number(x.price) || 0,
-          quantity: Number(x.quantity) || 0,
-        }))
-      : snapshot;
-    toast.success(`Venda registrada — ${fmt(canonicalTotal)}`);
+    toast.success(`Venda registrada — ${fmt(snapTotal)}`);
     beep();
 
     // 📱 Persiste telefone do cliente no pedido + dispara WhatsApp automático
@@ -679,16 +624,10 @@ function PDVMain({
         // garante DDI 55 (Brasil) quando o operador digita só DDD+número
         const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
 
-        const { data: phoneData, error: phoneError } = await pdvRpc.setOrderCustomerPhone(
-          sessionToken,
-          res.order_id,
-          phoneDigits,
-        );
-        const phoneRes = phoneData as any;
-        if (phoneError || !phoneRes?.ok) {
-          console.error("[PDV] secure customer phone update failed", phoneError || phoneRes?.reason);
-          toast.error("Venda concluída, mas não foi possível salvar o telefone do cliente");
-        }
+        await supabase
+          .from("orders")
+          .update({ customer_phone: phoneDigits })
+          .eq("id", res.order_id);
 
         const trackUrl = `${window.location.origin}/acompanhar/${res.order_id}`;
         const msg =
@@ -705,10 +644,10 @@ function PDVMain({
     setLastReceipt({
       orderNumber: res.order_number,
       createdAt: res.created_at || new Date().toISOString(),
-      items: canonicalItems,
-      subtotal: canonicalSubtotal,
-      desconto: canonicalDesconto,
-      total: canonicalTotal,
+      items: snapshot,
+      subtotal: snapSubtotal,
+      desconto: snapDesconto,
+      total: snapTotal,
       forma: snapForma,
       cupom: snapCupom,
     });
@@ -959,7 +898,7 @@ function PDVMain({
       {showSangria && (
         <SangriaModal
           operador={operador}
-          sessionToken={sessionToken}
+          password={password}
           caixaId={caixaId}
           onClose={() => setShowSangria(false)}
         />
@@ -967,7 +906,7 @@ function PDVMain({
       {showDevolucao && (
         <DevolucaoModal
           operador={operador}
-          sessionToken={sessionToken}
+          password={password}
           caixaId={caixaId}
           onClose={() => setShowDevolucao(false)}
         />
@@ -975,7 +914,7 @@ function PDVMain({
       {showFechar && (
         <FechamentoModal
           operador={operador}
-          sessionToken={sessionToken}
+          password={password}
           caixaId={caixaId}
           onClose={() => setShowFechar(false)}
           onClosed={() => {
@@ -1056,12 +995,12 @@ function ModalShell({
 
 function SangriaModal({
   operador,
-  sessionToken,
+  password,
   caixaId,
   onClose,
 }: {
   operador: Operador;
-  sessionToken: string;
+  password: string;
   caixaId: string;
   onClose: () => void;
 }) {
@@ -1075,7 +1014,15 @@ function SangriaModal({
     if (v <= 0) return toast.error("Informe um valor válido");
     if (motivo.trim().length < 3) return toast.error("Informe um motivo");
     setLoading(true);
-    const { data, error } = await pdvRpc.movement(sessionToken, caixaId, tipo, "dinheiro", v, motivo.trim());
+    const { data, error } = await supabase.rpc("pdv_registrar_movimento", {
+      _operador_id: operador.id,
+      _password: password,
+      _caixa_id: caixaId,
+      _tipo: tipo,
+      _forma: "dinheiro",
+      _valor: v,
+      _motivo: motivo.trim(),
+    });
     setLoading(false);
     if (error || !(data as any)?.ok) return toast.error("Falha ao registrar");
     toast.success(tipo === "sangria" ? "Sangria registrada" : "Suprimento registrado");
@@ -1137,12 +1084,12 @@ function SangriaModal({
 
 function DevolucaoModal({
   operador,
-  sessionToken,
+  password,
   caixaId,
   onClose,
 }: {
   operador: Operador;
-  sessionToken: string;
+  password: string;
   caixaId: string;
   onClose: () => void;
 }) {
@@ -1156,17 +1103,26 @@ function DevolucaoModal({
   const buscar = async () => {
     if (!orderId.trim()) return;
     setLoading(true);
-    const { data, error } = await pdvRpc.findOrder(sessionToken, orderId.trim());
+    let q = supabase
+      .from("orders")
+      .select("id,items,total,status,customer_name,created_at,organization_id")
+      .eq("organization_id", operador.organization_id)
+      .limit(1);
+    // Permitir buscar por uuid completo OU pelos primeiros caracteres
+    if (orderId.includes("-") && orderId.length >= 30) {
+      q = q.eq("id", orderId.trim());
+    } else {
+      q = q.ilike("id", `${orderId.trim()}%`);
+    }
+    const { data } = await q.maybeSingle();
     setLoading(false);
-    const res = data as any;
-    if (error || !res?.ok || !res?.order) {
+    if (!data) {
       setOrder(null);
       setItems([]);
-      return toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Pedido não encontrado");
+      return toast.error("Pedido não encontrado");
     }
-    const dataOrder = res.order;
-    setOrder(dataOrder);
-    const arr = Array.isArray(dataOrder.items) ? dataOrder.items : [];
+    setOrder(data);
+    const arr = Array.isArray(data.items) ? data.items : [];
     setItems(arr);
     setSelected({});
   };
@@ -1194,12 +1150,18 @@ function DevolucaoModal({
     if (devolvidos.length === 0) return toast.error("Selecione ao menos 1 item");
     if (motivo.trim().length < 3) return toast.error("Informe o motivo");
     setLoading(true);
-    const { data, error } = await pdvRpc.refund(sessionToken, caixaId, order.id, devolvidos, valorTotal, motivo.trim());
+    const { data, error } = await supabase.rpc("pdv_devolver_pedido", {
+      _operador_id: operador.id,
+      _password: password,
+      _caixa_id: caixaId,
+      _order_id: order.id,
+      _items_devolvidos: devolvidos,
+      _valor_devolucao: valorTotal,
+      _motivo: motivo.trim(),
+    });
     setLoading(false);
-    const res = data as any;
-    if (error || !res?.ok) return toast.error("Falha ao processar devolução");
-    const canonicalRefund = Number(res.valor_devolucao) || 0;
-    toast.success(`Devolução de ${fmt(canonicalRefund)} registrada`);
+    if (error || !(data as any)?.ok) return toast.error("Falha ao processar devolução");
+    toast.success(`Devolução de ${fmt(valorTotal)} registrada`);
     onClose();
   };
 
@@ -1285,13 +1247,13 @@ function DevolucaoModal({
 
 function FechamentoModal({
   operador,
-  sessionToken,
+  password,
   caixaId,
   onClose,
   onClosed,
 }: {
   operador: Operador;
-  sessionToken: string;
+  password: string;
   caixaId: string;
   onClose: () => void;
   onClosed: () => void;
@@ -1303,19 +1265,41 @@ function FechamentoModal({
   // Pré-visualização (carrega resumo parcial via movimentos)
   useEffect(() => {
     (async () => {
-      const { data, error } = await pdvRpc.cashSummary(sessionToken, caixaId);
-      const res = data as any;
-      if (error || !res?.ok || !res?.resumo) {
-        toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Falha ao carregar resumo do caixa");
-        return;
-      }
-      setResumo(res.resumo);
+      const { data } = await supabase
+        .from("caixa_movimentos")
+        .select("tipo,forma_pagamento,valor")
+        .eq("caixa_id", caixaId);
+      if (!data) return;
+      const sum = (cond: (r: any) => boolean) =>
+        data.filter(cond).reduce((s, r: any) => s + Number(r.valor), 0);
+      const inicial = sum((r) => r.tipo === "abertura");
+      const vDin = sum((r) => r.tipo === "venda" && r.forma_pagamento === "dinheiro");
+      const vPix = sum((r) => r.tipo === "venda" && r.forma_pagamento === "pix");
+      const vCart = sum((r) => r.tipo === "venda" && r.forma_pagamento === "cartao");
+      const sangria = sum((r) => r.tipo === "sangria");
+      const suprimento = sum((r) => r.tipo === "suprimento");
+      const devolucao = sum((r) => r.tipo === "devolucao");
+      setResumo({
+        saldo_inicial: inicial,
+        vendas_dinheiro: vDin,
+        vendas_pix: vPix,
+        vendas_cartao: vCart,
+        total_vendas: vDin + vPix + vCart,
+        sangrias: sangria,
+        suprimentos: suprimento,
+        devolucoes: devolucao,
+        saldo_final_dinheiro: inicial + vDin + suprimento - sangria - devolucao,
+      });
     })();
-  }, [caixaId, sessionToken]);
+  }, [caixaId]);
 
   const fechar = async () => {
     setConfirming(true);
-    const { data, error } = await pdvRpc.closeCash(sessionToken, caixaId);
+    const { data, error } = await supabase.rpc("pdv_fechar_caixa", {
+      _operador_id: operador.id,
+      _password: password,
+      _caixa_id: caixaId,
+    });
     setConfirming(false);
     if (error || !(data as any)?.ok) return toast.error("Falha ao fechar caixa");
     toast.success("Caixa fechado");

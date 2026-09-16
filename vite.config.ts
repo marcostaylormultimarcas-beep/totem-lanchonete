@@ -18,6 +18,15 @@ export default defineConfig(({ mode }) => ({
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+
+          if (id.includes('@supabase/')) return 'vendor-supabase';
+          if (id.includes('@tanstack/')) return 'vendor-tanstack';
+          if (id.includes('react-router')) return 'vendor-router';
+          if (id.includes('@radix-ui/')) return 'vendor-radix';
+          if (id.includes('lucide-react')) return 'vendor-icons';
+        },
       },
     },
   },

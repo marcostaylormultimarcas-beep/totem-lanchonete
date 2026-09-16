@@ -1,0 +1,31 @@
+name: PDV PIX payment confirmation audit
+
+# Historical migration already applied. This workflow is intentionally read-only
+# so it cannot rewrite the current validated PDV implementation.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify confirmed PIX payment contract exists
+        shell: bash
+        run: |
+          grep -q "pdv_pix_status_v2" src/lib/pdvSession.ts
+          grep -q "pdvRpc.pixStatus" src/pages/PDV.tsx
+          grep -q "pdvRpc.pixSale" src/pages/PDV.tsx
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build

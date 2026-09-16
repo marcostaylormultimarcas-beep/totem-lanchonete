@@ -1,0 +1,31 @@
+name: PDV PIX Cart Signature Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: visionfood-v2-commercial-ready
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Verify PIX contract
+        run: node scripts/verify-pdv-pix-contract.mjs
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Verify cart signature hardening is present
+        run: |
+          grep -q 'pixData.cartSignature' src/pages/PDV.tsx
+          grep -q 'cartSignature:' src/pages/PDV.tsx
+          echo "PIX cart signature hardening verified"

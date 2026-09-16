@@ -1,0 +1,31 @@
+name: PDV secure PIX intent audit
+
+# Historical migration already applied. This workflow is intentionally read-only
+# so it cannot rewrite the current validated PDV implementation.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify secure PIX intent contract exists
+        shell: bash
+        run: |
+          grep -q "pdv_create_pix_intent_v2" src/lib/pdvSession.ts
+          grep -q "intent_id" src/pages/PDV.tsx
+          grep -q "session_token" src/pages/PDV.tsx
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build

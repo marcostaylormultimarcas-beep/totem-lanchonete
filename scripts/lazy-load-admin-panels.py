@@ -1,44 +1,19 @@
 from pathlib import Path
 
+# Historical guarded migration retained for auditability.
+# The migration has already been applied to src/pages/Admin.tsx.
 p = Path('src/pages/Admin.tsx')
 s = p.read_text(encoding='utf-8')
 
-s = s.replace("import { useState, useEffect } from 'react';", "import { lazy, Suspense, useState, useEffect } from 'react';")
-
-imports = [
-"CrmPanel","ClientesLeadsPanel","OrdersPanel","DashboardPanel","MasterPanel","SuperAdminPanel","PlansMatrixPanel","OrgSwitcher","ChangePasswordCard","CouponsPanel","LoyaltyPanel","StorageUsageCard","MasterRecoveryPinCard","MercadoPagoCard","FiscalExportCard","EntregadoresPanel","BairrosPanel","LogisticaPanel","VisionPrimePanel","CoMarketingPanel","CoMarketingGlobalMap","OperacaoPanel","AssistenteVisionPanel","PersonalizacaoVisualPanel","ImpressaoTermicaPanel","FinanceiroPanel","EstoqueInteligentePanel","EstoquePreditivPanel","RoteirizacaoIAPanel","OneSignalPanel","AreaAtendimentoPanel","DeliveryPanel","AssinaturaPanel","MasterBillingPanel","MultiLojasPanel","SenhasPanel","OperadoresPdvPanel"
+required = [
+    "import { lazy, Suspense, useState, useEffect } from 'react';",
+    "const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));",
+    "const OperadoresPdvPanel = lazy(() => import('@/components/admin/OperadoresPdvPanel'));",
+    "<Suspense fallback=",
+    "</Suspense>",
 ]
+missing = [marker for marker in required if marker not in s]
+if missing:
+    raise SystemExit(f'admin lazy migration is not fully applied; missing: {missing}')
 
-for name in imports:
-    line = f"import {name} from '@/components/admin/{name}';\n"
-    if line not in s:
-        raise SystemExit(f'missing expected import: {name}')
-    s = s.replace(line, '')
-
-anchor = "import InstallAppButton from '@/components/pwa/InstallAppButton';\n"
-if anchor not in s:
-    raise SystemExit('missing InstallAppButton anchor')
-
-lazy_lines = "\n// Heavy admin modules are loaded only when the Admin route needs them.\n" + "\n".join(
-    f"const {name} = lazy(() => import('@/components/admin/{name}'));" for name in imports
-) + "\n"
-s = s.replace(anchor, anchor + lazy_lines)
-
-# Keep the existing Admin rendering logic intact; only wrap the authenticated
-# page in one Suspense boundary so lazy panels can resolve safely.
-marker = "  return (\n    <div className=\"admin-shell min-h-screen pb-8 text-zinc-100\">"
-replacement = "  return (\n    <Suspense fallback={<div className=\"min-h-screen flex items-center justify-center\"><Loader2 className=\"w-8 h-8 animate-spin text-primary\" /></div>}>\n    <div className=\"admin-shell min-h-screen pb-8 text-zinc-100\">"
-if marker not in s:
-    raise SystemExit('missing Admin return marker')
-s = s.replace(marker, replacement, 1)
-
-# AdminPage is followed by MasterUnlockGate, so close Suspense immediately
-# before that helper instead of assuming AdminPage is the last declaration.
-end = "    </div>\n  );\n};\n\nconst MasterUnlockGate ="
-end_replacement = "    </div>\n    </Suspense>\n  );\n};\n\nconst MasterUnlockGate ="
-if end not in s:
-    raise SystemExit('missing Admin closing marker')
-s = s.replace(end, end_replacement, 1)
-
-p.write_text(s, encoding='utf-8')
-print(f'lazy-loaded {len(imports)} admin panels')
+print('admin lazy migration already applied and verified')

@@ -9,7 +9,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/verification-round-1
+          ref: fix/verification-round-2
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -28,4 +28,4 @@ jobs:
           git add src/components/kiosk/CartScreen.tsx
           git diff --cached --quiet && exit 0
           git commit -m "fix: mobile scheduling viewport and render stability"
-          git push origin HEAD:fix/verification-round-1
+          git push origin HEAD:fix/verification-round-2

@@ -10,10 +10,12 @@ patch(p, "import { useState, useEffect } from 'react';", "import { useState, use
 patch(p, "  const [saving, setSaving] = useState(false);", "  const [saving, setSaving] = useState(false);\n  const [paymentError, setPaymentError] = useState('');")
 patch(p, "  const handleConfirmPayment = async () => {\n    setSaving(true);", "  const handleConfirmPayment = async () => {\n    if (saving) return;\n    setPaymentError('');\n    setSaving(true);")
 patch(p, "    } catch (err) {\n      console.error('Error saving order:', err);\n      setConfirmed(true);", "    } catch (err: any) {\n      console.error('Error saving order:', err);\n      const message = err?.message || 'Não foi possível registrar o pedido. Tente novamente.';\n      setPaymentError(message);\n      toast.error('Pedido não confirmado', { description: message });\n      setConfirmed(false);")
-# Render the same recoverable error above all three manual confirmation buttons.
 button='''          <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">'''
 banner='''          {paymentError && (\n            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>\n          )}\n'''
-patch(p, button, banner + button, count=3)
+patch(p, button, banner + button, count=2)
+pix='''        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">'''
+pix_banner='''        {paymentError && (\n          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>\n        )}\n'''
+patch(p, pix, pix_banner + pix, count=1)
 
 p='src/components/admin/VisionPrimePanel.tsx'
 patch(p, "  const [subscribers, setSubscribers] = useState<number>(0);", "  const [subscribers, setSubscribers] = useState<number>(0);\n  const [numeric, setNumeric] = useState({ mensalidade: '', desconto: '', frete: '' });")

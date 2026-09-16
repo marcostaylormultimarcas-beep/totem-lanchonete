@@ -549,6 +549,31 @@ function PDVMain({
     return () => clearTimeout(t);
   }, [forma, total, cart, cupomDesc?.codigo, sessionToken, caixaId, pixData]);
 
+  const [pixConfirmed, setPixConfirmed] = useState(false);
+  useEffect(() => {
+    setPixConfirmed(false);
+    if (forma !== "pix" || !pixData?.intentId || !sessionToken) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const check = async () => {
+      const { data, error } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
+      if (!active) return;
+      const status = data as any;
+      const paid = !error && status?.ok && (status?.paid === true || ["paid", "approved"].includes(String(status?.status || "").toLowerCase()) || String(status?.payment_status || "").toLowerCase() === "approved");
+      if (paid) {
+        setPixConfirmed(true);
+        toast.success("PIX confirmado");
+        return;
+      }
+      timer = setTimeout(check, 2500);
+    };
+    timer = setTimeout(check, 1200);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [forma, pixData?.intentId, sessionToken]);
+
   useEffect(() => {
     const payload = {
       storeName: operador.org_name,
@@ -590,10 +615,13 @@ function PDVMain({
   const finalizar = async () => {
     if (forma === "pix") {
       if (!pixData?.intentId) return toast.error("Gere o PIX antes de finalizar");
-      const { data: pixStatusData, error: pixStatusError } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
-      const pixStatus = pixStatusData as any;
-      if (pixStatusError || !pixStatus?.ok || !["paid", "approved"].includes(String(pixStatus.status || "").toLowerCase())) {
-        return toast.error("Pagamento PIX ainda não confirmado");
+      if (!pixConfirmed) {
+        const { data: pixStatusData, error: pixStatusError } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
+        const pixStatus = pixStatusData as any;
+        if (pixStatusError || !pixStatus?.ok || !(pixStatus?.paid === true || ["paid", "approved"].includes(String(pixStatus.status || "").toLowerCase()) || String(pixStatus.payment_status || "").toLowerCase() === "approved")) {
+          return toast.error("Pagamento PIX ainda não confirmado");
+        }
+        setPixConfirmed(true);
       }
     }
     if (cart.length === 0) return toast.error("Carrinho vazio");

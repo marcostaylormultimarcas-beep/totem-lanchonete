@@ -1,0 +1,42 @@
+name: Verification Round 6 Admin Drawer
+
+on:
+  push:
+    branches:
+      - fix/verification-round-2
+    paths:
+      - '.github/workflows/verification-round6-admin-drawer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply guarded mobile drawer fix
+        run: python scripts/fix-admin-mobile-drawer.py
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+      - name: Commit only after validation
+        run: |
+          if git diff --quiet; then
+            echo 'No guarded source changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/Admin.tsx
+          git commit -m 'fix: close admin drawer after navigation'
+          git push origin HEAD:fix/verification-round-2

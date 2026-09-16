@@ -84,7 +84,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
       if (!data) return;
       const c: any = data;
-      const couponEnabled = c.status != null ? c.status === 'ativo' : c.ativo !== false;
+      const couponEnabled = c.status != null ? c.status === true : c.ativo !== false;
       if (!couponEnabled) return;
       const now = new Date();
       if (c.data_inicio && now < new Date(c.data_inicio)) return;
@@ -112,7 +112,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       return;
     }
     const c: any = data;
-    const couponEnabled = c.status != null ? c.status === 'ativo' : c.ativo !== false;
+    const couponEnabled = c.status != null ? c.status === true : c.ativo !== false;
     if (!couponEnabled) {
       toast.error('Este cupom está inativo.');
       return;

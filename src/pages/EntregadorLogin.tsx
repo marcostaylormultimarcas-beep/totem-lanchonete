@@ -13,7 +13,7 @@ export interface EntregadorSession {
   organization_id: string;
   org_slug: string;
   org_name: string;
-  password: string;
+  session_token: string;
 }
 
 export const getEntregadorSession = (): EntregadorSession | null => {
@@ -44,7 +44,7 @@ const EntregadorLogin = () => {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase.rpc('entregador_login' as any, {
+    const { data, error } = await supabase.rpc('entregador_login_session' as any, {
       _org_slug: orgSlug.trim().toLowerCase(),
       _username: username.trim(),
       _password: password,
@@ -59,7 +59,7 @@ const EntregadorLogin = () => {
       toast.error(msg[res?.reason] || 'Falha ao entrar.');
       return;
     }
-    const session: EntregadorSession = { ...res.entregador, password };
+    const session: EntregadorSession = { ...res.entregador, session_token: res.session_token };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     toast.success(`Bem-vindo, ${res.entregador.name}!`);
     navigate('/entregador');

@@ -165,9 +165,8 @@ const EntregadorDashboard = () => {
     const send = async () => {
       const p = lastSampleRef.current;
       if (!p) return;
-      await supabase.rpc('entregador_update_location' as any, {
-        _entregador_id: session.id,
-        _password: session.password,
+      await supabase.rpc('entregador_update_location_session' as any, {
+        _session_token: session.session_token,
         _lat: p.lat,
         _lng: p.lng,
         _order_id: orderId,
@@ -220,13 +219,12 @@ const EntregadorDashboard = () => {
 
   const fetchOrders = useCallback(async (silent = false) => {
     if (!session) return;
-    const { data, error } = await supabase.rpc('entregador_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('entregador_orders_session' as any, {
+      _session_token: session.session_token,
     });
     const res: any = data;
     if (error || !res?.ok) {
-      if (res?.reason === 'invalid_credentials') {
+      if (['invalid_credentials', 'invalid_session'].includes(res?.reason)) {
         clearEntregadorSession();
         navigate('/entregador/login');
       }
@@ -262,9 +260,8 @@ const EntregadorDashboard = () => {
 
   const fetchAvailable = useCallback(async () => {
     if (!session) return;
-    const { data } = await supabase.rpc('entregador_available_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data } = await supabase.rpc('entregador_available_orders_session' as any, {
+      _session_token: session.session_token,
     });
     const res: any = data;
     if (!res?.ok) return;
@@ -312,9 +309,8 @@ const EntregadorDashboard = () => {
   const handleClaim = async (orderId: string) => {
     if (!session) return;
     setClaiming(orderId);
-    const { data, error } = await supabase.rpc('entregador_claim_order' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('entregador_claim_order_session' as any, {
+      _session_token: session.session_token,
       _order_id: orderId,
     });
     setClaiming(null);
@@ -322,6 +318,7 @@ const EntregadorDashboard = () => {
     if (error || !res?.ok) {
       const msg: Record<string, string> = {
         invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        invalid_session: 'Sessão expirada. Faça login novamente.',
         order_not_found: 'Pedido não encontrado.',
         forbidden: 'Pedido não pertence à sua loja.',
         mode_not_free: 'Modo de disputa livre não está ativo.',
@@ -404,9 +401,8 @@ const EntregadorDashboard = () => {
     }
 
     setConfirming(orderId);
-    const { data, error } = await supabase.rpc('confirm_delivery_with_code' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('confirm_delivery_with_code_session' as any, {
+      _session_token: session.session_token,
       _order_id: orderId,
       _code: code,
     });
@@ -415,6 +411,7 @@ const EntregadorDashboard = () => {
     if (error || !res?.ok) {
       const msg: Record<string, string> = {
         invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        invalid_session: 'Sessão expirada. Faça login novamente.',
         not_found: 'Pedido não encontrado.',
         order_not_found: 'Pedido não encontrado.',
         forbidden: 'Pedido não pertence à sua loja.',
@@ -433,9 +430,13 @@ const EntregadorDashboard = () => {
     fetchOrders(true);
   };
 
-  const handleLogout = () => {
-    clearEntregadorSession();
-    navigate('/entregador/login');
+  const handleLogout = async () => {
+    try {
+      await supabase.rpc('entregador_logout_session' as any, { _session_token: session?.session_token });
+    } finally {
+      clearEntregadorSession();
+      navigate('/entregador/login');
+    }
   };
 
   if (!session) return null;

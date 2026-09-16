@@ -2,6 +2,11 @@ name: PDV PIX Cart Signature Hardening
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - visionfood-v2-commercial-ready
+    paths:
+      - .github/workflows/pdv-pix-cart-signature-hardening.yml
 
 permissions:
   contents: write

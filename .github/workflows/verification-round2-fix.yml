@@ -1,6 +1,9 @@
 name: Verification Round 2 Fix
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/verification-round-2]
+    paths: [.github/workflows/verification-round2-fix.yml]
 permissions:
   contents: write
 jobs:
@@ -14,7 +17,9 @@ jobs:
         with:
           node-version: 20
       - name: Apply guarded fixes
-        run: python scripts/fix-verification-round2.py
+        run: |
+          python scripts/fix-verification-round2.py
+          python scripts/fix-assistente-vision-mobile.py
       - name: Install
         run: npm install --legacy-peer-deps --package-lock=false
       - name: Test and build
@@ -25,7 +30,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/components/kiosk/CartScreen.tsx
+          git add src/components/kiosk/CartScreen.tsx src/components/admin/AssistenteVisionPanel.tsx
           git diff --cached --quiet && exit 0
-          git commit -m "fix: mobile scheduling viewport and render stability"
+          git commit -m "fix: mobile scheduling and assistant responsiveness"
           git push origin HEAD:fix/verification-round-2

@@ -1,55 +1,57 @@
 import { toast } from 'sonner';
 import { getKioskHomePath } from '@/lib/kioskHome';
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 import VencimentoBanner from '@/components/admin/VencimentoBanner';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import CrmPanel from '@/components/admin/CrmPanel';
-import ClientesLeadsPanel from '@/components/admin/ClientesLeadsPanel';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
-import OrdersPanel from '@/components/admin/OrdersPanel';
-import DashboardPanel from '@/components/admin/DashboardPanel';
-import MasterPanel from '@/components/admin/MasterPanel';
-import SuperAdminPanel from '@/components/admin/SuperAdminPanel';
-import PlansMatrixPanel from '@/components/admin/PlansMatrixPanel';
 import FeatureGate from '@/components/FeatureGate';
-import OrgSwitcher from '@/components/admin/OrgSwitcher';
-import ChangePasswordCard from '@/components/admin/ChangePasswordCard';
-import CouponsPanel from '@/components/admin/CouponsPanel';
-import LoyaltyPanel from '@/components/admin/LoyaltyPanel';
-import StorageUsageCard from '@/components/admin/StorageUsageCard';
-import MasterRecoveryPinCard from '@/components/admin/MasterRecoveryPinCard';
-import MercadoPagoCard from '@/components/admin/MercadoPagoCard';
-import FiscalExportCard from '@/components/admin/FiscalExportCard';
-import EntregadoresPanel from '@/components/admin/EntregadoresPanel';
-import BairrosPanel from '@/components/admin/BairrosPanel';
-import LogisticaPanel from '@/components/admin/LogisticaPanel';
-import VisionPrimePanel from '@/components/admin/VisionPrimePanel';
-import CoMarketingPanel from '@/components/admin/CoMarketingPanel';
-import CoMarketingGlobalMap from '@/components/admin/CoMarketingGlobalMap';
-import OperacaoPanel from '@/components/admin/OperacaoPanel';
-import AssistenteVisionPanel from '@/components/admin/AssistenteVisionPanel';
-import PersonalizacaoVisualPanel from '@/components/admin/PersonalizacaoVisualPanel';
-import ImpressaoTermicaPanel from '@/components/admin/ImpressaoTermicaPanel';
-import FinanceiroPanel from '@/components/admin/FinanceiroPanel';
-import EstoqueInteligentePanel from '@/components/admin/EstoqueInteligentePanel';
-import EstoquePreditivPanel from '@/components/admin/EstoquePreditivPanel';
-import RoteirizacaoIAPanel from '@/components/admin/RoteirizacaoIAPanel';
-import OneSignalPanel from '@/components/admin/OneSignalPanel';
-import AreaAtendimentoPanel from '@/components/admin/AreaAtendimentoPanel';
-import DeliveryPanel from '@/components/admin/DeliveryPanel';
-import AssinaturaPanel from '@/components/admin/AssinaturaPanel';
-import MasterBillingPanel from '@/components/admin/MasterBillingPanel';
-import MultiLojasPanel from '@/components/admin/MultiLojasPanel';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
-import SenhasPanel from '@/components/admin/SenhasPanel';
-import OperadoresPdvPanel from '@/components/admin/OperadoresPdvPanel';
+
+// Heavy admin modules are loaded only when the Admin route needs them.
+const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
+const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
+const OrdersPanel = lazy(() => import('@/components/admin/OrdersPanel'));
+const DashboardPanel = lazy(() => import('@/components/admin/DashboardPanel'));
+const MasterPanel = lazy(() => import('@/components/admin/MasterPanel'));
+const SuperAdminPanel = lazy(() => import('@/components/admin/SuperAdminPanel'));
+const PlansMatrixPanel = lazy(() => import('@/components/admin/PlansMatrixPanel'));
+const OrgSwitcher = lazy(() => import('@/components/admin/OrgSwitcher'));
+const ChangePasswordCard = lazy(() => import('@/components/admin/ChangePasswordCard'));
+const CouponsPanel = lazy(() => import('@/components/admin/CouponsPanel'));
+const LoyaltyPanel = lazy(() => import('@/components/admin/LoyaltyPanel'));
+const StorageUsageCard = lazy(() => import('@/components/admin/StorageUsageCard'));
+const MasterRecoveryPinCard = lazy(() => import('@/components/admin/MasterRecoveryPinCard'));
+const MercadoPagoCard = lazy(() => import('@/components/admin/MercadoPagoCard'));
+const FiscalExportCard = lazy(() => import('@/components/admin/FiscalExportCard'));
+const EntregadoresPanel = lazy(() => import('@/components/admin/EntregadoresPanel'));
+const BairrosPanel = lazy(() => import('@/components/admin/BairrosPanel'));
+const LogisticaPanel = lazy(() => import('@/components/admin/LogisticaPanel'));
+const VisionPrimePanel = lazy(() => import('@/components/admin/VisionPrimePanel'));
+const CoMarketingPanel = lazy(() => import('@/components/admin/CoMarketingPanel'));
+const CoMarketingGlobalMap = lazy(() => import('@/components/admin/CoMarketingGlobalMap'));
+const OperacaoPanel = lazy(() => import('@/components/admin/OperacaoPanel'));
+const AssistenteVisionPanel = lazy(() => import('@/components/admin/AssistenteVisionPanel'));
+const PersonalizacaoVisualPanel = lazy(() => import('@/components/admin/PersonalizacaoVisualPanel'));
+const ImpressaoTermicaPanel = lazy(() => import('@/components/admin/ImpressaoTermicaPanel'));
+const FinanceiroPanel = lazy(() => import('@/components/admin/FinanceiroPanel'));
+const EstoqueInteligentePanel = lazy(() => import('@/components/admin/EstoqueInteligentePanel'));
+const EstoquePreditivPanel = lazy(() => import('@/components/admin/EstoquePreditivPanel'));
+const RoteirizacaoIAPanel = lazy(() => import('@/components/admin/RoteirizacaoIAPanel'));
+const OneSignalPanel = lazy(() => import('@/components/admin/OneSignalPanel'));
+const AreaAtendimentoPanel = lazy(() => import('@/components/admin/AreaAtendimentoPanel'));
+const DeliveryPanel = lazy(() => import('@/components/admin/DeliveryPanel'));
+const AssinaturaPanel = lazy(() => import('@/components/admin/AssinaturaPanel'));
+const MasterBillingPanel = lazy(() => import('@/components/admin/MasterBillingPanel'));
+const MultiLojasPanel = lazy(() => import('@/components/admin/MultiLojasPanel'));
+const SenhasPanel = lazy(() => import('@/components/admin/SenhasPanel'));
+const OperadoresPdvPanel = lazy(() => import('@/components/admin/OperadoresPdvPanel'));
 
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -793,6 +795,7 @@ const AdminPage = () => {
   }
 
   return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
     <div className="admin-shell min-h-screen pb-8 text-zinc-100">
       <InstallAppButton />
 
@@ -1910,6 +1913,7 @@ const AdminPage = () => {
         </div>
       </nav>
     </div>
+    </Suspense>
   );
 };
 

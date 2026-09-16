@@ -1,29 +1,21 @@
-name: PDV PIX Cart Signature Hardening
+name: PDV PIX Cart Signature Audit
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - visionfood-v2-commercial-ready
-    paths:
-      - .github/workflows/pdv-pix-cart-signature-hardening.yml
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  harden:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Apply guarded migration
-        run: python3 scripts/harden-pdv-pix-cart-signature.py
       - name: Verify PIX contract
         run: node scripts/verify-pdv-pix-contract.mjs
       - name: Install dependencies
@@ -32,14 +24,8 @@ jobs:
         run: npm test
       - name: Build
         run: npm run build
-      - name: Commit guarded change
+      - name: Verify cart signature hardening is present
         run: |
-          if git diff --quiet -- src/pages/PDV.tsx; then
-            echo "No PDV change required"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/pages/PDV.tsx
-          git commit -m "fix: invalidate PIX intent when cart contents change"
-          git push origin HEAD:visionfood-v2-commercial-ready
+          grep -q 'pixData.cartSignature' src/pages/PDV.tsx
+          grep -q 'cartSignature:' src/pages/PDV.tsx
+          echo "PIX cart signature hardening verified"

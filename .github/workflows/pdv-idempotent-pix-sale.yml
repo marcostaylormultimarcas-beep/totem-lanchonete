@@ -1,9 +1,9 @@
 name: PDV idempotent PIX sale
+
+# Historical one-shot migration. Retained for manual recovery only.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths: ['.github/workflows/pdv-idempotent-pix-sale.yml','scripts/migrate-pdv-idempotent-pix-sale.py']
   workflow_dispatch:
+
 permissions:
   contents: write
 jobs:

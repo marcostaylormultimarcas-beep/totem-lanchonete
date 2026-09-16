@@ -69,5 +69,6 @@ export const pdvRpc = {
   sale: (sessionToken: string, caixaId: string, items: unknown[], forma: string, total: number, cupomCode: string, desconto: number) => rpc("pdv_registrar_venda_v2", { _session_token: sessionToken, _caixa_id: caixaId, _items: items, _forma: forma, _total: total, _cupom_code: cupomCode, _desconto: desconto }),
   findOrder: (sessionToken: string, query: string) => rpc("pdv_buscar_pedido_v2", { _session_token: sessionToken, _query: query }),
   refund: (sessionToken: string, caixaId: string, orderId: string, items: unknown[], valor: number, motivo: string) => rpc("pdv_devolver_pedido_v2", { _session_token: sessionToken, _caixa_id: caixaId, _order_id: orderId, _items_devolvidos: items, _valor_devolucao: valor, _motivo: motivo }),
+  cashSummary: (sessionToken: string, caixaId: string) => rpc("pdv_caixa_resumo_v2", { _session_token: sessionToken, _caixa_id: caixaId }),
   closeCash: (sessionToken: string, caixaId: string) => rpc("pdv_fechar_caixa_v2", { _session_token: sessionToken, _caixa_id: caixaId }),
 };

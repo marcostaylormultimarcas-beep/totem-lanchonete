@@ -1,35 +1,31 @@
-name: PDV secure PIX intent
+name: PDV secure PIX intent audit
 
-# Historical one-shot migration. Retained for manual recovery only.
+# Historical migration already applied. This workflow is intentionally read-only
+# so it cannot rewrite the current validated PDV implementation.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  migrate-and-validate:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-      - name: Apply guarded secure PIX migration
-        run: python3 scripts/migrate-pdv-secure-pix-intent.py
+      - name: Verify secure PIX intent contract exists
+        shell: bash
+        run: |
+          grep -q "pdv_create_pix_intent_v2" src/lib/pdvSession.ts
+          grep -q "intent_id" src/pages/PDV.tsx
+          grep -q "session_token" src/pages/PDV.tsx
       - name: Install dependencies
         run: npm install --legacy-peer-deps --package-lock=false
-      - name: Build
+      - name: Unit tests
+        run: npm test
+      - name: Production build
         run: npm run build
-      - name: Commit only after successful build
-        run: |
-          if git diff --quiet -- src/pages/PDV.tsx; then echo 'No PDV changes produced'; exit 1; fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/PDV.tsx
-          git commit -m 'fix: generate PDV PIX from server validated intent'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready

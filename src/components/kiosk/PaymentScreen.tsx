@@ -47,8 +47,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false, payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
   const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
   const [mpLoading, setMpLoading] = useState(false);
-  // Online card form (placeholder; integração futura)
-  const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
   const { config: primeCfg } = useVisionPrimeConfig(orgId);
   const { status: primeStatus } = useVisionPrimeStatus(orgId);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
@@ -398,7 +396,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix (QR Code)', desc: 'Pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
     storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
     storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
-    storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Pagar com cartão pelo celular', icon: <Globe className="w-6 h-6" /> },
+    // Cartão online permanece oculto até existir checkout tokenizado pelo gateway.
+    // Não coletar PAN/CVV diretamente no VisionFood.
+    false && storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Indisponível até configurar gateway seguro', icon: <Globe className="w-6 h-6" /> },
   ].filter(Boolean) as any;
 
   // Auto-select if only one method enabled
@@ -491,57 +491,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     );
   }
 
-  // === Online card form (preparado para gateway) ===
-  if (method === 'online') {
-    const canSubmit = card.number.replace(/\s/g, '').length >= 13 && card.holder.trim().length > 2 && /^\d{2}\/\d{2}$/.test(card.expiry) && card.cvv.length >= 3;
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header title={<>Cartão <span className="text-primary">Online</span></>} />
-        <div className="flex-1 flex flex-col px-6 py-6 gap-4 max-w-md mx-auto w-full">
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">Total</p>
-            <p className="text-3xl font-black text-primary">{formatCurrency(total)}</p>
-          </div>
-          <div className="kiosk-card p-4 space-y-3">
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Número do cartão</span>
-              <input inputMode="numeric" maxLength={19} placeholder="0000 0000 0000 0000" value={card.number}
-                onChange={e => setCard({ ...card, number: e.target.value.replace(/[^\d ]/g, '') })}
-                className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-            </label>
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Nome impresso no cartão</span>
-              <input maxLength={60} placeholder="NOME COMPLETO" value={card.holder}
-                onChange={e => setCard({ ...card, holder: e.target.value.toUpperCase() })}
-                className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-muted-foreground">Validade</span>
-                <input inputMode="numeric" maxLength={5} placeholder="MM/AA" value={card.expiry}
-                  onChange={e => {
-                    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
-                    setCard({ ...card, expiry: v });
-                  }}
-                  className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-              </label>
-              <label className="block">
-                <span className="text-xs text-muted-foreground">CVV</span>
-                <input inputMode="numeric" maxLength={4} placeholder="123" value={card.cvv}
-                  onChange={e => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '') })}
-                  className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-              </label>
-            </div>
-            <p className="text-[11px] text-muted-foreground">🔒 Em breve: cobrança real via gateway. Por enquanto o pedido é enviado e o lojista confirma o pagamento manualmente.</p>
-          </div>
-          <button onClick={handleConfirmPayment} disabled={saving || !canSubmit} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Processando...' : `Pagar ${formatCurrency(total)}`}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Cartão online não renderiza formulário local: dados sensíveis devem ser tokenizados pelo provedor de pagamento.
 
   // === Pix (default original flow) ===
   return (

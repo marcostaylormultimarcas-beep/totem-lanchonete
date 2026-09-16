@@ -1,51 +1,36 @@
-name: Kiosk Asset Optimization
+name: Kiosk Asset Optimization Audit
 
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - '.github/workflows/kiosk-asset-optimization.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  optimize-and-validate:
+  verify-assets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
 
-      - name: Optimize kiosk choice PNGs
+      - name: Verify optimized kiosk assets
         shell: bash
         run: |
-          python -m pip install --disable-pip-version-check pillow
           python - <<'PY'
           from pathlib import Path
-          from PIL import Image
 
-          targets = [
-              Path('src/assets/icon-comer-local.png'),
-              Path('src/assets/icon-para-viagem.png'),
-          ]
-          for path in targets:
-              before = path.stat().st_size
-              with Image.open(path) as im:
-                  im.load()
-                  if im.width > 384 or im.height > 384:
-                      im.thumbnail((384, 384), Image.Resampling.LANCZOS)
-                  im.save(path, format='PNG', optimize=True, compress_level=9)
-              after = path.stat().st_size
-              print(f'{path}: {before} -> {after} bytes')
-              if after >= before:
-                  raise SystemExit(f'optimization did not reduce {path}')
+          limits = {
+              Path('src/assets/icon-comer-local.png'): 100_000,
+              Path('src/assets/icon-para-viagem.png'): 100_000,
+          }
+          for path, limit in limits.items():
+              size = path.stat().st_size
+              print(f'{path}: {size} bytes')
+              if size > limit:
+                  raise SystemExit(f'{path} exceeds optimized size limit ({limit} bytes)')
           PY
 
       - name: Install dependencies
@@ -56,17 +41,3 @@ jobs:
 
       - name: Production build
         run: npm run build
-
-      - name: Commit optimized assets
-        shell: bash
-        run: |
-          if git diff --quiet -- src/assets/icon-comer-local.png src/assets/icon-para-viagem.png; then
-            echo 'No asset changes to commit.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/assets/icon-comer-local.png src/assets/icon-para-viagem.png
-          git commit -m 'perf: optimize kiosk choice assets'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready

@@ -1,5 +1,6 @@
 -- VisionFood V2 — token-authenticated driver operations (phase 37)
--- Additive: legacy password RPCs remain temporarily for rollback compatibility.
+-- Safe base RPCs only. Location and delivery-confirmation RPCs are intentionally
+-- defined in phases 38/39 after the verified production schema is aligned.
 
 CREATE OR REPLACE FUNCTION public.entregador_orders_session(_session_token text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
@@ -45,36 +46,9 @@ BEGIN
   RETURN jsonb_build_object('ok',true);
 END $$;
 
-CREATE OR REPLACE FUNCTION public.entregador_update_location_session(_session_token text,_lat numeric,_lng numeric,_order_id uuid DEFAULT NULL)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
-DECLARE v_e public.entregadores%ROWTYPE;
-BEGIN
-  v_e := public.entregador_session_driver(_session_token);
-  IF v_e.id IS NULL THEN RETURN jsonb_build_object('ok',false,'reason','invalid_session'); END IF;
-  UPDATE public.entregadores SET last_lat=_lat,last_lng=_lng,last_location_at=now(),last_location_order_id=_order_id,updated_at=now() WHERE id=v_e.id;
-  RETURN jsonb_build_object('ok',true);
-END $$;
-
-CREATE OR REPLACE FUNCTION public.confirm_delivery_with_code_session(_session_token text,_order_id uuid,_code text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
-DECLARE v_e public.entregadores%ROWTYPE; v_order public.orders%ROWTYPE;
-BEGIN
-  v_e := public.entregador_session_driver(_session_token);
-  IF v_e.id IS NULL THEN RETURN jsonb_build_object('ok',false,'reason','invalid_session'); END IF;
-  SELECT * INTO v_order FROM public.orders WHERE id=_order_id FOR UPDATE;
-  IF NOT FOUND THEN RETURN jsonb_build_object('ok',false,'reason','order_not_found'); END IF;
-  IF v_order.organization_id<>v_e.organization_id THEN RETURN jsonb_build_object('ok',false,'reason','forbidden'); END IF;
-  IF v_order.entregador_id IS DISTINCT FROM v_e.id THEN RETURN jsonb_build_object('ok',false,'reason','not_assigned'); END IF;
-  IF v_order.status='delivered' THEN RETURN jsonb_build_object('ok',false,'reason','already_delivered'); END IF;
-  IF v_order.status='cancelled' THEN RETURN jsonb_build_object('ok',false,'reason','cancelled'); END IF;
-  IF COALESCE(v_order.delivery_code,'')='' OR v_order.delivery_code<>_code THEN RETURN jsonb_build_object('ok',false,'reason','invalid_code'); END IF;
-  UPDATE public.orders SET status='delivered',updated_at=now() WHERE id=_order_id;
-  INSERT INTO public.entregas_log(order_id,organization_id,entregador_id,delivered_at) VALUES(_order_id,v_order.organization_id,v_e.id,now());
-  RETURN jsonb_build_object('ok',true);
-END $$;
-
+REVOKE ALL ON FUNCTION public.entregador_orders_session(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.entregador_available_orders_session(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.entregador_claim_order_session(text,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.entregador_orders_session(text) TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.entregador_available_orders_session(text) TO anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.entregador_claim_order_session(text,uuid) TO anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.entregador_update_location_session(text,numeric,numeric,uuid) TO anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.confirm_delivery_with_code_session(text,uuid,text) TO anon,authenticated;

@@ -1,40 +1,31 @@
-name: PDV idempotent PIX sale
+name: PDV idempotent PIX sale audit
 
-# Historical one-shot migration. Retained for manual recovery only.
+# Historical migration already applied. This workflow is intentionally read-only
+# so it cannot rewrite the current validated PDV implementation.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  migrate-and-validate:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { ref: visionfood-v2-commercial-ready, fetch-depth: 0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - name: Add idempotent PIX sale helper
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify idempotent PIX sale contract exists
+        shell: bash
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('src/lib/pdvSession.ts'); s=p.read_text()
-          needle='  pixStatus: (sessionToken: string, intentId: string) => rpc("pdv_pix_status_v2", { _session_token: sessionToken, _intent_id: intentId }),\n'
-          add=needle+'  pixSale: (sessionToken: string, intentId: string) => rpc("pdv_registrar_venda_pix_v2", { _session_token: sessionToken, _intent_id: intentId }),\n'
-          if 'pdv_registrar_venda_pix_v2' not in s:
-            if s.count(needle)!=1: raise SystemExit('helper guard failed')
-            s=s.replace(needle,add,1); p.write_text(s)
-          PY
-      - name: Apply guarded migration
-        run: python3 scripts/migrate-pdv-idempotent-pix-sale.py
-      - run: npm install --legacy-peer-deps --package-lock=false
-      - run: npm run build
-      - name: Commit validated change
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/lib/pdvSession.ts src/pages/PDV.tsx
-          git diff --cached --quiet && { echo 'No changes'; exit 1; }
-          git commit -m 'fix: finalize PIX sale through idempotent server RPC'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready
+          grep -q "pdv_registrar_venda_pix_v2" src/lib/pdvSession.ts
+          grep -q "pdvRpc.pixSale" src/pages/PDV.tsx
+          grep -q "pdvRpc.pixStatus" src/pages/PDV.tsx
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build

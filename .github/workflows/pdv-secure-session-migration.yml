@@ -1,15 +1,8 @@
 name: PDV secure session migration
 
+# Historical one-shot migration. Retained for manual recovery only.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - '.github/workflows/pdv-secure-session-migration.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/pdv-secure-session-migration.yml'
-      - 'scripts/migrate-pdv-secure-session.py'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,8 +22,6 @@ jobs:
       - name: Apply guarded migration
         run: python3 scripts/migrate-pdv-secure-session.py
       - name: Install dependencies
-        # package-lock.json is stale relative to package.json in the existing project.
-        # Install from the current manifest without modifying the repository lockfile.
         run: npm install --legacy-peer-deps --package-lock=false
       - name: Build
         run: npm run build

@@ -1,0 +1,39 @@
+name: Verification Round 11 Card Security
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-2
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply guarded card security fix
+        run: python3 scripts/fix-disable-placeholder-online-card.py
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+      - name: Security assertions
+        run: |
+          ! grep -q 'card\.cvv' src/components/kiosk/PaymentScreen.tsx
+          ! grep -q 'Número do cartão' src/components/kiosk/PaymentScreen.tsx
+          grep -q 'false && storeSettings.payOnline' src/components/kiosk/PaymentScreen.tsx
+      - name: Commit validated fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/kiosk/PaymentScreen.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m 'security: stop collecting raw online card data'
+          git push origin HEAD:fix/verification-round-2

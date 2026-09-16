@@ -55,6 +55,9 @@ const EntregadorDashboard = () => {
   const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
+  const initialSendTimerRef = useRef<number | null>(null);
+  const locationRequestInFlightRef = useRef(false);
+  const trackingGenerationRef = useRef(0);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Raio máximo permitido para confirmar a entrega (metros)
@@ -131,6 +134,12 @@ const EntregadorDashboard = () => {
 
 
   const stopTracking = useCallback(() => {
+    trackingGenerationRef.current += 1;
+    locationRequestInFlightRef.current = false;
+    if (initialSendTimerRef.current !== null) {
+      clearTimeout(initialSendTimerRef.current);
+      initialSendTimerRef.current = null;
+    }
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -157,6 +166,7 @@ const EntregadorDashboard = () => {
       return;
     }
     stopTracking();
+    const trackingGeneration = trackingGenerationRef.current;
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
@@ -172,19 +182,29 @@ const EntregadorDashboard = () => {
     );
     // envia a cada 15s
     const send = async () => {
+      if (trackingGeneration !== trackingGenerationRef.current || locationRequestInFlightRef.current) return;
       const p = lastSampleRef.current;
       if (!p) return;
-      const { data } = await supabase.rpc('entregador_update_location_session' as any, {
-        _session_token: session.session_token,
-        _lat: p.lat,
-        _lng: p.lng,
-        _order_id: orderId,
-      });
-      if (isInvalidSession(data)) expireSession();
+      locationRequestInFlightRef.current = true;
+      try {
+        const { data } = await supabase.rpc('entregador_update_location_session' as any, {
+          _session_token: session.session_token,
+          _lat: p.lat,
+          _lng: p.lng,
+          _order_id: orderId,
+        });
+        if (trackingGeneration !== trackingGenerationRef.current) return;
+        if (isInvalidSession(data)) expireSession();
+      } finally {
+        if (trackingGeneration === trackingGenerationRef.current) locationRequestInFlightRef.current = false;
+      }
     };
     sendTimerRef.current = window.setInterval(send, 15000);
-    // primeiro envio rápido
-    setTimeout(send, 2500);
+    // primeiro envio rápido; cancelável ao fechar mapa/logout/expirar sessão
+    initialSendTimerRef.current = window.setTimeout(() => {
+      initialSendTimerRef.current = null;
+      void send();
+    }, 2500);
   }, [session, stopTracking]);
 
   useEffect(() => () => stopTracking(), [stopTracking]);

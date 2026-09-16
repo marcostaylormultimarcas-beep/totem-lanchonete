@@ -31,6 +31,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [primeActive, setPrimeActive] = useState(false);
+  const [primeConfig, setPrimeConfig] = useState<{ valor_mensalidade:number; desconto_percentual:number; frete_gratis_minimo:number } | null>(null);
+  const [activeCoupon, setActiveCoupon] = useState<{ codigo:string; tipo:string; valor:number } | null>(null);
   const [parceriasAtivas, setParceriasAtivas] = useState(0);
   const [feedback, setFeedback] = useState<Record<string, { action: string; reason: string }>>({});
   const [stats, setStats] = useState<Record<string, { rate: number; conv: number; sent: number; dismissed: number }>>({});
@@ -46,10 +48,11 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       setLoading(true);
       // Re-atribui conversões para o ranking refletir vendas recentes
       await supabase.rpc('ai_attribute_conversions' as any, { _org: organizationId });
-      const [ord, prime, parc, fb, st] = await Promise.all([
+      const [ord, prime, coupon, parc, fb, st] = await Promise.all([
         supabase.from('orders').select('id,customer_name,customer_phone,total,created_at,status')
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
-        supabase.from('vision_prime_config').select('ativo').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('vision_prime_config').select('ativo,valor_mensalidade,desconto_percentual,frete_gratis_minimo').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('cupons').select('codigo,tipo,valor').eq('organization_id', organizationId).eq('ativo', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
         supabase.from('parcerias').select('id,status,habilitada_origem,habilitada_parceira')
           .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`),
         supabase.from('assistente_vision_feedback').select('suggestion_key,action,reason')
@@ -58,6 +61,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       ]);
       setOrders((ord.data as OrderRow[]) || []);
       setPrimeActive(Boolean(prime.data?.ativo));
+      setPrimeConfig(prime.data?.ativo ? { valor_mensalidade:Number((prime.data as any).valor_mensalidade)||0, desconto_percentual:Number((prime.data as any).desconto_percentual)||0, frete_gratis_minimo:Number((prime.data as any).frete_gratis_minimo)||0 } : null);
+      setActiveCoupon(coupon.data ? { codigo:(coupon.data as any).codigo, tipo:(coupon.data as any).tipo, valor:Number((coupon.data as any).valor)||0 } : null);
       setParceriasAtivas(((parc.data as any[]) || []).filter(p => p.status === 'active' && p.habilitada_origem && p.habilitada_parceira).length);
       const map: Record<string, { action: string; reason: string }> = {};
       ((fb.data as any[]) || []).forEach(r => { map[r.suggestion_key] = { action: r.action, reason: r.reason || '' }; });
@@ -106,7 +111,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'reativacao',
         title: 'Recuperar Clientes Inativos',
         description: `Você tem ${inativos.length} cliente${inativos.length > 1 ? 's' : ''} que não pede${inativos.length > 1 ? 'm' : ''} há 40 dias ou mais.`,
-        template: `Olá [Nome], sua última escolha em ${storeName} está com saudade! 😋 Volte hoje com o cupom *VOLTE15* e ganhe 10% OFF no seu pedido.`,
+        template: activeCoupon ? `Olá [Nome], sentimos sua falta em ${storeName}! 😋 Volte e aproveite o cupom *${activeCoupon.codigo}* (${activeCoupon.tipo === 'porcentagem' ? `${activeCoupon.valor}% de desconto` : `${brl(activeCoupon.valor)} de desconto`}).` : `Olá [Nome], sentimos sua falta em ${storeName}! 😋 Que tal fazer um novo pedido hoje?`,
         audience: inativos.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -119,7 +124,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'ticket',
         title: 'Aumentar Ticket Médio',
         description: `${ticketBaixo.length} cliente${ticketBaixo.length > 1 ? 's' : ''} compra${ticketBaixo.length > 1 ? 'm' : ''} sempre abaixo do ticket médio (${brl(ticketMedio)}). Ofereça combos.`,
-        template: `Oi [Nome]! Que tal turbinar seu pedido? 🍔🍟 Adicione nosso *Combo do Dia* e leve batata + refri por só R$ 15. Aproveite!`,
+        template: `Oi [Nome]! Que tal turbinar seu próximo pedido em ${storeName}? 🍔🍟 Confira os combos e adicionais disponíveis no cardápio.`,
         audience: ticketBaixo.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -131,8 +136,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         icon: Crown,
         category: 'prime',
         title: 'Ative o Clube Vision Prime',
-        description: 'Você ainda não ativou o clube de assinatura. Lojas com Prime ativo aumentam em até 30% a recorrência mensal.',
-        template: `🌟 Cliente VIP! Apresentamos o *Vision Prime* em ${storeName}: por R$ 19,90/mês você ganha 10% OFF em todos os pedidos e frete grátis. Assine hoje mesmo!`,
+        description: 'Você ainda não ativou o clube de assinatura. Configure mensalidade e benefícios antes de divulgá-lo aos clientes.',
+        template: `🌟 Cliente VIP! Em breve você poderá conhecer os benefícios do *Vision Prime* em ${storeName}.`,
         audience: vips.map(c => ({ phone: c.phone, name: c.name })),
       });
     } else if (vips.length >= 1) {
@@ -143,7 +148,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'prime',
         title: 'Convide VIPs para o Vision Prime',
         description: `${vips.length} clientes com 5+ pedidos. Eles são os candidatos perfeitos para virar assinantes Prime.`,
-        template: `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Queremos te convidar para o *Vision Prime*: 10% OFF em todos os pedidos + frete grátis. Apenas R$ 19,90/mês. Quer fazer parte?`,
+        template: primeConfig ? `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Conheça o *Vision Prime* em ${storeName}: ${primeConfig.desconto_percentual > 0 ? `${primeConfig.desconto_percentual}% de desconto` : 'benefícios exclusivos'}${primeConfig.frete_gratis_minimo >= 0 ? ` e frete grátis conforme a regra configurada` : ''}. Mensalidade: ${brl(primeConfig.valor_mensalidade)}. Quer fazer parte?` : `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Conheça o *Vision Prime* em ${storeName}.`,
         audience: vips.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -190,7 +195,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     return scored
       .filter(s => feedback[s.key]?.action !== 'dismissed')
       .sort((a, b) => a.priority - b.priority);
-  }, [orders, primeActive, parceriasAtivas, feedback, stats, storeName]);
+  }, [orders, primeActive, primeConfig, activeCoupon, parceriasAtivas, feedback, stats, storeName]);
 
   const registerFeedback = async (key: string, action: 'approved' | 'dismissed' | 'sent', reason = '', message_sent = '') => {
     if (!organizationId) return;

@@ -514,12 +514,21 @@ function PDVMain({
     setPixLoading(true);
     const t = setTimeout(async () => {
       try {
+        const pixItems = cart.map((x) => ({ product_id: x.product_id, quantity: x.quantity }));
+        const { data: intentData, error: intentError } = await pdvRpc.createPixIntent(
+          sessionToken,
+          caixaId,
+          pixItems,
+          cupomDesc?.codigo || "",
+        );
+        const intent = intentData as any;
+        if (myReq !== pixReqId.current) return;
+        if (intentError || !intent?.ok || !intent?.intent_id) {
+          setPixData(null);
+          return;
+        }
         const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
-          body: {
-            organization_id: operador.organization_id,
-            amount: total,
-            description: `PDV ${operador.org_name}`,
-          },
+          body: { intent_id: intent.intent_id, session_token: sessionToken },
         });
         if (myReq !== pixReqId.current) return; // resposta atrasada — ignora
         if (error || !(data as any)?.ok) {
@@ -530,14 +539,14 @@ function PDVMain({
         setPixData({
           qrBase64: d.qr_code_base64 || "",
           copiaECola: d.qr_code || "",
-          amount: total,
+          amount: Number(d.amount ?? intent.amount) || 0,
         });
       } finally {
         if (myReq === pixReqId.current) setPixLoading(false);
       }
     }, 350); // pequeno debounce p/ não disparar a cada centavo
     return () => clearTimeout(t);
-  }, [forma, total, operador.organization_id, operador.org_name, pixData]);
+  }, [forma, total, cart, cupomDesc?.codigo, sessionToken, caixaId, pixData]);
 
   useEffect(() => {
     const payload = {

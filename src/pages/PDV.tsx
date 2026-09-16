@@ -1222,33 +1222,15 @@ function FechamentoModal({
   // Pré-visualização (carrega resumo parcial via movimentos)
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("caixa_movimentos")
-        .select("tipo,forma_pagamento,valor")
-        .eq("caixa_id", caixaId);
-      if (!data) return;
-      const sum = (cond: (r: any) => boolean) =>
-        data.filter(cond).reduce((s, r: any) => s + Number(r.valor), 0);
-      const inicial = sum((r) => r.tipo === "abertura");
-      const vDin = sum((r) => r.tipo === "venda" && r.forma_pagamento === "dinheiro");
-      const vPix = sum((r) => r.tipo === "venda" && r.forma_pagamento === "pix");
-      const vCart = sum((r) => r.tipo === "venda" && r.forma_pagamento === "cartao");
-      const sangria = sum((r) => r.tipo === "sangria");
-      const suprimento = sum((r) => r.tipo === "suprimento");
-      const devolucao = sum((r) => r.tipo === "devolucao");
-      setResumo({
-        saldo_inicial: inicial,
-        vendas_dinheiro: vDin,
-        vendas_pix: vPix,
-        vendas_cartao: vCart,
-        total_vendas: vDin + vPix + vCart,
-        sangrias: sangria,
-        suprimentos: suprimento,
-        devolucoes: devolucao,
-        saldo_final_dinheiro: inicial + vDin + suprimento - sangria - devolucao,
-      });
+      const { data, error } = await pdvRpc.cashSummary(sessionToken, caixaId);
+      const res = data as any;
+      if (error || !res?.ok || !res?.resumo) {
+        toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Falha ao carregar resumo do caixa");
+        return;
+      }
+      setResumo(res.resumo);
     })();
-  }, [caixaId]);
+  }, [caixaId, sessionToken]);
 
   const fechar = async () => {
     setConfirming(true);

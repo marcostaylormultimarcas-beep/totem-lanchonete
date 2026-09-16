@@ -1077,26 +1077,17 @@ function DevolucaoModal({
   const buscar = async () => {
     if (!orderId.trim()) return;
     setLoading(true);
-    let q = supabase
-      .from("orders")
-      .select("id,items,total,status,customer_name,created_at,organization_id")
-      .eq("organization_id", operador.organization_id)
-      .limit(1);
-    // Permitir buscar por uuid completo OU pelos primeiros caracteres
-    if (orderId.includes("-") && orderId.length >= 30) {
-      q = q.eq("id", orderId.trim());
-    } else {
-      q = q.ilike("id", `${orderId.trim()}%`);
-    }
-    const { data } = await q.maybeSingle();
+    const { data, error } = await pdvRpc.findOrder(sessionToken, orderId.trim());
     setLoading(false);
-    if (!data) {
+    const res = data as any;
+    if (error || !res?.ok || !res?.order) {
       setOrder(null);
       setItems([]);
-      return toast.error("Pedido não encontrado");
+      return toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Pedido não encontrado");
     }
-    setOrder(data);
-    const arr = Array.isArray(data.items) ? data.items : [];
+    const dataOrder = res.order;
+    setOrder(dataOrder);
+    const arr = Array.isArray(dataOrder.items) ? dataOrder.items : [];
     setItems(arr);
     setSelected({});
   };

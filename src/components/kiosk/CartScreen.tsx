@@ -80,10 +80,12 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
     (async () => {
       const code = pending.trim().toUpperCase();
       const { data } = await supabase.from('cupons' as any)
-        .select('*').eq('organization_id', orgId).eq('codigo', code).eq('status', 'ativo').maybeSingle();
+        .select('*').eq('organization_id', orgId).ilike('codigo', code).maybeSingle();
       try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
       if (!data) return;
       const c: any = data;
+      const couponEnabled = c.status != null ? c.status === 'ativo' : c.ativo !== false;
+      if (!couponEnabled) return;
       const now = new Date();
       if (c.data_inicio && now < new Date(c.data_inicio)) return;
       if (c.data_fim && now > new Date(c.data_fim)) return;
@@ -102,8 +104,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       .from('cupons' as any)
       .select('*')
       .eq('organization_id', orgId)
-      .eq('codigo', code)
-      .eq('status', 'ativo')
+      .ilike('codigo', code)
       .maybeSingle();
     setValidating(false);
     if (error || !data) {
@@ -111,6 +112,11 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       return;
     }
     const c: any = data;
+    const couponEnabled = c.status != null ? c.status === 'ativo' : c.ativo !== false;
+    if (!couponEnabled) {
+      toast.error('Este cupom está inativo.');
+      return;
+    }
     const now = new Date();
     if (c.data_inicio && now < new Date(c.data_inicio)) {
       toast.error('Este cupom ainda não está ativo.');

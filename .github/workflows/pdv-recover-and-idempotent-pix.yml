@@ -1,8 +1,10 @@
 name: Recover PDV and apply idempotent PIX sale
+
+# Emergency historical recovery workflow. Never run automatically because it
+# deliberately restores PDV.tsx from an older verified commit.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths: ['.github/workflows/pdv-recover-and-idempotent-pix.yml']
+  workflow_dispatch:
+
 permissions:
   contents: write
 jobs:

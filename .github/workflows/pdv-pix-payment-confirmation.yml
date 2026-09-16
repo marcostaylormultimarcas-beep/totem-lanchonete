@@ -1,0 +1,51 @@
+name: PDV PIX payment confirmation
+on:
+  push:
+    branches: [visionfood-v2-commercial-ready]
+    paths:
+      - '.github/workflows/pdv-pix-payment-confirmation.yml'
+      - 'scripts/migrate-pdv-pix-payment-confirmation.py'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/pdv-pix-payment-confirmation.yml'
+      - 'scripts/migrate-pdv-pix-payment-confirmation.py'
+permissions:
+  contents: write
+jobs:
+  migrate-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: visionfood-v2-commercial-ready
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Add PIX status helper safely
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/lib/pdvSession.ts'); s=p.read_text()
+          needle='  createPixIntent: (sessionToken: string, caixaId: string, items: unknown[], cupomCode: string) => rpc("pdv_create_pix_intent_v2", { _session_token: sessionToken, _caixa_id: caixaId, _items: items, _cupom_code: cupomCode }),\n'
+          add=needle+'  pixStatus: (sessionToken: string, intentId: string) => rpc("pdv_pix_status_v2", { _session_token: sessionToken, _intent_id: intentId }),\n'
+          if s.count(needle)!=1: raise SystemExit('helper guard failed')
+          s=s.replace(needle,add,1); p.write_text(s)
+          PY
+      - name: Apply guarded PIX confirmation migration
+        run: python3 scripts/migrate-pdv-pix-payment-confirmation.py
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Build
+        run: npm run build
+      - name: Commit only after successful build
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/lib/pdvSession.ts src/pages/PDV.tsx
+          git diff --cached --quiet && { echo 'No changes produced'; exit 1; }
+          git commit -m 'fix: require confirmed PIX payment before PDV sale'
+          git pull --rebase origin visionfood-v2-commercial-ready
+          git push origin HEAD:visionfood-v2-commercial-ready

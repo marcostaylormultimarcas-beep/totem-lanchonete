@@ -1,0 +1,31 @@
+name: Verification Round 2 Fix
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Apply guarded fixes
+        run: python scripts/fix-verification-round2.py
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test and build
+        run: |
+          npm test -- --run
+          npm run build
+      - name: Commit only after validation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/components/kiosk/CartScreen.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m "fix: mobile scheduling viewport and render stability"
+          git push origin HEAD:fix/verification-round-1

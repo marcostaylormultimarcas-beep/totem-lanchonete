@@ -1,6 +1,8 @@
 name: Verification Round 12 Driver Session Expiry
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
 permissions:
   contents: write
 jobs:
@@ -10,11 +12,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: fix/verification-round-2
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Apply guarded transform
-        run: python scripts/fix-entregador-expired-session.py
+      - name: Apply guarded transform when needed
+        run: |
+          if grep -q 'const expireSession = useCallback' src/pages/EntregadorDashboard.tsx; then
+            echo 'Driver expiry hardening already applied; validating current state.'
+          else
+            python scripts/fix-entregador-expired-session.py
+          fi
       - name: Security assertions
         run: |
           grep -q "const expireSession = useCallback" src/pages/EntregadorDashboard.tsx

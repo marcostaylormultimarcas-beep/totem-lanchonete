@@ -1,15 +1,9 @@
 name: PDV session catalog coupon
+
+# Historical one-shot migration. Retained for manual recovery only.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - '.github/workflows/pdv-session-catalog-coupon.yml'
-      - 'scripts/migrate-pdv-session-catalog-coupon.py'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/pdv-session-catalog-coupon.yml'
-      - 'scripts/migrate-pdv-session-catalog-coupon.py'
+  workflow_dispatch:
+
 permissions:
   contents: write
 jobs:

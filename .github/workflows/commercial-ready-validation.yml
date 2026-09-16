@@ -60,3 +60,14 @@ jobs:
             exit 1
           fi
           echo 'No tracked secret environment files found.'
+      - name: Package validated Netlify artifact
+        run: |
+          cp -R dist netlify-dist
+          printf '/* /index.html 200\n' > netlify-dist/_redirects
+      - name: Upload validated Netlify artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: visionfood-v2-netlify-dist
+          path: netlify-dist
+          if-no-files-found: error
+          retention-days: 3

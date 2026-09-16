@@ -29,7 +29,7 @@ jobs:
       - name: Apply guarded migration
         run: python3 scripts/migrate-pdv-secure-session.py
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Build
         run: npm run build
       - name: Commit only after successful build

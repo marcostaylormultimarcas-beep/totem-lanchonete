@@ -7,7 +7,7 @@ alter table public.pdv_pix_intents add column if not exists paid_at timestamptz;
 alter table public.pdv_pix_intents add column if not exists mp_status_detail text;
 
 create unique index if not exists idx_pdv_pix_intents_mp_payment_id on public.pdv_pix_intents(mp_payment_id) where mp_payment_id is not null;
-create index if not exists idx_pdv_pix_intents_org_status on public.pdv_pix_intents(organization_id,status);
+create index if not exists idx_pdv_pix_intents_org_status on public.pdv_pix_intents(organization_id,status,expires_at);
 
 create or replace function public.pdv_bind_pix_payment_internal(_intent_id uuid, _payment_id text)
 returns jsonb language plpgsql security definer set search_path to 'public','extensions'

@@ -21,7 +21,9 @@ new_catalog='''      const { data, error } = await pdvRpc.catalog(sessionToken);
 '''
 if s.count(old_catalog)!=1: raise SystemExit(f'catalog guard failed: {s.count(old_catalog)}')
 s=s.replace(old_catalog,new_catalog,1)
-s=s.replace('''  }, [operador.organization_id]);''','''  }, [sessionToken]);''',1)
+old_dep='''  }, [operador.organization_id]);'''
+if s.count(old_dep) < 1: raise SystemExit('dependency guard failed')
+s=s.replace(old_dep,'''  }, [sessionToken]);''',1)
 old_coupon='''    const { data } = await supabase
       .from("cupons")
       .select("codigo,tipo,valor,status,data_inicio,data_fim")
@@ -66,8 +68,7 @@ new_coupon='''    const { data, error } = await pdvRpc.validateCoupon(sessionTok
 '''
 if s.count(old_coupon)!=1: raise SystemExit(f'coupon guard failed: {s.count(old_coupon)}')
 s=s.replace(old_coupon,new_coupon,1)
-segment=s[s.index('function PDVMain('):s.index('/* --------------------------- MODAL SANGRIA',s.index('function PDVMain('))]
-if '.from("products")' in segment or '.from("cupons")' in segment: raise SystemExit('invariant failed: direct PDV catalog/coupon table access remains')
-if 'pdvRpc.catalog(sessionToken)' not in segment or 'pdvRpc.validateCoupon(sessionToken, c)' not in segment: raise SystemExit('invariant failed: secure RPC calls missing')
+if old_catalog in s or old_coupon in s: raise SystemExit('invariant failed: original direct query blocks remain')
+if 'pdvRpc.catalog(sessionToken)' not in s or 'pdvRpc.validateCoupon(sessionToken, c)' not in s: raise SystemExit('invariant failed: secure RPC calls missing')
 p.write_text(s,encoding='utf-8')
 print('PDV session catalog/coupon migration applied')

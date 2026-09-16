@@ -1,0 +1,47 @@
+name: Commercial Ready Validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [visionfood-v2-commercial-ready]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'vite.config.*'
+      - 'tsconfig*.json'
+      - '.github/workflows/commercial-ready-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-ready-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Unit tests
+        run: npm test -- --passWithNoTests
+      - name: Build production bundle
+        run: npm run build
+      - name: Ensure no tracked environment files
+        shell: bash
+        run: |
+          bad=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v -E '(^|/)\.env\.example$' || true)
+          if [ -n "$bad" ]; then
+            echo "Tracked environment file(s) found:"
+            echo "$bad"
+            exit 1
+          fi
+          echo 'No tracked secret environment files found.'

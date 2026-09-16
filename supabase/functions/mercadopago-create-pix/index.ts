@@ -14,7 +14,6 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Método não permitido" }, 405);
-
   try {
     const body = await req.json().catch(() => ({}));
     const intentId = String(body.intent_id || "").trim();
@@ -27,37 +26,22 @@ Deno.serve(async (req) => {
     if (!SUPABASE_URL || !SERVICE_ROLE) return json({ error: "Configuração interna indisponível" }, 500);
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
-    // Atomic claim validates the PDV session, ownership, expiration and one-time use.
-    // The browser cannot choose organization or amount anymore.
-    const { data: claimData, error: claimErr } = await admin.rpc("pdv_claim_pix_intent_internal", {
-      _intent_id: intentId,
-      _session_token: sessionToken,
-    });
+    const { data: claimData, error: claimErr } = await admin.rpc("pdv_claim_pix_intent_internal", { _intent_id: intentId, _session_token: sessionToken });
     const claim = claimData as any;
-    if (claimErr || !claim?.ok) {
-      console.error("PIX intent claim failed:", claimErr?.message || claim?.reason || "unknown");
-      return json({ error: "Intent PIX inválido ou expirado" }, 403);
-    }
+    if (claimErr || !claim?.ok) return json({ error: "Intent PIX inválido ou expirado" }, 403);
 
     const organizationId = String(claim.organization_id || "");
     const amount = Number(claim.amount);
     if (!organizationId || !Number.isFinite(amount) || amount <= 0) return json({ error: "Intent PIX inválido" }, 400);
 
     const { data: tokenData, error: tokenErr } = await admin.rpc("get_mp_access_token_internal", { _org: organizationId });
-    if (tokenErr) {
-      console.error("Vault RPC error:", tokenErr.message);
-      return json({ error: "Falha ao ler credenciais da loja" }, 500);
-    }
+    if (tokenErr) return json({ error: "Falha ao ler credenciais da loja" }, 500);
     const accessToken = (tokenData as string | null) || "";
     if (!accessToken) return json({ error: "Loja sem Mercado Pago configurado" }, 400);
 
     const mpRes = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-        "X-Idempotency-Key": intentId,
-      },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json", "X-Idempotency-Key": intentId },
       body: JSON.stringify({
         transaction_amount: Math.round(amount * 100) / 100,
         description: `PDV VisionFood ${String(claim.org_name || "")}`.slice(0, 200),
@@ -67,21 +51,21 @@ Deno.serve(async (req) => {
       }),
     });
     const mpData = await mpRes.json();
-    if (!mpRes.ok) {
-      console.error("Mercado Pago error:", mpData?.message || mpRes.status);
-      return json({ error: mpData?.message || "Falha ao gerar Pix no Mercado Pago" }, 502);
+    if (!mpRes.ok || !mpData?.id) return json({ error: mpData?.message || "Falha ao gerar Pix no Mercado Pago" }, 502);
+
+    const { data: bindData, error: bindErr } = await admin.rpc("pdv_bind_pix_payment_internal", {
+      _intent_id: intentId,
+      _payment_id: String(mpData.id),
+      _status: String(mpData.status || "pending"),
+      _status_detail: String(mpData.status_detail || ""),
+    });
+    if (bindErr || !(bindData as any)?.ok) {
+      console.error("PIX bind failed", bindErr?.message || (bindData as any)?.reason);
+      return json({ error: "Pagamento criado, mas não foi possível vinculá-lo com segurança" }, 500);
     }
 
     const tx = mpData.point_of_interaction?.transaction_data;
-    return json({
-      ok: true,
-      intent_id: intentId,
-      payment_id: mpData.id,
-      amount: mpData.transaction_amount,
-      qr_code_base64: tx?.qr_code_base64 || "",
-      qr_code: tx?.qr_code || "",
-      ticket_url: tx?.ticket_url || "",
-    });
+    return json({ ok: true, intent_id: intentId, payment_id: mpData.id, status: mpData.status, amount: mpData.transaction_amount, qr_code_base64: tx?.qr_code_base64 || "", qr_code: tx?.qr_code || "", ticket_url: tx?.ticket_url || "" });
   } catch (e) {
     console.error("mercadopago-create-pix exception:", (e as Error).message);
     return json({ error: "Falha interna ao gerar Pix" }, 500);

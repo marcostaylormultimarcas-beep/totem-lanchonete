@@ -1,16 +1,10 @@
 name: PDV secure order lookup
 
+# Historical one-shot migration workflow. Keep it available for manual recovery,
+# but do not rerun its guarded migration on every pull request after it has
+# already been applied to PDV.tsx.
 on:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - '.github/workflows/pdv-secure-order-lookup.yml'
-      - 'scripts/migrate-pdv-secure-order-lookup.py'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/pdv-secure-order-lookup.yml'
-      - 'scripts/migrate-pdv-secure-order-lookup.py'
+  workflow_dispatch:
 
 permissions:
   contents: write

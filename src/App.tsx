@@ -1,30 +1,30 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Navigate } from "react-router-dom";
-import Index from "./pages/Index.tsx";
-import Login from "./pages/Login.tsx";
-import Home from "./pages/Home.tsx";
-import NotFound from "./pages/NotFound.tsx";
-import Admin from "./pages/Admin.tsx";
-import Auth from "./pages/Auth.tsx";
-import OrderHistory from "./pages/OrderHistory.tsx";
-import TrackOrder from "./pages/TrackOrder.tsx";
-import ResetPassword from "./pages/ResetPassword.tsx";
-import FiscalReceipt from "./pages/FiscalReceipt.tsx";
-import EntregadorLogin from "./pages/EntregadorLogin.tsx";
-import EntregadorDashboard from "./pages/EntregadorDashboard.tsx";
-import VisionPrime from "./pages/VisionPrime.tsx";
-import ClubeVantagens from "./pages/ClubeVantagens.tsx";
-import Onboarding from "./pages/Onboarding.tsx";
-import PainelSenhas from "./pages/PainelSenhas.tsx";
-import PDV from "./pages/PDV.tsx";
-import PDVCliente from "./pages/PDVCliente.tsx";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
+
+const Index = lazy(() => import("./pages/Index.tsx"));
+const Login = lazy(() => import("./pages/Login.tsx"));
+const Home = lazy(() => import("./pages/Home.tsx"));
+const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+const Admin = lazy(() => import("./pages/Admin.tsx"));
+const Auth = lazy(() => import("./pages/Auth.tsx"));
+const OrderHistory = lazy(() => import("./pages/OrderHistory.tsx"));
+const TrackOrder = lazy(() => import("./pages/TrackOrder.tsx"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
+const FiscalReceipt = lazy(() => import("./pages/FiscalReceipt.tsx"));
+const EntregadorLogin = lazy(() => import("./pages/EntregadorLogin.tsx"));
+const EntregadorDashboard = lazy(() => import("./pages/EntregadorDashboard.tsx"));
+const VisionPrime = lazy(() => import("./pages/VisionPrime.tsx"));
+const ClubeVantagens = lazy(() => import("./pages/ClubeVantagens.tsx"));
+const Onboarding = lazy(() => import("./pages/Onboarding.tsx"));
+const PainelSenhas = lazy(() => import("./pages/PainelSenhas.tsx"));
+const PDV = lazy(() => import("./pages/PDV.tsx"));
+const PDVCliente = lazy(() => import("./pages/PDVCliente.tsx"));
 
 const APP_VERSION = "1.0.2";
 
@@ -50,40 +50,42 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <OrgProvider>
-            <Routes>
-              {/* Página principal pública: cardápio da lanchonete */}
-              <Route path="/" element={<Index />} />
-              {/* Rota oculta de login administrativo */}
-              <Route path="/gerencia-vision-x" element={<Login />} />
-              {/* Rotas antigas de login redirecionam para a raiz pública */}
-              <Route path="/login" element={<Navigate to="/" replace />} />
-              {/* Loja pública: abre direto o cardápio/totem quando o slug existir */}
-              <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
-              {/* Landing institucional só fica no /home */}
-              <Route path="/loja/:slug/home" element={<Home />} />
-              {/* Totem público (kiosk de autoatendimento) */}
-              <Route path="/cardapio/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/meus-pedidos" element={<OrderHistory />} />
-              <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/fiscal/:orderId" element={<FiscalReceipt />} />
-              <Route path="/entregador/login" element={<EntregadorLogin />} />
-              <Route path="/entregador/login/:slug" element={<EntregadorLogin />} />
-              <Route path="/entregador" element={<EntregadorDashboard />} />
-              <Route path="/loja/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
-              <Route path="/cardapio/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
-              <Route path="/clube" element={<ClubeVantagens />} />
-              <Route path="/loja/:slug/clube" element={<KioskSlugSync><ClubeVantagens /></KioskSlugSync>} />
-              <Route path="/onboarding" element={<Onboarding />} />
-              <Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
-              <Route path="/pdv" element={<PDV />} />
-              <Route path="/pdv/:slug" element={<PDV />} />
-              <Route path="/pdv-cliente" element={<PDVCliente />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense fallback={<div className="min-h-screen bg-background" aria-busy="true" />}>
+              <Routes>
+                {/* Página principal pública: cardápio da lanchonete */}
+                <Route path="/" element={<Index />} />
+                {/* Rota oculta de login administrativo */}
+                <Route path="/gerencia-vision-x" element={<Login />} />
+                {/* Rotas antigas de login redirecionam para a raiz pública */}
+                <Route path="/login" element={<Navigate to="/" replace />} />
+                {/* Loja pública: abre direto o cardápio/totem quando o slug existir */}
+                <Route path="/loja/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
+                {/* Landing institucional só fica no /home */}
+                <Route path="/loja/:slug/home" element={<Home />} />
+                {/* Totem público (kiosk de autoatendimento) */}
+                <Route path="/cardapio/:slug" element={<KioskSlugSync><Index /></KioskSlugSync>} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/meus-pedidos" element={<OrderHistory />} />
+                <Route path="/acompanhar/:orderId" element={<TrackOrder />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/fiscal/:orderId" element={<FiscalReceipt />} />
+                <Route path="/entregador/login" element={<EntregadorLogin />} />
+                <Route path="/entregador/login/:slug" element={<EntregadorLogin />} />
+                <Route path="/entregador" element={<EntregadorDashboard />} />
+                <Route path="/loja/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
+                <Route path="/cardapio/:slug/prime" element={<KioskSlugSync><VisionPrime /></KioskSlugSync>} />
+                <Route path="/clube" element={<ClubeVantagens />} />
+                <Route path="/loja/:slug/clube" element={<KioskSlugSync><ClubeVantagens /></KioskSlugSync>} />
+                <Route path="/onboarding" element={<Onboarding />} />
+                <Route path="/painel-senhas/:slug" element={<PainelSenhas />} />
+                <Route path="/pdv" element={<PDV />} />
+                <Route path="/pdv/:slug" element={<PDV />} />
+                <Route path="/pdv-cliente" element={<PDVCliente />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
             <SupportChat />
           </OrgProvider>
         </BrowserRouter>

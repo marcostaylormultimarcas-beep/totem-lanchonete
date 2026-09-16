@@ -1,35 +1,32 @@
-name: PDV session catalog coupon
+name: PDV session catalog coupon audit
 
-# Historical one-shot migration. Retained for manual recovery only.
+# Historical migration already applied. This workflow is intentionally read-only
+# so it cannot rewrite the current validated PDV implementation.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  migrate-and-validate:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
-      - name: Apply guarded session catalog coupon migration
-        run: python3 scripts/migrate-pdv-session-catalog-coupon.py
+      - name: Verify session-scoped catalog and coupon contracts exist
+        shell: bash
+        run: |
+          grep -q "pdv_catalog_v2" src/lib/pdvSession.ts
+          grep -q "pdv_validar_cupom_v2" src/lib/pdvSession.ts
+          grep -q "pdvRpc.catalog" src/pages/PDV.tsx
+          grep -q "pdvRpc.validateCoupon" src/pages/PDV.tsx
       - name: Install dependencies
         run: npm install --legacy-peer-deps --package-lock=false
-      - name: Build
+      - name: Unit tests
+        run: npm test
+      - name: Production build
         run: npm run build
-      - name: Commit only after successful build
-        run: |
-          if git diff --quiet -- src/pages/PDV.tsx; then echo 'No PDV changes produced'; exit 1; fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/PDV.tsx
-          git commit -m 'fix: scope PDV catalog and coupon by secure session'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready

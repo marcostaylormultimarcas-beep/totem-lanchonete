@@ -2,11 +2,50 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+const hex = (bytes: ArrayBuffer) => Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+const safeEqual = (a: string, b: string) => {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+};
+
+async function verifyMercadoPagoSignature(req: Request, dataId: string, secret: string) {
+  const xSignature = req.headers.get("x-signature") || "";
+  const xRequestId = req.headers.get("x-request-id") || "";
+  if (!xSignature || !xRequestId || !dataId || !secret) return false;
+
+  let ts = "";
+  let v1 = "";
+  for (const part of xSignature.split(",")) {
+    const [rawKey, ...rawValue] = part.split("=");
+    const key = rawKey?.trim();
+    const value = rawValue.join("=").trim();
+    if (key === "ts") ts = value;
+    if (key === "v1") v1 = value.toLowerCase();
+  }
+  if (!ts || !v1) return false;
+
+  // Mercado Pago's documented manifest for payment webhooks.
+  const manifest = `id:${dataId.toLowerCase()};request-id:${xRequestId};ts:${ts};`;
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const digest = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(manifest));
+  return safeEqual(hex(digest), v1);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: true });
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  if (!SUPABASE_URL || !SERVICE_ROLE) return json({ ok: false }, 500);
+  const MP_WEBHOOK_SECRET = Deno.env.get("MP_PDV_WEBHOOK_SECRET")!;
+  if (!SUPABASE_URL || !SERVICE_ROLE || !MP_WEBHOOK_SECRET) return json({ ok: false }, 500);
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
 
   try {
@@ -15,6 +54,10 @@ Deno.serve(async (req) => {
     const type = String(body?.type || body?.topic || url.searchParams.get("type") || url.searchParams.get("topic") || "");
     const paymentId = String(body?.data?.id || body?.id || url.searchParams.get("data.id") || url.searchParams.get("id") || "");
     if (!type.includes("payment") || !paymentId) return json({ ok: true });
+
+    if (!(await verifyMercadoPagoSignature(req, paymentId, MP_WEBHOOK_SECRET))) {
+      return json({ ok: false }, 401);
+    }
 
     // Find the local intent first. This prevents this endpoint from processing SaaS subscription payments.
     const { data: intent, error: intentErr } = await admin

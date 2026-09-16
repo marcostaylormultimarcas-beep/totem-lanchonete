@@ -1,12 +1,8 @@
 name: PDV PIX status polling
 
+# Historical one-shot migration. Retained for manual recovery only.
 on:
   workflow_dispatch:
-  push:
-    branches: [visionfood-v2-commercial-ready]
-    paths:
-      - scripts/migrate-pdv-pix-status-polling.py
-      - .github/workflows/pdv-pix-status-polling.yml
 
 permissions:
   contents: write

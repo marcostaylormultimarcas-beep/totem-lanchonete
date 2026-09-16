@@ -65,6 +65,8 @@ export function clearPdvSession() {
 
 export const pdvRpc = {
   openCash: (sessionToken: string, saldoInicial: number) => rpc("pdv_abrir_caixa_v2", { _session_token: sessionToken, _saldo_inicial: saldoInicial }),
+  catalog: (sessionToken: string) => rpc("pdv_catalog_v2", { _session_token: sessionToken }),
+  validateCoupon: (sessionToken: string, codigo: string) => rpc("pdv_validar_cupom_v2", { _session_token: sessionToken, _codigo: codigo }),
   movement: (sessionToken: string, caixaId: string, tipo: string, forma: string, valor: number, motivo: string) => rpc("pdv_registrar_movimento_v2", { _session_token: sessionToken, _caixa_id: caixaId, _tipo: tipo, _forma: forma, _valor: valor, _motivo: motivo }),
   sale: (sessionToken: string, caixaId: string, items: unknown[], forma: string, total: number, cupomCode: string, desconto: number) => rpc("pdv_registrar_venda_v2", { _session_token: sessionToken, _caixa_id: caixaId, _items: items, _forma: forma, _total: total, _cupom_code: cupomCode, _desconto: desconto }),
   findOrder: (sessionToken: string, query: string) => rpc("pdv_buscar_pedido_v2", { _session_token: sessionToken, _query: query }),

@@ -11,10 +11,10 @@ patch(p, "import { useState, useEffect } from 'react';", "import { useState, use
 patch(p, "  const [saving, setSaving] = useState(false);", "  const [saving, setSaving] = useState(false);\n  const [paymentError, setPaymentError] = useState('');")
 patch(p, "  const handleConfirmPayment = async () => {\n    setSaving(true);", "  const handleConfirmPayment = async () => {\n    if (saving) return;\n    setPaymentError('');\n    setSaving(true);")
 patch(p, "    } catch (err) {\n      console.error('Error saving order:', err);\n      setConfirmed(true);", "    } catch (err: any) {\n      console.error('Error saving order:', err);\n      const message = err?.message || 'Não foi possível registrar o pedido. Tente novamente.';\n      setPaymentError(message);\n      toast.error('Pedido não confirmado', { description: message });\n      setConfirmed(false);")
-# Add visible error before payment action buttons (first unique saving button marker)
-needle='''        <button onClick={handleConfirmPayment} disabled={saving}'''
-replacement='''        {paymentError && (\n          <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">\n            {paymentError}\n          </div>\n        )}\n        <button onClick={handleConfirmPayment} disabled={saving}'''
-patch(p, needle, replacement)
+# Error banner is rendered once above the payment-method action group.
+marker='''      <div className="space-y-3">\n        {method === 'pix' && ('''
+replacement='''      <div className="space-y-3">\n        {paymentError && (\n          <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">\n            {paymentError}\n          </div>\n        )}\n        {method === 'pix' && ('''
+patch(p, marker, replacement)
 
 # Vision Prime: allow numeric fields to be cleared while editing; convert on save.
 p='src/components/admin/VisionPrimePanel.tsx'

@@ -1,134 +1,23 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Crown, Loader2, Save, Sparkles } from 'lucide-react';
-
-interface PrimeConfig {
-  ativo: boolean;
-  valor_mensalidade: number;
-  desconto_percentual: number;
-  frete_gratis_minimo: number;
-}
-
-const DEFAULT: PrimeConfig = {
-  ativo: false,
-  valor_mensalidade: 19.9,
-  desconto_percentual: 10,
-  frete_gratis_minimo: 0,
+import { Crown, Loader2, Save, Sparkles, Users, ChevronDown, ChevronUp } from 'lucide-react';
+interface PrimeConfig { ativo:boolean; valor_mensalidade:number; desconto_percentual:number; frete_gratis_minimo:number; }
+interface Subscriber { id:string; user_id:string; status:string; started_at:string; expires_at:string|null; }
+const DEFAULT:PrimeConfig={ativo:false,valor_mensalidade:19.9,desconto_percentual:10,frete_gratis_minimo:0};
+const fmt=(v:string|null)=>v?new Date(v).toLocaleDateString('pt-BR'):'Sem expiração';
+const VisionPrimePanel=({organizationId}:{organizationId:string|null})=>{
+ const[cfg,setCfg]=useState<PrimeConfig>(DEFAULT),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[subscribers,setSubscribers]=useState(0),[numeric,setNumeric]=useState({mensalidade:'',desconto:'',frete:''}),[showSubscribers,setShowSubscribers]=useState(false),[subscriberRows,setSubscriberRows]=useState<Subscriber[]>([]),[loadingSubscribers,setLoadingSubscribers]=useState(false);
+ useEffect(()=>{if(!organizationId){setLoading(false);return}void(async()=>{setLoading(true);const[{data:row,error:cfgError},{count,error:countError}]=await Promise.all([supabase.from('vision_prime_config' as any).select('ativo, valor_mensalidade, desconto_percentual, frete_gratis_minimo').eq('organization_id',organizationId).maybeSingle(),supabase.from('vision_prime_assinaturas' as any).select('id',{count:'exact',head:true}).eq('organization_id',organizationId).eq('status','active')]);if(cfgError)toast.error('Erro ao carregar Vision Prime: '+cfgError.message);if(countError)toast.error('Erro ao contar assinantes: '+countError.message);const next=row?{...DEFAULT,...(row as any)}:DEFAULT;setCfg(next);setNumeric({mensalidade:String(next.valor_mensalidade),desconto:String(next.desconto_percentual),frete:String(next.frete_gratis_minimo)});setSubscribers(count||0);setLoading(false)})()},[organizationId]);
+ const loadSubscribers=async()=>{if(!organizationId)return;setLoadingSubscribers(true);const{data,error}=await supabase.from('vision_prime_assinaturas' as any).select('id,user_id,status,started_at,expires_at').eq('organization_id',organizationId).order('started_at',{ascending:false}).limit(200);setLoadingSubscribers(false);if(error){toast.error('Erro ao consultar assinantes: '+error.message);return}setSubscriberRows((data as any)||[])};
+ const toggleSubscribers=()=>{const next=!showSubscribers;setShowSubscribers(next);if(next&&subscriberRows.length===0)void loadSubscribers()};
+ const save=async()=>{if(!organizationId)return;const parsed={valor_mensalidade:Math.max(0,Number(numeric.mensalidade||0)),desconto_percentual:Math.min(100,Math.max(0,Number(numeric.desconto||0))),frete_gratis_minimo:Math.max(0,Number(numeric.frete||0))};setSaving(true);const{error}=await supabase.from('vision_prime_config' as any).upsert({organization_id:organizationId,...cfg,...parsed} as any,{onConflict:'organization_id'});setSaving(false);if(error){toast.error('Erro: '+error.message);return}setCfg({...cfg,...parsed});toast.success('Vision Prime atualizado!')};
+ if(loading)return <div className="px-4 py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary"/></div>;
+ return <div className="px-4 space-y-4 max-w-3xl">
+  <div className="rounded-2xl p-5 border-2 border-[#d4a04c]/50" style={{background:'linear-gradient(135deg, #1a1208 0%, #2b1d09 50%, #0d0a05 100%)'}}><div className="flex flex-wrap items-center gap-3"><div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{background:'linear-gradient(135deg,#f6c560,#d4881e)'}}><Crown className="w-6 h-6 text-black"/></div><div className="flex-1 min-w-[150px]"><h2 className="text-xl font-black" style={{color:'#f4d28b'}}>Vision Prime</h2><p className="text-xs text-amber-100/70">Clube de assinatura premium da sua loja</p></div><button onClick={toggleSubscribers} className="rounded-xl px-3 py-2 text-right hover:bg-white/5" aria-expanded={showSubscribers}><p className="text-[10px] uppercase text-amber-100/60">Assinantes ativos</p><span className="flex items-center justify-end gap-1 text-2xl font-black text-amber-200"><Users className="w-4 h-4"/>{subscribers}{showSubscribers?<ChevronUp className="w-4 h-4"/>:<ChevronDown className="w-4 h-4"/>}</span></button></div></div>
+  {showSubscribers&&<div className="kiosk-card p-4 space-y-3"><div className="flex items-center justify-between"><h3 className="font-bold">Assinantes Vision Prime</h3><button onClick={()=>void loadSubscribers()} disabled={loadingSubscribers} className="text-xs text-primary disabled:opacity-50">Atualizar</button></div>{loadingSubscribers?<div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin"/></div>:subscriberRows.length===0?<p className="text-sm text-muted-foreground py-4 text-center">Nenhuma assinatura encontrada.</p>:<div className="space-y-2 max-h-80 overflow-y-auto">{subscriberRows.map(s=><div key={s.id} className="rounded-lg bg-muted/50 p-3 flex flex-wrap items-center gap-2"><div className="flex-1 min-w-[180px]"><p className="text-xs font-semibold break-all">Cliente: {s.user_id}</p><p className="text-[11px] text-muted-foreground">Início: {fmt(s.started_at)} · Expira: {fmt(s.expires_at)}</p></div><span className={`text-xs px-2 py-1 rounded-full ${s.status==='active'?'bg-success/20 text-success':'bg-muted text-muted-foreground'}`}>{s.status==='active'?'Ativo':s.status==='cancelled'?'Cancelado':'Inativo'}</span></div>)}</div>}<p className="text-[10px] text-muted-foreground">Exibindo até 200 assinaturas mais recentes. O identificador do cliente é mostrado sem expor dados de autenticação.</p></div>}
+  <div className="kiosk-card p-5 space-y-5"><label className="flex items-center justify-between gap-4"><div><p className="font-bold flex items-center gap-2"><Sparkles className="w-4 h-4 text-[#d4a04c]"/> Clube ativo</p><p className="text-xs text-muted-foreground">Quando ligado, o cliente vê a opção e os benefícios são aplicados no checkout.</p></div><input type="checkbox" checked={cfg.ativo} onChange={e=>setCfg({...cfg,ativo:e.target.checked})} className="w-6 h-6 accent-[#d4a04c]"/></label><div className="grid sm:grid-cols-3 gap-3"><div><label className="text-xs text-muted-foreground mb-1 block">Mensalidade (R$)</label><input type="number" step="0.10" min={0} value={numeric.mensalidade} onChange={e=>setNumeric({...numeric,mensalidade:e.target.value})} className="w-full px-3 py-3 bg-muted rounded-lg"/></div><div><label className="text-xs text-muted-foreground mb-1 block">Desconto fixo (%)</label><input type="number" step="1" min={0} max={100} value={numeric.desconto} onChange={e=>setNumeric({...numeric,desconto:e.target.value})} className="w-full px-3 py-3 bg-muted rounded-lg"/></div><div><label className="text-xs text-muted-foreground mb-1 block">Frete grátis a partir de (R$)</label><input type="number" step="1" min={0} value={numeric.frete} onChange={e=>setNumeric({...numeric,frete:e.target.value})} className="w-full px-3 py-3 bg-muted rounded-lg"/><p className="text-[10px] text-muted-foreground mt-1">Use 0 para sempre conceder frete grátis aos Prime.</p></div></div><button onClick={save} disabled={saving} className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 text-black" style={{background:'linear-gradient(135deg,#f6c560,#d4881e)'}}>{saving?<Loader2 className="w-4 h-4 animate-spin"/>:<Save className="w-4 h-4"/>} Salvar configurações</button></div>
+  <div className="rounded-xl border border-[#d4a04c]/30 bg-[#d4a04c]/5 p-4 text-xs text-amber-100/80">💡 Benefícios automáticos quando o cliente é Prime: desconto fixo no subtotal e frete grátis (acima do mínimo configurado). Um selo dourado aparece no carrinho e perfil do assinante.</div>
+ </div>;
 };
-
-const VisionPrimePanel = ({ organizationId }: { organizationId: string | null }) => {
-  const [cfg, setCfg] = useState<PrimeConfig>(DEFAULT);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [subscribers, setSubscribers] = useState<number>(0);
-  const [numeric, setNumeric] = useState({ mensalidade: '', desconto: '', frete: '' });
-
-  useEffect(() => {
-    if (!organizationId) return;
-    (async () => {
-      setLoading(true);
-      const [{ data: row }, { count }] = await Promise.all([
-        supabase.from('vision_prime_config' as any)
-          .select('ativo, valor_mensalidade, desconto_percentual, frete_gratis_minimo')
-          .eq('organization_id', organizationId).maybeSingle(),
-        supabase.from('vision_prime_assinaturas' as any)
-          .select('id', { count: 'exact', head: true })
-          .eq('organization_id', organizationId).eq('status', 'active'),
-      ]);
-      const next = row ? { ...DEFAULT, ...(row as any) } : DEFAULT;
-      setCfg(next);
-      setNumeric({ mensalidade: String(next.valor_mensalidade), desconto: String(next.desconto_percentual), frete: String(next.frete_gratis_minimo) });
-      setSubscribers(count || 0);
-      setLoading(false);
-    })();
-  }, [organizationId]);
-
-  const save = async () => {
-    if (!organizationId) return;
-    setSaving(true);
-    const parsed = {
-      valor_mensalidade: Math.max(0, Number(numeric.mensalidade || 0)),
-      desconto_percentual: Math.min(100, Math.max(0, Number(numeric.desconto || 0))),
-      frete_gratis_minimo: Math.max(0, Number(numeric.frete || 0)),
-    };
-    const payload = { organization_id: organizationId, ...cfg, ...parsed };
-    const { error } = await supabase.from('vision_prime_config' as any)
-      .upsert(payload as any, { onConflict: 'organization_id' });
-    setSaving(false);
-    if (error) { toast.error('Erro: ' + error.message); return; }
-    toast.success('Vision Prime atualizado!');
-  };
-
-  if (loading) {
-    return <div className="px-4 py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>;
-  }
-
-  return (
-    <div className="px-4 space-y-4 max-w-3xl">
-      <div className="rounded-2xl p-5 border-2 border-[#d4a04c]/50"
-        style={{ background: 'linear-gradient(135deg, #1a1208 0%, #2b1d09 50%, #0d0a05 100%)' }}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,#f6c560,#d4881e)' }}>
-            <Crown className="w-6 h-6 text-black" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black tracking-tight" style={{ color: '#f4d28b' }}>Vision Prime</h2>
-            <p className="text-xs text-amber-100/70">Clube de assinatura premium da sua loja</p>
-          </div>
-          <div className="ml-auto text-right">
-            <p className="text-[10px] uppercase tracking-wider text-amber-100/60">Assinantes</p>
-            <p className="text-2xl font-black text-amber-200">{subscribers}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="kiosk-card p-5 space-y-5">
-        <label className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-bold flex items-center gap-2"><Sparkles className="w-4 h-4 text-[#d4a04c]" /> Clube ativo</p>
-            <p className="text-xs text-muted-foreground">Quando ligado, o cliente vê a opção e os benefícios são aplicados no checkout.</p>
-          </div>
-          <input type="checkbox" checked={cfg.ativo}
-            onChange={e => setCfg({ ...cfg, ativo: e.target.checked })}
-            className="w-6 h-6 accent-[#d4a04c]" />
-        </label>
-
-        <div className="grid sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Mensalidade (R$)</label>
-            <input type="number" step="0.10" min={0} value={numeric.mensalidade}
-              onChange={e => setNumeric({ ...numeric, mensalidade: e.target.value })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Desconto fixo (%)</label>
-            <input type="number" step="1" min={0} max={100} value={numeric.desconto}
-              onChange={e => setNumeric({ ...numeric, desconto: e.target.value })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Frete grátis a partir de (R$)</label>
-            <input type="number" step="1" min={0} value={numeric.frete}
-              onChange={e => setNumeric({ ...numeric, frete: e.target.value })}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-[#d4a04c]" />
-            <p className="text-[10px] text-muted-foreground mt-1">Use 0 para sempre conceder frete grátis aos Prime.</p>
-          </div>
-        </div>
-
-        <button onClick={save} disabled={saving}
-          className="w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 text-black"
-          style={{ background: 'linear-gradient(135deg,#f6c560,#d4881e)' }}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Salvar configurações
-        </button>
-      </div>
-
-      <div className="rounded-xl border border-[#d4a04c]/30 bg-[#d4a04c]/5 p-4 text-xs text-amber-100/80">
-        💡 Benefícios automáticos quando o cliente é Prime: desconto fixo no subtotal e frete grátis (acima do mínimo configurado). Um selo dourado aparece no carrinho e perfil do assinante.
-      </div>
-    </div>
-  );
-};
-
 export default VisionPrimePanel;

@@ -1,6 +1,8 @@
 name: Verification Round 8 Entregador Session
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
 permissions:
   contents: write
 jobs:

@@ -53,15 +53,29 @@ Deno.serve(async (req) => {
     const mpData = await mpRes.json();
     if (!mpRes.ok || !mpData?.id) return json({ error: mpData?.message || "Falha ao gerar Pix no Mercado Pago" }, 502);
 
+    const paymentId = String(mpData.id);
+    const paymentStatus = String(mpData.status || "pending").toLowerCase();
+    const paymentStatusDetail = String(mpData.status_detail || "");
+
     const { data: bindData, error: bindErr } = await admin.rpc("pdv_bind_pix_payment_internal", {
       _intent_id: intentId,
-      _payment_id: String(mpData.id),
-      _status: String(mpData.status || "pending"),
-      _status_detail: String(mpData.status_detail || ""),
+      _payment_id: paymentId,
     });
     if (bindErr || !(bindData as any)?.ok) {
       console.error("PIX bind failed", bindErr?.message || (bindData as any)?.reason);
       return json({ error: "Pagamento criado, mas não foi possível vinculá-lo com segurança" }, 500);
+    }
+
+    // Persist the authoritative Mercado Pago status through the internal payment-id contract.
+    const { data: statusData, error: statusErr } = await admin.rpc("pdv_update_pix_payment_internal", {
+      _payment_id: paymentId,
+      _status: paymentStatus,
+      _status_detail: paymentStatusDetail,
+      _amount: Number(mpData.transaction_amount),
+    });
+    if (statusErr || !(statusData as any)?.ok) {
+      console.error("PIX initial status update failed", statusErr?.message || (statusData as any)?.reason);
+      return json({ error: "Pagamento criado, mas o status não pôde ser confirmado com segurança" }, 500);
     }
 
     const tx = mpData.point_of_interaction?.transaction_data;

@@ -497,7 +497,7 @@ function PDVMain({
 
   // 🟢 Gera Pix real (Mercado Pago) quando o operador escolhe PIX no PDV.
   // O QR + Copia-e-Cola viaja no broadcast e aparece GIGANTE na tela do cliente.
-  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number } | null>(null);
+  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number; intentId: string } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const pixReqId = useRef(0);
   useEffect(() => {
@@ -540,6 +540,7 @@ function PDVMain({
           qrBase64: d.qr_code_base64 || "",
           copiaECola: d.qr_code || "",
           amount: Number(d.amount ?? intent.amount) || 0,
+          intentId: String(d.intent_id || intent.intent_id),
         });
       } finally {
         if (myReq === pixReqId.current) setPixLoading(false);
@@ -587,6 +588,14 @@ function PDVMain({
   };
 
   const finalizar = async () => {
+    if (forma === "pix") {
+      if (!pixData?.intentId) return toast.error("Gere o PIX antes de finalizar");
+      const { data: pixStatusData, error: pixStatusError } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
+      const pixStatus = pixStatusData as any;
+      if (pixStatusError || !pixStatus?.ok || !["paid", "approved"].includes(String(pixStatus.status || "").toLowerCase())) {
+        return toast.error("Pagamento PIX ainda não confirmado");
+      }
+    }
     if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
     const items = cart.map((x) => ({

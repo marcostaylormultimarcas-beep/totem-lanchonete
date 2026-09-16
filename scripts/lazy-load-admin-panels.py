@@ -24,16 +24,18 @@ lazy_lines = "\n// Heavy admin modules are loaded only when the Admin route need
 ) + "\n"
 s = s.replace(anchor, anchor + lazy_lines)
 
-# One Suspense boundary keeps existing tab rendering logic intact while moving
-# panel modules out of the initial Admin chunk.
+# Keep the existing Admin rendering logic intact; only wrap the authenticated
+# page in one Suspense boundary so lazy panels can resolve safely.
 marker = "  return (\n    <div className=\"admin-shell min-h-screen pb-8 text-zinc-100\">"
 replacement = "  return (\n    <Suspense fallback={<div className=\"min-h-screen flex items-center justify-center\"><Loader2 className=\"w-8 h-8 animate-spin text-primary\" /></div>}>\n    <div className=\"admin-shell min-h-screen pb-8 text-zinc-100\">"
 if marker not in s:
     raise SystemExit('missing Admin return marker')
 s = s.replace(marker, replacement, 1)
 
-end = "    </div>\n  );\n};\n\nexport default AdminPage;"
-end_replacement = "    </div>\n    </Suspense>\n  );\n};\n\nexport default AdminPage;"
+# AdminPage is followed by MasterUnlockGate, so close Suspense immediately
+# before that helper instead of assuming AdminPage is the last declaration.
+end = "    </div>\n  );\n};\n\nconst MasterUnlockGate ="
+end_replacement = "    </div>\n    </Suspense>\n  );\n};\n\nconst MasterUnlockGate ="
 if end not in s:
     raise SystemExit('missing Admin closing marker')
 s = s.replace(end, end_replacement, 1)

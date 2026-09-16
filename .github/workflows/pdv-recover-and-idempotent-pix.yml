@@ -1,46 +1,21 @@
 name: Recover PDV and apply idempotent PIX sale
 
-# Emergency historical recovery workflow. Never run automatically because it
-# deliberately restores PDV.tsx from an older verified commit.
+# Historical emergency recovery procedure.
+# Disabled as an executable workflow because running the old procedure would
+# restore PDV.tsx from a historical commit and could overwrite newer fixes.
+# The recovery history remains available in Git history if ever needed.
+
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
 jobs:
-  recover-patch-build:
+  recovery-disabled:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: visionfood-v2-commercial-ready
-          fetch-depth: 0
-      - name: Restore last verified PDV
-        run: git checkout 250287df1349a13db483b3e4ff86cdd530c19c87 -- src/pages/PDV.tsx
-      - name: Apply one guarded PIX sale change
+      - name: Recovery workflow intentionally disabled
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('src/pages/PDV.tsx'); s=p.read_text(encoding='utf-8')
-          old='    const { data, error } = await pdvRpc.sale(sessionToken, caixaId, items, forma, total, snapCupom, desconto);'
-          new='''    const saleResult = forma === "pix" && pixData?.intentId
-              ? await pdvRpc.pixSale(sessionToken, pixData.intentId)
-              : await pdvRpc.sale(sessionToken, caixaId, items, forma, total, snapCupom, desconto);
-            const { data, error } = saleResult;'''
-          if s.count(old) != 1: raise SystemExit(f'guard failed: expected one sale call, got {s.count(old)}')
-          if 'pdvRpc.pixStatus(sessionToken, pixData.intentId)' not in s: raise SystemExit('guard failed: PIX server confirmation missing')
-          s=s.replace(old,new,1)
-          p.write_text(s,encoding='utf-8')
-          PY
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm install --legacy-peer-deps --package-lock=false
-      - run: npm run build
-      - name: Commit only validated recovery
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/PDV.tsx
-          git commit -m 'fix: recover PDV and finalize PIX idempotently'
-          git pull --rebase origin visionfood-v2-commercial-ready
-          git push origin HEAD:visionfood-v2-commercial-ready
+          echo 'Legacy PDV recovery is disabled to protect the current validated PDV.'
+          echo 'Use Git history and a new guarded recovery procedure if recovery is ever required.'

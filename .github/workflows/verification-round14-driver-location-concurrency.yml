@@ -1,0 +1,49 @@
+name: Verification Round 14 Driver Location Concurrency
+on:
+  push:
+    branches: [fix/verification-round-2]
+    paths:
+      - '.github/workflows/verification-round14-driver-location-concurrency.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-2
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply guarded location hardening
+        run: |
+          if grep -q 'locationRequestInFlightRef' src/pages/EntregadorDashboard.tsx; then
+            echo 'Location concurrency hardening already applied; validating.'
+          else
+            python scripts/fix-driver-location-concurrency.py
+          fi
+      - name: Assertions
+        run: |
+          grep -q 'initialSendTimerRef' src/pages/EntregadorDashboard.tsx
+          grep -q 'locationRequestInFlightRef' src/pages/EntregadorDashboard.tsx
+          grep -q 'trackingGenerationRef' src/pages/EntregadorDashboard.tsx
+          grep -q 'clearTimeout(initialSendTimerRef.current)' src/pages/EntregadorDashboard.tsx
+          ! grep -q 'setTimeout(send, 2500)' src/pages/EntregadorDashboard.tsx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Commit validated source fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/pages/EntregadorDashboard.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m 'perf: prevent overlapping driver location requests'
+          git push origin HEAD:fix/verification-round-2

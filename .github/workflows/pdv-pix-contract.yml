@@ -1,0 +1,34 @@
+name: PDV PIX contract
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [visionfood-v2-commercial-ready]
+    paths:
+      - src/pages/PDV.tsx
+      - src/lib/pdvSession.ts
+      - supabase/functions/mercadopago-create-pix/index.ts
+      - supabase/functions/mercadopago-pdv-webhook/index.ts
+      - supabase/migrations/20260916042000_visionfood_v2_pix_idempotent_sale_phase24.sql
+      - scripts/verify-pdv-pix-contract.mjs
+      - .github/workflows/pdv-pix-contract.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: visionfood-v2-commercial-ready
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify PIX security contract
+        run: node scripts/verify-pdv-pix-contract.mjs
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Build
+        run: npm run build

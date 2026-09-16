@@ -1137,8 +1137,10 @@ function DevolucaoModal({
     setLoading(true);
     const { data, error } = await pdvRpc.refund(sessionToken, caixaId, order.id, devolvidos, valorTotal, motivo.trim());
     setLoading(false);
-    if (error || !(data as any)?.ok) return toast.error("Falha ao processar devolução");
-    toast.success(`Devolução de ${fmt(valorTotal)} registrada`);
+    const res = data as any;
+    if (error || !res?.ok) return toast.error("Falha ao processar devolução");
+    const canonicalRefund = Number(res.valor_devolucao) || 0;
+    toast.success(`Devolução de ${fmt(canonicalRefund)} registrada`);
     onClose();
   };
 

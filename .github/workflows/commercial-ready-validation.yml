@@ -48,6 +48,8 @@ jobs:
         run: npm test -- --passWithNoTests
       - name: Build production bundle
         run: npm run build
+      - name: Bundle composition report
+        run: node scripts/report-bundle-composition.mjs
       - name: Ensure no tracked environment files
         shell: bash
         run: |

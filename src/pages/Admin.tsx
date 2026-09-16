@@ -4,7 +4,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 import VencimentoBanner from '@/components/admin/VencimentoBanner';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -958,18 +958,19 @@ const AdminPage = () => {
                     const active = tab === t.key;
                     const Icon = t.icon;
                     return (
-                      <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
-                          active
-                            ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
-                            : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
-                        }`}
-                      >
-                        {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
-                        <span className="truncate font-medium">{t.label}</span>
-                      </button>
+                      <SheetClose asChild key={t.key}>
+                        <button
+                          onClick={() => setTab(t.key)}
+                          className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
+                            active
+                              ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
+                              : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
+                          }`}
+                        >
+                          {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+                          <span className="truncate font-medium">{t.label}</span>
+                        </button>
+                      </SheetClose>
                     );
                   })}
                 </div>

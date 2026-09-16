@@ -596,7 +596,19 @@ function PDVMain({
     if (error) return toast.error(error.message);
     const res = data as any;
     if (!res?.ok) return toast.error("Falha ao registrar venda");
-    toast.success(`Venda registrada — ${fmt(snapTotal)}`);
+    const canonicalSubtotal = Number(res.subtotal ?? snapSubtotal);
+    const canonicalDesconto = Number(res.desconto ?? snapDesconto);
+    const canonicalTotal = Number(res.total ?? snapTotal);
+    const canonicalItems = Array.isArray(res.items)
+      ? res.items.map((x: any) => ({
+          id: String(x.product_id),
+          product_id: String(x.product_id),
+          name: String(x.name || "Produto"),
+          price: Number(x.price) || 0,
+          quantity: Number(x.quantity) || 0,
+        }))
+      : snapshot;
+    toast.success(`Venda registrada — ${fmt(canonicalTotal)}`);
     beep();
 
     // 📱 Persiste telefone do cliente no pedido + dispara WhatsApp automático
@@ -626,10 +638,10 @@ function PDVMain({
     setLastReceipt({
       orderNumber: res.order_number,
       createdAt: res.created_at || new Date().toISOString(),
-      items: snapshot,
-      subtotal: snapSubtotal,
-      desconto: snapDesconto,
-      total: snapTotal,
+      items: canonicalItems,
+      subtotal: canonicalSubtotal,
+      desconto: canonicalDesconto,
+      total: canonicalTotal,
       forma: snapForma,
       cupom: snapCupom,
     });

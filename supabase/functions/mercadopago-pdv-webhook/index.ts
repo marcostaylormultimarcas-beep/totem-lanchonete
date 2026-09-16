@@ -39,10 +39,10 @@ Deno.serve(async (req) => {
     const status = String(pay.status || "pending").toLowerCase();
     const detail = String(pay.status_detail || "");
     const { data: updated, error: updateErr } = await admin.rpc("pdv_update_pix_payment_internal", {
-      _intent_id: intent.id,
       _payment_id: paymentId,
       _status: status,
       _status_detail: detail,
+      _amount: Number(pay.transaction_amount),
     });
     if (updateErr || !(updated as any)?.ok) return json({ ok: false }, 500);
     return json({ ok: true });

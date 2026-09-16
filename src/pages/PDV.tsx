@@ -497,7 +497,7 @@ function PDVMain({
 
   // 🟢 Gera Pix real (Mercado Pago) quando o operador escolhe PIX no PDV.
   // O QR + Copia-e-Cola viaja no broadcast e aparece GIGANTE na tela do cliente.
-  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number; intentId: string } | null>(null);
+  const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number; intentId: string; cartSignature: string } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const pixReqId = useRef(0);
   useEffect(() => {
@@ -507,8 +507,17 @@ function PDVMain({
       setPixLoading(false);
       return;
     }
-    // Reutiliza o QR se o valor não mudou
-    if (pixData && Math.abs(pixData.amount - total) < 0.005) return;
+    const cartSignature = JSON.stringify(
+      cart
+        .map((x) => ({ product_id: x.product_id, quantity: x.quantity }))
+        .sort((a, b) => a.product_id.localeCompare(b.product_id)),
+    );
+    // Reutiliza o QR somente se valor, itens/quantidades e cupom continuarem iguais.
+    if (
+      pixData &&
+      Math.abs(pixData.amount - total) < 0.005 &&
+      pixData.cartSignature === `${cartSignature}|${cupomDesc?.codigo || ""}`
+    ) return;
 
     const myReq = ++pixReqId.current;
     setPixLoading(true);
@@ -541,6 +550,7 @@ function PDVMain({
           copiaECola: d.qr_code || "",
           amount: Number(d.amount ?? intent.amount) || 0,
           intentId: String(d.intent_id || intent.intent_id),
+          cartSignature: `${cartSignature}|${cupomDesc?.codigo || ""}`,
         });
       } finally {
         if (myReq === pixReqId.current) setPixLoading(false);

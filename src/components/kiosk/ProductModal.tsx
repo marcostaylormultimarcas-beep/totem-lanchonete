@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame, ShoppingCart, Heart, Share2, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame, ShoppingCart, Share2, MessageSquare } from 'lucide-react';
 import { Product, CartItem, formatCurrency, isByWeight } from '@/data/store';
 import { useBalanca } from '@/hooks/useBalanca';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -15,7 +15,6 @@ interface ProductModalProps {
 
 interface ReviewRow {
   id: string;
-  user_id: string;
   rating: number;
   comment: string;
   created_at: string;
@@ -36,7 +35,6 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   const [myRating, setMyRating] = useState(5);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [favorite, setFavorite] = useState(false);
 
   const byWeight = isByWeight(product);
   const balanca = useBalanca(baudRate);
@@ -52,7 +50,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   const fetchReviews = async () => {
     const { data } = await supabase
       .from('product_reviews' as any)
-      .select('id,user_id,rating,comment,created_at')
+      .select('id,rating,comment,created_at')
       .eq('product_id', product.id)
       .order('created_at', { ascending: false })
       .limit(20);
@@ -71,22 +69,19 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
       const { data: { user } } = await supabase.auth.getUser();
       setUserId(user?.id || null);
       if (!user) { setCanReview(false); return; }
-      // Procura pedido concluído deste cliente que contenha este produto
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id,items,status')
-        .eq('user_id', user.id)
-        .eq('status', 'delivered')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      const eligible = (orders || []).find((o: any) => {
-        const items = Array.isArray(o.items) ? o.items : [];
-        return items.some((it: any) => it?.product_id === product.id || it?.product?.id === product.id || it?.productId === product.id);
-      });
-      if (eligible) {
-        setEligibleOrderId(eligible.id);
-        setCanReview(true);
+      const { data: eligibleOrderId, error: eligibilityError } = await supabase.rpc(
+        'product_review_eligible_order' as any,
+        { _product_id: product.id },
+      );
+      if (eligibilityError) {
+        console.error('[reviews] eligibility', eligibilityError);
+        setEligibleOrderId(null);
+        setCanReview(false);
+        return;
       }
+      const eligibleId = (eligibleOrderId as string | null) || null;
+      setEligibleOrderId(eligibleId);
+      setCanReview(Boolean(eligibleId));
     })();
   }, [product.id]);
 
@@ -128,16 +123,19 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   const submitReview = async () => {
     if (!userId || !eligibleOrderId) return;
     setSubmitting(true);
-    const { error } = await supabase.from('product_reviews' as any).upsert({
-      product_id: product.id,
-      organization_id: orgId,
-      user_id: userId,
-      order_id: eligibleOrderId,
-      rating: myRating,
-      comment: myComment.trim(),
-    }, { onConflict: 'product_id,user_id,order_id' });
+    const { data, error } = await supabase.rpc('submit_product_review' as any, {
+      _product_id: product.id,
+      _order_id: eligibleOrderId,
+      _rating: myRating,
+      _comment: myComment.trim(),
+    });
     setSubmitting(false);
-    if (error) { toast.error('Não foi possível salvar a avaliação.'); return; }
+    const result = data as any;
+    if (error || !result?.ok) {
+      console.error('[reviews] submit', error || result);
+      toast.error('Não foi possível salvar a avaliação.');
+      return;
+    }
     toast.success('Avaliação enviada — obrigado!');
     setShowReviewForm(false);
     setMyComment('');
@@ -178,9 +176,6 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
             <div className="flex items-center gap-2">
               <button onClick={handleShare} className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-white active:scale-90">
                 <Share2 className="w-5 h-5" />
-              </button>
-              <button onClick={() => setFavorite(f => !f)} className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center active:scale-90">
-                <Heart className={`w-5 h-5 ${favorite ? 'fill-orange-500 text-orange-500' : 'text-white'}`} />
               </button>
             </div>
           </div>

@@ -1,0 +1,50 @@
+name: Verification Round 15 Checkout Contract
+on:
+  push:
+    branches: [fix/verification-round-2]
+    paths:
+      - '.github/workflows/verification-round15-checkout-contract.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-2
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Apply guarded frontend cutover
+        run: |
+          if grep -q "rpc('next_order_number'" src/components/kiosk/PaymentScreen.tsx; then
+            echo 'Atomic numbering already applied; validating.'
+          else
+            python scripts/fix-payment-atomic-order-number.py
+          fi
+      - name: Checkout contract assertions
+        run: |
+          grep -q "rpc('next_order_number'" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "count: 'exact', head: true" src/components/kiosk/PaymentScreen.tsx
+          grep -q 'add column if not exists scheduled_for timestamptz' supabase/migrations/20260916234500_visionfood_v2_order_checkout_contract_phase40.sql
+          grep -q 'orders_org_order_number_uidx' supabase/migrations/20260916234500_visionfood_v2_order_checkout_contract_phase40.sql
+          grep -q 'security definer' supabase/migrations/20260916234500_visionfood_v2_order_checkout_contract_phase40.sql
+          grep -q 'revoke all on function public.next_order_number(uuid) from public' supabase/migrations/20260916234500_visionfood_v2_order_checkout_contract_phase40.sql
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Commit validated frontend cutover
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/components/kiosk/PaymentScreen.tsx
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: reserve checkout order number atomically'
+          git push origin HEAD:fix/verification-round-2

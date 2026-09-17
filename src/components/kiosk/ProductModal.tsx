@@ -58,14 +58,8 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
       .limit(20);
     if (!data) return;
     const rows = data as any as ReviewRow[];
-    // Tenta enriquecer com nome do profile
-    const ids = Array.from(new Set(rows.map(r => r.user_id)));
-    if (ids.length) {
-      const { data: profs } = await supabase.from('profiles').select('id,full_name').in('id', ids);
-      const map = new Map<string, string>();
-      (profs || []).forEach((p: any) => map.set(p.id, p.full_name || ''));
-      rows.forEach(r => { r.author_name = map.get(r.user_id) || 'Cliente'; });
-    }
+    // Não consulta perfis de terceiros: avaliações públicas exibem um rótulo neutro.
+    rows.forEach(r => { r.author_name = 'Cliente'; });
     setReviews(rows);
   };
 
@@ -82,12 +76,12 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
         .from('orders')
         .select('id,items,status')
         .eq('user_id', user.id)
-        .in('status', ['delivered', 'completed', 'ready'])
+        .eq('status', 'delivered')
         .order('created_at', { ascending: false })
         .limit(50);
       const eligible = (orders || []).find((o: any) => {
         const items = Array.isArray(o.items) ? o.items : [];
-        return items.some((it: any) => it?.product?.id === product.id || it?.productId === product.id);
+        return items.some((it: any) => it?.product_id === product.id || it?.product?.id === product.id || it?.productId === product.id);
       });
       if (eligible) {
         setEligibleOrderId(eligible.id);

@@ -19,12 +19,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - run: python scripts/fix-orders-ready-status.py
-      - name: Assert ready flow and error guard
+      - name: Assert hardened ready flow and concurrency guard
         run: |
-          grep -q "ready: { label: '✅ Pronto'" src/components/admin/OrdersPanel.tsx
-          grep -q "updateStatus(order.id, 'ready')" src/components/admin/OrdersPanel.tsx
-          grep -q "statusError" src/components/admin/OrdersPanel.tsx
-          grep -q "'pending', 'preparing', 'ready', 'out_for_delivery'" src/components/admin/OrdersPanel.tsx
+          grep -q "ready:{label:'🔔 Pronto'" src/components/admin/OrdersPanel.tsx
+          grep -q "updateStatus(order.id,'ready')" src/components/admin/OrdersPanel.tsx
+          grep -q "eq('status',order.status)" src/components/admin/OrdersPanel.tsx
+          grep -q "updated.status!==status" src/components/admin/OrdersPanel.tsx
+          grep -q "'pending','preparing','ready','out_for_delivery'" src/components/admin/OrdersPanel.tsx
+          grep -q "if(status==='ready')" src/components/admin/OrdersPanel.tsx
+          grep -q "await callPassword" src/components/admin/OrdersPanel.tsx
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build

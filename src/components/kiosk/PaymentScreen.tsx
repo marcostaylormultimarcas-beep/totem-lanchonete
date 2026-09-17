@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, FileText } from 'lucide-react';
+import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2 } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -64,8 +64,14 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const fee = primeFreeShipping ? 0 : rawFee;
   const feeWaived = primeFreeShipping ? rawFee : 0;
   const clientTotal = Math.max(0, subtotal - discount + fee);
+  const authoritativeSubtotal = serverQuote ? Number(serverQuote.subtotal) : subtotal;
+  const authoritativeCouponDiscount = serverQuote ? Number(serverQuote.coupon_discount || 0) : couponDiscount;
+  const authoritativePrimeDiscount = serverQuote ? Number(serverQuote.prime_discount || 0) : primeDiscount;
+  const authoritativeDiscount = serverQuote ? Number(serverQuote.discount || 0) : discount;
+  const authoritativeFee = serverQuote ? Number(serverQuote.delivery_fee || 0) : fee;
+  const authoritativeFeeWaived = serverQuote?.prime_shipping_waived ? rawFee : feeWaived;
   const total = serverQuote ? Number(serverQuote.total) : clientTotal;
-  const primeSavings = primeDiscount + feeWaived;
+  const primeSavings = authoritativePrimeDiscount + authoritativeFeeWaived;
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
 
@@ -155,12 +161,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
     msg += `─────────────────\n`;
-    if (appliedCoupon && discount > 0) {
-      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    if (appliedCoupon && authoritativeCouponDiscount > 0) {
+      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(authoritativeCouponDiscount)})\n`;
     }
-    if (fee > 0) {
-      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(fee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
-    }
+    if (authoritativePrimeDiscount > 0) msg += `👑 *VISION PRIME:* - ${formatCurrency(authoritativePrimeDiscount)}\n`;
+    if (authoritativeFee > 0) {
+      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(authoritativeFee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
+    } else if (authoritativeFeeWaived > 0) msg += `🛵 *TAXA DE ENTREGA:* GRÁTIS (Vision Prime)\n`;
     const methodLabel = method === 'cash' ? 'Dinheiro no balcão' : method === 'terminal' ? 'Cartão na maquininha' : method === 'online' ? 'Cartão online' : 'Pix';
     msg += `💳 *PAGAMENTO:* ${methodLabel} - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
@@ -219,7 +226,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         _delivery_recipient: deliveryRecipient || '',
         _bairro_id: bairroId || null,
         _bairro_nome: bairroNome || '',
-        _delivery_fee: fee,
+        _delivery_fee: rawFee,
         _items: orderItems,
         _total: total,
         _payment_method: method || '',
@@ -301,31 +308,31 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             ))}
           </div>
           <hr className="border-border" />
-          {(discount > 0 || rawFee > 0) && (
+          {(authoritativeDiscount > 0 || rawFee > 0) && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
+                <span>{formatCurrency(authoritativeSubtotal)}</span>
               </div>
-              {couponDiscount > 0 && (
+              {authoritativeCouponDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
-                  <span className="text-success font-semibold">- {formatCurrency(couponDiscount)}</span>
+                  <span className="text-success font-semibold">- {formatCurrency(authoritativeCouponDiscount)}</span>
                 </div>
               )}
-              {primeDiscount > 0 && (
+              {authoritativePrimeDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="flex items-center gap-1" style={{ color: '#f4d28b' }}><Crown className="w-3 h-3" /> Vision Prime ({primeCfg?.desconto_percentual}%)</span>
-                  <span className="font-semibold" style={{ color: '#f4d28b' }}>- {formatCurrency(primeDiscount)}</span>
+                  <span className="font-semibold" style={{ color: '#f4d28b' }}>- {formatCurrency(authoritativePrimeDiscount)}</span>
                 </div>
               )}
               {rawFee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">🛵 Taxa de entrega {bairroNome ? `(${bairroNome})` : ''}</span>
-                  {feeWaived > 0 ? (
+                  {authoritativeFeeWaived > 0 ? (
                     <span className="font-semibold" style={{ color: '#f4d28b' }}>GRÁTIS <span className="line-through text-muted-foreground ml-1">{formatCurrency(rawFee)}</span></span>
                   ) : (
-                    <span className="font-semibold">+ {formatCurrency(rawFee)}</span>
+                    <span className="font-semibold">+ {formatCurrency(authoritativeFee)}</span>
                   )}
                 </div>
               )}
@@ -373,17 +380,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">
           <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
         </button>
-
-        {currentOrderId && customerCpf && (
-          <a
-            href={`/fiscal/${currentOrderId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="touch-btn w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl text-lg flex items-center justify-center gap-2 font-bold"
-          >
-            <FileText className="w-6 h-6" /> Baixar Nota Fiscal
-          </a>
-        )}
 
 
         {currentOrderId && (

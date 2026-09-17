@@ -53,8 +53,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
         supabase.from('vision_prime_config').select('ativo,valor_mensalidade,desconto_percentual,frete_gratis_minimo').eq('organization_id', organizationId).maybeSingle(),
         supabase.from('cupons').select('codigo,tipo,valor').eq('organization_id', organizationId).eq('ativo', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-        supabase.from('parcerias').select('id,status,habilitada_origem,habilitada_parceira')
-          .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`),
+        supabase.rpc('comarketing_panel_data' as any, { _org: organizationId }),
         supabase.from('assistente_vision_feedback').select('suggestion_key,action,reason')
           .eq('organization_id', organizationId),
         supabase.rpc('ai_suggestion_stats' as any, { _org: organizationId }),
@@ -63,7 +62,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       setPrimeActive(Boolean(prime.data?.ativo));
       setPrimeConfig(prime.data?.ativo ? { valor_mensalidade:Number((prime.data as any).valor_mensalidade)||0, desconto_percentual:Number((prime.data as any).desconto_percentual)||0, frete_gratis_minimo:Number((prime.data as any).frete_gratis_minimo)||0 } : null);
       setActiveCoupon(coupon.data ? { codigo:(coupon.data as any).codigo, tipo:(coupon.data as any).tipo, valor:Number((coupon.data as any).valor)||0 } : null);
-      setParceriasAtivas(((parc.data as any[]) || []).filter(p => p.status === 'active' && p.habilitada_origem && p.habilitada_parceira).length);
+      setParceriasAtivas((((parc.data as any)?.parcerias || []) as any[]).filter(p => p.status === 'active' && p.habilitada_origem && p.habilitada_parceira).length);
       const map: Record<string, { action: string; reason: string }> = {};
       ((fb.data as any[]) || []).forEach(r => { map[r.suggestion_key] = { action: r.action, reason: r.reason || '' }; });
       setFeedback(map);

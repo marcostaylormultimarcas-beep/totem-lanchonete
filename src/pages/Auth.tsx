@@ -139,27 +139,8 @@ const Auth = () => {
         });
       }
 
-      const userId = data.user?.id || (await supabase.auth.getUser()).data.user?.id;
-      if (userId) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            user_id: userId,
-            display_name: name.trim(),
-            email: cleanEmailValue,
-            phone: cleanPhoneValue || phone.trim(),
-            organization_id: origemOrgId,
-            origem_assinatura_empresa_id: origemOrgId,
-          } as any, { onConflict: 'user_id' });
-
-        if (profileError) {
-          console.error('[signup] profile upsert failed', profileError);
-          const duplicate = profileError.message.toLowerCase().includes('duplicate') || profileError.code === '23505';
-          toast.error(duplicate ? 'Este e-mail já está cadastrado. Faça login para continuar.' : 'Conta criada, mas não foi possível vincular o cliente à loja. Tente entrar novamente.');
-          setLoading(false);
-          return;
-        }
-      }
+      // O perfil e o vínculo com a loja são criados pelo trigger handle_new_user.
+      // O cliente não pode alterar organization_id/origem_assinatura_empresa_id diretamente.
 
       toast.success('Conta criada com sucesso!');
       navigate(returnTo);

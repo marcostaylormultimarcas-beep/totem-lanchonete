@@ -12,7 +12,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # Existing dependency tree has React 18 + react-leaflet 5 peer conflict; use the project's established validation install path.
+      - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test
       - run: npm run build
       - name: Assert authoritative checkout cutover

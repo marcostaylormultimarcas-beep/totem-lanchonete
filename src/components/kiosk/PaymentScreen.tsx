@@ -170,14 +170,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
       if (!orgId) throw new Error('Loja não identificada. Recarregue o cardápio e tente novamente.');
 
-      // Reserva a senha de forma atômica no banco, isolada por organização.
-      const { data: nextNumber, error: numberError } = await supabase.rpc('next_order_number' as any, {
-        _organization_id: orgId,
-      });
-      if (numberError || !nextNumber) throw numberError || new Error('Não foi possível gerar a senha do pedido.');
-      const num = String(nextNumber);
-      setGeneratedNumber(num);
-
       const orderItems = cart.map(item => ({
         product_id: item.product.id,
         name: item.product.name,
@@ -191,31 +183,30 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         sold_by_weight: Boolean(item.weightKg),
       }));
 
-      // Get current user if logged in
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const { data, error } = await supabase.from('orders').insert({
-        organization_id: orgId,
-        order_number: num,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        customer_cpf: customerCpf || '',
-        order_type: orderType,
-        delivery_address: deliveryAddress || '',
-        delivery_reference: deliveryReference || '',
-        delivery_recipient: deliveryRecipient || '',
-        bairro_id: bairroId || null,
-        bairro_nome: bairroNome || '',
-        delivery_fee: fee,
-        items: orderItems,
-        total,
-        status: 'pending',
-        payment_method: method || '',
-        user_id: session?.user?.id || null,
-        scheduled_for: scheduledFor || null,
-      } as any).select('id').single();
+      // Cria o pedido e reserva a senha na mesma transação do banco.
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout' as any, {
+        _organization_id: orgId,
+        _customer_name: customerName,
+        _customer_phone: customerPhone,
+        _customer_cpf: customerCpf || '',
+        _order_type: orderType,
+        _delivery_address: deliveryAddress || '',
+        _delivery_reference: deliveryReference || '',
+        _delivery_recipient: deliveryRecipient || '',
+        _bairro_id: bairroId || null,
+        _bairro_nome: bairroNome || '',
+        _delivery_fee: fee,
+        _items: orderItems,
+        _total: total,
+        _payment_method: method || '',
+        _scheduled_for: scheduledFor || null,
+      });
 
       if (error) throw error;
+      const data = Array.isArray(checkoutRows) ? checkoutRows[0] : checkoutRows;
+      if (!data?.id || !data?.order_number) throw new Error('Checkout não retornou o pedido criado.');
+      const num = String(data.order_number);
+      setGeneratedNumber(num);
 
       // Vincula nota fiscal ao pedido quando CPF informado
       if (data?.id && customerCpf) {

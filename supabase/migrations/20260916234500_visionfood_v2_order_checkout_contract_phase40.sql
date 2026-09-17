@@ -23,29 +23,39 @@ set search_path = public
 as $$
 declare
   _n bigint;
+  _candidate text;
 begin
   if _organization_id is null then
     raise exception 'organization_id is required';
   end if;
 
-  insert into public.order_number_counters(organization_id, last_number)
-  values (
-    _organization_id,
-    coalesce((select max(case when order_number ~ '^[0-9]+$' then order_number::bigint end)
-              from public.orders where organization_id = _organization_id), 0) + 1
-  )
-  on conflict (organization_id) do update
-    set last_number = public.order_number_counters.last_number + 1,
-        updated_at = now()
-  returning last_number into _n;
+  -- Do not seed from legacy timestamp-like order numbers. Advance an isolated
+  -- per-organization counter and skip any short number that already exists.
+  loop
+    insert into public.order_number_counters(organization_id, last_number)
+    values (_organization_id, 1)
+    on conflict (organization_id) do update
+      set last_number = public.order_number_counters.last_number + 1,
+          updated_at = now()
+    returning last_number into _n;
 
-  return lpad(_n::text, 3, '0');
+    _candidate := lpad(_n::text, 3, '0');
+    exit when not exists (
+      select 1 from public.orders
+      where organization_id = _organization_id
+        and order_number = _candidate
+    );
+  end loop;
+
+  return _candidate;
 end;
 $$;
 
 revoke all on function public.next_order_number(uuid) from public;
 grant execute on function public.next_order_number(uuid) to anon, authenticated;
 
+-- Production was audited before application: no duplicate (organization_id,
+-- order_number) pairs existed. This constraint is the final race-condition guard.
 create unique index if not exists orders_org_order_number_uidx
   on public.orders(organization_id, order_number)
   where organization_id is not null;

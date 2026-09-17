@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Crown, Loader2, ArrowLeft, ShieldCheck, Truck, Percent } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 import { formatCurrency } from '@/data/store';

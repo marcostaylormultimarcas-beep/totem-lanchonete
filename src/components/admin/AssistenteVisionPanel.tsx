@@ -46,8 +46,6 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     if (!organizationId) return;
     const load = async () => {
       setLoading(true);
-      // Re-atribui conversões para o ranking refletir vendas recentes
-      await supabase.rpc('ai_attribute_conversions' as any, { _org: organizationId });
       const [ord, prime, coupon, parc, fb, st] = await Promise.all([
         supabase.from('orders').select('id,customer_name,customer_phone,total,created_at,status')
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
@@ -229,37 +227,11 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     return m ? m[1].toUpperCase() : '';
   };
 
-  const dispatchInternalNotification = async (s: Suggestion, msgOverride?: string) => {
+  const approveSuggestion = async (s: Suggestion, msgOverride?: string) => {
     const msg = (msgOverride ?? s.template ?? '').trim();
-    if (!organizationId) return;
-
-    if (!s.audience.length) {
-      await registerFeedback(s.key, 'approved', '', msg);
-      await logHistory(s, 'approved', { template: msg });
-      toast.success('Sugestão aprovada — marcada como em andamento');
-      return;
-    }
-
-    const phones = s.audience.map(a => a.phone).filter(Boolean);
-    const { data, error } = await supabase.rpc('notify_audience' as any, {
-      _org: organizationId,
-      _suggestion_key: s.key,
-      _title: s.title,
-      _body: msg ? msg.replace(/\*/g, '') : s.description,
-      _cta_route: '',
-      _coupon: extractCoupon(msg),
-      _phones: phones,
-    });
-
-    if (error) {
-      toast.error('Falha ao enviar notificações: ' + error.message);
-      return;
-    }
-
-    const sentCount = Number(data ?? phones.length);
-    await registerFeedback(s.key, 'sent', '', msg);
-    await logHistory(s, 'sent', { template: msg, notifications_sent: sentCount });
-    toast.success(`✅ ${sentCount} notificação${sentCount !== 1 ? 'ões' : ''} interna${sentCount !== 1 ? 's' : ''} enviada${sentCount !== 1 ? 's' : ''} no app do cliente`);
+    await registerFeedback(s.key, 'approved', '', msg);
+    await logHistory(s, 'approved', { template: msg });
+    toast.success('Sugestão aprovada — marcada como em andamento');
   };
 
   const submitDismiss = async () => {
@@ -346,20 +318,18 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
 
                     {s.template && (
                       <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border text-sm whitespace-pre-wrap">
-                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem da notificação</div>
+                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem sugerida</div>
                         {s.template}
                       </div>
                     )}
 
                     {s.audience.length > 0 && (
-                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''} receberá{s.audience.length > 1 ? 'ão' : ''} no sininho do app
-                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Público sugerido: {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''}</div>
                     )}
 
                     {fb?.action === 'sent' && (
                       <div className="mt-2 text-[11px] text-blue-400/80 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Notificação interna disparada — log registrado
+                        <Check className="w-3 h-3" /> Sugestão aprovada — ação registrada
                       </div>
                     )}
 
@@ -370,10 +340,10 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                         </button>
                       )}
                       <button
-                        onClick={() => dispatchInternalNotification(s)}
+                        onClick={() => approveSuggestion(s)}
                         className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90"
                       >
-                        <Bell className="w-4 h-4" /> Aprovar e Enviar
+                        <Bell className="w-4 h-4" /> Aprovar
                       </button>
                       <button onClick={() => { setDismissingKey(s.key); setDismissReason(''); }} className="touch-btn px-3 py-2 rounded-lg bg-muted hover:bg-destructive/20 hover:text-destructive text-sm flex items-center gap-1.5">
                         <X className="w-4 h-4" /> Dispensar
@@ -403,7 +373,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
               <button
                 onClick={async () => { const s = editing!; setEditing(null); await dispatchInternalNotification(s, editText); }}
                 className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-1.5">
-                <Bell className="w-4 h-4" /> Aprovar e Enviar
+                <Bell className="w-4 h-4" /> Aprovar
               </button>
             </div>
           </div>

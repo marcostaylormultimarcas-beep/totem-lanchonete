@@ -29,12 +29,8 @@ export function useVisionPrimeConfig(orgId: string | null) {
         setConfig((data as any) || null);
         setLoading(false);
       });
-    const ch = supabase
-      .channel(`vprime-cfg-${orgId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vision_prime_config', filter: `organization_id=eq.${orgId}` },
-        (p: any) => { if (p.new) setConfig(p.new); })
-      .subscribe();
-    return () => { cancel = true; supabase.removeChannel(ch); };
+    // Public clients no longer subscribe directly to the protected config table.
+    return () => { cancel = true; };
   }, [orgId]);
 
   return { config, loading };

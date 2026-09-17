@@ -1,0 +1,4 @@
+-- Phase 65: super-admin-only global Co-Marketing map.
+create or replace function public.comarketing_global_map() returns table(id uuid,status text,min_order_value numeric,discount_percent numeric,org_origem uuid,org_parceira uuid,origem_name text,parceira_name text,origem_city text,parceira_city text) language plpgsql security definer set search_path='' as $$begin if auth.uid() is null or not public.eh_super_admin(auth.uid()) then raise exception 'forbidden' using errcode='42501'; end if; return query select p.id,p.status,p.min_order_value,p.discount_percent,p.org_origem,p.org_parceira,a.name,b.name,a.cidade,b.cidade from public.parcerias p join public.organizations a on a.id=p.org_origem join public.organizations b on b.id=p.org_parceira order by p.updated_at desc; end$$;
+revoke all on function public.comarketing_global_map() from public,anon;
+grant execute on function public.comarketing_global_map() to authenticated;

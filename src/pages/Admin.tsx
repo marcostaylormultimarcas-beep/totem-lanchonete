@@ -27,7 +27,6 @@ const ChangePasswordCard = lazy(() => import('@/components/admin/ChangePasswordC
 const CouponsPanel = lazy(() => import('@/components/admin/CouponsPanel'));
 const LoyaltyPanel = lazy(() => import('@/components/admin/LoyaltyPanel'));
 const StorageUsageCard = lazy(() => import('@/components/admin/StorageUsageCard'));
-const MasterRecoveryPinCard = lazy(() => import('@/components/admin/MasterRecoveryPinCard'));
 const MercadoPagoCard = lazy(() => import('@/components/admin/MercadoPagoCard'));
 const FiscalExportCard = lazy(() => import('@/components/admin/FiscalExportCard'));
 const EntregadoresPanel = lazy(() => import('@/components/admin/EntregadoresPanel'));
@@ -1497,9 +1496,6 @@ const AdminPage = () => {
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
-
-          {currentAdmin?.tier === 'master' && <MasterRecoveryPinCard userId={currentAdmin.id} />}
-
 
 
           <div className="kiosk-card p-4 space-y-3">

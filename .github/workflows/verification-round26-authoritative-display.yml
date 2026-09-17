@@ -1,0 +1,23 @@
+name: Verification Round 26 - Authoritative Checkout Display
+on:
+  push:
+    branches: [fix/verification-round-2]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Assert server quote drives receipt and WhatsApp
+        run: |
+          grep -q "authoritativeCouponDiscount" src/components/kiosk/PaymentScreen.tsx
+          grep -q "authoritativePrimeDiscount" src/components/kiosk/PaymentScreen.tsx
+          grep -q "authoritativeFee" src/components/kiosk/PaymentScreen.tsx
+          grep -q "_delivery_fee: rawFee" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "Baixar Nota Fiscal" src/components/kiosk/PaymentScreen.tsx

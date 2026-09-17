@@ -47,6 +47,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false, payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
   const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
   const [mpLoading, setMpLoading] = useState(false);
+  const [serverQuote, setServerQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
   const { config: primeCfg } = useVisionPrimeConfig(orgId);
   const { status: primeStatus } = useVisionPrimeStatus(orgId);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
@@ -60,8 +63,26 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const primeFreeShipping = primeActive && (Number(primeCfg!.frete_gratis_minimo) || 0) <= subtotal;
   const fee = primeFreeShipping ? 0 : rawFee;
   const feeWaived = primeFreeShipping ? rawFee : 0;
-  const total = Math.max(0, subtotal - discount + fee);
+  const clientTotal = Math.max(0, subtotal - discount + fee);
+  const total = serverQuote ? Number(serverQuote.total) : clientTotal;
   const primeSavings = primeDiscount + feeWaived;
+
+  const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
+
+  useEffect(() => {
+    if (!orgId || isDemoMode()) { setServerQuote(null); return; }
+    let cancelled = false;
+    setQuoteLoading(true); setQuoteError(''); setMpPix(null);
+    supabase.rpc('quote_order_checkout' as any, {
+      _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
+      _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || ''
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data) { setServerQuote(null); setQuoteError(error?.message || 'Não foi possível calcular o total no servidor.'); }
+      else setServerQuote(data as any);
+    }).finally(() => { if (!cancelled) setQuoteLoading(false); });
+    return () => { cancelled = true; };
+  }, [orgId, orderType, bairroId, rawFee, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
 
   const pixKey = mpPix?.qr_code || storeSettings.pixKeyManual || '';
   const qrImageSrc = mpPix?.qr_code_base64 ? `data:image/png;base64,${mpPix.qr_code_base64}` : '';
@@ -95,7 +116,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   // Auto-gera Pix real via Mercado Pago quando configurado e fora do modo demo
   useEffect(() => {
     if (method !== 'pix') return;
-    if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || isDemoMode() || total <= 0) return;
+    if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || quoteLoading || quoteError || (!isDemoMode() && !serverQuote) || isDemoMode() || total <= 0) return;
     setMpLoading(true);
     supabase.functions.invoke('mercadopago-create-pix', {
       body: { organization_id: orgId, amount: total, description: `Pedido ${storeSettings.storeName}` },
@@ -106,7 +127,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         setMpPix({ qr_code_base64: data.qr_code_base64, qr_code: data.qr_code });
       }
     }).finally(() => setMpLoading(false));
-  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName, method]);
+  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName, method, quoteLoading, quoteError, serverQuote]);
 
 
 
@@ -154,6 +175,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const handleConfirmPayment = async () => {
     if (saving) return;
     setPaymentError('');
+    if (!isDemoMode() && (quoteLoading || quoteError || !serverQuote)) {
+      toast.error('Total ainda não foi validado pelo servidor.'); return;
+    }
     setSaving(true);
 
     try {
@@ -200,6 +224,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         _total: total,
         _payment_method: method || '',
         _scheduled_for: scheduledFor || null,
+        _coupon_code: appliedCoupon?.codigo || '',
       });
 
       if (error) throw error;
@@ -422,9 +447,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       <div className="min-h-screen flex flex-col">
         <Header title={<>Forma de <span className="text-primary">Pagamento</span></>} />
         <div className="flex-1 flex flex-col px-6 py-6 gap-3 max-w-md mx-auto w-full">
+          {quoteError && <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{quoteError}</div>}
           <div className="text-center mb-2">
             <p className="text-sm text-muted-foreground">Total a pagar</p>
-            <p className="text-3xl font-black text-primary">{formatCurrency(total)}</p>
+            <p className="text-3xl font-black text-primary">{quoteLoading ? 'Calculando...' : formatCurrency(total)}</p>
           </div>
           {availableMethods.length === 0 ? (
             <div className="kiosk-card p-6 text-center space-y-2">
@@ -432,7 +458,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               <p className="text-xs text-muted-foreground">Peça ao lojista para habilitar pelo menos uma opção de pagamento nas configurações.</p>
             </div>
           ) : availableMethods.map(m => (
-            <button key={m.key} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
+            <button key={m.key} disabled={quoteLoading || Boolean(quoteError) || (!isDemoMode() && !serverQuote)} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
               <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">{m.icon}</div>
               <div className="flex-1">
                 <p className="font-bold">{m.label}</p>

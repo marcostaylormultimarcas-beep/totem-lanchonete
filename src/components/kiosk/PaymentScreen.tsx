@@ -233,28 +233,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       const num = String(data.order_number);
       setGeneratedNumber(num);
 
-      // Vincula nota fiscal ao pedido quando CPF informado
-      if (data?.id && customerCpf) {
-        const nfeUrl = `${window.location.origin}/fiscal/${data.id}`;
-        const { error: fiscalError } = await supabase.from('orders').update({
-          nfe_url: nfeUrl,
-          nfe_status: 'issued',
-          nfe_numero: `NFE-${data.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`,
-        }).eq('id', data.id);
-
-        if (fiscalError) {
-          console.error('Error linking fiscal document to order:', fiscalError);
-          toast.warning('Pedido registrado, mas o documento fiscal não foi vinculado.', {
-            description: 'O pedido continua válido. Verifique a emissão fiscal no administrativo.',
-          });
-        } else {
-          // Abre o documento somente depois de confirmar que o vínculo fiscal foi salvo.
-          setTimeout(() => {
-            try { window.open(nfeUrl, '_blank', 'noopener'); } catch {}
-          }, 800);
-        }
-      }
-
+      // CPF é armazenado no pedido para exportação/integração fiscal posterior.
+      // Não marque como NF-e emitida sem autorização fiscal/SEFAZ real.
       setConfirmed(true);
       if (data) {
         setCurrentOrderId(data.id);

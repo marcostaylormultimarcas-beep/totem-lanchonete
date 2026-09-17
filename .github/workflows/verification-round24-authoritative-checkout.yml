@@ -1,0 +1,22 @@
+name: Verification Round 24 - Authoritative Checkout
+on:
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Assert authoritative checkout cutover
+        run: |
+          grep -q "quote_order_checkout" src/components/kiosk/PaymentScreen.tsx
+          grep -q "_coupon_code" src/components/kiosk/PaymentScreen.tsx
+          grep -q "serverQuote" src/components/kiosk/PaymentScreen.tsx

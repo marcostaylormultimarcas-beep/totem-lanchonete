@@ -45,8 +45,8 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
       supabase.from('orders')
         .select('id,order_number,customer_name,customer_phone,delivery_address,bairro_nome,delivery_distance_km,created_at,total,status,order_type')
         .eq('organization_id', organizationId)
-        .eq('status', 'preparing')
-        .eq('order_type', 'delivery')
+        .eq('status', 'ready')
+        .in('order_type', ['delivery', 'viagem'])
         .order('delivery_distance_km', { ascending: true, nullsFirst: false }),
       supabase.from('entregadores').select('id,name,active').eq('organization_id', organizationId).eq('active', true),
       supabase.from('settings').select('cep_lat,cep_lng').eq('organization_id', organizationId).maybeSingle(),
@@ -155,11 +155,16 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
     setDispatching(route.id);
     try {
       const ids = route.orders.map(o => o.id);
-      const { error } = await supabase
+      const { data: updatedOrders, error } = await supabase
         .from('orders')
         .update({ status: 'out_for_delivery', entregador_id: route.entregadorId, updated_at: new Date().toISOString() })
-        .in('id', ids);
+        .eq('organization_id', organizationId)
+        .eq('status', 'ready')
+        .in('order_type', ['delivery', 'viagem'])
+        .in('id', ids)
+        .select('id');
       if (error) { alert('Erro ao despachar: ' + error.message); setDispatching(null); return; }
+      if ((updatedOrders || []).length !== ids.length) { alert('Algum pedido mudou de status antes do despacho. Atualize as rotas e tente novamente.'); await loadAll(); setRoutes([]); setGenerated(false); return; }
 
       // Push para clientes (best-effort)
       await triggerOutForDeliveryPush(route.orders.map(o => o.customer_phone));
@@ -224,7 +229,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
           ) : orders.length === 0 ? (
             <div className="text-center text-xs text-zinc-500 py-8">
               <Truck className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              Nenhum pedido em preparo aguardando rota.
+              Nenhum pedido pronto aguardando rota.
             </div>
           ) : (
             <div className="space-y-2">

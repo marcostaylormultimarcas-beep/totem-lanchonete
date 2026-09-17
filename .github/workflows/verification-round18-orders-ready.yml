@@ -1,0 +1,38 @@
+name: Verification Round 18 - Orders Ready Flow
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/verification-round-2]
+    paths: ['.github/workflows/verification-round18-orders-ready.yml']
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/verification-round-2
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: python scripts/fix-orders-ready-status.py
+      - name: Assert ready flow and error guard
+        run: |
+          grep -q "ready: { label: '✅ Pronto'" src/components/admin/OrdersPanel.tsx
+          grep -q "updateStatus(order.id, 'ready')" src/components/admin/OrdersPanel.tsx
+          grep -q "statusError" src/components/admin/OrdersPanel.tsx
+          grep -q "'pending', 'preparing', 'ready', 'out_for_delivery'" src/components/admin/OrdersPanel.tsx
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build
+      - name: Commit validated source
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/admin/OrdersPanel.tsx
+          git commit -m "fix: complete ready order status flow"
+          git push origin HEAD:fix/verification-round-2

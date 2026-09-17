@@ -53,17 +53,17 @@ const FiscalReceipt = () => {
   }, [orderId]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Carregando nota fiscal...</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Carregando comprovante...</div>;
   }
   if (!order) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Nota não encontrada.</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Comprovante não encontrado.</div>;
   }
 
   const dt = new Date(order.created_at);
   const dtStr = dt.toLocaleString('pt-BR');
   const cpf = order.customer_cpf || '';
   const payLabel = ({ pix: 'PIX', cash: 'Dinheiro', terminal: 'Cartão (Maquininha)', online: 'Cartão Online' } as Record<string, string>)[order.payment_method] || order.payment_method || '—';
-  const fiscalCode = `NFE-${order.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`;
+  const receiptCode = `PED-${order.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-6 px-4 print:bg-white print:text-black">
@@ -90,8 +90,8 @@ const FiscalReceipt = () => {
           {store?.fiscal_regime && <p className="uppercase">Regime: {store.fiscal_regime}</p>}
         </div>
         <div className="text-center py-2 border-b border-dashed border-black/40">
-          <p className="font-bold">CUPOM FISCAL — DANFE SIMPLIFICADA</p>
-          <p className="text-[10px]">Documento auxiliar não fiscal — uso interno</p>
+          <p className="font-bold">COMPROVANTE DO PEDIDO</p>
+          <p className="text-[10px]">Documento não fiscal — uso interno</p>
         </div>
         <div className="py-2 border-b border-dashed border-black/40 space-y-0.5">
           <div className="flex justify-between"><span>Pedido:</span><span className="font-bold">#{order.order_number}</span></div>
@@ -113,8 +113,8 @@ const FiscalReceipt = () => {
           <div className="flex justify-between text-[14px] font-bold"><span>TOTAL:</span><span>{formatCurrency(Number(order.total || 0))}</span></div>
         </div>
         <div className="text-center pt-2 space-y-0.5 text-[10px]">
-          <p>Código: {fiscalCode}</p>
-          <p>Consulte a autenticidade na loja emissora.</p>
+          <p>Código interno: {receiptCode}</p>
+          <p>Este comprovante não substitui documento fiscal autorizado.</p>
         </div>
       </div>
     </div>

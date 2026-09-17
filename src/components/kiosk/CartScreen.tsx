@@ -71,65 +71,49 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
     return () => { cancelled = true; };
   }, []);
 
-  // Auto-aplica cupom pendente vindo de notificação (sininho)
+  const validateCoupon = async (code: string, successMessage: string) => {
+    if (!orgId) return false;
+    const { data, error } = await supabase.rpc('validate_checkout_coupon' as any, {
+      _organization_id: orgId, _codigo: code, _subtotal: subtotal,
+    });
+    const result: any = data;
+    if (error || !result?.ok || !result?.cupom) {
+      const reason = result?.reason;
+      const messages: Record<string,string> = {
+        expired: 'Este cupom já expirou.', not_started: 'Este cupom ainda não está ativo.',
+        inactive: 'Este cupom está inativo.', minimum_not_met: 'O pedido não atingiu o valor mínimo deste cupom.',
+      };
+      toast.error(messages[reason] || 'Cupom inválido para esta loja.');
+      return false;
+    }
+    const c = result.cupom;
+    const percent = ['percentual','porcentagem','percent','percentage'].includes(String(c.tipo).toLowerCase());
+    onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: percent ? 'porcentagem' : 'valor_fixo', valor: Number(c.valor), discount: Number(c.discount) });
+    toast.success(successMessage);
+    return true;
+  };
+
+  // Auto-aplica cupom pendente vindo de notificação (sininho), sempre validado no servidor.
   useEffect(() => {
     if (!orgId || appliedCoupon) return;
     let pending = '';
     try { pending = localStorage.getItem('pending_coupon') || ''; } catch { /* ignore */ }
     if (!pending) return;
-    (async () => {
-      const code = pending.trim().toUpperCase();
-      const { data } = await supabase.from('cupons' as any)
-        .select('*').eq('organization_id', orgId).ilike('codigo', code).maybeSingle();
-      try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
-      if (!data) return;
-      const c: any = data;
-      const couponEnabled = c.status != null ? c.status === true : c.ativo !== false;
-      if (!couponEnabled) return;
-      const now = new Date();
-      if (c.data_inicio && now < new Date(c.data_inicio)) return;
-      if (c.data_fim && now > new Date(c.data_fim)) return;
-      const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
-      onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
-      toast.success(`Cupom ${code} aplicado da sua notificação!`);
-    })();
-  }, [orgId, appliedCoupon, subtotal, onApplyCoupon]);
-
+    try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
+    const code = pending.trim().toUpperCase();
+    validateCoupon(code, `Cupom ${code} aplicado da sua notificação!`);
+  }, [orgId, appliedCoupon]);
 
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
     if (!code || !orgId) return;
     setValidating(true);
-    const { data, error } = await supabase
-      .from('cupons' as any)
-      .select('*')
-      .eq('organization_id', orgId)
-      .ilike('codigo', code)
-      .maybeSingle();
-    setValidating(false);
-    if (error || !data) {
-      toast.error('Cupom inválido para esta loja.');
-      return;
+    try {
+      const ok = await validateCoupon(code, 'Cupom aplicado com sucesso!');
+      if (ok) setCouponCode('');
+    } finally {
+      setValidating(false);
     }
-    const c: any = data;
-    const couponEnabled = c.status != null ? c.status === true : c.ativo !== false;
-    if (!couponEnabled) {
-      toast.error('Este cupom está inativo.');
-      return;
-    }
-    const now = new Date();
-    if (c.data_inicio && now < new Date(c.data_inicio)) {
-      toast.error('Este cupom ainda não está ativo.');
-      return;
-    }
-    if (c.data_fim && now > new Date(c.data_fim)) {
-      toast.error('Este cupom já expirou.');
-      return;
-    }
-    const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
-    onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
-    setCouponCode('');
-    toast.success('Cupom aplicado com sucesso!');
   };
 
   const removeCoupon = () => {

@@ -123,7 +123,7 @@ const OrderHistory = () => {
                     {order.items.length > 3 && <p className="text-xs">+{order.items.length - 3} itens</p>}
                   </div>
                 )}
-                {order.order_type === 'delivery' && order.delivery_code && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                {(order.order_type === 'delivery' || order.order_type === 'viagem') && order.delivery_code && order.status !== 'delivered' && order.status !== 'cancelled' && (
                   <div className="bg-orange-600/10 border border-orange-600/40 rounded-xl p-3">
                     <p className="text-[11px] uppercase tracking-wider text-orange-400/80 font-bold mb-1">🔐 Código de entrega</p>
                     <p className="text-orange-400 font-black text-3xl tracking-[0.4em] text-center">{order.delivery_code}</p>

@@ -18,6 +18,11 @@ jobs:
       - run: npm run build
       - name: Assert authoritative checkout cutover
         run: |
-          grep -q "quote_order_checkout" src/components/kiosk/PaymentScreen.tsx
+          grep -q "quote_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
+          grep -q "create_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
+          grep -q "_delivery_context" src/components/kiosk/PaymentScreen.tsx
           grep -q "_coupon_code" src/components/kiosk/PaymentScreen.tsx
           grep -q "serverQuote" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "rpc('quote_order_checkout' as any" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "rpc('create_order_checkout' as any" src/components/kiosk/PaymentScreen.tsx
+          grep -q "delivery_mode='lista_ceps'" supabase/migrations/20260918039000_visionfood_v2_delivery_context_rpc_names_phase92.sql

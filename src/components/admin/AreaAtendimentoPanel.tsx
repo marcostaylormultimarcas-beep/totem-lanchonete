@@ -79,6 +79,10 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
 
   const salvar = async () => {
     if (!organizationId) return;
+    if (mode === 'raio_km') {
+      toast.error('O modo por raio está temporariamente bloqueado até a validação de distância ocorrer no servidor.');
+      return;
+    }
     setSaving(true);
     const { error } = await supabase.from('settings').update({
       cep_loja: normalizeCep(cepLoja),
@@ -145,16 +149,20 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
         <h2 className="font-black text-lg">Modo de Atendimento</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           {[
-            { v: 'bairros' as const, l: 'Por bairros', icon: Building },
-            { v: 'raio_km' as const, l: 'Por raio (km)', icon: Radius },
-            { v: 'lista_ceps' as const, l: 'Por lista de CEPs', icon: List },
+            { v: 'bairros' as const, l: 'Por bairros', icon: Building, disabled: false },
+            { v: 'raio_km' as const, l: 'Por raio (km)', icon: Radius, disabled: true },
+            { v: 'lista_ceps' as const, l: 'Por lista de CEPs', icon: List, disabled: false },
           ].map(opt => (
-            <button key={opt.v} onClick={() => setMode(opt.v)}
-              className={`p-3 rounded-xl border-2 flex items-center gap-2 font-bold text-sm ${mode === opt.v ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
-              <opt.icon className="w-4 h-4" /> {opt.l}
+            <button key={opt.v} disabled={opt.disabled} onClick={() => !opt.disabled && setMode(opt.v)}
+              title={opt.disabled ? 'Aguardando geocodificação server-side para impedir fraude de distância/frete.' : undefined}
+              className={`p-3 rounded-xl border-2 flex items-center gap-2 font-bold text-sm ${mode === opt.v ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'} ${opt.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <opt.icon className="w-4 h-4" /> {opt.l}{opt.disabled ? ' — indisponível' : ''}
             </button>
           ))}
         </div>
+        <p className="text-xs text-muted-foreground">
+          O modo por raio está preservado, mas bloqueado até a distância ser validada no servidor. Use bairros ou lista de CEPs.
+        </p>
 
         {mode === 'raio_km' && (
           <div className="space-y-3 pt-2">

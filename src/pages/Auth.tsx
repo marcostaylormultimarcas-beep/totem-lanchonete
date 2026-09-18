@@ -2,6 +2,7 @@ import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import { useOrg } from '@/contexts/OrgContext';
 
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
@@ -44,11 +45,7 @@ const Auth = () => {
     const slugFromStorage = localStorage.getItem(KIOSK_SLUG_STORAGE_KEY)?.trim().toLowerCase() || '';
     const slug = slugFromReturnTo || slugFromStorage || org?.slug || '';
     if (slug) {
-      const { data } = await supabase
-        .from('organizations')
-        .select('id, slug')
-        .eq('slug', slug)
-        .maybeSingle();
+      const data = await fetchPublicOrganization({ slug });
       if (data?.id) {
         localStorage.setItem(KIOSK_ORG_STORAGE_KEY, data.id);
         localStorage.setItem(KIOSK_SLUG_STORAGE_KEY, data.slug);

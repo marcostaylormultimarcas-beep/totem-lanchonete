@@ -1,24 +1,16 @@
 name: Verification Round 16 Fiscal Error Handling
 on:
-  push:
-    branches: [fix/verification-round-2]
-    paths: ['.github/workflows/verification-round16-fiscal-error-handling.yml']
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Apply guarded fix
-        run: |
-          if grep -q 'error: fiscalError' src/components/kiosk/PaymentScreen.tsx; then echo already-applied; else python scripts/fix-payment-nfe-error-handling.py; fi
       - name: Assertions
         run: |
           grep -q 'error: fiscalError' src/components/kiosk/PaymentScreen.tsx
@@ -26,16 +18,8 @@ jobs:
           grep -q 'Pedido registrado, mas o documento fiscal não foi vinculado' src/components/kiosk/PaymentScreen.tsx
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build
-      - name: Commit validated fix
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/kiosk/PaymentScreen.tsx
-          git diff --cached --quiet && exit 0
-          git commit -m 'fix: handle fiscal linkage failure after checkout'
-          git push origin HEAD:fix/verification-round-2

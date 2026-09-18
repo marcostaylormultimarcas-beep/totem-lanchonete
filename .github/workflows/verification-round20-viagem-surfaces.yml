@@ -1,24 +1,17 @@
 name: Verification Round 20 - Viagem Delivery Surfaces
 on:
   workflow_dispatch:
-  push:
-    branches: [fix/verification-round-2]
-    paths: ['.github/workflows/verification-round20-viagem-surfaces.yml']
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: python scripts/fix-viagem-delivery-surfaces.py
+        with: { node-version: 22 }
       - name: Assert viagem delivery surfaces
         run: |
           grep -q "order.order_type === 'delivery' || order.order_type === 'viagem'" src/pages/OrderHistory.tsx
@@ -26,11 +19,3 @@ jobs:
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build
-      - name: Commit validated source
-        run: |
-          if git diff --quiet; then exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/pages/OrderHistory.tsx src/components/admin/OrderPrintReceipt.tsx
-          git commit -m "fix: align viagem delivery history and receipt"
-          git push origin HEAD:fix/verification-round-2

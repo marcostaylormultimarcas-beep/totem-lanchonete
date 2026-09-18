@@ -2,30 +2,20 @@ name: Verification Round 17 - Senhas Atomic Counter
 
 on:
   workflow_dispatch:
-  push:
-    branches: [fix/verification-round-2]
-    paths:
-      - '.github/workflows/verification-round17-senhas-atomic.yml'
-
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Apply guarded transform
-        run: python scripts/fix-senhas-atomic-counter.py
+          node-version: 22
       - name: Assert atomic senha RPC cutover
         run: |
           grep -q "chamar_proxima_senha" src/components/admin/SenhasPanel.tsx
@@ -37,14 +27,3 @@ jobs:
         run: npm test -- --run
       - name: Build
         run: npm run build
-      - name: Commit validated source
-        run: |
-          if git diff --quiet; then
-            echo "No source changes to commit"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/admin/SenhasPanel.tsx
-          git commit -m "fix: make senha numbering atomic across operators"
-          git push origin HEAD:fix/verification-round-2

@@ -1,24 +1,17 @@
 name: Verification Round 19 - Order Type Alignment
 on:
   workflow_dispatch:
-  push:
-    branches: [fix/verification-round-2]
-    paths: ['.github/workflows/verification-round19-order-type.yml']
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
-      - run: python scripts/fix-orders-delivery-type.py
+        with: { node-version: 22 }
       - name: Assert delivery type contract
         run: |
           grep -q "orderType==='delivery'||orderType==='viagem'" src/components/admin/OrdersPanel.tsx
@@ -27,11 +20,3 @@ jobs:
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build
-      - name: Commit validated source
-        run: |
-          if git diff --quiet; then exit 0; fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/components/admin/OrdersPanel.tsx
-          git commit -m "fix: treat viagem as delivery in order lifecycle"
-          git push origin HEAD:fix/verification-round-2

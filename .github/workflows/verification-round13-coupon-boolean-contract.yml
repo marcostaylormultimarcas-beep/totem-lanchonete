@@ -1,30 +1,16 @@
 name: Verification Round 13 Coupon Boolean Contract
 on:
-  push:
-    branches: [fix/verification-round-2]
-    paths:
-      - '.github/workflows/verification-round13-coupon-boolean-contract.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Apply guarded boolean contract fix
-        run: |
-          if grep -q "status:boolean|null" src/components/admin/CouponsPanel.tsx; then
-            echo 'Coupon boolean contract already applied; validating.'
-          else
-            python scripts/fix-coupon-boolean-contract.py
-          fi
       - name: Contract assertions
         run: |
           grep -q "status:boolean|null" src/components/admin/CouponsPanel.tsx
@@ -34,16 +20,8 @@ jobs:
           test "$(grep -o "c.status === true" src/components/kiosk/CartScreen.tsx | wc -l)" -eq 2
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build
-      - name: Commit validated source fix
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/admin/CouponsPanel.tsx src/components/kiosk/CartScreen.tsx
-          git diff --cached --quiet && exit 0
-          git commit -m 'fix: use boolean coupon activation contract'
-          git push origin HEAD:fix/verification-round-2

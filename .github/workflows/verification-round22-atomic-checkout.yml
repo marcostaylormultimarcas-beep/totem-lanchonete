@@ -1,30 +1,16 @@
 name: Verification Round 22 Atomic Checkout
 on:
-  push:
-    branches: [fix/verification-round-2]
-    paths:
-      - '.github/workflows/verification-round22-atomic-checkout.yml'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Apply atomic checkout frontend cutover
-        run: |
-          if grep -q "rpc('create_order_checkout'" src/components/kiosk/PaymentScreen.tsx; then
-            echo 'Atomic checkout already applied; validating.'
-          else
-            python scripts/fix-checkout-atomic-create-phase43.py
-          fi
       - name: Atomic checkout assertions
         run: |
           grep -q "rpc('create_order_checkout'" src/components/kiosk/PaymentScreen.tsx
@@ -35,16 +21,8 @@ jobs:
           grep -q 'revoke all on function public.create_order_checkout' supabase/migrations/20260917205504_visionfood_v2_atomic_checkout_phase43.sql
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm install --legacy-peer-deps --package-lock=false
       - run: npm test -- --run
       - run: npm run build
-      - name: Commit validated frontend cutover
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/components/kiosk/PaymentScreen.tsx
-          git diff --cached --quiet && exit 0
-          git commit -m 'fix: create checkout order atomically'
-          git push origin HEAD:fix/verification-round-2

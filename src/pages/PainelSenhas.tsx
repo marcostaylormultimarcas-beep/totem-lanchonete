@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 
 interface SenhaRow {
   id: string;
@@ -82,7 +83,7 @@ const PainelSenhas = () => {
   useEffect(() => {
     if (!slug) return;
     (async () => {
-      const { data } = await supabase.from('organizations').select('id, name').eq('slug', slug).maybeSingle();
+      const data = await fetchPublicOrganization({ slug });
       if (data) { setOrgId(data.id); setStoreName(data.name); }
     })();
   }, [slug]);

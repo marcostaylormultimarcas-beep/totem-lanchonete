@@ -153,6 +153,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
         cross_organization_order: 'O lote contém pedido de outra organização.',
         order_not_found: 'Um dos pedidos não foi encontrado.',
         entregador_invalid: 'Entregador inválido ou inativo.',
+        already_assigned: 'Um dos pedidos já está atribuído a outro entregador.',
         forbidden: 'Sem permissão para despachar estes pedidos.',
       };
       toast.error(error ? 'Erro ao despachar lote: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar o lote.'));

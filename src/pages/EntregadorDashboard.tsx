@@ -20,7 +20,7 @@ interface DeliveryOrder {
   total: number;
   status: string;
   created_at: string;
-  delivery_code: string;
+  bairro_nome?: string;
 }
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -307,34 +307,8 @@ const EntregadorDashboard = () => {
     return () => clearInterval(i);
   }, [fetchOrders, fetchAvailable]);
 
-  // Realtime: escuta mudanças na tabela orders da loja do entregador
-  useEffect(() => {
-    if (!session) return;
-    const ch = supabase
-      .channel(`entregador-${session.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `organization_id=eq.${session.organization_id}`,
-        },
-        (payload: any) => {
-          // Atualiza pedidos atribuídos a este entregador
-          if (
-            payload.new?.entregador_id === session.id ||
-            payload.old?.entregador_id === session.id
-          ) {
-            fetchOrders(false);
-          }
-          // Em modo Disputa Livre: refresca lista de disponíveis em qualquer mudança da loja
-          fetchAvailable();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [session, fetchOrders, fetchAvailable]);
+  // Sessões de entregador usam token próprio, não Supabase Auth.
+  // O polling acima é o canal autoritativo e funciona sem abrir SELECT de orders para anon.
 
   const handleClaim = async (orderId: string) => {
     if (!session) return;
@@ -450,7 +424,11 @@ const EntregadorDashboard = () => {
         already_delivered: 'Pedido já foi entregue.',
         cancelled: 'Pedido cancelado.',
         not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
-        invalid_code: '❌ Código incorreto! Confirme com o cliente.',
+        invalid_code: res?.remaining_attempts != null
+          ? `❌ Código incorreto. Restam ${res.remaining_attempts} tentativa(s).`
+          : '❌ Código incorreto! Confirme com o cliente.',
+        invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
+        too_many_attempts: 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
       };
       toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
       if (isInvalidSession(res)) expireSession();
@@ -707,12 +685,12 @@ const EntregadorDashboard = () => {
                     <span className="text-yellow-400 font-black text-lg">#{o.order_number}</span>
                     <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
                   </div>
-                  <p className="text-sm font-semibold">{o.customer_name}</p>
-                  {o.delivery_address && (
-                    <p className="text-xs text-slate-400 flex items-start gap-1">
-                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {o.delivery_address}
-                    </p>
-                  )}
+                  <p className="text-sm font-semibold">
+                    {o.bairro_nome ? `📍 Bairro: ${o.bairro_nome}` : '📍 Destino oculto até aceitar'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Nome, telefone e endereço completo são liberados somente após você aceitar o pedido.
+                  </p>
                   <button
                     onClick={() => handleClaim(o.id)}
                     disabled={claiming === o.id}

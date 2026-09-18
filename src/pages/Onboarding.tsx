@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -18,7 +18,6 @@ import {
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 import { CATEGORIAS_LOJA } from '@/lib/categorias';
 import { CARDAPIO_TEMPLATES, CardapioTemplateKey, getTemplate } from '@/lib/cardapioTemplates';
 import { uploadProductImage } from '@/lib/imageUpload';
@@ -37,7 +36,7 @@ const cardCls = 'bg-zinc-900 border border-amber-500/15 rounded-2xl';
 const inputCls =
   'w-full px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-amber-500/60 outline-none text-zinc-100 placeholder-zinc-600';
 
-type HelpId = null | 'os_app' | 'os_key' | 'mp_pub' | 'mp_tok' | 'mp_webhook';
+type HelpId = null | 'os_app' | 'os_key' | 'mp_pub' | 'mp_tok';
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -97,11 +96,6 @@ export default function Onboarding() {
       }
     })();
   }, [navigate]);
-
-  const webhookUrl = useMemo(() => {
-    const base = getSupabaseFunctionUrl('mp-webhook');
-    return orgId ? `${base}?store_id=${orgId}` : base;
-  }, [orgId]);
 
   const onLogo = (f: File | null) => {
     setLogoFile(f);
@@ -478,32 +472,13 @@ export default function Onboarding() {
               />
 
               <div className="mt-2 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="text-sm font-semibold text-amber-300">
-                    Webhook automático
-                  </div>
-                  <button
-                    onClick={() => setHelp('mp_webhook')}
-                    className="text-xs text-amber-300 inline-flex items-center gap-1 hover:underline"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" /> Como ativar
-                  </button>
+                <div className="text-sm font-semibold text-amber-300 mb-2">
+                  Credenciais protegidas no Vault
                 </div>
-                <p className="text-xs text-zinc-400 mb-2">
-                  Cole esta URL no painel do Mercado Pago em Notificações → Webhooks:
+                <p className="text-xs text-zinc-400">
+                  Essas credenciais são usadas pelo fluxo seguro de Pix do PDV. O checkout recorrente de assinatura
+                  e o webhook Master ainda não estão publicados, então não é necessário cadastrar URL de webhook nesta etapa.
                 </p>
-                <div className="flex gap-2">
-                  <input readOnly value={webhookUrl} className={`${inputCls} font-mono text-xs`} />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(webhookUrl);
-                      toast.success('Link copiado!');
-                    }}
-                    className="px-4 rounded-xl bg-amber-500 text-zinc-950 font-semibold text-sm"
-                  >
-                    Copiar
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -538,7 +513,7 @@ export default function Onboarding() {
         </div>
       </div>
 
-      <HelpModal id={help} onClose={() => setHelp(null)} webhookUrl={webhookUrl} />
+      <HelpModal id={help} onClose={() => setHelp(null)} />
     </div>
   );
 }
@@ -583,11 +558,9 @@ function FieldWithHelp({
 function HelpModal({
   id,
   onClose,
-  webhookUrl,
 }: {
   id: HelpId;
   onClose: () => void;
-  webhookUrl: string;
 }) {
   if (!id) return null;
   const guides: Record<Exclude<HelpId, null>, { title: string; steps: string[]; link?: string }> = {
@@ -626,17 +599,6 @@ function HelpModal({
         'Esse token é privado – mantenha-o seguro.',
       ],
       link: 'https://www.mercadopago.com.br/developers/panel',
-    },
-    mp_webhook: {
-      title: 'Como ativar o Webhook do Mercado Pago',
-      steps: [
-        'No painel de desenvolvedor, abra sua aplicação.',
-        'Vá em "Notificações" → "Webhooks".',
-        `Cole a URL: ${webhookUrl}`,
-        'Marque os eventos "payment" e "subscription_preapproval".',
-        'Salve. Pronto, pagamentos serão confirmados automaticamente.',
-      ],
-      link: 'https://www.mercadopago.com.br/developers/panel/notifications/webhooks',
     },
   };
   const g = guides[id];

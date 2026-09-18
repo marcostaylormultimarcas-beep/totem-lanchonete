@@ -56,8 +56,6 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
       });
   }, [organizationId]);
 
-  const phone = sanitizePhone(customerPhone);
-
   const loadCustomerState = useCallback(async () => {
     if (!organizationId) {
       setStamps(0);

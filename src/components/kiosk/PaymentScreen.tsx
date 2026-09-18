@@ -279,12 +279,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <CheckCircle2 className="w-12 h-12 text-success" />
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold text-success">Pagamento Confirmado!</h2>
+          <h2 className="text-3xl font-bold text-success">Pedido Confirmado!</h2>
           <div className="flex items-center justify-center gap-2 mt-3">
             <Ticket className="w-8 h-8 text-primary" />
             <span className="text-4xl font-black text-primary">#{generatedNumber}</span>
           </div>
-          <p className="text-muted-foreground text-sm">Guarde sua senha para retirar o pedido</p>
+          <p className="text-muted-foreground text-sm">Guarde sua senha. O pagamento será conferido conforme a forma escolhida.</p>
         </div>
 
         <div className="w-full kiosk-card p-4 space-y-3">
@@ -496,7 +496,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
           )}
           <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Pagamento Aprovado na Maquininha'}
+            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido após usar a Maquininha'}
           </button>
         </div>
       </div>
@@ -547,7 +547,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
         )}
         <button onClick={handleConfirmPayment} disabled={saving || (!pixKey && !mpLoading)} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
+          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já enviei o PIX — registrar pedido'}
         </button>
       </div>
     </div>

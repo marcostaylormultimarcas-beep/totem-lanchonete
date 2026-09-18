@@ -155,16 +155,28 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
     setDispatching(route.id);
     try {
       const ids = route.orders.map(o => o.id);
-      const { data: updatedOrders, error } = await supabase
-        .from('orders')
-        .update({ status: 'out_for_delivery', entregador_id: route.entregadorId, updated_at: new Date().toISOString() })
-        .eq('organization_id', organizationId)
-        .eq('status', 'ready')
-        .in('order_type', ['delivery', 'viagem'])
-        .in('id', ids)
-        .select('id');
-      if (error) { alert('Erro ao despachar: ' + error.message); setDispatching(null); return; }
-      if ((updatedOrders || []).length !== ids.length) { alert('Algum pedido mudou de status antes do despacho. Atualize as rotas e tente novamente.'); await loadAll(); setRoutes([]); setGenerated(false); return; }
+      const { data: dispatchResult, error } = await supabase.rpc('visionfood_dispatch_orders' as any, {
+        _order_ids: ids,
+        _entregador_id: route.entregadorId,
+      });
+      const result: any = dispatchResult;
+      if (error || !result?.ok) {
+        const reasons: Record<string, string> = {
+          status_changed: 'Algum pedido mudou de status antes do despacho.',
+          not_delivery_order: 'A rota contém pedido que não é de entrega.',
+          cross_organization_order: 'A rota contém pedido de outra organização.',
+          order_not_found: 'Algum pedido da rota não foi encontrado.',
+          entregador_invalid: 'Entregador inválido ou inativo.',
+          forbidden: 'Sem permissão para despachar esta rota.',
+        };
+        alert(error ? 'Erro ao despachar: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar a rota.'));
+        await loadAll();
+        setRoutes([]);
+        setGenerated(false);
+        setDispatching(null);
+        return;
+      }
+      if (Number(result.count || 0) !== ids.length) { alert('O banco não confirmou todos os pedidos da rota. Atualize e tente novamente.'); await loadAll(); setRoutes([]); setGenerated(false); return; }
 
       // Push para clientes (best-effort)
       await triggerOutForDeliveryPush(route.orders.map(o => o.customer_phone));

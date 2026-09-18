@@ -244,7 +244,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }
     } catch (err: any) {
       console.error('Error saving order:', err);
-      const message = err?.message || 'Não foi possível registrar o pedido. Tente novamente.';
+      const rawMessage = String(err?.message || '');
+      const message = rawMessage.includes('checkout_phone_rate_limited')
+        ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
+        : rawMessage.includes('checkout_rate_limited')
+          ? 'A loja está recebendo muitos pedidos neste momento. Aguarde um instante e tente novamente.'
+          : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
       setPaymentError(message);
       toast.error('Pedido não confirmado', { description: message });
       setConfirmed(false);

@@ -2,25 +2,15 @@ name: Verification Round 8 Entregador Session
 on:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/verification-round-2
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - name: Apply guarded driver token cutover when needed
-        run: |
-          if grep -q 'entregador_login_session' src/pages/EntregadorLogin.tsx && grep -q 'entregador_orders_session' src/pages/EntregadorDashboard.tsx; then
-            echo 'Driver token cutover already applied; validating current state.'
-          else
-            python3 scripts/fix-entregador-token-session.py
-          fi
+          node-version: 22
       - name: Install
         run: npm install --legacy-peer-deps --package-lock=false
       - name: Test
@@ -34,11 +24,3 @@ jobs:
           grep -q 'entregador_login_session' src/pages/EntregadorLogin.tsx
           grep -q 'entregador_orders_session' src/pages/EntregadorDashboard.tsx
           grep -q 'entregador_update_location_session' src/pages/EntregadorDashboard.tsx
-      - name: Commit validated cutover
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/pages/EntregadorLogin.tsx src/pages/EntregadorDashboard.tsx
-          git diff --cached --quiet && exit 0
-          git commit -m 'security: stop persisting driver password in browser'
-          git push origin HEAD:fix/verification-round-2

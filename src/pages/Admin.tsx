@@ -121,6 +121,8 @@ const AdminPage = () => {
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          available: p.available !== false,
+          ingredientStockBlocked: Boolean(p.ingredient_stock_blocked),
           manageStock: Boolean(p.manage_stock),
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
@@ -654,7 +656,9 @@ const AdminPage = () => {
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
-      available: true,
+      // Ao editar, preserve a disponibilidade atual. O banco continua sendo a autoridade
+      // para bloqueios automáticos por estoque insuficiente de ingredientes.
+      available: editingProduct ? editingProduct.available !== false : true,
       manage_stock: form.manageStock,
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
@@ -718,6 +722,8 @@ const AdminPage = () => {
         isCombo: data.is_combo || false,
         ingredients: ((data as any).ingredients as string[]) || [],
         description: (data as any).description || '',
+        available: (data as any).available !== false,
+        ingredientStockBlocked: Boolean((data as any).ingredient_stock_blocked),
         manageStock: Boolean((data as any).manage_stock),
         stockQuantity: Number((data as any).stock_quantity ?? 0),
         lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),

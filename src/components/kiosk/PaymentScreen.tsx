@@ -99,17 +99,21 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data, error } = await supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, mp_access_token_secret_id, pay_cash_enabled, pay_pix_enabled, pay_card_terminal_enabled, pay_card_online_enabled, mp_terminal_id').eq('organization_id', orgId).maybeSingle();
+      const [{ data, error }, { data: mpEnabled, error: mpStatusError }] = await Promise.all([
+        supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, pay_cash_enabled, pay_pix_enabled, pay_card_terminal_enabled, pay_card_online_enabled, mp_terminal_id').eq('organization_id', orgId).maybeSingle(),
+        supabase.rpc('has_mp_access_token' as any, { _org: orgId }),
+      ]);
       if (error) {
         console.warn('Não foi possível carregar as configurações de pagamento:', error);
         return;
       }
+      if (mpStatusError) console.warn('Não foi possível verificar o Mercado Pago:', mpStatusError);
       if (data) {
         setStoreSettings({
           storeName: data.store_name || 'Vision Mídia',
           whatsappNumber: data.whatsapp_number || '',
           pixKeyManual: (data as any).pix_key_manual || '',
-          mpEnabled: Boolean((data as any).mp_access_token_secret_id),
+          mpEnabled: !mpStatusError && mpEnabled === true,
           payCash: (data as any).pay_cash_enabled !== false,
           payPix: (data as any).pay_pix_enabled !== false,
           payTerminal: Boolean((data as any).pay_card_terminal_enabled),

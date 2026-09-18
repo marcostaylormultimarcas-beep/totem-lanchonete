@@ -2168,6 +2168,15 @@ export type Database = {
         Returns: Json
       }
       set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }
+      submit_product_review: {
+        Args: {
+          _comment?: string
+          _order_id: string
+          _product_id: string
+          _rating: number
+        }
+        Returns: Json
+      }
       toggle_plan_feature: {
         Args: { _enabled: boolean; _feature_id: string; _plan_id: string }
         Returns: Json

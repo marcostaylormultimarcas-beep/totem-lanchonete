@@ -41,10 +41,16 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
 
   useEffect(() => {
     if (!organizationId) { setConfig(null); return; }
-    supabase.from('config_fidelidade' as any).select('*').eq('organization_id', organizationId).maybeSingle()
-      .then(({ data }) => {
-        if (!data) { setConfig(null); return; }
-        const d = data as any;
+
+    supabase.rpc('visionfood_public_loyalty_config' as any, { _org: organizationId })
+      .then(({ data, error }) => {
+        if (error) {
+          console.warn('[loyalty] public config error:', error);
+          setConfig(null);
+          return;
+        }
+        const d = (data as any) || {};
+        if (Object.keys(d).length === 0) { setConfig(null); return; }
         setConfig({
           ativo: !!d.ativo,
           meta_pedidos: Number(d.meta_pedidos) || 10,

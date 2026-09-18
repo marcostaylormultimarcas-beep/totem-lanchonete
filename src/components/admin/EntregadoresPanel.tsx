@@ -8,7 +8,6 @@ interface Entregador {
   organization_id: string;
   name: string;
   username: string;
-  password: string;
   active: boolean;
   created_at: string;
 }
@@ -35,8 +34,16 @@ const EntregadoresPanel = ({ organizationId }: { organizationId: string | null }
 
   const fetchList = async () => {
     if (!organizationId) return;
-    const { data } = await supabase.from('entregadores' as any).select('*')
-      .eq('organization_id', organizationId).order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('entregadores' as any)
+      .select('id,organization_id,name,username,active,created_at')
+      .eq('organization_id', organizationId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('fetchEntregadores', error);
+      toast.error('Não foi possível carregar os entregadores.');
+      return;
+    }
     setList((data as any) || []);
   };
 
@@ -163,7 +170,7 @@ const EntregadoresPanel = ({ organizationId }: { organizationId: string | null }
                 </div>
                 <div>
                   <label className="text-xs font-bold text-muted-foreground mb-1 block">{editing ? 'Nova senha (em branco = manter)' : 'Senha'}</label>
-                  <input type="text" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full bg-muted border border-border rounded-lg px-3 py-2" autoComplete="off" />
+                  <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full bg-muted border border-border rounded-lg px-3 py-2" autoComplete="new-password" />
                 </div>
                 <div className="flex items-end">
                   <label className="flex items-center gap-2 text-sm">

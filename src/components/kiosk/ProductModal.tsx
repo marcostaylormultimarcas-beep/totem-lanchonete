@@ -3,6 +3,7 @@ import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame,
 import { Product, CartItem, formatCurrency, isByWeight } from '@/data/store';
 import { useBalanca } from '@/hooks/useBalanca';
 import { useOrgId } from '@/contexts/OrgContext';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -42,8 +43,9 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   // Tempo base da loja
   useEffect(() => {
     if (!orgId) return;
-    supabase.from('settings').select('delivery_tempo_base_min').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => { if (data?.delivery_tempo_base_min) setTempoBase(Number(data.delivery_tempo_base_min)); });
+    fetchPublicStorefrontConfig(orgId)
+      .then(data => { if (data.delivery_tempo_base_min) setTempoBase(Number(data.delivery_tempo_base_min)); })
+      .catch(error => console.warn('[ProductModal] storefront config error:', error));
   }, [orgId]);
 
   // Carrega avaliações

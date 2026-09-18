@@ -16,7 +16,7 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
   const [accessToken, setAccessToken] = useState('');
   const [clientId, setClientId] = useState('');
   const [publicKey, setPublicKey] = useState('');
-  const [stored, setStored] = useState({ access_token: '', client_id: '', public_key: '' });
+  const [stored, setStored] = useState({ has_access_token: false, client_id: '', public_key: '' });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -48,7 +48,7 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
     const { data, error } = await supabase.rpc('get_mp_credentials_for_owner' as any, { _org: organizationId });
     if (!error && (data as any)?.ok) {
       const d = data as any;
-      setStored({ access_token: d.access_token || '', client_id: d.client_id || '', public_key: d.public_key || '' });
+      setStored({ has_access_token: Boolean(d.has_access_token), client_id: d.client_id || '', public_key: d.public_key || '' });
     }
     setLoading(false);
   };
@@ -94,11 +94,11 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
         </div>
       ) : (
         <>
-          {(stored.access_token || stored.client_id || stored.public_key) && (
+          {(stored.has_access_token || stored.client_id || stored.public_key) && (
             <div className="rounded-lg bg-success/10 border border-success/30 p-3 space-y-1.5 text-[11px]">
               <p className="font-semibold text-success flex items-center gap-1"><Lock className="w-3 h-3" /> Credenciais ativas</p>
               <div className="grid grid-cols-1 gap-1 font-mono text-muted-foreground">
-                {stored.access_token && <span>Access Token: {show ? stored.access_token : mask(stored.access_token)}</span>}
+                {stored.has_access_token && <span>Access Token: configurado no Vault 🔐</span>}
                 {stored.client_id   && <span>Client ID:    {show ? stored.client_id   : mask(stored.client_id)}</span>}
                 {stored.public_key  && <span>Public Key:   {show ? stored.public_key  : mask(stored.public_key)}</span>}
               </div>
@@ -120,7 +120,7 @@ const MercadoPagoCard = ({ organizationId }: Props) => {
               <button
                 type="button"
                 onClick={testConnection}
-                disabled={testing || (!accessToken.trim() && !stored.access_token)}
+                disabled={testing || (!accessToken.trim() && !stored.has_access_token)}
                 title="Testar conexão com o Mercado Pago"
                 className="touch-btn px-3 py-3 bg-secondary text-secondary-foreground rounded-lg flex items-center gap-1.5 disabled:opacity-50 text-xs font-semibold whitespace-nowrap"
               >

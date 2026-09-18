@@ -1610,8 +1610,6 @@ export type Database = {
           mp_public_key: string
           mp_public_key_secret_id: string | null
           mp_terminal_id: string
-          onesignal_api_key: string
-          onesignal_app_id: string
           organization_id: string | null
           pay_card_online_enabled: boolean
           pay_card_terminal_enabled: boolean
@@ -1667,8 +1665,6 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
@@ -1724,8 +1720,6 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
@@ -1753,24 +1747,18 @@ export type Database = {
         Row: {
           id: string
           mp_master_token_secret_id: string | null
-          onesignal_api_key: string
-          onesignal_app_id: string
           updated_at: string
           valor_plano_padrao: number
         }
         Insert: {
           id?: string
           mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
         }
         Update: {
           id?: string
           mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
         }
@@ -2166,6 +2154,10 @@ export type Database = {
           _org: string
           _public_key: string
         }
+        Returns: Json
+      }
+      set_onesignal_config: {
+        Args: { _api_key?: string; _app_id: string }
         Returns: Json
       }
       set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }

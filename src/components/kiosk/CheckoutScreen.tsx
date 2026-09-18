@@ -4,7 +4,7 @@ import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
-import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
+import { fetchViaCep, maskCep, normalizeCep } from '@/lib/cep';
 import { toast } from 'sonner';
 
 interface Bairro {
@@ -79,6 +79,11 @@ const CheckoutScreen = ({
 
   const validarCep = async () => {
     if (!orgId) return;
+    if (deliveryMode === 'raio_km') {
+      setCepResultado({ ok: false, motivo: 'modo_indisponivel' });
+      toast.error('Entrega por raio temporariamente indisponível. A loja deve usar bairros ou lista de CEPs.');
+      return;
+    }
     const n = normalizeCep(deliveryCep);
     if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
     setValidandoCep(true);
@@ -93,15 +98,8 @@ const CheckoutScreen = ({
     }
     const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
 
-    let lat: number | null = null;
-    let lng: number | null = null;
-    if (deliveryMode === 'raio_km') {
-      const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
-      if (coords) { lat = coords.lat; lng = coords.lng; }
-    }
-
     const { data, error } = await supabase.rpc('validar_cep_entrega' as any, {
-      _org: orgId, _cep: n, _lat: lat, _lng: lng,
+      _org: orgId, _cep: n, _lat: null, _lng: null,
     });
     setValidandoCep(false);
     if (error) { toast.error(error.message); return; }
@@ -249,6 +247,7 @@ const CheckoutScreen = ({
                           {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
                           {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
                           {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                          {cepResultado.motivo === 'modo_indisponivel' && 'A entrega por raio está temporariamente indisponível. Entre em contato com a loja.'}
                         </p>
                       </div>
                     </div>

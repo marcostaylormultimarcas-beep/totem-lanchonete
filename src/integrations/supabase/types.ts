@@ -1745,22 +1745,25 @@ export type Database = {
       }
       system_settings: {
         Row: {
+          created_at: string | null
           id: string
-          mp_master_token_secret_id: string | null
           updated_at: string
           valor_plano_padrao: number
+          whatsapp_suporte: string
         }
         Insert: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Update: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Relationships: []
       }
@@ -2158,6 +2161,10 @@ export type Database = {
       }
       set_onesignal_config: {
         Args: { _api_key?: string; _app_id: string }
+        Returns: Json
+      }
+      set_system_whatsapp_suporte: {
+        Args: { _whatsapp: string }
         Returns: Json
       }
       set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }

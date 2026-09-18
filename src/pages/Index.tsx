@@ -15,6 +15,7 @@ import PartnersFooter from '@/components/kiosk/PartnersFooter';
 import { CartItem, Product } from '@/data/store';
 import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { toast } from 'sonner';
 
 type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
@@ -67,17 +68,24 @@ const Index = () => {
   useEffect(() => {
     if (!orgId) { setDeliveryEnabled(true); return; }
     let cancelled = false;
-    supabase
-      .from('settings')
-      .select('delivery_enabled, store_name, share_image')
-      .eq('organization_id', orgId)
-      .maybeSingle()
-      .then(({ data }) => {
+
+    const loadStorefrontConfig = async () => {
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
         if (cancelled) return;
-        setDeliveryEnabled((data as any)?.delivery_enabled !== false);
-        // Inject favicon + Open Graph dynamically based on store settings
-        const shareImage = (data as any)?.share_image as string | undefined;
-        const storeName = (data as any)?.store_name as string | undefined;
+
+        const enabled = data.delivery_enabled !== false;
+        setDeliveryEnabled(enabled);
+        if (!enabled) {
+          setOrderType(prev => {
+            if (prev !== 'viagem') return prev;
+            toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
+            return 'local';
+          });
+        }
+
+        const shareImage = data.share_image;
+        const storeName = data.store_name;
         if (storeName) document.title = storeName;
         if (shareImage) {
           const setMeta = (selector: string, attr: string, value: string, create: () => HTMLElement) => {
@@ -93,18 +101,14 @@ const Index = () => {
             setMeta('meta[property="og:title"]', 'content', storeName, () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m; });
           }
         }
-      });
-    const channel = supabase
-      .channel('settings-delivery-' + orgId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        setDeliveryEnabled(payload.new?.delivery_enabled !== false);
-        if (payload.new?.delivery_enabled === false && orderType === 'viagem') {
-          setOrderType('local');
-          toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
-        }
-      })
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
+      } catch (error) {
+        if (!cancelled) console.warn('[Index] storefront config error:', error);
+      }
+    };
+
+    loadStorefrontConfig();
+    const pollId = window.setInterval(loadStorefrontConfig, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   useEffect(() => {

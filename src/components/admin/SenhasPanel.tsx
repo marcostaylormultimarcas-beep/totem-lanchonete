@@ -62,13 +62,15 @@ const SenhasPanel = ({ organizationId, orgSlug }: Props) => {
     try {
       let numero = (numeroForcado || '').trim();
       if (!numero) {
-        const { data, error } = await supabase.rpc('chamar_proxima_senha' as any, {
+        const { data, error } = await supabase.rpc('chamar_proxima_senha', {
           _organization_id: organizationId,
           _prefixo: prefix,
           _tipo: tipo,
         });
         if (error) throw error;
-        numero = String(data || '');
+        const chamada = data?.[0];
+        if (!chamada?.numero) throw new Error('Resposta inválida ao chamar senha');
+        numero = chamada.numero;
         const numericPart = Number(numero.replace(/^\D+/, ''));
         if (Number.isFinite(numericPart)) setCounter(numericPart);
       } else {

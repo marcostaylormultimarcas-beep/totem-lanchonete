@@ -9,6 +9,10 @@ export interface Product {
   isCombo?: boolean;
   ingredients?: string[];
   description?: string;
+  /** Disponibilidade real do produto no catálogo/totem. */
+  available?: boolean;
+  /** Indica bloqueio automático causado por estoque insuficiente de ingredientes. */
+  ingredientStockBlocked?: boolean;
   manageStock?: boolean;
   stockQuantity?: number;
   lowStockThreshold?: number;

@@ -4,6 +4,7 @@ import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { fetchViaCep, maskCep, normalizeCep } from '@/lib/cep';
 import { toast } from 'sonner';
 
@@ -64,8 +65,9 @@ const CheckoutScreen = ({
   useEffect(() => {
     if (!orgId || orderType !== 'viagem') return;
     setLoadingBairros(true);
-    supabase.from('settings').select('delivery_mode').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => setDeliveryMode((((data as any)?.delivery_mode) || 'bairros') as DeliveryMode));
+    fetchPublicStorefrontConfig(orgId)
+      .then(data => setDeliveryMode((data.delivery_mode || 'bairros') as DeliveryMode))
+      .catch(error => console.warn('[Checkout] storefront config error:', error));
     supabase.from('taxas_entrega' as any)
       .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
       .eq('organization_id', orgId)

@@ -96,16 +96,6 @@ const Auth = () => {
     }
     localStorage.setItem(KIOSK_ORG_STORAGE_KEY, origemOrgId);
 
-    const { data: emailExists, error: emailCheckError } = await supabase.rpc('email_already_registered' as any, {
-      _email: cleanEmailValue,
-    });
-    if (!emailCheckError && emailExists === true) {
-      toast.error('Este e-mail já está cadastrado. Faça login para continuar.');
-      setMode('login');
-      setLoading(false);
-      return;
-    }
-
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmailValue,
       password,

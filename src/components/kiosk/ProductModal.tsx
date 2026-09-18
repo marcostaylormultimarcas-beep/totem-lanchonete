@@ -50,14 +50,16 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
 
   // Carrega avaliações
   const fetchReviews = async () => {
-    const { data } = await supabase
-      .from('product_reviews' as any)
-      .select('id,rating,comment,created_at')
-      .eq('product_id', product.id)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    if (!data) return;
-    const rows = data as any as ReviewRow[];
+    const { data, error } = await supabase.rpc(
+      'visionfood_public_product_reviews' as any,
+      { _product_id: product.id, _limit: 20 },
+    );
+    if (error) {
+      console.warn('[reviews] public list', error);
+      setReviews([]);
+      return;
+    }
+    const rows = (Array.isArray(data) ? data : []) as unknown as ReviewRow[];
     // Não consulta perfis de terceiros: avaliações públicas exibem um rótulo neutro.
     rows.forEach(r => { r.author_name = 'Cliente'; });
     setReviews(rows);

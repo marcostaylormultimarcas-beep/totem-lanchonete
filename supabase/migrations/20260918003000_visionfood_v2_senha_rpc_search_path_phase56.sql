@@ -10,4 +10,10 @@ begin
 end
 $phase56$;
 
-alter function public.reset_senha_counter(uuid,text) set search_path='';
+do $phase56_reset$
+begin
+  if to_regprocedure('public.reset_senha_counter(uuid,text)') is not null then
+    execute $sql$alter function public.reset_senha_counter(uuid,text) set search_path=''$sql$;
+  end if;
+end
+$phase56_reset$;

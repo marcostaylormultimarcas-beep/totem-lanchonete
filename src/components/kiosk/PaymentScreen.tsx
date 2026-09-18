@@ -43,11 +43,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
   const [storeSettings, setStoreSettings] = useState<{
-    storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean;
+    storeName: string; whatsappNumber: string; pixKeyManual: string;
     payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;
-  }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false, payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
-  const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
-  const [mpLoading, setMpLoading] = useState(false);
+  }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
   const [serverQuote, setServerQuote] = useState<any>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
@@ -79,7 +77,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   useEffect(() => {
     if (!orgId || isDemoMode()) { setServerQuote(null); return; }
     let cancelled = false;
-    setQuoteLoading(true); setQuoteError(''); setMpPix(null);
+    setQuoteLoading(true); setQuoteError('');
     supabase.rpc('quote_order_checkout_v2' as any, {
       _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
       _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || '',
@@ -92,54 +90,31 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     return () => { cancelled = true; };
   }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
 
-  const pixKey = mpPix?.qr_code || storeSettings.pixKeyManual || '';
-  const qrImageSrc = mpPix?.qr_code_base64 ? `data:image/png;base64,${mpPix.qr_code_base64}` : '';
-  const pixConfigured = Boolean(storeSettings.pixKeyManual || storeSettings.mpEnabled);
+  const pixKey = storeSettings.pixKeyManual || '';
+  const pixConfigured = Boolean(pixKey);
 
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const [{ data, error }, { data: mpEnabled, error: mpStatusError }] = await Promise.all([
-        supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, pay_cash_enabled, pay_pix_enabled, pay_card_terminal_enabled, pay_card_online_enabled, mp_terminal_id').eq('organization_id', orgId).maybeSingle(),
-        supabase.rpc('has_mp_access_token' as any, { _org: orgId }),
-      ]);
-      if (error) {
-        console.warn('Não foi possível carregar as configurações de pagamento:', error);
+      const { data, error } = await supabase.rpc('visionfood_checkout_payment_config' as any, { _org: orgId });
+      const config: any = data;
+      if (error || !config?.ok) {
+        console.warn('Não foi possível carregar as configurações públicas de pagamento:', error || config);
         return;
       }
-      if (mpStatusError) console.warn('Não foi possível verificar o Mercado Pago:', mpStatusError);
-      if (data) {
-        setStoreSettings({
-          storeName: data.store_name || 'Vision Mídia',
-          whatsappNumber: data.whatsapp_number || '',
-          pixKeyManual: (data as any).pix_key_manual || '',
-          mpEnabled: !mpStatusError && mpEnabled === true,
-          payCash: (data as any).pay_cash_enabled !== false,
-          payPix: (data as any).pay_pix_enabled !== false,
-          payTerminal: Boolean((data as any).pay_card_terminal_enabled),
-          payOnline: Boolean((data as any).pay_card_online_enabled),
-          terminalId: (data as any).mp_terminal_id || '',
-        });
-      }
+      setStoreSettings({
+        storeName: config.store_name || 'VisionFood',
+        whatsappNumber: config.whatsapp_number || '',
+        pixKeyManual: config.pix_key_manual || '',
+        payCash: config.pay_cash_enabled !== false,
+        payPix: config.pay_pix_enabled !== false,
+        payTerminal: Boolean(config.pay_card_terminal_enabled),
+        payOnline: Boolean(config.pay_card_online_enabled),
+        terminalId: config.mp_terminal_id || '',
+      });
     };
-    fetchSettings();
+    void fetchSettings();
   }, [orgId]);
-
-  // Auto-gera Pix real via Mercado Pago quando configurado e fora do modo demo
-  useEffect(() => {
-    if (method !== 'pix') return;
-    if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || quoteLoading || quoteError || (!isDemoMode() && !serverQuote) || isDemoMode() || total <= 0) return;
-    setMpLoading(true);
-    supabase.functions.invoke('mercadopago-create-pix', {
-      body: { organization_id: orgId, amount: total, description: `Pedido ${storeSettings.storeName}` },
-    }).then(({ data, error }) => {
-      if (error || !data?.ok) {
-        console.warn('Mercado Pago Pix indisponível:', error || data);
-      } else {
-        setMpPix({ qr_code_base64: data.qr_code_base64, qr_code: data.qr_code });
-      }
-    }).finally(() => setMpLoading(false));
-  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName, method, quoteLoading, quoteError, serverQuote]);
 
 
 
@@ -408,7 +383,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
   // Construct the list of allowed methods from store settings
   const availableMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
-    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix (QR Code)', desc: 'Pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
+    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix', desc: 'Copie a chave Pix da loja e pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
     storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
     storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
     // Cartão online permanece oculto até existir checkout tokenizado pelo gateway.
@@ -514,35 +489,23 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     <div className="min-h-screen flex flex-col">
       <Header title={<>Pagamento <span className="text-primary">PIX</span></>} />
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
-        <p className="text-muted-foreground text-sm">
-          {mpLoading ? 'Gerando QR Code Pix...' : 'Escaneie o QR Code ou copie a chave'}
+        <p className="text-muted-foreground text-sm text-center">
+          Copie a chave Pix abaixo, faça o pagamento no app do seu banco e depois confirme o pedido.
         </p>
-        {qrImageSrc ? (
-          <div className="bg-foreground rounded-2xl p-4">
-            <img src={qrImageSrc} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
-          </div>
-        ) : storeSettings.mpEnabled && mpLoading ? (
-          <Loader2 className="w-10 h-10 text-primary animate-spin" />
-        ) : storeSettings.pixKeyManual ? (
-          <div className="w-full kiosk-card p-4 text-center text-sm text-muted-foreground">Use a chave Pix configurada abaixo.</div>
-        ) : (
-          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">Pix indisponível no momento. Volte e escolha outra forma de pagamento.</div>
-        )}
-        {storeSettings.pixKeyManual && (
-          <div className="w-full text-center">
-            <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
-            <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{storeSettings.pixKeyManual}</p>
-          </div>
-        )}
-        {pixKey && (
-          <div className="w-full">
-            <p className="text-sm text-muted-foreground text-center mb-2">
-              {mpPix ? 'Pix copia e cola:' : 'Chave PIX (copia e cola):'}
-            </p>
+        {pixKey ? (
+          <div className="w-full kiosk-card p-4 space-y-3">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
+              <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{pixKey}</p>
+            </div>
             <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
               {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
-              <span className="font-mono text-xs break-all line-clamp-2">{pixKey}</span>
+              <span className="font-semibold text-sm">{copied ? 'Chave copiada' : 'Copiar chave Pix'}</span>
             </button>
+          </div>
+        ) : (
+          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Pix indisponível no momento. Volte e escolha outra forma de pagamento.
           </div>
         )}
 
@@ -550,7 +513,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         {paymentError && (
           <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
         )}
-        <button onClick={handleConfirmPayment} disabled={saving || (!pixKey && !mpLoading)} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+        <button onClick={handleConfirmPayment} disabled={saving || !pixKey} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
           <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já enviei o PIX — registrar pedido'}
         </button>
       </div>

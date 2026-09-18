@@ -26,4 +26,4 @@ jobs:
           grep -q "serverQuote" src/components/kiosk/PaymentScreen.tsx
           ! grep -q "rpc('quote_order_checkout' as any" src/components/kiosk/PaymentScreen.tsx
           ! grep -q "rpc('create_order_checkout' as any" src/components/kiosk/PaymentScreen.tsx
-          grep -q "delivery_mode='lista_ceps'" supabase/migrations/20260918039000_visionfood_v2_delivery_context_rpc_names_phase92.sql
+          grep -q "if _mode='lista_ceps' then" supabase/migrations/20260918039000_visionfood_v2_delivery_context_rpc_names_phase92.sql

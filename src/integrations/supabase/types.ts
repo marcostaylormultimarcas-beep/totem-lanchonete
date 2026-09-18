@@ -1962,6 +1962,15 @@ export type Database = {
         Args: { _motivo?: string; _order_id: string }
         Returns: Json
       }
+      chamar_proxima_senha: {
+        Args: { _organization_id: string; _prefixo?: string; _tipo?: string }
+        Returns: {
+          called_at: string
+          id: string
+          numero: string
+          tipo: string
+        }[]
+      }
       confirm_delivery_with_code: {
         Args: {
           _code: string

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { triggerOutForDeliveryPush } from '@/lib/onesignal';
 import { Loader2, Sparkles, Truck, MapPin, Clock, Route, Send, Bike, AlertTriangle } from 'lucide-react';
 // Mapa removido — usamos apenas lógica de agrupamento por bairro + link Google Maps.
 
@@ -178,9 +177,6 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
         return;
       }
       if (Number(result.count || 0) !== ids.length) { alert('O banco não confirmou todos os pedidos da rota. Atualize e tente novamente.'); await loadAll(); setRoutes([]); setGenerated(false); return; }
-
-      // Push para clientes (best-effort)
-      await triggerOutForDeliveryPush(route.orders.map(o => o.customer_phone));
 
       // Atualiza UI
       setRoutes(rs => rs.filter(r => r.id !== route.id));

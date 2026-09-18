@@ -80,7 +80,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     if (!orgId || isDemoMode()) { setServerQuote(null); return; }
     let cancelled = false;
     setQuoteLoading(true); setQuoteError(''); setMpPix(null);
-    supabase.rpc('quote_order_checkout' as any, {
+    supabase.rpc('quote_order_checkout_v2' as any, {
       _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
       _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || '',
       _delivery_context: { cep: deliveryCep || '' },
@@ -217,7 +217,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }));
 
       // Cria o pedido e reserva a senha na mesma transação do banco.
-      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout' as any, {
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v2' as any, {
         _organization_id: orgId,
         _customer_name: customerName,
         _customer_phone: customerPhone,

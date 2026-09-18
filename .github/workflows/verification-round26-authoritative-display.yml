@@ -1,7 +1,7 @@
 name: Verification Round 26 - Authoritative Checkout Display
 on:
-  push:
-    branches: [fix/verification-round-2]
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
   workflow_dispatch:
 jobs:
   verify:
@@ -19,5 +19,7 @@ jobs:
           grep -q "authoritativeCouponDiscount" src/components/kiosk/PaymentScreen.tsx
           grep -q "authoritativePrimeDiscount" src/components/kiosk/PaymentScreen.tsx
           grep -q "authoritativeFee" src/components/kiosk/PaymentScreen.tsx
-          grep -q "_delivery_fee: rawFee" src/components/kiosk/PaymentScreen.tsx
+          grep -q "quote_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
+          grep -q "create_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
+          grep -q "_delivery_context" src/components/kiosk/PaymentScreen.tsx
           ! grep -q "Baixar Nota Fiscal" src/components/kiosk/PaymentScreen.tsx

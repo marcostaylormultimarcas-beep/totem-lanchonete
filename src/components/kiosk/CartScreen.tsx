@@ -77,7 +77,16 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       _organization_id: orgId, _codigo: code, _subtotal: subtotal,
     });
     const result: any = data;
-    if (error || !result?.ok || !result?.cupom) {
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('coupon_rate_limited')) {
+        toast.error('Muitas tentativas de cupom. Aguarde alguns minutos e tente novamente.');
+      } else {
+        toast.error('Não foi possível validar o cupom agora. Tente novamente.');
+      }
+      return false;
+    }
+    if (!result?.ok || !result?.cupom) {
       const reason = result?.reason;
       const messages: Record<string,string> = {
         expired: 'Este cupom já expirou.', not_started: 'Este cupom ainda não está ativo.',

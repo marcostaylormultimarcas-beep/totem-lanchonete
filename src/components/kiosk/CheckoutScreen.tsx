@@ -27,7 +27,9 @@ interface CheckoutScreenProps {
   deliveryReference: string;
   deliveryRecipient: string;
   bairroId: string;
+  deliveryCep: string;
   onBairroChange: (id: string, nome: string, taxa: number, tempo: number) => void;
+  onDeliveryCepChange: (cep: string) => void;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onCpfChange: (v: string) => void;
@@ -41,7 +43,7 @@ interface CheckoutScreenProps {
 const CheckoutScreen = ({
   name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
-  bairroId, onBairroChange,
+  bairroId, deliveryCep, onBairroChange, onDeliveryCepChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
   onContinue, onBack,
@@ -52,7 +54,6 @@ const CheckoutScreen = ({
 
   // CEP / modo de entrega
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
-  const [cep, setCep] = useState('');
   const [validandoCep, setValidandoCep] = useState(false);
   const [cepResultado, setCepResultado] = useState<
     | { ok: true; taxa: number | null; tempo_min: number | null; distancia_km: number | null; endereco: string }
@@ -78,7 +79,7 @@ const CheckoutScreen = ({
 
   const validarCep = async () => {
     if (!orgId) return;
-    const n = normalizeCep(cep);
+    const n = normalizeCep(deliveryCep);
     if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
     setValidandoCep(true);
     setCepResultado(null);
@@ -111,6 +112,7 @@ const CheckoutScreen = ({
       setCepResultado({ ok: false, motivo: r?.motivo || 'fora_da_area' });
       return;
     }
+    onDeliveryCepChange(maskCep(n));
     setCepResultado({
       ok: true,
       taxa: r.taxa != null ? Number(r.taxa) : null,
@@ -212,7 +214,7 @@ const CheckoutScreen = ({
                     <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
                   </label>
                   <div className="flex gap-2">
-                    <input value={cep} onChange={e => { setCep(maskCep(e.target.value)); setCepResultado(null); }}
+                    <input value={deliveryCep} onChange={e => { onDeliveryCepChange(maskCep(e.target.value)); setCepResultado(null); }}
                       placeholder="00000-000" maxLength={9}
                       className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
                     <button onClick={validarCep} disabled={validandoCep}

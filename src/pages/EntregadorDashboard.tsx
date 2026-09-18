@@ -449,6 +449,7 @@ const EntregadorDashboard = () => {
         not_assigned: 'Este pedido não está atribuído a você.',
         already_delivered: 'Pedido já foi entregue.',
         cancelled: 'Pedido cancelado.',
+        not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
         invalid_code: '❌ Código incorreto! Confirme com o cliente.',
       };
       toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');

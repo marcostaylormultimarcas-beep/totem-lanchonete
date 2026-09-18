@@ -240,6 +240,22 @@ export async function uploadProductImage(
   }
 
   const fileName = `${orgId}/${crypto.randomUUID()}.${fileExtension}`;
+
+  const { data: quotaAllowed, error: quotaError } = await supabase.rpc(
+    'visionfood_storage_quota_allowed' as any,
+    {
+      _bucket_id: STORAGE_BUCKET,
+      _name: fileName,
+      _metadata: { contentLength: uploadPayload.size },
+    },
+  );
+  if (quotaError) {
+    throw new Error('Não foi possível validar o espaço de armazenamento da loja.');
+  }
+  if (quotaAllowed !== true) {
+    throw new StorageLimitError();
+  }
+
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(fileName, uploadPayload, { contentType, upsert: true });

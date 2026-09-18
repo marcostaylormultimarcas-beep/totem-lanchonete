@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, ClipboardList, Instagram, MessageCircle, Sparkles, Search, SlidersHorizontal, MapPin, Bell, Star, Clock, Heart, Home, User, Crown } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 
@@ -46,22 +47,28 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
   useEffect(() => {
     if (!orgId) return;
+    let cancelled = false;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('organization_id', orgId).maybeSingle();
-      if (data) {
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (cancelled) return;
         setStoreName(data.store_name || 'VisionFood');
-        setBanners((data.banners as unknown as BannerItem[]) || []);
-        setInstagramUrl((data as any).instagram_url || '');
+        setBanners((data.banners as BannerItem[]) || []);
+        setInstagramUrl(data.instagram_url || '');
         setWhatsappNumber(data.whatsapp_number || '');
-        const cats = (data as any).categories as CategoryItem[] | undefined;
+        const cats = data.categories as CategoryItem[] | undefined;
         if (cats && cats.length > 0) setCategories(cats);
-        else if ((data as any).category_icons) {
-          const icons = (data as any).category_icons as Record<string, string>;
+        else if (data.category_icons) {
+          const icons = data.category_icons as Record<string, string>;
           setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
         }
+      } catch (error) {
+        if (!cancelled) console.warn('[StartScreen] storefront config error:', error);
       }
     };
     fetchSettings();
+    const pollId = window.setInterval(fetchSettings, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   useEffect(() => {
@@ -92,26 +99,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   }, [orgId]);
 
   useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel('settings-changes-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        const data = payload.new;
-        if (data) {
-          setStoreName(data.store_name || 'VisionFood');
-          setBanners((data.banners as unknown as BannerItem[]) || []);
-          setInstagramUrl(data.instagram_url || '');
-          setWhatsappNumber(data.whatsapp_number || '');
-          const cats = data.categories as CategoryItem[] | undefined;
-          if (cats && cats.length > 0) setCategories(cats);
-          else if (data.category_icons) {
-            const icons = data.category_icons as Record<string, string>;
-            setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
-          }
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    // Settings are refreshed by the safe storefront-config poll above.
   }, [orgId]);
 
   useEffect(() => {

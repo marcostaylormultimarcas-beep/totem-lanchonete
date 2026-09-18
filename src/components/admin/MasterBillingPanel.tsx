@@ -43,11 +43,12 @@ const MasterBillingPanel = () => {
     const digits = whatsapp.replace(/\D/g, '');
     if (digits.length < 10) { toast.error('Informe o número com DDD (ex: 11999998888)'); return; }
     setSavingWpp(true);
-    const { error } = await supabase
-      .from('system_settings')
-      .upsert({ id: 'global', whatsapp_suporte: digits } as any, { onConflict: 'id' });
+    const { data, error } = await supabase.rpc('set_system_whatsapp_suporte' as any, { _whatsapp: digits });
     setSavingWpp(false);
-    if (error) { toast.error(error.message || 'Erro ao salvar WhatsApp'); return; }
+    if (error || !(data as any)?.ok) {
+      toast.error((data as any)?.reason || error?.message || 'Erro ao salvar WhatsApp');
+      return;
+    }
     setWhatsapp(digits);
     toast.success('WhatsApp central de atendimento salvo!');
   };

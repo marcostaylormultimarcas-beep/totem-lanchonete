@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Clock, Lock, Crown } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { useOrgId } from '@/contexts/OrgContext';
 import { useStoreStatus } from '@/hooks/useStoreStatus';
 
@@ -23,20 +23,18 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
 
   useEffect(() => {
     if (!orgId) return;
+    let cancelled = false;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name').eq('organization_id', orgId).maybeSingle();
-      if (data?.store_name) setStoreName(data.store_name);
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (!cancelled && data.store_name) setStoreName(data.store_name);
+      } catch (error) {
+        if (!cancelled) console.warn('[Landing] storefront config error:', error);
+      }
     };
     fetchSettings();
-
-    const channel = supabase
-      .channel('landing-settings-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        const d = payload.new;
-        if (d?.store_name) setStoreName(d.store_name);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const pollId = window.setInterval(fetchSettings, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   const canOrder = status.open || status.schedulingEnabled;

@@ -282,8 +282,8 @@ const AdminPage = () => {
     }
   };
 
-  // Somente colunas estáveis da tabela externa. Delivery, balança, fiscal e
-  // pagamentos são persistidos pelos painéis específicos e nunca entram aqui.
+  // Preferências não secretas da loja. Credenciais Mercado Pago permanecem
+  // exclusivamente no MercadoPagoCard/RPC seguro e nunca entram neste payload.
   const saveSettingsToDb = async (s: StoreSettings) => {
     const fields: Array<[string, SettingsPayload]> = [
       ['storeName', { store_name: s.storeName }],
@@ -293,6 +293,12 @@ const AdminPage = () => {
       ['categoryIcons', { category_icons: s.categoryIcons as any }],
       ['categories', { categories: s.categories as any }],
       ['instagram', { instagram_url: s.instagramUrl || '' }],
+      ['pixKeyManual', { pix_key_manual: s.pixKeyManual || '' }],
+      ['payCashEnabled', { pay_cash_enabled: Boolean(s.payCashEnabled) }],
+      ['payPixEnabled', { pay_pix_enabled: Boolean(s.payPixEnabled) }],
+      ['payCardTerminalEnabled', { pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled) }],
+      ['payCardOnlineEnabled', { pay_card_online_enabled: Boolean(s.payCardOnlineEnabled) }],
+      ['mpTerminalId', { mp_terminal_id: s.mpTerminalId || '' }],
     ];
     let failed = false;
     for (const [field, payload] of fields) {

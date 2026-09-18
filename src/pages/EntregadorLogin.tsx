@@ -14,13 +14,30 @@ export interface EntregadorSession {
   org_slug: string;
   org_name: string;
   session_token: string;
+  expires_at?: string;
 }
 
 export const getEntregadorSession = (): EntregadorSession | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    if (!raw) return null;
+    const session = JSON.parse(raw) as EntregadorSession;
+    if (!session?.session_token) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    if (session.expires_at) {
+      const expiresAt = Date.parse(session.expires_at);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
 };
 
 export const clearEntregadorSession = () => localStorage.removeItem(STORAGE_KEY);
@@ -64,7 +81,11 @@ const EntregadorLogin = () => {
       toast.error('Usuário ou senha inválidos.');
       return;
     }
-    const session: EntregadorSession = { ...res.entregador, session_token: res.session_token };
+    const session: EntregadorSession = {
+      ...res.entregador,
+      session_token: res.session_token,
+      expires_at: res.expires_at,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     toast.success(`Bem-vindo, ${res.entregador.name}!`);
     navigate('/entregador');

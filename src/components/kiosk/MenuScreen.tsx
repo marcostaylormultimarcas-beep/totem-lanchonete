@@ -49,7 +49,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
     ]);
     setProducts(prods.map((p) => ({
         id: p.id, name: p.name, price: Number(p.price), category: p.category,
-        image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
+        image: p.image || '', removableIngredients: (p.removable_ingredients as string[]) || [],
         extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
         ingredients: (p.ingredients as string[]) || [], description: p.description || '',
         soldByWeight: Boolean(p.sold_by_weight),

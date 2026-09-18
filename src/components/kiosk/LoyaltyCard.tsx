@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Award, Check, Star, Gift, X, Trophy, History as HistoryIcon } from 'lucide-react';
 import { formatCurrency } from '@/data/store';
@@ -37,6 +37,7 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
   const [resgates, setResgates] = useState<Resgate[]>([]);
   const [modal, setModal] = useState<Resgate | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [loyaltyPhone, setLoyaltyPhone] = useState('');
 
   useEffect(() => {
     if (!organizationId) { setConfig(null); return; }
@@ -57,51 +58,50 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
 
   const phone = sanitizePhone(customerPhone);
 
-  const fetchResgates = async () => {
-    if (!organizationId || !phone || phone.length < 8) { setResgates([]); return; }
-    const { data } = await supabase.from('resgates_fidelidade' as any)
-      .select('*')
-      .eq('organization_id', organizationId)
-      .eq('telefone_cliente', phone)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    const list = (data as any) || [];
+  const loadCustomerState = useCallback(async () => {
+    if (!organizationId) {
+      setStamps(0);
+      setResgates([]);
+      setLoyaltyPhone('');
+      return;
+    }
+
+    const { data, error } = await supabase.rpc('loyalty_customer_state' as any, {
+      _organization_id: organizationId,
+    });
+    const state = data as any;
+
+    if (error || !state?.ok) {
+      if (state?.reason !== 'unauthenticated') {
+        console.error('[loyalty] customer state', error || state);
+      }
+      setStamps(0);
+      setResgates([]);
+      setLoyaltyPhone('');
+      return;
+    }
+
+    const resolvedPhone = String(state.phone || '');
+    const list = Array.isArray(state.rewards) ? state.rewards as Resgate[] : [];
+    setLoyaltyPhone(resolvedPhone);
+    setStamps(Number(state.stamps) || 0);
     setResgates(list);
-    // Auto-open modal for newest pending resgate not yet seen
-    if (organizationId && phone) {
-      const seen = JSON.parse(localStorage.getItem(SEEN_KEY(organizationId, phone)) || '[]');
+
+    if (organizationId && resolvedPhone) {
+      const seen = JSON.parse(localStorage.getItem(SEEN_KEY(organizationId, resolvedPhone)) || '[]');
       const fresh = list.find((r: Resgate) => r.status === 'pendente' && !seen.includes(r.id));
       if (fresh) setModal(fresh);
     }
-  };
+  }, [organizationId]);
 
   useEffect(() => {
-    if (!organizationId || !phone || phone.length < 8) { setStamps(0); setResgates([]); return; }
-    let cancelled = false;
-    supabase.from('progresso_fidelidade' as any)
-      .select('quantidade_carimbos')
-      .eq('organization_id', organizationId)
-      .eq('telefone_cliente', phone)
-      .maybeSingle()
-      .then(({ data }) => { if (!cancelled) setStamps(Number((data as any)?.quantidade_carimbos) || 0); });
+    void loadCustomerState();
+    const onFocus = () => { void loadCustomerState(); };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadCustomerState, customerPhone]);
 
-    fetchResgates();
-
-    const channel = supabase
-      .channel(`fid-${organizationId}-${phone}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'progresso_fidelidade', filter: `organization_id=eq.${organizationId}` },
-        (payload: any) => {
-          if (payload.new?.telefone_cliente === phone) {
-            setStamps(Number(payload.new?.quantidade_carimbos) || 0);
-          }
-        })
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'resgates_fidelidade', filter: `organization_id=eq.${organizationId}` },
-        () => { fetchResgates(); })
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
-  }, [organizationId, customerPhone]);
+  const phone = loyaltyPhone || sanitizePhone(customerPhone);
 
   const dismissModal = () => {
     if (modal && organizationId && phone) {

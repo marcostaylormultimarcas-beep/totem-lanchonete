@@ -52,11 +52,16 @@ const EntregadorLogin = () => {
     setLoading(false);
     const res: any = data;
     if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        org_not_found: 'Loja não encontrada.',
-        invalid_credentials: 'Usuário ou senha inválidos.',
-      };
-      toast.error(msg[res?.reason] || 'Falha ao entrar.');
+      if (res?.reason === 'too_many_attempts') {
+        const minutes = Math.max(1, Math.ceil(Number(res?.retry_after_seconds || 600) / 60));
+        toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
+        return;
+      }
+      if (res?.reason === 'invalid_credentials' && res?.remaining_attempts != null) {
+        toast.error(`Usuário ou senha inválidos. Restam ${res.remaining_attempts} tentativa(s).`);
+        return;
+      }
+      toast.error('Usuário ou senha inválidos.');
       return;
     }
     const session: EntregadorSession = { ...res.entregador, session_token: res.session_token };

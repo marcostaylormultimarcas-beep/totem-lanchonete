@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import heroTotem from '@/assets/home-hero-totem.jpg';
 import cardMenu from '@/assets/home-card-menu.jpg';
 import cardPix from '@/assets/home-card-pix.jpg';
@@ -55,13 +56,7 @@ const useWhatsappLink = (username?: string) => {
       const slug = normalizeUsername(rawUsername);
       console.log('[Home/WA] resolvendo username:', slug);
 
-      const { data: org, error: orgErr } = await supabase
-        .from('organizations')
-        .select('id, slug, name')
-        .ilike('slug', slug)
-        .limit(1)
-        .maybeSingle();
-      if (orgErr) console.warn('[Home/WA] org by slug error', orgErr);
+      const org = await fetchPublicOrganization({ slug });
 
       if (!org?.id) {
         console.warn('[Home/WA] nenhuma organização encontrada para slug:', slug, '— usando fallback');
@@ -98,8 +93,7 @@ const useWhatsappLink = (username?: string) => {
     };
 
     const resolveFallback = async () => {
-      const { data: org } = await supabase
-        .from('organizations').select('id').eq('slug', DEFAULT_DEMO_SLUG).maybeSingle();
+      const org = await fetchPublicOrganization({ slug: DEFAULT_DEMO_SLUG });
       if (!org?.id) return null;
       return fetchWaFromOrg(org.id);
     };

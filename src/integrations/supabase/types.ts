@@ -2150,6 +2150,10 @@ export type Database = {
         Returns: Json
       }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
+      reset_senha_counter: {
+        Args: { _organization_id: string; _prefixo?: string }
+        Returns: undefined
+      }
       restock_from_items: {
         Args: { _items: Json; _org: string }
         Returns: undefined

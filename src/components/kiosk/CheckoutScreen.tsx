@@ -266,6 +266,7 @@ const CheckoutScreen = ({
                           {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
                           {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
                           {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                          {cepResultado.motivo === 'loja_indisponivel' && 'A loja está temporariamente indisponível para pedidos.'}
                           {cepResultado.motivo === 'modo_indisponivel' && 'A entrega por raio está temporariamente indisponível. Entre em contato com a loja.'}
                         </p>
                       </div>

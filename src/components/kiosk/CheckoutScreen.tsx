@@ -63,20 +63,37 @@ const CheckoutScreen = ({
   >(null);
 
   useEffect(() => {
-    if (!orgId || orderType !== 'viagem') return;
+    if (!orgId || orderType !== 'viagem') {
+      setBairros([]);
+      return;
+    }
+
+    let cancelled = false;
     setLoadingBairros(true);
-    fetchPublicStorefrontConfig(orgId)
-      .then(data => setDeliveryMode((data.delivery_mode || 'bairros') as DeliveryMode))
-      .catch(error => console.warn('[Checkout] storefront config error:', error));
-    supabase.from('taxas_entrega' as any)
-      .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
-      .eq('organization_id', orgId)
-      .eq('ativo', true)
-      .order('nome_bairro', { ascending: true })
-      .then(({ data }) => {
-        setBairros(((data as any[]) || []) as Bairro[]);
-        setLoadingBairros(false);
-      });
+
+    const loadDeliveryData = async () => {
+      try {
+        const [storefront, areasResult] = await Promise.all([
+          fetchPublicStorefrontConfig(orgId),
+          supabase.rpc('visionfood_public_delivery_areas' as any, { _org: orgId }),
+        ]);
+
+        if (cancelled) return;
+        setDeliveryMode((storefront.delivery_mode || 'bairros') as DeliveryMode);
+        if (areasResult.error) throw areasResult.error;
+        setBairros((Array.isArray(areasResult.data) ? areasResult.data : []) as Bairro[]);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[Checkout] delivery data error:', error);
+          setBairros([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingBairros(false);
+      }
+    };
+
+    void loadDeliveryData();
+    return () => { cancelled = true; };
   }, [orgId, orderType]);
 
   const validarCep = async () => {

@@ -35,6 +35,7 @@ interface PendingOrderState {
   bairroNome: string;
   bairroTaxa: number;
   bairroTempo: number;
+  deliveryCep: string;
 }
 
 const Index = () => {
@@ -55,6 +56,7 @@ const Index = () => {
   const [bairroNome, setBairroNome] = useState('');
   const [bairroTaxa, setBairroTaxa] = useState(0);
   const [bairroTempo, setBairroTempo] = useState(0);
+  const [deliveryCep, setDeliveryCep] = useState('');
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -130,6 +132,7 @@ const Index = () => {
         setBairroNome(parsed.bairroNome || '');
         setBairroTaxa(parsed.bairroTaxa || 0);
         setBairroTempo(parsed.bairroTempo || 0);
+        setDeliveryCep(parsed.deliveryCep || '');
         setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
@@ -164,7 +167,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
@@ -190,7 +193,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
     setTrackingOrderId('');
     setAppliedCoupon(null);
   };
@@ -223,7 +226,7 @@ const Index = () => {
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
-      bairroId, bairroNome, bairroTaxa, bairroTempo,
+      bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
@@ -277,8 +280,9 @@ const Index = () => {
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId}
+          bairroId={bairroId} deliveryCep={deliveryCep}
           onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
+          onDeliveryCepChange={setDeliveryCep}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
@@ -290,7 +294,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo} deliveryCep={deliveryCep}
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}

@@ -40,6 +40,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [saving, setSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
   const [storeSettings, setStoreSettings] = useState<{
@@ -196,7 +197,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }));
 
       // Cria o pedido e reserva a senha na mesma transação do banco.
-      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v2' as any, {
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v3' as any, {
         _organization_id: orgId,
         _customer_name: customerName,
         _customer_phone: customerPhone,
@@ -221,6 +222,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       if (!data?.id || !data?.order_number) throw new Error('Checkout não retornou o pedido criado.');
       const num = String(data.order_number);
       setGeneratedNumber(num);
+      setDeliveryCode(String(data.delivery_code || ''));
 
       // CPF é armazenado no pedido para exportação/integração fiscal posterior.
       // Não marque como NF-e emitida sem autorização fiscal/SEFAZ real.
@@ -265,6 +267,16 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           </div>
           <p className="text-muted-foreground text-sm">Guarde sua senha. O pagamento será conferido conforme a forma escolhida.</p>
         </div>
+
+        {orderType === 'viagem' && deliveryCode && (
+          <div className="w-full rounded-2xl border-2 border-orange-500/60 bg-orange-500/10 p-5 text-center space-y-2">
+            <p className="text-xs uppercase tracking-wider text-orange-300 font-bold">Código de confirmação da entrega</p>
+            <p className="text-4xl font-black tracking-[0.35em] text-orange-400 pl-[0.35em]">{deliveryCode}</p>
+            <p className="text-xs text-muted-foreground">
+              Guarde este código e informe ao entregador somente quando receber o pedido.
+            </p>
+          </div>
+        )}
 
         <div className="w-full kiosk-card p-4 space-y-3">
           <div className="space-y-1">

@@ -84,7 +84,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           name: p.name,
           price: Number(p.price),
           category: p.category as Product['category'],
-          image: p.image || undefined,
+          image: p.image || '',
           removableIngredients: p.removable_ingredients || [],
           extras: p.extras || [],
           isCombo: p.is_combo || false,

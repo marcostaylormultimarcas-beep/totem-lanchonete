@@ -13,6 +13,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
+import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
@@ -137,6 +138,39 @@ const AdminPage = () => {
     };
     fetch();
   }, [activeOrgId]);
+
+  // Identifica o administrador no OneSignal sem abrir prompt automaticamente.
+  useEffect(() => {
+    if (!authenticated || !activeOrgId) return;
+    let active = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active || !user) return;
+      await identifyOneSignalUser(`admin:${user.id}`, {
+        tipo: 'admin',
+        organization_id: activeOrgId,
+      });
+    })();
+    return () => { active = false; };
+  }, [authenticated, activeOrgId]);
+
+  const enableAdminPush = async () => {
+    if (!activeOrgId) {
+      toast.error('Selecione uma loja antes de ativar as notificações.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Sessão administrativa não encontrada.');
+      return;
+    }
+    const ok = await requestOneSignalPermission(`admin:${user.id}`, {
+      tipo: 'admin',
+      organization_id: activeOrgId,
+    });
+    if (ok) toast.success('Notificações push ativadas neste dispositivo.');
+    else toast.info('Push não foi ativado. Verifique a permissão de notificações do navegador.');
+  };
 
   // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado
   useEffect(() => {
@@ -823,7 +857,7 @@ const AdminPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Notificações">
+          <button onClick={enableAdminPush} className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Ativar notificações push" title="Ativar notificações push">
             <Bell className="w-4 h-4 text-zinc-300" />
             <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF7A00] rounded-full ring-2 ring-[#0B0B0D]"></span>
           </button>

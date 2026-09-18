@@ -73,7 +73,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
 
   const validateCoupon = async (code: string, successMessage: string) => {
     if (!orgId) return false;
-    const { data, error } = await supabase.rpc('validate_checkout_coupon' as any, {
+    const { data, error } = await supabase.rpc('validate_checkout_coupon', {
       _organization_id: orgId, _codigo: code, _subtotal: subtotal,
     });
     const result: any = data;

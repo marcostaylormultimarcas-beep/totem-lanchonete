@@ -2186,6 +2186,10 @@ export type Database = {
         Args: { _cep: string; _lat?: number; _lng?: number; _org: string }
         Returns: Json
       }
+      validate_checkout_coupon: {
+        Args: { _codigo: string; _organization_id: string; _subtotal?: number }
+        Returns: Json
+      }
       vision_prime_my_status: { Args: { _org: string }; Returns: Json }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
     }

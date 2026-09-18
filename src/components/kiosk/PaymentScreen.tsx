@@ -251,7 +251,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           ? 'A loja está recebendo muitos pedidos neste momento. Aguarde um instante e tente novamente.'
           : rawMessage.includes('payment_method_disabled')
             ? 'Essa forma de pagamento foi desativada pela loja. Volte e escolha outra opção.'
-            : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
+            : rawMessage.includes('invalid removed ingredient for product')
+              ? 'Este produto foi atualizado pela loja. Volte ao carrinho, revise os ingredientes e tente novamente.'
+              : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
       setPaymentError(message);
       toast.error('Pedido não confirmado', { description: message });
       setConfirmed(false);

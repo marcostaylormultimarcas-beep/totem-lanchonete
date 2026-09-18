@@ -22,6 +22,7 @@ interface PaymentScreenProps {
   bairroNome?: string;
   deliveryFee?: number;
   bairroTempo?: number;
+  deliveryCep?: string;
   appliedCoupon?: AppliedCoupon | null;
   scheduledFor?: string | null;
   onBack: () => void;
@@ -29,7 +30,7 @@ interface PaymentScreenProps {
 }
 
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);
@@ -81,14 +82,15 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     setQuoteLoading(true); setQuoteError(''); setMpPix(null);
     supabase.rpc('quote_order_checkout' as any, {
       _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
-      _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || ''
+      _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || '',
+      _delivery_context: { cep: deliveryCep || '' },
     }).then(({ data, error }) => {
       if (cancelled) return;
       if (error || !data) { setServerQuote(null); setQuoteError(error?.message || 'Não foi possível calcular o total no servidor.'); }
       else setServerQuote(data as any);
     }).finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
-  }, [orgId, orderType, bairroId, rawFee, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
+  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
 
   const pixKey = mpPix?.qr_code || storeSettings.pixKeyManual || '';
   const qrImageSrc = mpPix?.qr_code_base64 ? `data:image/png;base64,${mpPix.qr_code_base64}` : '';
@@ -232,6 +234,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         _payment_method: method || '',
         _scheduled_for: scheduledFor || null,
         _coupon_code: appliedCoupon?.codigo || '',
+        _delivery_context: { cep: deliveryCep || '' },
       });
 
       if (error) throw error;

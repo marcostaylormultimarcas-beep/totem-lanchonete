@@ -42,7 +42,7 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
   useEffect(() => {
     if (!organizationId) { setConfig(null); return; }
 
-    supabase.rpc('visionfood_public_loyalty_config' as any, { _org: organizationId })
+    supabase.rpc('visionfood_public_loyalty_config', { _org: organizationId })
       .then(({ data, error }) => {
         if (error) {
           console.warn('[loyalty] public config error:', error);

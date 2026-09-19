@@ -2220,6 +2220,7 @@ export type Database = {
       }
       visionfood_public_catalog: { Args: { _org: string }; Returns: Json }
       visionfood_public_delivery_areas: { Args: { _org: string }; Returns: Json }
+      visionfood_public_loyalty_config: { Args: { _org: string }; Returns: Json }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

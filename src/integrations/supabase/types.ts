@@ -2233,6 +2233,10 @@ export type Database = {
         Args: { _limit?: number; _product_id: string }
         Returns: Json
       }
+      visionfood_public_storefront_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

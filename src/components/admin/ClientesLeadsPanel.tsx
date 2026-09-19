@@ -61,30 +61,17 @@ const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
     if (!organizationId) { setOrders([]); setProfileContacts([]); setLoading(false); return; }
     setLoading(true);
     (async () => {
-      const [clientesRes, ordersRes] = await Promise.all([
-        supabase.from('clientes' as any)
-          .select('*')
-          .eq('organization_id', organizationId)
-          .order('created_at', { ascending: false })
-          .limit(5000),
-        supabase.from('orders')
-          .select('id, user_id, customer_name, customer_phone, total, created_at, items, status')
-          .eq('organization_id', organizationId)
-          .neq('status', 'cancelled')
-          .order('created_at', { ascending: false })
-          .limit(5000),
-      ]);
+      // public.clientes is a legacy, unscoped table (no organization_id/user_id).
+      // Keep tenant data fail-closed and derive the current CRM list from scoped orders.
+      const ordersRes = await supabase.from('orders')
+        .select('id, user_id, customer_name, customer_phone, total, created_at, items, status')
+        .eq('organization_id', organizationId)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
+        .limit(5000);
 
       setOrders((ordersRes.data as OrderRow[]) || []);
-      setProfileContacts(((clientesRes.data || []) as any[]).map((c, i) => ({
-        key: `cliente:${c.id ?? c.user_id ?? i}`,
-        userId: c.user_id || '',
-        email: c.email || '',
-        phone: normalizePhone(c.telefone || c.phone || ''),
-        name: c.nome || c.name || c.display_name || 'Lead sem nome',
-        source: 'Cadastro',
-        created_at: c.created_at,
-      })));
+      setProfileContacts([]);
       setLoading(false);
     })();
   }, [organizationId]);

@@ -55,11 +55,18 @@ const EntregadoresPanel = ({ organizationId }: { organizationId: string | null }
 
   const fetchLogs = async () => {
     if (!organizationId) return;
-    const { data: logRows } = await supabase.from('entregas_log' as any).select('*')
-      .eq('organization_id', organizationId)
-      .order('delivered_at', { ascending: false })
-      .limit(100);
-    const rows = (logRows as any[]) || [];
+    const { data, error } = await supabase.rpc('visionfood_delivery_history' as any, {
+      _org: organizationId,
+      _limit: 100,
+    });
+    const res: any = data;
+    if (error || !res?.ok) {
+      console.error('fetchDeliveryHistory', error || res);
+      setLogs([]);
+      toast.error('Não foi possível carregar o histórico de entregas.');
+      return;
+    }
+    const rows = (res.logs as any[]) || [];
     if (rows.length === 0) { setLogs([]); return; }
     const orderIds = [...new Set(rows.map(r => r.order_id))];
     const entIds = [...new Set(rows.map(r => r.entregador_id))];

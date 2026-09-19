@@ -57,7 +57,7 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
     let timer: number | undefined;
 
     const fetchOrder = async (initial = false) => {
-      const { data, error } = await supabase.rpc('visionfood_public_order_tracking' as any, {
+      const { data, error } = await supabase.rpc('visionfood_public_order_tracking', {
         _order_id: orderId,
       });
       if (!active) return;

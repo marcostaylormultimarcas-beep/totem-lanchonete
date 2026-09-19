@@ -22,7 +22,7 @@ export function useVisionPrimeConfig(orgId: string | null) {
     if (!orgId) { setConfig(null); setLoading(false); return; }
     let cancel = false;
     setLoading(true);
-    supabase.rpc('vision_prime_public_config' as any, { _org: orgId })
+    supabase.rpc('vision_prime_public_config', { _org: orgId })
       .maybeSingle()
       .then(({ data }) => {
         if (cancel) return;

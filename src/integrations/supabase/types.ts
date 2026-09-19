@@ -2191,6 +2191,15 @@ export type Database = {
         Returns: Json
       }
       vision_prime_my_status: { Args: { _org: string }; Returns: Json }
+      vision_prime_public_config: {
+        Args: { _org: string }
+        Returns: {
+          ativo: boolean
+          desconto_percentual: number
+          frete_gratis_minimo: number
+          valor_mensalidade: number
+        }[]
+      }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
     }
     Enums: {

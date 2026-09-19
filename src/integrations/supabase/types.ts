@@ -2246,6 +2246,14 @@ export type Database = {
         }
         Returns: Json
       }
+      visionfood_update_order_status: {
+        Args: {
+          _expected_status: string
+          _next_status: string
+          _order_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

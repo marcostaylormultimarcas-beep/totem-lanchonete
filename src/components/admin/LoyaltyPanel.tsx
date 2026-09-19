@@ -79,8 +79,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         premio_recompensa: d.premio_recompensa || '',
         descricao_premio: d.descricao_premio || '',
         premio_imagem: d.premio_imagem || '',
-        valido_de: (d.valido_de || '').slice(0, 10),
-        valido_ate: (d.valido_ate || '').slice(0, 10),
+        valido_de: (d.data_inicio || '').slice(0, 10),
+        valido_ate: (d.data_fim || '').slice(0, 10),
       };
       setConfig(loaded);
       setSaved(loaded);
@@ -118,8 +118,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       premio_recompensa: config.premio_recompensa.trim(),
       descricao_premio: config.descricao_premio.trim(),
       premio_imagem: config.premio_imagem,
-      valido_de: config.valido_de || null,
-      valido_ate: config.valido_ate || null,
+      data_inicio: config.valido_de || null,
+      data_fim: config.valido_ate || null,
     };
 
     // Tolerância a colunas ausentes no banco externo (PGRST204)

@@ -12,7 +12,7 @@ export async function fetchPublicCalledTickets(
   limit = 5,
 ): Promise<PublicCalledTicket[]> {
   const { data, error } = await supabase.rpc(
-    'visionfood_public_called_tickets' as any,
+    'visionfood_public_called_tickets',
     { _org: organizationId, _limit: limit },
   );
 

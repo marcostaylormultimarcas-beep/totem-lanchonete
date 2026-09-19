@@ -2238,6 +2238,14 @@ export type Database = {
         Returns: Json
       }
       visionfood_public_theme: { Args: { _org: string }; Returns: Json }
+      visionfood_push_predictive_stock: {
+        Args: {
+          _days_remaining: number
+          _ingredient_name: string
+          _org: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

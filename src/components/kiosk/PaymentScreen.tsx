@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, FileText } from 'lucide-react';
+import { toast } from 'sonner';
+import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2 } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -21,16 +22,15 @@ interface PaymentScreenProps {
   bairroNome?: string;
   deliveryFee?: number;
   bairroTempo?: number;
+  deliveryCep?: string;
   appliedCoupon?: AppliedCoupon | null;
   scheduledFor?: string | null;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }
 
-const FALLBACK_PIX_KEY = 'pagamento@visionmidia.com';
-const FALLBACK_QR_URL = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagamentoVisionMidia';
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);
@@ -38,17 +38,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
   const [storeSettings, setStoreSettings] = useState<{
-    storeName: string; whatsappNumber: string; pixKeyManual: string; mpEnabled: boolean;
+    storeName: string; whatsappNumber: string; pixKeyManual: string;
     payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;
-  }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', mpEnabled: false, payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
-  const [mpPix, setMpPix] = useState<{ qr_code_base64: string; qr_code: string } | null>(null);
-  const [mpLoading, setMpLoading] = useState(false);
-  // Online card form (placeholder; integração futura)
-  const [card, setCard] = useState({ number: '', holder: '', expiry: '', cvv: '' });
+  }>({ storeName: 'Vision Mídia', whatsappNumber: '', pixKeyManual: '', payCash: true, payPix: true, payTerminal: false, payOnline: false, terminalId: '' });
+  const [serverQuote, setServerQuote] = useState<any>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState('');
   const { config: primeCfg } = useVisionPrimeConfig(orgId);
   const { status: primeStatus } = useVisionPrimeStatus(orgId);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
@@ -62,50 +63,59 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const primeFreeShipping = primeActive && (Number(primeCfg!.frete_gratis_minimo) || 0) <= subtotal;
   const fee = primeFreeShipping ? 0 : rawFee;
   const feeWaived = primeFreeShipping ? rawFee : 0;
-  const total = Math.max(0, subtotal - discount + fee);
-  const primeSavings = primeDiscount + feeWaived;
+  const clientTotal = Math.max(0, subtotal - discount + fee);
+  const authoritativeSubtotal = serverQuote ? Number(serverQuote.subtotal) : subtotal;
+  const authoritativeCouponDiscount = serverQuote ? Number(serverQuote.coupon_discount || 0) : couponDiscount;
+  const authoritativePrimeDiscount = serverQuote ? Number(serverQuote.prime_discount || 0) : primeDiscount;
+  const authoritativeDiscount = serverQuote ? Number(serverQuote.discount || 0) : discount;
+  const authoritativeFee = serverQuote ? Number(serverQuote.delivery_fee || 0) : fee;
+  const authoritativeFeeWaived = serverQuote?.prime_shipping_waived ? rawFee : feeWaived;
+  const total = serverQuote ? Number(serverQuote.total) : clientTotal;
+  const primeSavings = authoritativePrimeDiscount + authoritativeFeeWaived;
 
-  const pixKey = storeSettings.pixKeyManual || mpPix?.qr_code || FALLBACK_PIX_KEY;
-  const qrImageSrc = mpPix?.qr_code_base64
-    ? `data:image/png;base64,${mpPix.qr_code_base64}`
-    : FALLBACK_QR_URL;
+  const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
+
+  useEffect(() => {
+    if (!orgId || isDemoMode()) { setServerQuote(null); return; }
+    let cancelled = false;
+    setQuoteLoading(true); setQuoteError('');
+    supabase.rpc('quote_order_checkout_v2' as any, {
+      _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
+      _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || '',
+      _delivery_context: { cep: deliveryCep || '' },
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error || !data) { setServerQuote(null); setQuoteError(error?.message || 'Não foi possível calcular o total no servidor.'); }
+      else setServerQuote(data as any);
+    }).finally(() => { if (!cancelled) setQuoteLoading(false); });
+    return () => { cancelled = true; };
+  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
+
+  const pixKey = storeSettings.pixKeyManual || '';
+  const pixConfigured = Boolean(pixKey);
 
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name, whatsapp_number, pix_key_manual, mp_access_token, pay_cash_enabled, pay_pix_enabled, pay_card_terminal_enabled, pay_card_online_enabled, mp_terminal_id').eq('organization_id', orgId).maybeSingle();
-      if (data) {
-        setStoreSettings({
-          storeName: data.store_name || 'Vision Mídia',
-          whatsappNumber: data.whatsapp_number || '',
-          pixKeyManual: (data as any).pix_key_manual || '',
-          mpEnabled: Boolean((data as any).mp_access_token),
-          payCash: (data as any).pay_cash_enabled !== false,
-          payPix: (data as any).pay_pix_enabled !== false,
-          payTerminal: Boolean((data as any).pay_card_terminal_enabled),
-          payOnline: Boolean((data as any).pay_card_online_enabled),
-          terminalId: (data as any).mp_terminal_id || '',
-        });
+      const { data, error } = await supabase.rpc('visionfood_checkout_payment_config', { _org: orgId });
+      const config: any = data;
+      if (error || !config?.ok) {
+        console.warn('Não foi possível carregar as configurações públicas de pagamento:', error || config);
+        return;
       }
+      setStoreSettings({
+        storeName: config.store_name || 'VisionFood',
+        whatsappNumber: config.whatsapp_number || '',
+        pixKeyManual: config.pix_key_manual || '',
+        payCash: config.pay_cash_enabled !== false,
+        payPix: config.pay_pix_enabled !== false,
+        payTerminal: Boolean(config.pay_card_terminal_enabled),
+        payOnline: Boolean(config.pay_card_online_enabled),
+        terminalId: config.mp_terminal_id || '',
+      });
     };
-    fetchSettings();
+    void fetchSettings();
   }, [orgId]);
-
-  // Auto-gera Pix real via Mercado Pago quando configurado e fora do modo demo
-  useEffect(() => {
-    if (method !== 'pix') return;
-    if (!orgId || !storeSettings.mpEnabled || mpPix || mpLoading || isDemoMode() || total <= 0) return;
-    setMpLoading(true);
-    supabase.functions.invoke('mercadopago-create-pix', {
-      body: { organization_id: orgId, amount: total, description: `Pedido ${storeSettings.storeName}` },
-    }).then(({ data, error }) => {
-      if (error || !data?.ok) {
-        console.warn('Mercado Pago Pix indisponível:', error || data);
-      } else {
-        setMpPix({ qr_code_base64: data.qr_code_base64, qr_code: data.qr_code });
-      }
-    }).finally(() => setMpLoading(false));
-  }, [orgId, storeSettings.mpEnabled, total, mpPix, mpLoading, storeSettings.storeName, method]);
 
 
 
@@ -133,12 +143,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
     msg += `─────────────────\n`;
-    if (appliedCoupon && discount > 0) {
-      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(discount)})\n`;
+    if (appliedCoupon && authoritativeCouponDiscount > 0) {
+      msg += `🏷️ *CUPOM:* ${appliedCoupon.codigo} (- ${formatCurrency(authoritativeCouponDiscount)})\n`;
     }
-    if (fee > 0) {
-      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(fee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
-    }
+    if (authoritativePrimeDiscount > 0) msg += `👑 *VISION PRIME:* - ${formatCurrency(authoritativePrimeDiscount)}\n`;
+    if (authoritativeFee > 0) {
+      msg += `🛵 *TAXA DE ENTREGA:* ${formatCurrency(authoritativeFee)}${bairroTempo ? ` (~${bairroTempo} min)` : ''}\n`;
+    } else if (authoritativeFeeWaived > 0) msg += `🛵 *TAXA DE ENTREGA:* GRÁTIS (Vision Prime)\n`;
     const methodLabel = method === 'cash' ? 'Dinheiro no balcão' : method === 'terminal' ? 'Cartão na maquininha' : method === 'online' ? 'Cartão online' : 'Pix';
     msg += `💳 *PAGAMENTO:* ${methodLabel} - Aguardando Conferência\n💰 *TOTAL: ${formatCurrency(total)}*`;
     return encodeURIComponent(msg);
@@ -151,6 +162,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   };
 
   const handleConfirmPayment = async () => {
+    if (saving) return;
+    setPaymentError('');
+    if (!isDemoMode() && (quoteLoading || quoteError || !serverQuote)) {
+      toast.error('Total ainda não foi validado pelo servidor.'); return;
+    }
     setSaving(true);
 
     try {
@@ -165,10 +181,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         return;
       }
 
-      // Get next order number from DB count
-      const { count } = await supabase.from('orders').select('*', { count: 'exact', head: true }).eq('organization_id', orgId);
-      const num = ((count || 0) + 1).toString().padStart(3, '0');
-      setGeneratedNumber(num);
+      if (!orgId) throw new Error('Loja não identificada. Recarregue o cardápio e tente novamente.');
 
       const orderItems = cart.map(item => ({
         product_id: item.product.id,
@@ -183,62 +196,67 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         sold_by_weight: Boolean(item.weightKg),
       }));
 
-      // Get current user if logged in
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const { data, error } = await supabase.from('orders').insert({
-        organization_id: orgId,
-        order_number: num,
-        customer_name: customerName,
-        customer_phone: customerPhone,
-        customer_cpf: customerCpf || '',
-        order_type: orderType,
-        delivery_address: deliveryAddress || '',
-        delivery_reference: deliveryReference || '',
-        delivery_recipient: deliveryRecipient || '',
-        bairro_id: bairroId || null,
-        bairro_nome: bairroNome || '',
-        delivery_fee: fee,
-        items: orderItems,
-        total,
-        status: 'pending',
-        payment_method: method || '',
-        user_id: session?.user?.id || null,
-        scheduled_for: scheduledFor || null,
-      } as any).select('id').single();
+      // Cria o pedido e reserva a senha na mesma transação do banco.
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v3' as any, {
+        _organization_id: orgId,
+        _customer_name: customerName,
+        _customer_phone: customerPhone,
+        _customer_cpf: customerCpf || '',
+        _order_type: orderType,
+        _delivery_address: deliveryAddress || '',
+        _delivery_reference: deliveryReference || '',
+        _delivery_recipient: deliveryRecipient || '',
+        _bairro_id: bairroId || null,
+        _bairro_nome: bairroNome || '',
+        _delivery_fee: rawFee,
+        _items: orderItems,
+        _total: total,
+        _payment_method: method || '',
+        _scheduled_for: scheduledFor || null,
+        _coupon_code: appliedCoupon?.codigo || '',
+        _delivery_context: { cep: deliveryCep || '' },
+      });
 
       if (error) throw error;
+      const data = Array.isArray(checkoutRows) ? checkoutRows[0] : checkoutRows;
+      if (!data?.id || !data?.order_number) throw new Error('Checkout não retornou o pedido criado.');
+      const num = String(data.order_number);
+      setGeneratedNumber(num);
+      setDeliveryCode(String(data.delivery_code || ''));
 
-      // Vincula nota fiscal ao pedido quando CPF informado
-      if (data?.id && customerCpf) {
-        const nfeUrl = `${window.location.origin}/fiscal/${data.id}`;
-        await supabase.from('orders').update({
-          nfe_url: nfeUrl,
-          nfe_status: 'issued',
-          nfe_numero: `NFE-${data.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`,
-        }).eq('id', data.id);
-
-        // Impressão automática no totem (após confirmação de pagamento)
-        setTimeout(() => {
-          try { window.open(nfeUrl, '_blank', 'noopener'); } catch {}
-        }, 800);
-      }
-
+      // CPF é armazenado no pedido para exportação/integração fiscal posterior.
+      // Não marque como NF-e emitida sem autorização fiscal/SEFAZ real.
       setConfirmed(true);
       if (data) {
         setCurrentOrderId(data.id);
-        // Co-Marketing: tenta gerar cupom de parceiro
-        try {
-          const { data: pg } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
-          const r = pg as any;
-          if (r?.ok) {
-            setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
+        // Co-Marketing: recompensa só é consultada para cliente autenticado.
+        // Pedidos anônimos não expõem mais uma RPC baseada apenas no UUID do pedido.
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: pg, error: giftError } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
+          if (!giftError) {
+            const r = pg as any;
+            if (r?.ok) {
+              setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
+            }
           }
-        } catch {}
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving order:', err);
-      setConfirmed(true);
+      const rawMessage = String(err?.message || '');
+      const message = rawMessage.includes('checkout_phone_rate_limited')
+        ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
+        : rawMessage.includes('checkout_rate_limited')
+          ? 'A loja está recebendo muitos pedidos neste momento. Aguarde um instante e tente novamente.'
+          : rawMessage.includes('payment_method_disabled')
+            ? 'Essa forma de pagamento foi desativada pela loja. Volte e escolha outra opção.'
+            : rawMessage.includes('invalid removed ingredient for product')
+              ? 'Este produto foi atualizado pela loja. Volte ao carrinho, revise os ingredientes e tente novamente.'
+              : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
+      setPaymentError(message);
+      toast.error('Pedido não confirmado', { description: message });
+      setConfirmed(false);
     } finally {
       setSaving(false);
     }
@@ -251,13 +269,23 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <CheckCircle2 className="w-12 h-12 text-success" />
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold text-success">Pagamento Confirmado!</h2>
+          <h2 className="text-3xl font-bold text-success">Pedido Confirmado!</h2>
           <div className="flex items-center justify-center gap-2 mt-3">
             <Ticket className="w-8 h-8 text-primary" />
             <span className="text-4xl font-black text-primary">#{generatedNumber}</span>
           </div>
-          <p className="text-muted-foreground text-sm">Guarde sua senha para retirar o pedido</p>
+          <p className="text-muted-foreground text-sm">Guarde sua senha. O pagamento será conferido conforme a forma escolhida.</p>
         </div>
+
+        {orderType === 'viagem' && deliveryCode && (
+          <div className="w-full rounded-2xl border-2 border-orange-500/60 bg-orange-500/10 p-5 text-center space-y-2">
+            <p className="text-xs uppercase tracking-wider text-orange-300 font-bold">Código de confirmação da entrega</p>
+            <p className="text-4xl font-black tracking-[0.35em] text-orange-400 pl-[0.35em]">{deliveryCode}</p>
+            <p className="text-xs text-muted-foreground">
+              Guarde este código e informe ao entregador somente quando receber o pedido.
+            </p>
+          </div>
+        )}
 
         <div className="w-full kiosk-card p-4 space-y-3">
           <div className="space-y-1">
@@ -287,31 +315,31 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             ))}
           </div>
           <hr className="border-border" />
-          {(discount > 0 || rawFee > 0) && (
+          {(authoritativeDiscount > 0 || rawFee > 0) && (
             <>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span>{formatCurrency(subtotal)}</span>
+                <span>{formatCurrency(authoritativeSubtotal)}</span>
               </div>
-              {couponDiscount > 0 && (
+              {authoritativeCouponDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-success">Cupom {appliedCoupon?.codigo}</span>
-                  <span className="text-success font-semibold">- {formatCurrency(couponDiscount)}</span>
+                  <span className="text-success font-semibold">- {formatCurrency(authoritativeCouponDiscount)}</span>
                 </div>
               )}
-              {primeDiscount > 0 && (
+              {authoritativePrimeDiscount > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="flex items-center gap-1" style={{ color: '#f4d28b' }}><Crown className="w-3 h-3" /> Vision Prime ({primeCfg?.desconto_percentual}%)</span>
-                  <span className="font-semibold" style={{ color: '#f4d28b' }}>- {formatCurrency(primeDiscount)}</span>
+                  <span className="font-semibold" style={{ color: '#f4d28b' }}>- {formatCurrency(authoritativePrimeDiscount)}</span>
                 </div>
               )}
               {rawFee > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">🛵 Taxa de entrega {bairroNome ? `(${bairroNome})` : ''}</span>
-                  {feeWaived > 0 ? (
+                  {authoritativeFeeWaived > 0 ? (
                     <span className="font-semibold" style={{ color: '#f4d28b' }}>GRÁTIS <span className="line-through text-muted-foreground ml-1">{formatCurrency(rawFee)}</span></span>
                   ) : (
-                    <span className="font-semibold">+ {formatCurrency(rawFee)}</span>
+                    <span className="font-semibold">+ {formatCurrency(authoritativeFee)}</span>
                   )}
                 </div>
               )}
@@ -360,17 +388,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
         </button>
 
-        {currentOrderId && customerCpf && (
-          <a
-            href={`/fiscal/${currentOrderId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="touch-btn w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-xl text-lg flex items-center justify-center gap-2 font-bold"
-          >
-            <FileText className="w-6 h-6" /> Baixar Nota Fiscal
-          </a>
-        )}
-
 
         {currentOrderId && (
           <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
@@ -387,10 +404,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
   // Construct the list of allowed methods from store settings
   const availableMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
-    storeSettings.payPix && { key: 'pix' as Method, label: 'Pix (QR Code)', desc: 'Pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
+    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix', desc: 'Copie a chave Pix da loja e pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
     storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
     storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
-    storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Pagar com cartão pelo celular', icon: <Globe className="w-6 h-6" /> },
+    // Cartão online permanece oculto até existir checkout tokenizado pelo gateway.
+    // Não coletar PAN/CVV diretamente no VisionFood.
+    false && storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Indisponível até configurar gateway seguro', icon: <Globe className="w-6 h-6" /> },
   ].filter(Boolean) as any;
 
   // Auto-select if only one method enabled
@@ -411,9 +430,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       <div className="min-h-screen flex flex-col">
         <Header title={<>Forma de <span className="text-primary">Pagamento</span></>} />
         <div className="flex-1 flex flex-col px-6 py-6 gap-3 max-w-md mx-auto w-full">
+          {quoteError && <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{quoteError}</div>}
           <div className="text-center mb-2">
             <p className="text-sm text-muted-foreground">Total a pagar</p>
-            <p className="text-3xl font-black text-primary">{formatCurrency(total)}</p>
+            <p className="text-3xl font-black text-primary">{quoteLoading ? 'Calculando...' : formatCurrency(total)}</p>
           </div>
           {availableMethods.length === 0 ? (
             <div className="kiosk-card p-6 text-center space-y-2">
@@ -421,7 +441,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               <p className="text-xs text-muted-foreground">Peça ao lojista para habilitar pelo menos uma opção de pagamento nas configurações.</p>
             </div>
           ) : availableMethods.map(m => (
-            <button key={m.key} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
+            <button key={m.key} disabled={quoteLoading || Boolean(quoteError) || (!isDemoMode() && !serverQuote)} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
               <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">{m.icon}</div>
               <div className="flex-1">
                 <p className="font-bold">{m.label}</p>
@@ -446,6 +466,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <p className="text-sm text-muted-foreground">Apresente a senha do pedido no caixa e efetue o pagamento em dinheiro ao retirar.</p>
           </div>
           <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
+          {paymentError && (
+            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+          )}
           <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
             <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido'}
           </button>
@@ -469,96 +492,50 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             )}
           </div>
           <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          {paymentError && (
+            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+          )}
           <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Pagamento Aprovado na Maquininha'}
+            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido após usar a Maquininha'}
           </button>
         </div>
       </div>
     );
   }
 
-  // === Online card form (preparado para gateway) ===
-  if (method === 'online') {
-    const canSubmit = card.number.replace(/\s/g, '').length >= 13 && card.holder.trim().length > 2 && /^\d{2}\/\d{2}$/.test(card.expiry) && card.cvv.length >= 3;
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Header title={<>Cartão <span className="text-primary">Online</span></>} />
-        <div className="flex-1 flex flex-col px-6 py-6 gap-4 max-w-md mx-auto w-full">
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">Total</p>
-            <p className="text-3xl font-black text-primary">{formatCurrency(total)}</p>
-          </div>
-          <div className="kiosk-card p-4 space-y-3">
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Número do cartão</span>
-              <input inputMode="numeric" maxLength={19} placeholder="0000 0000 0000 0000" value={card.number}
-                onChange={e => setCard({ ...card, number: e.target.value.replace(/[^\d ]/g, '') })}
-                className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-            </label>
-            <label className="block">
-              <span className="text-xs text-muted-foreground">Nome impresso no cartão</span>
-              <input maxLength={60} placeholder="NOME COMPLETO" value={card.holder}
-                onChange={e => setCard({ ...card, holder: e.target.value.toUpperCase() })}
-                className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-xs text-muted-foreground">Validade</span>
-                <input inputMode="numeric" maxLength={5} placeholder="MM/AA" value={card.expiry}
-                  onChange={e => {
-                    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
-                    setCard({ ...card, expiry: v });
-                  }}
-                  className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-              </label>
-              <label className="block">
-                <span className="text-xs text-muted-foreground">CVV</span>
-                <input inputMode="numeric" maxLength={4} placeholder="123" value={card.cvv}
-                  onChange={e => setCard({ ...card, cvv: e.target.value.replace(/\D/g, '') })}
-                  className="w-full mt-1 px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm font-mono" />
-              </label>
-            </div>
-            <p className="text-[11px] text-muted-foreground">🔒 Em breve: cobrança real via gateway. Por enquanto o pedido é enviado e o lojista confirma o pagamento manualmente.</p>
-          </div>
-          <button onClick={handleConfirmPayment} disabled={saving || !canSubmit} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Processando...' : `Pagar ${formatCurrency(total)}`}
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Cartão online não renderiza formulário local: dados sensíveis devem ser tokenizados pelo provedor de pagamento.
 
   // === Pix (default original flow) ===
   return (
     <div className="min-h-screen flex flex-col">
       <Header title={<>Pagamento <span className="text-primary">PIX</span></>} />
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
-        <p className="text-muted-foreground text-sm">
-          {mpLoading ? 'Gerando QR Code Pix...' : 'Escaneie o QR Code ou copie a chave'}
+        <p className="text-muted-foreground text-sm text-center">
+          Copie a chave Pix abaixo, faça o pagamento no app do seu banco e depois confirme o pedido.
         </p>
-        <div className="bg-foreground rounded-2xl p-4">
-          <img src={qrImageSrc} alt="QR Code PIX" width={250} height={250} className="rounded-lg" />
-        </div>
-        {storeSettings.pixKeyManual && (
-          <div className="w-full text-center">
-            <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
-            <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{storeSettings.pixKeyManual}</p>
+        {pixKey ? (
+          <div className="w-full kiosk-card p-4 space-y-3">
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-1">Chave Pix:</p>
+              <p className="font-mono text-sm bg-muted/50 px-3 py-2 rounded-lg break-all">{pixKey}</p>
+            </div>
+            <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
+              {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
+              <span className="font-semibold text-sm">{copied ? 'Chave copiada' : 'Copiar chave Pix'}</span>
+            </button>
+          </div>
+        ) : (
+          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            Pix indisponível no momento. Volte e escolha outra forma de pagamento.
           </div>
         )}
-        <div className="w-full">
-          <p className="text-sm text-muted-foreground text-center mb-2">
-            {mpPix ? 'Pix copia e cola:' : 'Chave PIX (copia e cola):'}
-          </p>
-          <button onClick={handleCopy} className="w-full flex items-center justify-center gap-2 bg-muted px-4 py-3 rounded-xl transition-all active:scale-95">
-            {copied ? <Check className="w-5 h-5 text-success" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
-            <span className="font-mono text-xs break-all line-clamp-2">{pixKey}</span>
-          </button>
-        </div>
 
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
-        <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já Realizei o Pagamento'}
+        {paymentError && (
+          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+        )}
+        <button onClick={handleConfirmPayment} disabled={saving || !pixKey} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já enviei o PIX — registrar pedido'}
         </button>
       </div>
     </div>

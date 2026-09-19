@@ -22,21 +22,15 @@ export function useVisionPrimeConfig(orgId: string | null) {
     if (!orgId) { setConfig(null); setLoading(false); return; }
     let cancel = false;
     setLoading(true);
-    supabase.from('vision_prime_config' as any)
-      .select('ativo, valor_mensalidade, desconto_percentual, frete_gratis_minimo')
-      .eq('organization_id', orgId)
+    supabase.rpc('vision_prime_public_config', { _org: orgId })
       .maybeSingle()
       .then(({ data }) => {
         if (cancel) return;
         setConfig((data as any) || null);
         setLoading(false);
       });
-    const ch = supabase
-      .channel(`vprime-cfg-${orgId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vision_prime_config', filter: `organization_id=eq.${orgId}` },
-        (p: any) => { if (p.new) setConfig(p.new); })
-      .subscribe();
-    return () => { cancel = true; supabase.removeChannel(ch); };
+    // Public clients no longer subscribe directly to the protected config table.
+    return () => { cancel = true; };
   }, [orgId]);
 
   return { config, loading };
@@ -52,7 +46,7 @@ export function useVisionPrimeStatus(orgId: string | null) {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setStatus({ active: false }); setLoading(false); return; }
-    const { data } = await supabase.rpc('vision_prime_my_status' as any, { _org: orgId });
+    const { data } = await supabase.rpc('vision_prime_my_status', { _org: orgId });
     const r: any = data || {};
     setStatus({ active: Boolean(r.active), sinceYear: r.since_year });
     setLoading(false);

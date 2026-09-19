@@ -1610,8 +1610,6 @@ export type Database = {
           mp_public_key: string
           mp_public_key_secret_id: string | null
           mp_terminal_id: string
-          onesignal_api_key: string
-          onesignal_app_id: string
           organization_id: string | null
           pay_card_online_enabled: boolean
           pay_card_terminal_enabled: boolean
@@ -1667,8 +1665,6 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
@@ -1724,8 +1720,6 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
@@ -1751,28 +1745,25 @@ export type Database = {
       }
       system_settings: {
         Row: {
+          created_at: string | null
           id: string
-          mp_master_token_secret_id: string | null
-          onesignal_api_key: string
-          onesignal_app_id: string
           updated_at: string
           valor_plano_padrao: number
+          whatsapp_suporte: string
         }
         Insert: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Update: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Relationships: []
       }
@@ -1962,6 +1953,15 @@ export type Database = {
         Args: { _motivo?: string; _order_id: string }
         Returns: Json
       }
+      chamar_proxima_senha: {
+        Args: { _organization_id: string; _prefixo?: string; _tipo?: string }
+        Returns: {
+          called_at: string
+          id: string
+          numero: string
+          tipo: string
+        }[]
+      }
       confirm_delivery_with_code: {
         Args: {
           _code: string
@@ -2141,6 +2141,10 @@ export type Database = {
         Returns: Json
       }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
+      reset_senha_counter: {
+        Args: { _organization_id: string; _prefixo?: string }
+        Returns: undefined
+      }
       restock_from_items: {
         Args: { _items: Json; _org: string }
         Returns: undefined
@@ -2155,7 +2159,24 @@ export type Database = {
         }
         Returns: Json
       }
+      set_onesignal_config: {
+        Args: { _api_key?: string; _app_id: string }
+        Returns: Json
+      }
+      set_system_whatsapp_suporte: {
+        Args: { _whatsapp: string }
+        Returns: Json
+      }
       set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }
+      submit_product_review: {
+        Args: {
+          _comment?: string
+          _order_id: string
+          _product_id: string
+          _rating: number
+        }
+        Returns: Json
+      }
       toggle_plan_feature: {
         Args: { _enabled: boolean; _feature_id: string; _plan_id: string }
         Returns: Json
@@ -2165,8 +2186,74 @@ export type Database = {
         Args: { _cep: string; _lat?: number; _lng?: number; _org: string }
         Returns: Json
       }
+      validate_checkout_coupon: {
+        Args: { _codigo: string; _organization_id: string; _subtotal?: number }
+        Returns: Json
+      }
       vision_prime_my_status: { Args: { _org: string }; Returns: Json }
+      vision_prime_public_config: {
+        Args: { _org: string }
+        Returns: {
+          ativo: boolean
+          desconto_percentual: number
+          frete_gratis_minimo: number
+          valor_mensalidade: number
+        }[]
+      }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
+      visionfood_checkout_payment_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
+      visionfood_dispatch_orders: {
+        Args: { _entregador_id: string; _order_ids: string[] }
+        Returns: Json
+      }
+      visionfood_order_receipt: {
+        Args: { _order_id: string }
+        Returns: Json
+      }
+      visionfood_profile_count: { Args: { _org: string }; Returns: number }
+      visionfood_public_called_tickets: {
+        Args: { _limit?: number; _org: string }
+        Returns: Json
+      }
+      visionfood_public_catalog: { Args: { _org: string }; Returns: Json }
+      visionfood_public_delivery_areas: { Args: { _org: string }; Returns: Json }
+      visionfood_public_loyalty_config: { Args: { _org: string }; Returns: Json }
+      visionfood_public_order_tracking: {
+        Args: { _order_id: string }
+        Returns: Json
+      }
+      visionfood_public_organization: {
+        Args: { _org_id?: string; _slug?: string }
+        Returns: Json
+      }
+      visionfood_public_product_reviews: {
+        Args: { _limit?: number; _product_id: string }
+        Returns: Json
+      }
+      visionfood_public_storefront_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
+      visionfood_public_theme: { Args: { _org: string }; Returns: Json }
+      visionfood_push_predictive_stock: {
+        Args: {
+          _days_remaining: number
+          _ingredient_name: string
+          _org: string
+        }
+        Returns: Json
+      }
+      visionfood_update_order_status: {
+        Args: {
+          _expected_status: string
+          _next_status: string
+          _order_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

@@ -140,17 +140,24 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       return;
     }
     setDispatching(true);
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        entregador_id: entregadorId,
-        status: 'out_for_delivery',
-        updated_at: new Date().toISOString(),
-      } as any)
-      .in('id', ids);
+    const { data, error } = await supabase.rpc('visionfood_dispatch_orders', {
+      _order_ids: ids,
+      _entregador_id: entregadorId,
+    });
     setDispatching(false);
-    if (error) {
-      toast.error('Erro ao despachar lote: ' + error.message);
+    const result: any = data;
+    if (error || !result?.ok) {
+      const reasons: Record<string, string> = {
+        status_changed: 'Um dos pedidos mudou de status. Atualize a lista e tente novamente.',
+        not_delivery_order: 'O lote contém pedido que não é de entrega.',
+        cross_organization_order: 'O lote contém pedido de outra organização.',
+        order_not_found: 'Um dos pedidos não foi encontrado.',
+        entregador_invalid: 'Entregador inválido ou inativo.',
+        already_assigned: 'Um dos pedidos já está atribuído a outro entregador.',
+        forbidden: 'Sem permissão para despachar estes pedidos.',
+      };
+      toast.error(error ? 'Erro ao despachar lote: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar o lote.'));
+      await load();
       return;
     }
     const entNome = entregadores.find((e) => e.id === entregadorId)?.name || 'entregador';

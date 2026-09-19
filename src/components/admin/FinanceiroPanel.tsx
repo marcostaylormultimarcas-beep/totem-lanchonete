@@ -85,7 +85,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
 
   const exportCsv = () => {
     if (!rows.length) { toast.info('Nada para exportar'); return; }
-    const head = ['Pedido', 'Data', 'Cliente', 'Forma de pagamento', 'Valor bruto', 'Taxa gateway', 'Taxa Vision', 'Valor a receber'];
+    const head = ['Pedido', 'Data', 'Cliente', 'Forma de pagamento', 'Valor bruto', 'Taxa gateway (não integrada)', 'Taxa Vision', 'Líquido estimado'];
     const lines = [head.join(';')];
     for (const r of rows) {
       lines.push([
@@ -116,7 +116,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
             <h2 className="text-xl font-bold">Financeiro & Repasse</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Veja exatamente o <strong>valor a receber</strong> em cada pedido — já descontando taxas do gateway e da plataforma.
+            Veja o <strong>valor bruto</strong> e o líquido estimado após a taxa Vision configurada. A taxa real do gateway ainda não é liquidada automaticamente pelo sistema.
           </p>
 
           <div className="mt-4 flex flex-wrap items-end gap-3">
@@ -143,9 +143,9 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
         {/* Cards de resumo */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <SummaryCard label="Total bruto" value={brl(totals.bruto)} icon={<DollarSign className="w-5 h-5" />} />
-          <SummaryCard label="Taxa gateway" value={brl(totals.gateway)} variant="warn" />
+          <SummaryCard label="Taxa gateway" value="Não integrada" variant="warn" />
           <SummaryCard label="Taxa Vision" value={brl(totals.vision)} variant="warn" />
-          <SummaryCard label="Valor para receber" value={brl(totals.liquido)} variant="good"
+          <SummaryCard label="Líquido estimado" value={brl(totals.liquido)} variant="good"
             icon={<TrendingUp className="w-5 h-5" />} />
         </div>
 
@@ -164,7 +164,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
                     <th className="py-2">Método</th>
                     <th className="py-2 text-right">Pedidos</th>
                     <th className="py-2 text-right">Bruto</th>
-                    <th className="py-2 text-right">A receber</th>
+                    <th className="py-2 text-right">Líquido estimado</th>
                     <th className="py-2 text-right">Detalhes</th>
                   </tr>
                 </thead>
@@ -185,10 +185,10 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
                           <TooltipContent className="max-w-xs">
                             <div className="text-xs space-y-0.5">
                               <div>Bruto: <strong>{brl(v.bruto)}</strong></div>
-                              <div>− Taxa gateway: <strong>{brl(v.gateway)}</strong></div>
+                              <div>− Taxa gateway: <strong>não integrada</strong></div>
                               <div>− Taxa Vision: <strong>{brl(v.vision)}</strong></div>
                               <div className="pt-1 border-t border-border mt-1">
-                                = A receber: <strong className="text-primary">{brl(v.liquido)}</strong>
+                                = Líquido estimado: <strong className="text-primary">{brl(v.liquido)}</strong>
                               </div>
                             </div>
                           </TooltipContent>
@@ -217,7 +217,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
                     <th className="py-2">Pagamento</th>
                     <th className="py-2 text-right">Bruto</th>
                     <th className="py-2 text-right">Taxas</th>
-                    <th className="py-2 text-right">A receber</th>
+                    <th className="py-2 text-right">Líquido estimado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -236,7 +236,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
                           </TooltipTrigger>
                           <TooltipContent>
                             <div className="text-xs">
-                              <div>Gateway: {brl(r.taxa_gateway_valor)}</div>
+                              <div>Gateway: não integrado</div>
                               <div>Vision: {brl(r.taxa_vision_valor)}</div>
                             </div>
                           </TooltipContent>

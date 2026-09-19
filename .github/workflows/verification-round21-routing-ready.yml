@@ -1,0 +1,24 @@
+name: Verification Round 21 - Routing Ready Delivery
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Assert routing contract
+        run: |
+          grep -q ".eq('status', 'ready')" src/components/admin/RoteirizacaoIAPanel.tsx
+          grep -q ".in('order_type', \['delivery', 'viagem'\])" src/components/admin/RoteirizacaoIAPanel.tsx
+          grep -q ".eq('organization_id', organizationId)" src/components/admin/RoteirizacaoIAPanel.tsx
+          grep -q "updatedOrders || \[\]" src/components/admin/RoteirizacaoIAPanel.tsx
+          grep -q "Nenhum pedido pronto aguardando rota" src/components/admin/RoteirizacaoIAPanel.tsx
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

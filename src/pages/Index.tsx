@@ -15,6 +15,7 @@ import PartnersFooter from '@/components/kiosk/PartnersFooter';
 import { CartItem, Product } from '@/data/store';
 import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { toast } from 'sonner';
 
 type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
@@ -35,6 +36,7 @@ interface PendingOrderState {
   bairroNome: string;
   bairroTaxa: number;
   bairroTempo: number;
+  deliveryCep: string;
 }
 
 const Index = () => {
@@ -55,6 +57,7 @@ const Index = () => {
   const [bairroNome, setBairroNome] = useState('');
   const [bairroTaxa, setBairroTaxa] = useState(0);
   const [bairroTempo, setBairroTempo] = useState(0);
+  const [deliveryCep, setDeliveryCep] = useState('');
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -65,17 +68,24 @@ const Index = () => {
   useEffect(() => {
     if (!orgId) { setDeliveryEnabled(true); return; }
     let cancelled = false;
-    supabase
-      .from('settings')
-      .select('delivery_enabled, store_name, share_image')
-      .eq('organization_id', orgId)
-      .maybeSingle()
-      .then(({ data }) => {
+
+    const loadStorefrontConfig = async () => {
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
         if (cancelled) return;
-        setDeliveryEnabled((data as any)?.delivery_enabled !== false);
-        // Inject favicon + Open Graph dynamically based on store settings
-        const shareImage = (data as any)?.share_image as string | undefined;
-        const storeName = (data as any)?.store_name as string | undefined;
+
+        const enabled = data.delivery_enabled !== false;
+        setDeliveryEnabled(enabled);
+        if (!enabled) {
+          setOrderType(prev => {
+            if (prev !== 'viagem') return prev;
+            toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
+            return 'local';
+          });
+        }
+
+        const shareImage = data.share_image;
+        const storeName = data.store_name;
         if (storeName) document.title = storeName;
         if (shareImage) {
           const setMeta = (selector: string, attr: string, value: string, create: () => HTMLElement) => {
@@ -91,18 +101,14 @@ const Index = () => {
             setMeta('meta[property="og:title"]', 'content', storeName, () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m; });
           }
         }
-      });
-    const channel = supabase
-      .channel('settings-delivery-' + orgId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        setDeliveryEnabled(payload.new?.delivery_enabled !== false);
-        if (payload.new?.delivery_enabled === false && orderType === 'viagem') {
-          setOrderType('local');
-          toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
-        }
-      })
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
+      } catch (error) {
+        if (!cancelled) console.warn('[Index] storefront config error:', error);
+      }
+    };
+
+    loadStorefrontConfig();
+    const pollId = window.setInterval(loadStorefrontConfig, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   useEffect(() => {
@@ -130,6 +136,7 @@ const Index = () => {
         setBairroNome(parsed.bairroNome || '');
         setBairroTaxa(parsed.bairroTaxa || 0);
         setBairroTempo(parsed.bairroTempo || 0);
+        setDeliveryCep(parsed.deliveryCep || '');
         setCustomerCpf(parsed.customerCpf || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
@@ -164,7 +171,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
@@ -190,7 +197,7 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
     setTrackingOrderId('');
     setAppliedCoupon(null);
   };
@@ -223,7 +230,7 @@ const Index = () => {
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
-      bairroId, bairroNome, bairroTaxa, bairroTempo,
+      bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
@@ -277,8 +284,9 @@ const Index = () => {
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId}
+          bairroId={bairroId} deliveryCep={deliveryCep}
           onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
+          onDeliveryCepChange={setDeliveryCep}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
@@ -290,7 +298,7 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo} deliveryCep={deliveryCep}
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}

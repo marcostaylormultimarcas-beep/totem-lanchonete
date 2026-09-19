@@ -2,14 +2,9 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { Navigate, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useStoreTheme } from '@/hooks/useStoreTheme';
+import { fetchPublicOrganization, type PublicOrganization } from '@/lib/publicOrganization';
 
-export interface Organization {
-  id: string;
-  name: string;
-  slug: string;
-  paused: boolean;
-  owner_id?: string | null;
-}
+export type Organization = PublicOrganization;
 
 interface OrgContextValue {
   orgId: string | null;
@@ -50,8 +45,8 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 
   const setOrgId = async (id: string) => {
     localStorage.setItem(STORAGE_KEY, id);
-    const { data } = await supabase.from('organizations').select('*').eq('id', id).maybeSingle();
-    if (data) applyOrg(data as Organization);
+    const data = await fetchPublicOrganization({ id });
+    if (data) applyOrg(data);
   };
 
   const lockToSlug = async (slug: string | null) => {
@@ -59,10 +54,10 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     setLockedSlug(slug);
     if (!slug) return;
     localStorage.setItem('kiosk_slug', slug);
-    const { data } = await supabase.from('organizations').select('*').eq('slug', slug).maybeSingle();
+    const data = await fetchPublicOrganization({ slug });
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);
-      applyOrg(data as Organization);
+      applyOrg(data);
     }
   };
 
@@ -71,10 +66,10 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 
     // 0. Slug travado pela URL /loja/:slug sempre vence
     if (lockedSlugRef.current) {
-      const { data } = await supabase.from('organizations').select('*').eq('slug', lockedSlugRef.current).maybeSingle();
+      const data = await fetchPublicOrganization({ slug: lockedSlugRef.current });
       if (data) {
         localStorage.setItem(STORAGE_KEY, data.id);
-        applyOrg(data as Organization);
+        applyOrg(data);
         setLoading(false);
         return;
       }
@@ -85,31 +80,34 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     if (user) {
       const { data: ownOrg } = await supabase
         .from('organizations')
-        .select('*')
+        .select('id')
         .eq('owner_id', user.id)
         .maybeSingle();
-      if (ownOrg) {
-        localStorage.setItem(STORAGE_KEY, ownOrg.id);
-        applyOrg(ownOrg as Organization);
-        setLoading(false);
-        return;
+      if (ownOrg?.id) {
+        const ownPublicOrg = await fetchPublicOrganization({ id: ownOrg.id });
+        if (ownPublicOrg) {
+          localStorage.setItem(STORAGE_KEY, ownPublicOrg.id);
+          applyOrg(ownPublicOrg);
+          setLoading(false);
+          return;
+        }
       }
     }
     // 2. localStorage (totem público)
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      const { data } = await supabase.from('organizations').select('*').eq('id', stored).maybeSingle();
+      const data = await fetchPublicOrganization({ id: stored });
       if (data) {
-        applyOrg(data as Organization);
+        applyOrg(data);
         setLoading(false);
         return;
       }
     }
     // 3. primeira org disponível (fallback)
-    const { data } = await supabase.from('organizations').select('*').order('created_at', { ascending: true }).limit(1).maybeSingle();
+    const data = await fetchPublicOrganization();
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);
-      applyOrg(data as Organization);
+      applyOrg(data);
     }
     setLoading(false);
   };
@@ -150,11 +148,7 @@ export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
       setPaused(false);
       await lockToSlug(normalizedSlug || null);
       if (normalizedSlug) {
-        const { data } = await supabase
-          .from('organizations')
-          .select('id, paused')
-          .eq('slug', normalizedSlug)
-          .maybeSingle();
+        const data = await fetchPublicOrganization({ slug: normalizedSlug });
         setFound(!!data?.id);
         setPaused(!!data?.paused);
       } else {

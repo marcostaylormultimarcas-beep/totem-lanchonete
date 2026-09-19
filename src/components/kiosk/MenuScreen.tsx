@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/data/store';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -36,25 +37,29 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
   const fetchData = useCallback(async () => {
     if (!orgId) return;
-    const [{ data: prods }, { data: settingsData }] = await Promise.all([
-      supabase.from('products').select('*').eq('organization_id', orgId),
-      supabase.from('settings').select('combo, categories, balanca_baud_rate, balanca_modelo').eq('organization_id', orgId).maybeSingle(),
+    const [prods, settingsData] = await Promise.all([
+      fetchPublicCatalog(orgId).catch(error => {
+        console.warn('[Menu] public catalog error:', error);
+        return [];
+      }),
+      fetchPublicStorefrontConfig(orgId).catch(error => {
+        console.warn('[Menu] storefront config error:', error);
+        return {};
+      }),
     ]);
-    if (prods) {
-      setProducts(prods.map((p: any) => ({
+    setProducts(prods.map((p) => ({
         id: p.id, name: p.name, price: Number(p.price), category: p.category,
-        image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
+        image: p.image || '', removableIngredients: (p.removable_ingredients as string[]) || [],
         extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
         ingredients: (p.ingredients as string[]) || [], description: p.description || '',
         soldByWeight: Boolean(p.sold_by_weight),
         codigoBarras: p.codigo_barras || undefined,
         prepTimeMin: Number(p.prep_time_min ?? 0),
       })));
-    }
-    if (settingsData?.combo) setCombo(settingsData.combo as any);
-    const baud = Number((settingsData as any)?.balanca_baud_rate ?? 9600);
+    if (settingsData.combo) setCombo(settingsData.combo as any);
+    const baud = Number(settingsData.balanca_baud_rate ?? 9600);
     if (baud) setBalancaBaud(baud);
-    const cats = (settingsData as any)?.categories as CategoryItem[] | undefined;
+    const cats = settingsData.categories as CategoryItem[] | undefined;
     if (cats && cats.length > 0) {
       setCategories(cats);
       setActiveCategory(prev => cats.find(c => c.key === prev) ? prev : cats[0].key);
@@ -63,15 +68,11 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Atualização reativa: recarrega categorias/produtos quando o admin salva alterações.
+  // Catálogo e configurações públicas são atualizados por contratos RPC seguros.
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel('menu-live-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, () => { fetchData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `organization_id=eq.${orgId}` }, () => { fetchData(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const pollId = window.setInterval(fetchData, 30000);
+    return () => { window.clearInterval(pollId); };
   }, [orgId, fetchData]);
 
 

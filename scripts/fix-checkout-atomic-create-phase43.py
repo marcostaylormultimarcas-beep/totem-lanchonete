@@ -1,0 +1,14 @@
+from pathlib import Path
+
+p = Path('src/components/kiosk/PaymentScreen.tsx')
+s = p.read_text()
+old = '''      // Reserva a senha de forma atômica no banco, isolada por organização.\n      const { data: nextNumber, error: numberError } = await supabase.rpc('next_order_number' as any, {\n        _organization_id: orgId,\n      });\n      if (numberError || !nextNumber) throw numberError || new Error('Não foi possível gerar a senha do pedido.');\n      const num = String(nextNumber);\n      setGeneratedNumber(num);\n\n'''
+if old not in s:
+    raise SystemExit('expected legacy number reservation block not found')
+s = s.replace(old, '', 1)
+old2 = '''      // Get current user if logged in\n      const { data: { session } } = await supabase.auth.getSession();\n\n      const { data, error } = await supabase.from('orders').insert({\n        organization_id: orgId,\n        order_number: num,\n        customer_name: customerName,\n        customer_phone: customerPhone,\n        customer_cpf: customerCpf || '',\n        order_type: orderType,\n        delivery_address: deliveryAddress || '',\n        delivery_reference: deliveryReference || '',\n        delivery_recipient: deliveryRecipient || '',\n        bairro_id: bairroId || null,\n        bairro_nome: bairroNome || '',\n        delivery_fee: fee,\n        items: orderItems,\n        total,\n        status: 'pending',\n        payment_method: method || '',\n        user_id: session?.user?.id || null,\n        scheduled_for: scheduledFor || null,\n      } as any).select('id').single();\n\n      if (error) throw error;\n'''
+new2 = '''      // Cria o pedido e reserva a senha na mesma transação do banco.\n      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout' as any, {\n        _organization_id: orgId,\n        _customer_name: customerName,\n        _customer_phone: customerPhone,\n        _customer_cpf: customerCpf || '',\n        _order_type: orderType,\n        _delivery_address: deliveryAddress || '',\n        _delivery_reference: deliveryReference || '',\n        _delivery_recipient: deliveryRecipient || '',\n        _bairro_id: bairroId || null,\n        _bairro_nome: bairroNome || '',\n        _delivery_fee: fee,\n        _items: orderItems,\n        _total: total,\n        _payment_method: method || '',\n        _scheduled_for: scheduledFor || null,\n      });\n\n      if (error) throw error;\n      const data = Array.isArray(checkoutRows) ? checkoutRows[0] : checkoutRows;\n      if (!data?.id || !data?.order_number) throw new Error('Checkout não retornou o pedido criado.');\n      const num = String(data.order_number);\n      setGeneratedNumber(num);\n'''
+if old2 not in s:
+    raise SystemExit('expected legacy order insert block not found')
+s = s.replace(old2, new2, 1)
+p.write_text(s)

@@ -26,7 +26,18 @@ const SATURATION = 1.12; // +12% saturação
 const BLACK_LIFT = 0.96; // pretos ~4% mais profundos
 
 export const STORAGE_LIMIT_BYTES = 250 * 1024 * 1024; // 250 MB por loja
+export const STORAGE_SINGLE_FILE_LIMIT_BYTES = 25 * 1024 * 1024; // 25 MB por imagem
 export const STORAGE_BUCKET = 'produtos';
+
+const SAFE_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/avif',
+  'image/heic',
+  'image/heif',
+]);
 
 export class StorageLimitError extends Error {
   constructor(
@@ -144,8 +155,35 @@ function getOriginalExtension(file: File): string {
       return 'avif';
     case 'image/heic':
       return 'heic';
+    case 'image/heif':
+      return 'heif';
     default:
       return 'bin';
+  }
+}
+
+function inferSafeImageContentType(file: File): string {
+  const declaredType = (file.type || '').toLowerCase();
+  if (SAFE_IMAGE_MIME_TYPES.has(declaredType)) return declaredType;
+
+  switch (getOriginalExtension(file)) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'gif':
+      return 'image/gif';
+    case 'avif':
+      return 'image/avif';
+    case 'heic':
+      return 'image/heic';
+    case 'heif':
+      return 'image/heif';
+    default:
+      throw new Error('Formato de imagem não suportado. Use JPG, PNG, WebP, GIF, AVIF, HEIC ou HEIF.');
   }
 }
 
@@ -185,8 +223,14 @@ export async function uploadProductImage(
   // Canvas estava invertendo canais de cor (RGB→BGR) em fotos de celulares modernos
   // (iPhone HEIC→JPEG com perfil Display P3), gerando imagem "negativada".
   const preserveOriginal = options.preserveOriginal ?? true;
+
+  if (file.size > STORAGE_SINGLE_FILE_LIMIT_BYTES) {
+    throw new Error('Imagem muito grande. O limite por arquivo é 25 MB.');
+  }
+
+  const safeOriginalContentType = inferSafeImageContentType(file);
   const uploadPayload = preserveOriginal ? file : await processImage(file, kind, enhance);
-  const contentType = preserveOriginal ? (file.type || 'application/octet-stream') : 'image/webp';
+  const contentType = preserveOriginal ? safeOriginalContentType : 'image/webp';
   const fileExtension = preserveOriginal ? getOriginalExtension(file) : 'webp';
 
   // Validação: total atual + novo arquivo
@@ -196,6 +240,22 @@ export async function uploadProductImage(
   }
 
   const fileName = `${orgId}/${crypto.randomUUID()}.${fileExtension}`;
+
+  const { data: quotaAllowed, error: quotaError } = await supabase.rpc(
+    'visionfood_storage_quota_allowed' as any,
+    {
+      _bucket_id: STORAGE_BUCKET,
+      _name: fileName,
+      _metadata: { contentLength: uploadPayload.size },
+    },
+  );
+  if (quotaError) {
+    throw new Error('Não foi possível validar o espaço de armazenamento da loja.');
+  }
+  if (quotaAllowed !== true) {
+    throw new StorageLimitError();
+  }
+
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(fileName, uploadPayload, { contentType, upsert: true });

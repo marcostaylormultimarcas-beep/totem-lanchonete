@@ -20,7 +20,7 @@ interface DeliveryOrder {
   total: number;
   status: string;
   created_at: string;
-  delivery_code: string;
+  bairro_nome?: string;
 }
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -55,6 +55,9 @@ const EntregadorDashboard = () => {
   const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
+  const initialSendTimerRef = useRef<number | null>(null);
+  const locationRequestInFlightRef = useRef(false);
+  const trackingGenerationRef = useRef(0);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Raio máximo permitido para confirmar a entrega (metros)
@@ -131,6 +134,12 @@ const EntregadorDashboard = () => {
 
 
   const stopTracking = useCallback(() => {
+    trackingGenerationRef.current += 1;
+    locationRequestInFlightRef.current = false;
+    if (initialSendTimerRef.current !== null) {
+      clearTimeout(initialSendTimerRef.current);
+      initialSendTimerRef.current = null;
+    }
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -141,6 +150,15 @@ const EntregadorDashboard = () => {
     }
   }, []);
 
+  const expireSession = useCallback(() => {
+    stopTracking();
+    clearEntregadorSession();
+    toast.error('Sessão expirada. Faça login novamente.');
+    navigate('/entregador/login', { replace: true });
+  }, [navigate, stopTracking]);
+
+  const isInvalidSession = (res: any) => res?.reason === 'invalid_session' || res?.reason === 'invalid_credentials';
+
   const startTracking = useCallback((orderId: string) => {
     if (!session) return;
     if (!('geolocation' in navigator)) {
@@ -148,6 +166,7 @@ const EntregadorDashboard = () => {
       return;
     }
     stopTracking();
+    const trackingGeneration = trackingGenerationRef.current;
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
@@ -163,19 +182,29 @@ const EntregadorDashboard = () => {
     );
     // envia a cada 15s
     const send = async () => {
+      if (trackingGeneration !== trackingGenerationRef.current || locationRequestInFlightRef.current) return;
       const p = lastSampleRef.current;
       if (!p) return;
-      await supabase.rpc('entregador_update_location' as any, {
-        _entregador_id: session.id,
-        _password: session.password,
-        _lat: p.lat,
-        _lng: p.lng,
-        _order_id: orderId,
-      });
+      locationRequestInFlightRef.current = true;
+      try {
+        const { data } = await supabase.rpc('entregador_update_location_session' as any, {
+          _session_token: session.session_token,
+          _lat: p.lat,
+          _lng: p.lng,
+          _order_id: orderId,
+        });
+        if (trackingGeneration !== trackingGenerationRef.current) return;
+        if (isInvalidSession(data)) expireSession();
+      } finally {
+        if (trackingGeneration === trackingGenerationRef.current) locationRequestInFlightRef.current = false;
+      }
     };
     sendTimerRef.current = window.setInterval(send, 15000);
-    // primeiro envio rápido
-    setTimeout(send, 2500);
+    // primeiro envio rápido; cancelável ao fechar mapa/logout/expirar sessão
+    initialSendTimerRef.current = window.setTimeout(() => {
+      initialSendTimerRef.current = null;
+      void send();
+    }, 2500);
   }, [session, stopTracking]);
 
   useEffect(() => () => stopTracking(), [stopTracking]);
@@ -220,16 +249,12 @@ const EntregadorDashboard = () => {
 
   const fetchOrders = useCallback(async (silent = false) => {
     if (!session) return;
-    const { data, error } = await supabase.rpc('entregador_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('entregador_orders_session' as any, {
+      _session_token: session.session_token,
     });
     const res: any = data;
     if (error || !res?.ok) {
-      if (res?.reason === 'invalid_credentials') {
-        clearEntregadorSession();
-        navigate('/entregador/login');
-      }
+      if (isInvalidSession(res)) expireSession();
       setLoading(false);
       return;
     }
@@ -262,12 +287,14 @@ const EntregadorDashboard = () => {
 
   const fetchAvailable = useCallback(async () => {
     if (!session) return;
-    const { data } = await supabase.rpc('entregador_available_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data } = await supabase.rpc('entregador_available_orders_session' as any, {
+      _session_token: session.session_token,
     });
     const res: any = data;
-    if (!res?.ok) return;
+    if (!res?.ok) {
+      if (isInvalidSession(res)) expireSession();
+      return;
+    }
     setMode((res.mode === 'free' ? 'free' : 'manual'));
     setAvailable(res.orders || []);
   }, [session]);
@@ -280,41 +307,14 @@ const EntregadorDashboard = () => {
     return () => clearInterval(i);
   }, [fetchOrders, fetchAvailable]);
 
-  // Realtime: escuta mudanças na tabela orders da loja do entregador
-  useEffect(() => {
-    if (!session) return;
-    const ch = supabase
-      .channel(`entregador-${session.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `organization_id=eq.${session.organization_id}`,
-        },
-        (payload: any) => {
-          // Atualiza pedidos atribuídos a este entregador
-          if (
-            payload.new?.entregador_id === session.id ||
-            payload.old?.entregador_id === session.id
-          ) {
-            fetchOrders(false);
-          }
-          // Em modo Disputa Livre: refresca lista de disponíveis em qualquer mudança da loja
-          fetchAvailable();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [session, fetchOrders, fetchAvailable]);
+  // Sessões de entregador usam token próprio, não Supabase Auth.
+  // O polling acima é o canal autoritativo e funciona sem abrir SELECT de orders para anon.
 
   const handleClaim = async (orderId: string) => {
     if (!session) return;
     setClaiming(orderId);
-    const { data, error } = await supabase.rpc('entregador_claim_order' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('entregador_claim_order_session' as any, {
+      _session_token: session.session_token,
       _order_id: orderId,
     });
     setClaiming(null);
@@ -322,12 +322,14 @@ const EntregadorDashboard = () => {
     if (error || !res?.ok) {
       const msg: Record<string, string> = {
         invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        invalid_session: 'Sessão expirada. Faça login novamente.',
         order_not_found: 'Pedido não encontrado.',
         forbidden: 'Pedido não pertence à sua loja.',
         mode_not_free: 'Modo de disputa livre não está ativo.',
         already_taken: 'Outro entregador foi mais rápido nesse pedido.',
       };
       toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+      if (isInvalidSession(res)) { expireSession(); return; }
       fetchAvailable();
       return;
     }
@@ -404,9 +406,8 @@ const EntregadorDashboard = () => {
     }
 
     setConfirming(orderId);
-    const { data, error } = await supabase.rpc('confirm_delivery_with_code' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
+    const { data, error } = await supabase.rpc('confirm_delivery_with_code_session' as any, {
+      _session_token: session.session_token,
       _order_id: orderId,
       _code: code,
     });
@@ -415,15 +416,22 @@ const EntregadorDashboard = () => {
     if (error || !res?.ok) {
       const msg: Record<string, string> = {
         invalid_credentials: 'Sessão inválida. Faça login novamente.',
+        invalid_session: 'Sessão expirada. Faça login novamente.',
         not_found: 'Pedido não encontrado.',
         order_not_found: 'Pedido não encontrado.',
         forbidden: 'Pedido não pertence à sua loja.',
         not_assigned: 'Este pedido não está atribuído a você.',
         already_delivered: 'Pedido já foi entregue.',
         cancelled: 'Pedido cancelado.',
-        invalid_code: '❌ Código incorreto! Confirme com o cliente.',
+        not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
+        invalid_code: res?.remaining_attempts != null
+          ? `❌ Código incorreto. Restam ${res.remaining_attempts} tentativa(s).`
+          : '❌ Código incorreto! Confirme com o cliente.',
+        invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
+        too_many_attempts: 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
       };
       toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
+      if (isInvalidSession(res)) expireSession();
       return;
     }
     toast.success('✅ Entrega confirmada!');
@@ -433,9 +441,13 @@ const EntregadorDashboard = () => {
     fetchOrders(true);
   };
 
-  const handleLogout = () => {
-    clearEntregadorSession();
-    navigate('/entregador/login');
+  const handleLogout = async () => {
+    try {
+      await supabase.rpc('entregador_logout_session' as any, { _session_token: session?.session_token });
+    } finally {
+      clearEntregadorSession();
+      navigate('/entregador/login');
+    }
   };
 
   if (!session) return null;
@@ -673,12 +685,12 @@ const EntregadorDashboard = () => {
                     <span className="text-yellow-400 font-black text-lg">#{o.order_number}</span>
                     <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
                   </div>
-                  <p className="text-sm font-semibold">{o.customer_name}</p>
-                  {o.delivery_address && (
-                    <p className="text-xs text-slate-400 flex items-start gap-1">
-                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {o.delivery_address}
-                    </p>
-                  )}
+                  <p className="text-sm font-semibold">
+                    {o.bairro_nome ? `📍 Bairro: ${o.bairro_nome}` : '📍 Destino oculto até aceitar'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Nome, telefone e endereço completo são liberados somente após você aceitar o pedido.
+                  </p>
                   <button
                     onClick={() => handleClaim(o.id)}
                     disabled={claiming === o.id}

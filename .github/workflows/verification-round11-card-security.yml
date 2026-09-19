@@ -1,0 +1,24 @@
+name: Verification Round 11 Card Security
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+      - name: Security assertions
+        run: |
+          ! grep -q 'card\.cvv' src/components/kiosk/PaymentScreen.tsx
+          ! grep -q 'Número do cartão' src/components/kiosk/PaymentScreen.tsx
+          grep -q 'false && storeSettings.payOnline' src/components/kiosk/PaymentScreen.tsx

@@ -1,0 +1,26 @@
+name: Verification Round 8 Entregador Session
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build
+      - name: Security assertions
+        run: |
+          ! grep -q 'session\.password' src/pages/EntregadorDashboard.tsx
+          ! grep -q 'password: string;' src/pages/EntregadorLogin.tsx
+          grep -q 'entregador_login_session' src/pages/EntregadorLogin.tsx
+          grep -q 'entregador_orders_session' src/pages/EntregadorDashboard.tsx
+          grep -q 'entregador_update_location_session' src/pages/EntregadorDashboard.tsx

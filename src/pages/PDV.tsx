@@ -164,11 +164,20 @@ function LoginScreen({
     catch (error: any) { setLoading(false); return toast.error(error?.message || "Falha ao entrar"); }
     setLoading(false);
     if (!res?.ok) {
-      toast.error(
-        res?.reason === "org_not_found"
-          ? "Loja não encontrada"
-          : "Usuário ou senha inválidos",
-      );
+      if (res?.reason === "too_many_attempts") {
+        const minutes = Math.max(1, Math.ceil(Number(res?.retry_after_seconds || 600) / 60));
+        toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
+        return;
+      }
+      if (res?.reason === "organization_unavailable") {
+        toast.error("Esta loja está temporariamente indisponível para operar o PDV.");
+        return;
+      }
+      if (res?.reason === "invalid_credentials" && res?.remaining_attempts != null) {
+        toast.error(`Usuário ou senha inválidos. Restam ${res.remaining_attempts} tentativa(s).`);
+        return;
+      }
+      toast.error("Usuário ou senha inválidos");
       return;
     }
     toast.success(`Bem-vindo, ${res.operador.name}`);

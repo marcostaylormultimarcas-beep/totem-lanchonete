@@ -31,6 +31,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [primeActive, setPrimeActive] = useState(false);
+  const [primeConfig, setPrimeConfig] = useState<{ valor_mensalidade:number; desconto_percentual:number; frete_gratis_minimo:number } | null>(null);
+  const [activeCoupon, setActiveCoupon] = useState<{ codigo:string; tipo:string; valor:number } | null>(null);
   const [parceriasAtivas, setParceriasAtivas] = useState(0);
   const [feedback, setFeedback] = useState<Record<string, { action: string; reason: string }>>({});
   const [stats, setStats] = useState<Record<string, { rate: number; conv: number; sent: number; dismissed: number }>>({});
@@ -44,21 +46,21 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     if (!organizationId) return;
     const load = async () => {
       setLoading(true);
-      // Re-atribui conversões para o ranking refletir vendas recentes
-      await supabase.rpc('ai_attribute_conversions' as any, { _org: organizationId });
-      const [ord, prime, parc, fb, st] = await Promise.all([
+      const [ord, prime, coupon, parc, fb, st] = await Promise.all([
         supabase.from('orders').select('id,customer_name,customer_phone,total,created_at,status')
           .eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(1000),
-        supabase.from('vision_prime_config').select('ativo').eq('organization_id', organizationId).maybeSingle(),
-        supabase.from('parcerias').select('id,status,habilitada_origem,habilitada_parceira')
-          .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`),
+        supabase.from('vision_prime_config').select('ativo,valor_mensalidade,desconto_percentual,frete_gratis_minimo').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('cupons').select('codigo,tipo,valor').eq('organization_id', organizationId).eq('ativo', true).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+        supabase.rpc('comarketing_panel_data' as any, { _org: organizationId }),
         supabase.from('assistente_vision_feedback').select('suggestion_key,action,reason')
           .eq('organization_id', organizationId),
         supabase.rpc('ai_suggestion_stats' as any, { _org: organizationId }),
       ]);
       setOrders((ord.data as OrderRow[]) || []);
       setPrimeActive(Boolean(prime.data?.ativo));
-      setParceriasAtivas(((parc.data as any[]) || []).filter(p => p.status === 'active' && p.habilitada_origem && p.habilitada_parceira).length);
+      setPrimeConfig(prime.data?.ativo ? { valor_mensalidade:Number((prime.data as any).valor_mensalidade)||0, desconto_percentual:Number((prime.data as any).desconto_percentual)||0, frete_gratis_minimo:Number((prime.data as any).frete_gratis_minimo)||0 } : null);
+      setActiveCoupon(coupon.data ? { codigo:(coupon.data as any).codigo, tipo:(coupon.data as any).tipo, valor:Number((coupon.data as any).valor)||0 } : null);
+      setParceriasAtivas((((parc.data as any)?.parcerias || []) as any[]).filter(p => p.status === 'active' && p.habilitada_origem && p.habilitada_parceira).length);
       const map: Record<string, { action: string; reason: string }> = {};
       ((fb.data as any[]) || []).forEach(r => { map[r.suggestion_key] = { action: r.action, reason: r.reason || '' }; });
       setFeedback(map);
@@ -106,7 +108,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'reativacao',
         title: 'Recuperar Clientes Inativos',
         description: `Você tem ${inativos.length} cliente${inativos.length > 1 ? 's' : ''} que não pede${inativos.length > 1 ? 'm' : ''} há 40 dias ou mais.`,
-        template: `Olá [Nome], sua última escolha em ${storeName} está com saudade! 😋 Volte hoje com o cupom *VOLTE15* e ganhe 10% OFF no seu pedido.`,
+        template: activeCoupon ? `Olá [Nome], sentimos sua falta em ${storeName}! 😋 Volte e aproveite o cupom *${activeCoupon.codigo}* (${activeCoupon.tipo === 'porcentagem' ? `${activeCoupon.valor}% de desconto` : `${brl(activeCoupon.valor)} de desconto`}).` : `Olá [Nome], sentimos sua falta em ${storeName}! 😋 Que tal fazer um novo pedido hoje?`,
         audience: inativos.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -119,7 +121,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'ticket',
         title: 'Aumentar Ticket Médio',
         description: `${ticketBaixo.length} cliente${ticketBaixo.length > 1 ? 's' : ''} compra${ticketBaixo.length > 1 ? 'm' : ''} sempre abaixo do ticket médio (${brl(ticketMedio)}). Ofereça combos.`,
-        template: `Oi [Nome]! Que tal turbinar seu pedido? 🍔🍟 Adicione nosso *Combo do Dia* e leve batata + refri por só R$ 15. Aproveite!`,
+        template: `Oi [Nome]! Que tal turbinar seu próximo pedido em ${storeName}? 🍔🍟 Confira os combos e adicionais disponíveis no cardápio.`,
         audience: ticketBaixo.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -131,8 +133,8 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         icon: Crown,
         category: 'prime',
         title: 'Ative o Clube Vision Prime',
-        description: 'Você ainda não ativou o clube de assinatura. Lojas com Prime ativo aumentam em até 30% a recorrência mensal.',
-        template: `🌟 Cliente VIP! Apresentamos o *Vision Prime* em ${storeName}: por R$ 19,90/mês você ganha 10% OFF em todos os pedidos e frete grátis. Assine hoje mesmo!`,
+        description: 'Você ainda não ativou o clube de assinatura. Configure mensalidade e benefícios antes de divulgá-lo aos clientes.',
+        template: `🌟 Cliente VIP! Em breve você poderá conhecer os benefícios do *Vision Prime* em ${storeName}.`,
         audience: vips.map(c => ({ phone: c.phone, name: c.name })),
       });
     } else if (vips.length >= 1) {
@@ -143,7 +145,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
         category: 'prime',
         title: 'Convide VIPs para o Vision Prime',
         description: `${vips.length} clientes com 5+ pedidos. Eles são os candidatos perfeitos para virar assinantes Prime.`,
-        template: `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Queremos te convidar para o *Vision Prime*: 10% OFF em todos os pedidos + frete grátis. Apenas R$ 19,90/mês. Quer fazer parte?`,
+        template: primeConfig ? `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Conheça o *Vision Prime* em ${storeName}: ${primeConfig.desconto_percentual > 0 ? `${primeConfig.desconto_percentual}% de desconto` : 'benefícios exclusivos'}${primeConfig.frete_gratis_minimo >= 0 ? ` e frete grátis conforme a regra configurada` : ''}. Mensalidade: ${brl(primeConfig.valor_mensalidade)}. Quer fazer parte?` : `Olá [Nome], você é um dos nossos clientes mais especiais! 💎 Conheça o *Vision Prime* em ${storeName}.`,
         audience: vips.map(c => ({ phone: c.phone, name: c.name })),
       });
     }
@@ -190,7 +192,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     return scored
       .filter(s => feedback[s.key]?.action !== 'dismissed')
       .sort((a, b) => a.priority - b.priority);
-  }, [orders, primeActive, parceriasAtivas, feedback, stats, storeName]);
+  }, [orders, primeActive, primeConfig, activeCoupon, parceriasAtivas, feedback, stats, storeName]);
 
   const registerFeedback = async (key: string, action: 'approved' | 'dismissed' | 'sent', reason = '', message_sent = '') => {
     if (!organizationId) return;
@@ -225,37 +227,11 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
     return m ? m[1].toUpperCase() : '';
   };
 
-  const dispatchInternalNotification = async (s: Suggestion, msgOverride?: string) => {
+  const approveSuggestion = async (s: Suggestion, msgOverride?: string) => {
     const msg = (msgOverride ?? s.template ?? '').trim();
-    if (!organizationId) return;
-
-    if (!s.audience.length) {
-      await registerFeedback(s.key, 'approved', '', msg);
-      await logHistory(s, 'approved', { template: msg });
-      toast.success('Sugestão aprovada — marcada como em andamento');
-      return;
-    }
-
-    const phones = s.audience.map(a => a.phone).filter(Boolean);
-    const { data, error } = await supabase.rpc('notify_audience' as any, {
-      _org: organizationId,
-      _suggestion_key: s.key,
-      _title: s.title,
-      _body: msg ? msg.replace(/\*/g, '') : s.description,
-      _cta_route: '',
-      _coupon: extractCoupon(msg),
-      _phones: phones,
-    });
-
-    if (error) {
-      toast.error('Falha ao enviar notificações: ' + error.message);
-      return;
-    }
-
-    const sentCount = Number(data ?? phones.length);
-    await registerFeedback(s.key, 'sent', '', msg);
-    await logHistory(s, 'sent', { template: msg, notifications_sent: sentCount });
-    toast.success(`✅ ${sentCount} notificação${sentCount !== 1 ? 'ões' : ''} interna${sentCount !== 1 ? 's' : ''} enviada${sentCount !== 1 ? 's' : ''} no app do cliente`);
+    await registerFeedback(s.key, 'approved', '', msg);
+    await logHistory(s, 'approved', { template: msg });
+    toast.success('Sugestão aprovada — marcada como em andamento');
   };
 
   const submitDismiss = async () => {
@@ -278,21 +254,28 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
       {/* Header */}
       <div className="relative overflow-hidden rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/15 via-background to-background p-5">
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-primary/20 rounded-full blur-3xl" />
-        <div className="relative flex items-start gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center">
-            <Bot className="w-7 h-7 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h2 className="text-xl font-black">Assistente Vision</h2>
-              <span className="text-[10px] uppercase font-bold bg-primary/20 text-primary px-2 py-0.5 rounded-full">IA</span>
+        <div className="relative flex flex-col sm:flex-row sm:items-start gap-4">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            <div className="w-14 h-14 shrink-0 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center">
+              <Bot className="w-7 h-7 text-primary" />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Seu consultor de marketing inteligente. Analisamos seus pedidos e sugerimos ações para você crescer.
-            </p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <h2 className="text-xl font-black">Assistente Vision</h2>
+                <span className="text-[10px] uppercase font-bold bg-primary/20 text-primary px-2 py-0.5 rounded-full">IA</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Seu consultor de marketing inteligente. Analisamos seus pedidos e sugerimos ações para você crescer.
+              </p>
+            </div>
           </div>
-          <button onClick={() => setRefreshTick(t => t + 1)} className="touch-btn px-3 py-2 rounded-xl bg-muted hover:bg-muted/70 flex items-center gap-2 text-sm">
-            <RefreshCw className="w-4 h-4" /> Atualizar
+          <button
+            type="button"
+            onClick={() => setRefreshTick(t => t + 1)}
+            disabled={loading}
+            className="touch-btn self-stretch sm:self-auto px-3 py-2 rounded-xl bg-muted hover:bg-muted/70 flex items-center justify-center gap-2 text-sm shrink-0 disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> {loading ? 'Analisando…' : 'Atualizar'}
           </button>
         </div>
       </div>
@@ -335,20 +318,18 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
 
                     {s.template && (
                       <div className="mt-3 p-3 rounded-lg bg-muted/50 border border-border text-sm whitespace-pre-wrap">
-                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem da notificação</div>
+                        <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Mensagem sugerida</div>
                         {s.template}
                       </div>
                     )}
 
                     {s.audience.length > 0 && (
-                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                        <Bell className="w-3 h-3" /> {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''} receberá{s.audience.length > 1 ? 'ão' : ''} no sininho do app
-                      </div>
+                      <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" /> Público sugerido: {s.audience.length} cliente{s.audience.length > 1 ? 's' : ''}</div>
                     )}
 
                     {fb?.action === 'sent' && (
                       <div className="mt-2 text-[11px] text-blue-400/80 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Notificação interna disparada — log registrado
+                        <Check className="w-3 h-3" /> Sugestão aprovada — ação registrada
                       </div>
                     )}
 
@@ -359,10 +340,10 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
                         </button>
                       )}
                       <button
-                        onClick={() => dispatchInternalNotification(s)}
+                        onClick={() => approveSuggestion(s)}
                         className="touch-btn px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-bold flex items-center gap-1.5 hover:opacity-90"
                       >
-                        <Bell className="w-4 h-4" /> Aprovar e Enviar
+                        <Bell className="w-4 h-4" /> Aprovar
                       </button>
                       <button onClick={() => { setDismissingKey(s.key); setDismissReason(''); }} className="touch-btn px-3 py-2 rounded-lg bg-muted hover:bg-destructive/20 hover:text-destructive text-sm flex items-center gap-1.5">
                         <X className="w-4 h-4" /> Dispensar
@@ -392,7 +373,7 @@ const AssistenteVisionPanel = ({ organizationId, storeName = 'nossa loja' }: Pro
               <button
                 onClick={async () => { const s = editing!; setEditing(null); await dispatchInternalNotification(s, editText); }}
                 className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-1.5">
-                <Bell className="w-4 h-4" /> Aprovar e Enviar
+                <Bell className="w-4 h-4" /> Aprovar
               </button>
             </div>
           </div>

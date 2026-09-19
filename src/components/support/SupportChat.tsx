@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import { useOrg } from '@/contexts/OrgContext';
 import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
@@ -9,7 +10,6 @@ interface Msg { role: 'user' | 'assistant'; content: string }
 
 const FUNCTION_URL = getSupabaseFunctionUrl('support-chat');
 
-const ORG_FIELDS = 'id,name,slug,paused,categoria,cnpj,telefone,instagram,endereco_cep,endereco_rua,endereco_numero,endereco_bairro,endereco_estado,city';
 
 const SupportChat = () => {
   const { orgId: ctxOrgId } = useOrg();
@@ -36,15 +36,14 @@ const SupportChat = () => {
         const slug = (params as any)?.slug
           || location.pathname.match(/\/(?:loja|cardapio|pdv|painel-senhas)\/([^/]+)/)?.[1]
           || null;
-        let query = supabase.from('organizations').select(ORG_FIELDS).limit(1);
-        if (ctxOrgId) query = query.eq('id', ctxOrgId);
-        else if (slug) query = query.eq('slug', slug);
+        let data = null;
+        if (ctxOrgId) data = await fetchPublicOrganization({ id: ctxOrgId });
+        else if (slug) data = await fetchPublicOrganization({ slug });
         else {
           const stored = localStorage.getItem('kiosk_org_id');
-          if (stored) query = query.eq('id', stored);
+          if (stored) data = await fetchPublicOrganization({ id: stored });
           else { setOrgCtx(null); return; }
         }
-        const { data } = await query.maybeSingle();
         if (!cancelled) setOrgCtx((data as any) || null);
       } catch {
         if (!cancelled) setOrgCtx(null);

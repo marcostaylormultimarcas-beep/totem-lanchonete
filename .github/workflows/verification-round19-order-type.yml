@@ -1,0 +1,22 @@
+name: Verification Round 19 - Order Type Alignment
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Assert delivery type contract
+        run: |
+          grep -q "orderType==='delivery'||orderType==='viagem'" src/components/admin/OrdersPanel.tsx
+          grep -q "isDeliveryOrder(o.order_type)?next==='out_for_delivery':next==='delivered'" src/components/admin/OrdersPanel.tsx
+          grep -q "const isDelivery=isDeliveryOrder(order.order_type)" src/components/admin/OrdersPanel.tsx
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

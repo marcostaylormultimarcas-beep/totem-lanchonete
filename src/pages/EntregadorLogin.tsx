@@ -13,14 +13,31 @@ export interface EntregadorSession {
   organization_id: string;
   org_slug: string;
   org_name: string;
-  password: string;
+  session_token: string;
+  expires_at?: string;
 }
 
 export const getEntregadorSession = (): EntregadorSession | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    if (!raw) return null;
+    const session = JSON.parse(raw) as EntregadorSession;
+    if (!session?.session_token) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    if (session.expires_at) {
+      const expiresAt = Date.parse(session.expires_at);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+      }
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
 };
 
 export const clearEntregadorSession = () => localStorage.removeItem(STORAGE_KEY);
@@ -44,7 +61,7 @@ const EntregadorLogin = () => {
       return;
     }
     setLoading(true);
-    const { data, error } = await supabase.rpc('entregador_login' as any, {
+    const { data, error } = await supabase.rpc('entregador_login_session' as any, {
       _org_slug: orgSlug.trim().toLowerCase(),
       _username: username.trim(),
       _password: password,
@@ -52,14 +69,23 @@ const EntregadorLogin = () => {
     setLoading(false);
     const res: any = data;
     if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        org_not_found: 'Loja não encontrada.',
-        invalid_credentials: 'Usuário ou senha inválidos.',
-      };
-      toast.error(msg[res?.reason] || 'Falha ao entrar.');
+      if (res?.reason === 'too_many_attempts') {
+        const minutes = Math.max(1, Math.ceil(Number(res?.retry_after_seconds || 600) / 60));
+        toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
+        return;
+      }
+      if (res?.reason === 'invalid_credentials' && res?.remaining_attempts != null) {
+        toast.error(`Usuário ou senha inválidos. Restam ${res.remaining_attempts} tentativa(s).`);
+        return;
+      }
+      toast.error('Usuário ou senha inválidos.');
       return;
     }
-    const session: EntregadorSession = { ...res.entregador, password };
+    const session: EntregadorSession = {
+      ...res.entregador,
+      session_token: res.session_token,
+      expires_at: res.expires_at,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     toast.success(`Bem-vindo, ${res.entregador.name}!`);
     navigate('/entregador');

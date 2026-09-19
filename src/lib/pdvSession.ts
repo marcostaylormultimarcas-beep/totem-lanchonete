@@ -31,14 +31,14 @@ export async function createPdvSession(orgSlug: string, username: string, passwo
 }
 
 export async function validatePdvSession(sessionToken: string) {
-  const { data, error } = await rpc("pdv_session_context", { _token: sessionToken });
+  const { data, error } = await rpc("pdv_resume_session_v2", { _session_token: sessionToken });
   if (error) return null;
   const res = data as any;
   return res?.ok ? res : null;
 }
 
 export async function revokePdvSession(sessionToken: string) {
-  try { await rpc("pdv_revoke_session", { _token: sessionToken }); } catch {}
+  try { await rpc("pdv_logout_v2", { _session_token: sessionToken }); } catch {}
 }
 
 export function savePdvSession(session: PdvSession) {

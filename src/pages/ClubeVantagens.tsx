@@ -26,53 +26,35 @@ const ClubeVantagens = () => {
       if (!session) { setAuthed(false); setLoading(false); return; }
       setAuthed(true);
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('origem_assinatura_empresa_id')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
+      const { data: catalog, error } = await supabase.rpc('clube_vantagens_catalog' as any, {
+        _fallback_org: orgId,
+      });
+      if (error) {
+        console.error('Clube de Vantagens:', error);
+        setData([]);
+        setLoading(false);
+        return;
+      }
 
-      const origemId = (profile as any)?.origem_assinatura_empresa_id || orgId;
-      if (!origemId) { setLoading(false); return; }
+      const result = catalog as any;
+      if (!result?.ok) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
 
-      const { data: origemOrg } = await supabase
-        .from('organizations').select('id,name,categoria').eq('id', origemId).maybeSingle();
-      const cat = (origemOrg as any)?.categoria || 'outro';
-      setOrigemCat(cat);
-      setOrigemNome((origemOrg as any)?.name || '');
-
-      const { data: parcerias } = await supabase
-        .from('parcerias' as any)
-        .select('org_origem,org_parceira,status,habilitada_origem,habilitada_parceira')
-        .or(`org_origem.eq.${origemId},org_parceira.eq.${origemId}`)
-        .eq('status', 'active');
-
-      const partnerIds = (parcerias || [])
-        .filter((p: any) => p.habilitada_origem && p.habilitada_parceira)
-        .map((p: any) => (p.org_origem === origemId ? p.org_parceira : p.org_origem));
-
-      if (partnerIds.length === 0) { setData([]); setLoading(false); return; }
-
-      const { data: orgs } = await supabase
-        .from('organizations')
-        .select('id,name,slug,logo_url,categoria')
-        .in('id', partnerIds);
-
-      // 🔒 Proteção de nicho — exclui parceiros da mesma categoria da loja de origem.
-      const allowed = ((orgs as any[]) || []).filter(o => (o.categoria || 'outro') !== cat);
-      if (allowed.length === 0) { setData([]); setLoading(false); return; }
-
-      const { data: cupons } = await supabase
-        .from('cupons')
-        .select('id,codigo,tipo,valor,status,organization_id')
-        .in('organization_id', allowed.map(o => o.id))
-        .eq('status', 'ativo');
-
-      const grouped: PartnerCoupon[] = allowed.map(o => ({
-        org: o as any,
-        cupons: ((cupons as any[]) || []).filter(c => c.organization_id === o.id),
-      })).filter(g => g.cupons.length > 0);
-
+      setOrigemCat(result.origem_categoria || 'outro');
+      setOrigemNome(result.origem_nome || '');
+      const grouped: PartnerCoupon[] = ((result.partners || []) as any[]).map(p => ({
+        org: {
+          id: p.partner_id,
+          name: p.partner_name,
+          slug: p.partner_slug,
+          logo_url: p.logo_url || '',
+          categoria: p.categoria || 'outro',
+        },
+        cupons: p.cupons || [],
+      }));
       setData(grouped);
       setLoading(false);
     };

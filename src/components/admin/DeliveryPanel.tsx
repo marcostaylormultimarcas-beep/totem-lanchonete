@@ -115,7 +115,7 @@ const DeliveryPanel = ({ organizationId }: Props) => {
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Ajustes finos por bairro ou raio detalhado podem ser feitos em <strong>Bairros</strong> e <strong>Área CEP</strong>.
+        Configure regras específicas de entrega, taxas e disponibilidade por região nas seções <strong>Bairros</strong> e <strong>Área CEP</strong>.
       </p>
 
       <button onClick={salvar} disabled={saving}

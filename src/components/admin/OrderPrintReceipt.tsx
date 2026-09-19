@@ -34,9 +34,9 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
         {order.customer_phone && <p><strong>Telefone:</strong> {order.customer_phone}</p>}
         <p>
           <strong>Tipo:</strong>{' '}
-          {order.order_type === 'delivery' ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL'}
+          {order.order_type === 'delivery' || order.order_type === 'viagem' ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL'}
         </p>
-        {order.order_type === 'delivery' && (
+        {(order.order_type === 'delivery' || order.order_type === 'viagem') && (
           <div className="pr-delivery">
             {order.delivery_address && <p><strong>Endereço:</strong> {order.delivery_address}</p>}
             {order.delivery_reference && <p><strong>Referência:</strong> {order.delivery_reference}</p>}

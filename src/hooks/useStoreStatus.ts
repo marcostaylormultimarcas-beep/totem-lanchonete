@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 
 export type DayKey = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
 export const DAY_KEYS: DayKey[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -83,33 +83,27 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
     if (!orgId) { setLoading(false); return; }
     let cancelled = false;
     const load = async () => {
-      const { data, error } = await supabase.from('settings')
-        .select('business_hours, emergency_closed, closed_message, scheduling_enabled')
-        .eq('organization_id', orgId).maybeSingle();
-      if (cancelled) return;
-      if (error) console.warn('[useStoreStatus] erro ao carregar settings:', error.message);
-      if (data) {
-        const hrs = (data as any).business_hours || DEFAULT_HOURS;
-        const ec = Boolean((data as any).emergency_closed);
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (cancelled) return;
+        const hrs = (data.business_hours as BusinessHours | undefined) || DEFAULT_HOURS;
+        const ec = Boolean(data.emergency_closed);
         setHours(hrs);
         setEmergencyClosed(ec);
-        setMessage((data as any).closed_message || 'Lanchonete fechada no momento');
-        setSchedulingEnabled((data as any).scheduling_enabled !== false);
+        setMessage(data.closed_message || 'Lanchonete fechada no momento');
+        setSchedulingEnabled(data.scheduling_enabled !== false);
         const { open } = computeStatus(new Date(), hrs);
         console.log('[Vitrine] Status da loja:', {
           orgId, aberto: open && !ec, emergencyClosed: ec, businessHours: hrs,
         });
+      } catch (error) {
+        if (!cancelled) console.warn('[useStoreStatus] storefront config error:', error);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     };
     load();
-
-    const channelId = `store-hours-${orgId}-${Math.random().toString(36).slice(2, 10)}`;
-    const ch = supabase.channel(channelId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` },
-        (payload) => { console.log('[Vitrine] Realtime settings update:', payload.eventType); load(); })
-      .subscribe((status) => console.log('[Vitrine] Realtime channel status:', status));
-    return () => { cancelled = true; supabase.removeChannel(ch); };
+    const pollId = window.setInterval(load, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   // Re-render a cada 30s para manter status fresh

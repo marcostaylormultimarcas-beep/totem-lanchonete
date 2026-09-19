@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, ClipboardList, Instagram, MessageCircle, Sparkles, Search, SlidersHorizontal, MapPin, Bell, Star, Clock, Heart, Home, User, Crown } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
 
@@ -46,99 +47,62 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
   useEffect(() => {
     if (!orgId) return;
+    let cancelled = false;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('organization_id', orgId).maybeSingle();
-      if (data) {
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (cancelled) return;
         setStoreName(data.store_name || 'VisionFood');
-        setBanners((data.banners as unknown as BannerItem[]) || []);
-        setInstagramUrl((data as any).instagram_url || '');
+        setBanners((data.banners as BannerItem[]) || []);
+        setInstagramUrl(data.instagram_url || '');
         setWhatsappNumber(data.whatsapp_number || '');
-        const cats = (data as any).categories as CategoryItem[] | undefined;
+        const cats = data.categories as CategoryItem[] | undefined;
         if (cats && cats.length > 0) setCategories(cats);
-        else if ((data as any).category_icons) {
-          const icons = (data as any).category_icons as Record<string, string>;
+        else if (data.category_icons) {
+          const icons = data.category_icons as Record<string, string>;
           setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
         }
+      } catch (error) {
+        if (!cancelled) console.warn('[StartScreen] storefront config error:', error);
       }
     };
     fetchSettings();
+    const pollId = window.setInterval(fetchSettings, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   useEffect(() => {
     if (!orgId) { setLoading(false); return; }
+    let cancelled = false;
+
     const fetchProducts = async () => {
-      const { data } = await supabase.from('products').select('*').eq('organization_id', orgId);
-      if (data) {
-        const mapped: Product[] = data.map((p: any) => ({
+      try {
+        const data = await fetchPublicCatalog(orgId);
+        if (cancelled) return;
+        const mapped: Product[] = data.map((p) => ({
           id: p.id,
           name: p.name,
           price: Number(p.price),
           category: p.category as Product['category'],
-          image: p.image,
-          removableIngredients: (p.removable_ingredients as string[]) || [],
-          extras: (p.extras as { name: string; price: number }[]) || [],
+          image: p.image || '',
+          removableIngredients: p.removable_ingredients || [],
+          extras: p.extras || [],
           isCombo: p.is_combo || false,
-          ingredients: (p.ingredients as string[]) || [],
+          ingredients: p.ingredients || [],
           description: p.description || '',
-          prepTimeMin: Number((p as any).prep_time_min ?? 0),
-          oldPrice: Number(p.old_price ?? p.preco_antigo ?? 0) || undefined,
-          badge: p.badge || p.selo || undefined,
+          prepTimeMin: Number(p.prep_time_min ?? 0),
         }));
         setProducts(mapped);
+      } catch (error) {
+        if (!cancelled) console.warn('[StartScreen] public catalog error:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setLoading(false);
     };
+
     fetchProducts();
-  }, [orgId]);
-
-  useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel('settings-changes-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        const data = payload.new;
-        if (data) {
-          setStoreName(data.store_name || 'VisionFood');
-          setBanners((data.banners as unknown as BannerItem[]) || []);
-          setInstagramUrl(data.instagram_url || '');
-          setWhatsappNumber(data.whatsapp_number || '');
-          const cats = data.categories as CategoryItem[] | undefined;
-          if (cats && cats.length > 0) setCategories(cats);
-          else if (data.category_icons) {
-            const icons = data.category_icons as Record<string, string>;
-            setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
-          }
-        }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [orgId]);
-
-  useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel('products-changes-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `organization_id=eq.${orgId}` }, () => {
-        supabase.from('products').select('*').eq('organization_id', orgId).then(({ data }) => {
-          if (data) {
-            const mapped: Product[] = data.map((p: any) => ({
-              id: p.id, name: p.name, price: Number(p.price),
-              category: p.category as Product['category'], image: p.image,
-              removableIngredients: (p.removable_ingredients as string[]) || [],
-              extras: (p.extras as { name: string; price: number }[]) || [],
-              isCombo: p.is_combo || false,
-              ingredients: (p.ingredients as string[]) || [],
-              description: p.description || '',
-              prepTimeMin: Number(p.prep_time_min ?? 0),
-              oldPrice: Number(p.old_price ?? p.preco_antigo ?? 0) || undefined,
-              badge: p.badge || p.selo || undefined,
-            }));
-            setProducts(mapped);
-          }
-        });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const pollId = window.setInterval(fetchProducts, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   const topProducts = products.slice(0, 6);

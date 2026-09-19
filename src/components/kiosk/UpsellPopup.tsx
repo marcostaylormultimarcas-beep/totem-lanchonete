@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Lock, Sparkles } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { ComboSettings } from '@/data/store';
 
 interface UpsellPopupProps {
@@ -17,8 +17,9 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
 
   useEffect(() => {
     if (!orgId) return;
-    supabase.from('settings').select('combo').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => { if (data?.combo) setCombo(data.combo as unknown as ComboSettings); });
+    fetchPublicStorefrontConfig(orgId)
+      .then(data => { if (data.combo) setCombo(data.combo as ComboSettings); })
+      .catch(error => console.warn('[Upsell] storefront config error:', error));
   }, [orgId]);
 
   const isUrl = (s: string) => !!s && (s.startsWith('http') || s.startsWith('/'));

@@ -1,0 +1,22 @@
+name: Verification Round 25 Fiscal Truthfulness
+on:
+  pull_request:
+    branches: [visionfood-v2-commercial-ready]
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test
+      - run: npm run build
+      - name: Assert no fake NFe issuance
+        run: |
+          ! grep -q "nfe_status: 'issued'" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "DANFE SIMPLIFICADA" src/pages/FiscalReceipt.tsx
+          grep -q "Documento não fiscal" src/pages/FiscalReceipt.tsx

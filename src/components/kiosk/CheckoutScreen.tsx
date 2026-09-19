@@ -4,7 +4,8 @@ import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
-import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchViaCep, maskCep, normalizeCep } from '@/lib/cep';
 import { toast } from 'sonner';
 
 interface Bairro {
@@ -27,7 +28,9 @@ interface CheckoutScreenProps {
   deliveryReference: string;
   deliveryRecipient: string;
   bairroId: string;
+  deliveryCep: string;
   onBairroChange: (id: string, nome: string, taxa: number, tempo: number) => void;
+  onDeliveryCepChange: (cep: string) => void;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onCpfChange: (v: string) => void;
@@ -41,7 +44,7 @@ interface CheckoutScreenProps {
 const CheckoutScreen = ({
   name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
-  bairroId, onBairroChange,
+  bairroId, deliveryCep, onBairroChange, onDeliveryCepChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
   onContinue, onBack,
@@ -52,7 +55,6 @@ const CheckoutScreen = ({
 
   // CEP / modo de entrega
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
-  const [cep, setCep] = useState('');
   const [validandoCep, setValidandoCep] = useState(false);
   const [cepResultado, setCepResultado] = useState<
     | { ok: true; taxa: number | null; tempo_min: number | null; distancia_km: number | null; endereco: string }
@@ -61,24 +63,47 @@ const CheckoutScreen = ({
   >(null);
 
   useEffect(() => {
-    if (!orgId || orderType !== 'viagem') return;
+    if (!orgId || orderType !== 'viagem') {
+      setBairros([]);
+      return;
+    }
+
+    let cancelled = false;
     setLoadingBairros(true);
-    supabase.from('settings').select('delivery_mode').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => setDeliveryMode((((data as any)?.delivery_mode) || 'bairros') as DeliveryMode));
-    supabase.from('taxas_entrega' as any)
-      .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
-      .eq('organization_id', orgId)
-      .eq('ativo', true)
-      .order('nome_bairro', { ascending: true })
-      .then(({ data }) => {
-        setBairros(((data as any[]) || []) as Bairro[]);
-        setLoadingBairros(false);
-      });
+
+    const loadDeliveryData = async () => {
+      try {
+        const [storefront, areasResult] = await Promise.all([
+          fetchPublicStorefrontConfig(orgId),
+          supabase.rpc('visionfood_public_delivery_areas', { _org: orgId }),
+        ]);
+
+        if (cancelled) return;
+        setDeliveryMode((storefront.delivery_mode || 'bairros') as DeliveryMode);
+        if (areasResult.error) throw areasResult.error;
+        setBairros((Array.isArray(areasResult.data) ? areasResult.data : []) as Bairro[]);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[Checkout] delivery data error:', error);
+          setBairros([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingBairros(false);
+      }
+    };
+
+    void loadDeliveryData();
+    return () => { cancelled = true; };
   }, [orgId, orderType]);
 
   const validarCep = async () => {
     if (!orgId) return;
-    const n = normalizeCep(cep);
+    if (deliveryMode === 'raio_km') {
+      setCepResultado({ ok: false, motivo: 'modo_indisponivel' });
+      toast.error('Entrega por raio temporariamente indisponível. A loja deve usar bairros ou lista de CEPs.');
+      return;
+    }
+    const n = normalizeCep(deliveryCep);
     if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
     setValidandoCep(true);
     setCepResultado(null);
@@ -92,15 +117,8 @@ const CheckoutScreen = ({
     }
     const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
 
-    let lat: number | null = null;
-    let lng: number | null = null;
-    if (deliveryMode === 'raio_km') {
-      const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
-      if (coords) { lat = coords.lat; lng = coords.lng; }
-    }
-
     const { data, error } = await supabase.rpc('validar_cep_entrega' as any, {
-      _org: orgId, _cep: n, _lat: lat, _lng: lng,
+      _org: orgId, _cep: n, _lat: null, _lng: null,
     });
     setValidandoCep(false);
     if (error) { toast.error(error.message); return; }
@@ -111,6 +129,7 @@ const CheckoutScreen = ({
       setCepResultado({ ok: false, motivo: r?.motivo || 'fora_da_area' });
       return;
     }
+    onDeliveryCepChange(maskCep(n));
     setCepResultado({
       ok: true,
       taxa: r.taxa != null ? Number(r.taxa) : null,
@@ -212,7 +231,7 @@ const CheckoutScreen = ({
                     <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
                   </label>
                   <div className="flex gap-2">
-                    <input value={cep} onChange={e => { setCep(maskCep(e.target.value)); setCepResultado(null); }}
+                    <input value={deliveryCep} onChange={e => { onDeliveryCepChange(maskCep(e.target.value)); setCepResultado(null); }}
                       placeholder="00000-000" maxLength={9}
                       className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
                     <button onClick={validarCep} disabled={validandoCep}
@@ -247,6 +266,8 @@ const CheckoutScreen = ({
                           {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
                           {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
                           {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                          {cepResultado.motivo === 'loja_indisponivel' && 'A loja está temporariamente indisponível para pedidos.'}
+                          {cepResultado.motivo === 'modo_indisponivel' && 'A entrega por raio está temporariamente indisponível. Entre em contato com a loja.'}
                         </p>
                       </div>
                     </div>

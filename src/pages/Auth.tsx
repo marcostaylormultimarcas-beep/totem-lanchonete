@@ -2,6 +2,7 @@ import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import { useOrg } from '@/contexts/OrgContext';
 
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
@@ -44,11 +45,7 @@ const Auth = () => {
     const slugFromStorage = localStorage.getItem(KIOSK_SLUG_STORAGE_KEY)?.trim().toLowerCase() || '';
     const slug = slugFromReturnTo || slugFromStorage || org?.slug || '';
     if (slug) {
-      const { data } = await supabase
-        .from('organizations')
-        .select('id, slug')
-        .eq('slug', slug)
-        .maybeSingle();
+      const data = await fetchPublicOrganization({ slug });
       if (data?.id) {
         localStorage.setItem(KIOSK_ORG_STORAGE_KEY, data.id);
         localStorage.setItem(KIOSK_SLUG_STORAGE_KEY, data.slug);
@@ -96,16 +93,6 @@ const Auth = () => {
     }
     localStorage.setItem(KIOSK_ORG_STORAGE_KEY, origemOrgId);
 
-    const { data: emailExists, error: emailCheckError } = await supabase.rpc('email_already_registered' as any, {
-      _email: cleanEmailValue,
-    });
-    if (!emailCheckError && emailExists === true) {
-      toast.error('Este e-mail já está cadastrado. Faça login para continuar.');
-      setMode('login');
-      setLoading(false);
-      return;
-    }
-
     const { data, error } = await supabase.auth.signUp({
       email: cleanEmailValue,
       password,
@@ -139,27 +126,8 @@ const Auth = () => {
         });
       }
 
-      const userId = data.user?.id || (await supabase.auth.getUser()).data.user?.id;
-      if (userId) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            user_id: userId,
-            display_name: name.trim(),
-            email: cleanEmailValue,
-            phone: cleanPhoneValue || phone.trim(),
-            organization_id: origemOrgId,
-            origem_assinatura_empresa_id: origemOrgId,
-          } as any, { onConflict: 'user_id' });
-
-        if (profileError) {
-          console.error('[signup] profile upsert failed', profileError);
-          const duplicate = profileError.message.toLowerCase().includes('duplicate') || profileError.code === '23505';
-          toast.error(duplicate ? 'Este e-mail já está cadastrado. Faça login para continuar.' : 'Conta criada, mas não foi possível vincular o cliente à loja. Tente entrar novamente.');
-          setLoading(false);
-          return;
-        }
-      }
+      // O perfil e o vínculo com a loja são criados pelo trigger handle_new_user.
+      // O cliente não pode alterar organization_id/origem_assinatura_empresa_id diretamente.
 
       toast.success('Conta criada com sucesso!');
       navigate(returnTo);
@@ -170,12 +138,8 @@ const Auth = () => {
   const handleForgot = async () => {
     if (!email.trim()) { toast.error('Informe seu email'); return; }
     setLoading(true);
-    const host = window.location.hostname;
-    const baseUrl = host.includes('lovable') || host === 'localhost' || host.startsWith('127.')
-      ? 'https://totemlonchonete.netlify.app'
-      : window.location.origin;
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${baseUrl}/reset-password`,
+      redirectTo: `${window.location.origin}/reset-password`,
     });
     if (error) {
       toast.error(error.message);

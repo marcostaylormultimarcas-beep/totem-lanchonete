@@ -1,0 +1,27 @@
+name: Verification Round 13 Coupon Boolean Contract
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Contract assertions
+        run: |
+          grep -q "status:boolean|null" src/components/admin/CouponsPanel.tsx
+          grep -q "status:ativo,ativo" src/components/admin/CouponsPanel.tsx
+          ! grep -q "status:ativo?'ativo':'inativo'" src/components/admin/CouponsPanel.tsx
+          ! grep -q "c.status === 'ativo'" src/components/kiosk/CartScreen.tsx
+          test "$(grep -o "c.status === true" src/components/kiosk/CartScreen.tsx | wc -l)" -eq 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

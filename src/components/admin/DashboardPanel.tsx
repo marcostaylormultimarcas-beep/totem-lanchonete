@@ -96,7 +96,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
         .eq('organization_id', organizationId)
         .eq('manage_stock', true),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
-      (supabase.from('profiles') as any).select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
+      supabase.rpc('visionfood_profile_count', { _org: organizationId }),
     ]);
 
     setTodayOrders((today as any) || []);
@@ -105,7 +105,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
     low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
     setLowStock(low);
     setProductCount(prodCount.count || 0);
-    setCustomerCount(custCount.count || 0);
+    setCustomerCount(Number(custCount.data || 0));
     setLoading(false);
   };
 

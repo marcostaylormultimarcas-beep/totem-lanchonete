@@ -142,7 +142,7 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
         const key = `${s.ingrediente.id}:${Math.ceil(s.diasRestantes)}`;
         if (pushedRef.current.has(key)) continue;
         pushedRef.current.add(key);
-        triggerPredictiveStockAlert(s.ingrediente.nome, Math.max(1, Math.ceil(s.diasRestantes)));
+        triggerPredictiveStockAlert(organizationId, s.ingrediente.nome, Math.max(1, Math.ceil(s.diasRestantes)));
       }
     }
   };

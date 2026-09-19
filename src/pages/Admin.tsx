@@ -4,7 +4,7 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 import VencimentoBanner from '@/components/admin/VencimentoBanner';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Link, useNavigate } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
@@ -13,6 +13,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
+import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
@@ -27,7 +28,6 @@ const ChangePasswordCard = lazy(() => import('@/components/admin/ChangePasswordC
 const CouponsPanel = lazy(() => import('@/components/admin/CouponsPanel'));
 const LoyaltyPanel = lazy(() => import('@/components/admin/LoyaltyPanel'));
 const StorageUsageCard = lazy(() => import('@/components/admin/StorageUsageCard'));
-const MasterRecoveryPinCard = lazy(() => import('@/components/admin/MasterRecoveryPinCard'));
 const MercadoPagoCard = lazy(() => import('@/components/admin/MercadoPagoCard'));
 const FiscalExportCard = lazy(() => import('@/components/admin/FiscalExportCard'));
 const EntregadoresPanel = lazy(() => import('@/components/admin/EntregadoresPanel'));
@@ -122,6 +122,8 @@ const AdminPage = () => {
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          available: p.available !== false,
+          ingredientStockBlocked: Boolean(p.ingredient_stock_blocked),
           manageStock: Boolean(p.manage_stock),
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
@@ -136,6 +138,39 @@ const AdminPage = () => {
     };
     fetch();
   }, [activeOrgId]);
+
+  // Identifica o administrador no OneSignal sem abrir prompt automaticamente.
+  useEffect(() => {
+    if (!authenticated || !activeOrgId) return;
+    let active = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active || !user) return;
+      await identifyOneSignalUser(`admin:${user.id}`, {
+        tipo: 'admin',
+        organization_id: activeOrgId,
+      });
+    })();
+    return () => { active = false; };
+  }, [authenticated, activeOrgId]);
+
+  const enableAdminPush = async () => {
+    if (!activeOrgId) {
+      toast.error('Selecione uma loja antes de ativar as notificações.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Sessão administrativa não encontrada.');
+      return;
+    }
+    const ok = await requestOneSignalPermission(`admin:${user.id}`, {
+      tipo: 'admin',
+      organization_id: activeOrgId,
+    });
+    if (ok) toast.success('Notificações push ativadas neste dispositivo.');
+    else toast.info('Push não foi ativado. Verifique a permissão de notificações do navegador.');
+  };
 
   // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado
   useEffect(() => {
@@ -166,7 +201,10 @@ const AdminPage = () => {
   useEffect(() => {
     if (!activeOrgId) return;
     const fetch = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle();
+      const [{ data }, { data: fiscalOrg }] = await Promise.all([
+        supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle(),
+        supabase.from('organizations').select('cnpj, razao_social').eq('id', activeOrgId).maybeSingle(),
+      ]);
       if (data) {
         setSettingsId(data.id);
         setSettings({
@@ -188,13 +226,13 @@ const AdminPage = () => {
           payPixEnabled: (data as any).pay_pix_enabled !== false,
           payCardTerminalEnabled: Boolean((data as any).pay_card_terminal_enabled),
           payCardOnlineEnabled: Boolean((data as any).pay_card_online_enabled),
-          fiscalEnabled: Boolean((data as any).fiscal_enabled),
-          fiscalCnpj: (data as any).fiscal_cnpj || '',
-          fiscalRazao: (data as any).fiscal_razao || '',
-          fiscalIe: (data as any).fiscal_ie || '',
-          fiscalRegime: (data as any).fiscal_regime || '',
-          fiscalCsc: (data as any).fiscal_csc || '',
-          fiscalToken: (data as any).fiscal_token || '',
+          fiscalEnabled: false,
+          fiscalCnpj: (fiscalOrg as any)?.cnpj || '',
+          fiscalRazao: (fiscalOrg as any)?.razao_social || '',
+          fiscalIe: '',
+          fiscalRegime: '',
+          fiscalCsc: '',
+          fiscalToken: '',
           balancaModelo: ((data as any).balanca_modelo as any) || 'generic',
           balancaBaudRate: Number((data as any).balanca_baud_rate ?? 9600),
         });
@@ -247,8 +285,8 @@ const AdminPage = () => {
     }
   };
 
-  // Somente colunas estáveis da tabela externa. Delivery, balança, fiscal e
-  // pagamentos são persistidos pelos painéis específicos e nunca entram aqui.
+  // Preferências não secretas da loja. Credenciais Mercado Pago permanecem
+  // exclusivamente no MercadoPagoCard/RPC seguro e nunca entram neste payload.
   const saveSettingsToDb = async (s: StoreSettings) => {
     const fields: Array<[string, SettingsPayload]> = [
       ['storeName', { store_name: s.storeName }],
@@ -258,6 +296,12 @@ const AdminPage = () => {
       ['categoryIcons', { category_icons: s.categoryIcons as any }],
       ['categories', { categories: s.categories as any }],
       ['instagram', { instagram_url: s.instagramUrl || '' }],
+      ['pixKeyManual', { pix_key_manual: s.pixKeyManual || '' }],
+      ['payCashEnabled', { pay_cash_enabled: Boolean(s.payCashEnabled) }],
+      ['payPixEnabled', { pay_pix_enabled: Boolean(s.payPixEnabled) }],
+      ['payCardTerminalEnabled', { pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled) }],
+      ['payCardOnlineEnabled', { pay_card_online_enabled: Boolean(s.payCardOnlineEnabled) }],
+      ['mpTerminalId', { mp_terminal_id: s.mpTerminalId || '' }],
     ];
     let failed = false;
     for (const [field, payload] of fields) {
@@ -270,6 +314,34 @@ const AdminPage = () => {
     if (failed) {
       throw new Error('Uma ou mais preferências não puderam ser salvas.');
     }
+  };
+
+  const saveFiscalCompany = async () => {
+    if (!activeOrgId) {
+      toast.error('Loja não identificada.');
+      return;
+    }
+
+    const cnpj = (settings.fiscalCnpj || '').trim();
+    const cnpjDigits = cnpj.replace(/\D/g, '');
+    if (cnpj && cnpjDigits.length !== 14) {
+      toast.error('CNPJ inválido. Informe os 14 dígitos.');
+      return;
+    }
+
+    const razaoSocial = (settings.fiscalRazao || '').trim();
+    const { error } = await supabase
+      .from('organizations')
+      .update({ cnpj, razao_social: razaoSocial } as any)
+      .eq('id', activeOrgId);
+
+    if (error) {
+      showDatabaseError('saveFiscalCompany', error);
+      return;
+    }
+
+    toast.success('Dados cadastrais salvos.');
+    await refreshOrg();
   };
 
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
@@ -655,7 +727,9 @@ const AdminPage = () => {
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
-      available: true,
+      // Ao editar, preserve a disponibilidade atual. O banco continua sendo a autoridade
+      // para bloqueios automáticos por estoque insuficiente de ingredientes.
+      available: editingProduct ? editingProduct.available !== false : true,
       manage_stock: form.manageStock,
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
@@ -719,6 +793,8 @@ const AdminPage = () => {
         isCombo: data.is_combo || false,
         ingredients: ((data as any).ingredients as string[]) || [],
         description: (data as any).description || '',
+        available: (data as any).available !== false,
+        ingredientStockBlocked: Boolean((data as any).ingredient_stock_blocked),
         manageStock: Boolean((data as any).manage_stock),
         stockQuantity: Number((data as any).stock_quantity ?? 0),
         lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
@@ -818,7 +894,7 @@ const AdminPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Notificações">
+          <button onClick={enableAdminPush} className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Ativar notificações push" title="Ativar notificações push">
             <Bell className="w-4 h-4 text-zinc-300" />
             <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF7A00] rounded-full ring-2 ring-[#0B0B0D]"></span>
           </button>
@@ -857,7 +933,7 @@ const AdminPage = () => {
           if (!activeSlug) return null;
           return (
             <a
-              href={`/loja/${activeSlug}`}
+              href={getKioskHomePath(activeSlug)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-3 border border-[#FF7A00]/40 rounded-2xl text-[#FF7A00] font-bold text-[11px] uppercase tracking-widest whitespace-nowrap flex items-center gap-1.5 hover:bg-[#FF7A00]/10 transition-colors active:scale-95"
@@ -958,18 +1034,19 @@ const AdminPage = () => {
                     const active = tab === t.key;
                     const Icon = t.icon;
                     return (
-                      <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
-                          active
-                            ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
-                            : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
-                        }`}
-                      >
-                        {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
-                        <span className="truncate font-medium">{t.label}</span>
-                      </button>
+                      <SheetClose asChild key={t.key}>
+                        <button
+                          onClick={() => setTab(t.key)}
+                          className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
+                            active
+                              ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
+                              : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
+                          }`}
+                        >
+                          {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+                          <span className="truncate font-medium">{t.label}</span>
+                        </button>
+                      </SheetClose>
                     );
                   })}
                 </div>
@@ -1497,9 +1574,6 @@ const AdminPage = () => {
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
 
-          {currentAdmin?.tier === 'master' && <MasterRecoveryPinCard userId={currentAdmin.id} />}
-
-
 
           <div className="kiosk-card p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
@@ -1795,81 +1869,64 @@ const AdminPage = () => {
         <div className="px-4 space-y-4">
           <FiscalExportCard organizationId={activeOrgId} />
 
-          <div className="kiosk-card p-4 space-y-3">
+          <div className="kiosk-card p-4 space-y-3 border border-orange-600/30">
             <div className="flex items-start gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${settings.fiscalEnabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-orange-600/15 text-orange-400">
                 <FileText className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-sm">Emissão de Nota Fiscal Eletrônica (NFC-e)</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {settings.fiscalEnabled
-                    ? 'Ativa. Os pedidos poderão registrar status fiscal.'
-                    : 'Desativada. Ative para preencher os dados fiscais da sua loja.'}
+                <p className="font-semibold text-sm">Fiscal e Contabilidade</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Atualmente o VisionFood gera comprovante interno e exportação CSV para a contabilidade.
+                  Emissão automática de NFC-e/SEFAZ ainda não está habilitada.
                 </p>
               </div>
-              <button
-                role="switch"
-                aria-checked={Boolean(settings.fiscalEnabled)}
-                onClick={async () => {
-                  const updated = { ...settings, fiscalEnabled: !settings.fiscalEnabled };
-                  setSettings(updated);
-                  await saveSettingsToDb(updated);
-                }}
-                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${settings.fiscalEnabled ? 'bg-primary' : 'bg-muted'}`}
-              >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings.fiscalEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
             </div>
           </div>
 
-          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="font-bold flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" /> Dados da Empresa</h3>
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-primary" /> Dados Cadastrais da Empresa
+            </h3>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">CNPJ</label>
-              <input placeholder="00.000.000/0000-00" value={settings.fiscalCnpj || ''} onChange={e => setSettings({ ...settings, fiscalCnpj: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
+              <input
+                placeholder="00.000.000/0000-00"
+                value={settings.fiscalCnpj || ''}
+                onChange={e => setSettings({ ...settings, fiscalCnpj: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={20}
+              />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Razão Social</label>
-              <input placeholder="Razão Social da empresa" value={settings.fiscalRazao || ''} onChange={e => setSettings({ ...settings, fiscalRazao: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={120} />
+              <input
+                placeholder="Razão Social da empresa"
+                value={settings.fiscalRazao || ''}
+                onChange={e => setSettings({ ...settings, fiscalRazao: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={120}
+              />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Inscrição Estadual</label>
-              <input placeholder="Ex: 123.456.789.000" value={settings.fiscalIe || ''} onChange={e => setSettings({ ...settings, fiscalIe: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Regime Tributário</label>
-              <select value={settings.fiscalRegime || ''} onChange={e => setSettings({ ...settings, fiscalRegime: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                <option value="">Selecione...</option>
-                <option value="simples">Simples Nacional</option>
-                <option value="presumido">Lucro Presumido</option>
-                <option value="real">Lucro Real</option>
-                <option value="mei">MEI</option>
-              </select>
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Esses dados são usados no comprovante interno. Eles não representam autorização de emissão fiscal.
+            </p>
           </div>
 
-          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="font-bold flex items-center gap-2"><KeyRound className="w-5 h-5 text-accent" /> Credenciais SEFAZ</h3>
-            <p className="text-[11px] text-muted-foreground">CSC e Token de Integração fornecidos pela SEFAZ do seu estado. Usados na futura integração de emissão automática.</p>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">CSC (Código de Segurança do Contribuinte)</label>
-              <input placeholder="Ex: ABCD1234..." value={settings.fiscalCsc || ''} onChange={e => setSettings({ ...settings, fiscalCsc: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={120} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Token de Integração</label>
-              <input placeholder="Cole o token da SEFAZ aqui" value={settings.fiscalToken || ''} onChange={e => setSettings({ ...settings, fiscalToken: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={200} />
-            </div>
-            <div className="bg-accent/10 border border-accent/30 rounded-lg p-3 text-[11px] text-accent">
-              ⚠️ Interface preparada. A emissão automática junto à SEFAZ será habilitada em uma próxima atualização.
-            </div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+            A integração SEFAZ/NFC-e será tratada como um módulo separado. Enquanto ela não existir no backend,
+            o sistema não solicita nem armazena CSC ou token da SEFAZ.
           </div>
 
-          <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
-            <Save className="w-4 h-4" /> Salvar Configurações Fiscais
+          <button
+            onClick={saveFiscalCompany}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"
+          >
+            <Save className="w-4 h-4" /> Salvar Dados Cadastrais
           </button>
         </div>
       )}
+
       </>
       )}
 

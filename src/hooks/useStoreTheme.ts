@@ -60,21 +60,27 @@ export function useStoreTheme(orgId: string | null) {
       return;
     }
     setLoading(true);
-    const { data } = await supabase
-      .from('loja_temas' as any)
-      .select('primary_color, secondary_color, mode')
-      .eq('organization_id', orgId)
-      .maybeSingle();
-    const next: StoreTheme = data
-      ? {
-          primary_color: (data as any).primary_color || DEFAULT_THEME.primary_color,
-          secondary_color: (data as any).secondary_color || DEFAULT_THEME.secondary_color,
-          mode: ((data as any).mode === 'light' ? 'light' : 'dark'),
-        }
-      : DEFAULT_THEME;
-    setTheme(next);
-    applyThemeToRoot(next);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase.rpc('visionfood_public_theme', { _org: orgId });
+      if (error) throw error;
+      const d = (data as any) || {};
+      const hasTheme = Object.keys(d).length > 0;
+      const next: StoreTheme = hasTheme
+        ? {
+            primary_color: d.primary_color || DEFAULT_THEME.primary_color,
+            secondary_color: d.secondary_color || DEFAULT_THEME.secondary_color,
+            mode: (d.mode === 'light' ? 'light' : 'dark'),
+          }
+        : DEFAULT_THEME;
+      setTheme(next);
+      applyThemeToRoot(next);
+    } catch (error) {
+      console.warn('[theme] public theme error:', error);
+      setTheme(DEFAULT_THEME);
+      applyThemeToRoot(DEFAULT_THEME);
+    } finally {
+      setLoading(false);
+    }
   }, [orgId]);
 
   useEffect(() => { load(); }, [load]);

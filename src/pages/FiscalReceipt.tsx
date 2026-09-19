@@ -9,7 +9,6 @@ interface OrderRow {
   order_number: string;
   created_at: string;
   customer_name: string;
-  customer_phone: string;
   customer_cpf: string;
   total: number;
   items: any[];
@@ -21,8 +20,6 @@ interface StoreRow {
   store_name: string;
   fiscal_cnpj: string;
   fiscal_razao: string;
-  fiscal_ie: string;
-  fiscal_regime: string;
 }
 
 const FiscalReceipt = () => {
@@ -30,40 +27,72 @@ const FiscalReceipt = () => {
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [store, setStore] = useState<StoreRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reason, setReason] = useState('');
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!orderId) {
+      setLoading(false);
+      setReason('not_found');
+      return;
+    }
+
+    let active = true;
     (async () => {
-      const { data: o } = await supabase
-        .from('orders')
-        .select('id, order_number, created_at, customer_name, customer_phone, customer_cpf, total, items, payment_method, organization_id')
-        .eq('id', orderId)
-        .maybeSingle();
-      if (o) {
-        setOrder(o as unknown as OrderRow);
-        const { data: s } = await supabase
-          .from('settings')
-          .select('store_name, fiscal_cnpj, fiscal_razao, fiscal_ie, fiscal_regime')
-          .eq('organization_id', (o as any).organization_id)
-          .maybeSingle();
-        if (s) setStore(s as unknown as StoreRow);
+      const { data, error } = await supabase.rpc('visionfood_order_receipt', {
+        _order_id: orderId,
+      });
+      if (!active) return;
+
+      const result: any = data;
+      if (error) {
+        console.error('visionfood_order_receipt', error);
+        setReason('error');
+      } else if (!result?.ok) {
+        setReason(result?.reason || 'not_found');
+      } else {
+        setOrder(result.order as OrderRow);
+        setStore(result.store as StoreRow);
+        setReason('');
       }
       setLoading(false);
     })();
+
+    return () => { active = false; };
   }, [orderId]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Carregando nota fiscal...</div>;
+    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Carregando comprovante...</div>;
   }
+
   if (!order) {
-    return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Nota não encontrada.</div>;
+    const unauthenticated = reason === 'unauthenticated';
+    const forbidden = reason === 'forbidden';
+    return (
+      <div className="min-h-screen flex flex-col gap-4 items-center justify-center bg-background text-foreground p-6 text-center">
+        <p className="font-semibold">
+          {unauthenticated
+            ? 'Entre na sua conta para acessar este comprovante.'
+            : forbidden
+              ? 'Você não tem permissão para acessar este comprovante.'
+              : 'Comprovante não encontrado.'}
+        </p>
+        {unauthenticated && orderId && (
+          <a
+            href={`/auth?returnTo=${encodeURIComponent(`/fiscal/${orderId}`)}`}
+            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold"
+          >
+            Entrar
+          </a>
+        )}
+      </div>
+    );
   }
 
   const dt = new Date(order.created_at);
   const dtStr = dt.toLocaleString('pt-BR');
   const cpf = order.customer_cpf || '';
   const payLabel = ({ pix: 'PIX', cash: 'Dinheiro', terminal: 'Cartão (Maquininha)', online: 'Cartão Online' } as Record<string, string>)[order.payment_method] || order.payment_method || '—';
-  const fiscalCode = `NFE-${order.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`;
+  const receiptCode = `PED-${order.id.replace(/-/g, '').slice(0, 16).toUpperCase()}`;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-6 px-4 print:bg-white print:text-black">
@@ -86,12 +115,10 @@ const FiscalReceipt = () => {
           <p className="font-bold text-[14px]">{store?.store_name || 'LOJA'}</p>
           {store?.fiscal_razao && <p>{store.fiscal_razao}</p>}
           {store?.fiscal_cnpj && <p>CNPJ: {store.fiscal_cnpj}</p>}
-          {store?.fiscal_ie && <p>IE: {store.fiscal_ie}</p>}
-          {store?.fiscal_regime && <p className="uppercase">Regime: {store.fiscal_regime}</p>}
         </div>
         <div className="text-center py-2 border-b border-dashed border-black/40">
-          <p className="font-bold">CUPOM FISCAL — DANFE SIMPLIFICADA</p>
-          <p className="text-[10px]">Documento auxiliar não fiscal — uso interno</p>
+          <p className="font-bold">COMPROVANTE DO PEDIDO</p>
+          <p className="text-[10px]">Documento não fiscal — uso interno</p>
         </div>
         <div className="py-2 border-b border-dashed border-black/40 space-y-0.5">
           <div className="flex justify-between"><span>Pedido:</span><span className="font-bold">#{order.order_number}</span></div>
@@ -113,8 +140,8 @@ const FiscalReceipt = () => {
           <div className="flex justify-between text-[14px] font-bold"><span>TOTAL:</span><span>{formatCurrency(Number(order.total || 0))}</span></div>
         </div>
         <div className="text-center pt-2 space-y-0.5 text-[10px]">
-          <p>Código: {fiscalCode}</p>
-          <p>Consulte a autenticidade na loja emissora.</p>
+          <p>Código interno: {receiptCode}</p>
+          <p>Este comprovante não substitui documento fiscal autorizado.</p>
         </div>
       </div>
     </div>

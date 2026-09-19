@@ -2213,6 +2213,7 @@ export type Database = {
         Args: { _order_id: string }
         Returns: Json
       }
+      visionfood_profile_count: { Args: { _org: string }; Returns: number }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

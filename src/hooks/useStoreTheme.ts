@@ -61,7 +61,7 @@ export function useStoreTheme(orgId: string | null) {
     }
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('visionfood_public_theme' as any, { _org: orgId });
+      const { data, error } = await supabase.rpc('visionfood_public_theme', { _org: orgId });
       if (error) throw error;
       const d = (data as any) || {};
       const hasTheme = Object.keys(d).length > 0;

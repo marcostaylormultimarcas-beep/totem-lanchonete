@@ -2201,6 +2201,10 @@ export type Database = {
         }[]
       }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
+      visionfood_checkout_payment_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

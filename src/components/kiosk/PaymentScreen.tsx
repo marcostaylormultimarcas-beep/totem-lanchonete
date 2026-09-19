@@ -97,7 +97,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data, error } = await supabase.rpc('visionfood_checkout_payment_config' as any, { _org: orgId });
+      const { data, error } = await supabase.rpc('visionfood_checkout_payment_config', { _org: orgId });
       const config: any = data;
       if (error || !config?.ok) {
         console.warn('Não foi possível carregar as configurações públicas de pagamento:', error || config);

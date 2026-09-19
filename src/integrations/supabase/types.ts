@@ -2214,6 +2214,10 @@ export type Database = {
         Returns: Json
       }
       visionfood_profile_count: { Args: { _org: string }; Returns: number }
+      visionfood_public_called_tickets: {
+        Args: { _limit?: number; _org: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

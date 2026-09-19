@@ -25,7 +25,7 @@ export async function fetchPublicOrganization(
   selector: { id?: string | null; slug?: string | null } = {},
 ): Promise<PublicOrganization | null> {
   const { data, error } = await supabase.rpc(
-    'visionfood_public_organization' as any,
+    'visionfood_public_organization',
     {
       _org_id: selector.id || null,
       _slug: selector.slug?.trim() || null,

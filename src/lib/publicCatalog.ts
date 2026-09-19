@@ -22,7 +22,7 @@ export async function fetchPublicCatalog(
   organizationId: string,
 ): Promise<PublicCatalogProduct[]> {
   const { data, error } = await supabase.rpc(
-    'visionfood_public_catalog' as any,
+    'visionfood_public_catalog',
     { _org: organizationId },
   );
 

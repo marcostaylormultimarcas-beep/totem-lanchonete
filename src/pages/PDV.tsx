@@ -343,7 +343,7 @@ function PDVMain({
   const [forma, setForma] = useState<Forma>("dinheiro");
 
   const [cupomCode, setCupomCode] = useState("");
-  const [cupomDesc, setCupomDesc] = useState<{ codigo: string; tipo: string; valor: number } | null>(null);
+  const [cupomDesc, setCupomDesc] = useState<{ codigo: string; tipo: string; valor: number; minimo_pedido: number } | null>(null);
   const [customerPhone, setCustomerPhone] = useState("");
 
   const [showSangria, setShowSangria] = useState(false);
@@ -464,11 +464,22 @@ function PDVMain({
   }, [products, query]);
 
   const subtotal = cart.reduce((s, x) => s + x.price * x.quantity, 0);
+
+  useEffect(() => {
+    if (cupomDesc && subtotal < Number(cupomDesc.minimo_pedido || 0)) {
+      setCupomDesc(null);
+    }
+  }, [subtotal, cupomDesc]);
+
   const desconto = useMemo(() => {
     if (!cupomDesc) return 0;
-    if (cupomDesc.tipo === "percentual" || cupomDesc.tipo === "percent")
+    if (subtotal < Number(cupomDesc.minimo_pedido || 0)) return 0;
+    const tipo = String(cupomDesc.tipo || "").toLowerCase();
+    if (["percentual", "porcentagem", "percent", "percentage"].includes(tipo))
       return Math.min(subtotal, (subtotal * Number(cupomDesc.valor)) / 100);
-    return Math.min(subtotal, Number(cupomDesc.valor));
+    if (["valor_fixo", "fixed", "fixo"].includes(tipo))
+      return Math.min(subtotal, Number(cupomDesc.valor));
+    return 0;
   }, [cupomDesc, subtotal]);
   const total = Math.max(0, subtotal - desconto);
 
@@ -489,10 +500,15 @@ function PDVMain({
       return toast.error(messages[res?.reason] || "Cupom inválido");
     }
     const cupom = res.cupom as any;
+    const minimoPedido = Math.max(0, Number(cupom.minimo_pedido) || 0);
+    if (subtotal < minimoPedido) {
+      return toast.error(`Pedido mínimo para este cupom: ${fmt(minimoPedido)}`);
+    }
     setCupomDesc({
       codigo: cupom.codigo,
       tipo: cupom.tipo,
       valor: Number(cupom.valor) || 0,
+      minimo_pedido: minimoPedido,
     });
     toast.success(`Cupom ${cupom.codigo} aplicado`);
   };

@@ -2237,6 +2237,7 @@ export type Database = {
         Args: { _org: string }
         Returns: Json
       }
+      visionfood_public_theme: { Args: { _org: string }; Returns: Json }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

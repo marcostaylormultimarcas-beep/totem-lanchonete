@@ -96,7 +96,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
         .eq('organization_id', organizationId)
         .eq('manage_stock', true),
       supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
-      supabase.rpc('visionfood_profile_count' as any, { _org: organizationId }),
+      supabase.rpc('visionfood_profile_count', { _org: organizationId }),
     ]);
 
     setTodayOrders((today as any) || []);

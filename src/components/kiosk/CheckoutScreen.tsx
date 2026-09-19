@@ -75,7 +75,7 @@ const CheckoutScreen = ({
       try {
         const [storefront, areasResult] = await Promise.all([
           fetchPublicStorefrontConfig(orgId),
-          supabase.rpc('visionfood_public_delivery_areas' as any, { _org: orgId }),
+          supabase.rpc('visionfood_public_delivery_areas', { _org: orgId }),
         ]);
 
         if (cancelled) return;

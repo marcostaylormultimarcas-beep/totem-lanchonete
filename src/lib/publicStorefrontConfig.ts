@@ -25,7 +25,7 @@ export async function fetchPublicStorefrontConfig(
   organizationId: string,
 ): Promise<PublicStorefrontConfig> {
   const { data, error } = await supabase.rpc(
-    'visionfood_public_storefront_config' as any,
+    'visionfood_public_storefront_config',
     { _org: organizationId },
   );
 

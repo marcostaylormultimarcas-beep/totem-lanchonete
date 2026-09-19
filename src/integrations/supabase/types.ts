@@ -2205,6 +2205,10 @@ export type Database = {
         Args: { _org: string }
         Returns: Json
       }
+      visionfood_dispatch_orders: {
+        Args: { _entregador_id: string; _order_ids: string[] }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

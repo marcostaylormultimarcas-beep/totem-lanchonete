@@ -140,7 +140,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       return;
     }
     setDispatching(true);
-    const { data, error } = await supabase.rpc('visionfood_dispatch_orders' as any, {
+    const { data, error } = await supabase.rpc('visionfood_dispatch_orders', {
       _order_ids: ids,
       _entregador_id: entregadorId,
     });

@@ -51,7 +51,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   // Carrega avaliações
   const fetchReviews = async () => {
     const { data, error } = await supabase.rpc(
-      'visionfood_public_product_reviews' as any,
+      'visionfood_public_product_reviews',
       { _product_id: product.id, _limit: 20 },
     );
     if (error) {

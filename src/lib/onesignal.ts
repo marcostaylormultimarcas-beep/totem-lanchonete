@@ -143,7 +143,7 @@ export async function triggerPredictiveStockAlert(
   diasRestantes: number,
 ): Promise<void> {
   try {
-    const { data, error } = await supabase.rpc('visionfood_push_predictive_stock' as any, {
+    const { data, error } = await supabase.rpc('visionfood_push_predictive_stock', {
       _org: organizationId,
       _ingredient_name: ingredienteNome,
       _days_remaining: Math.max(1, Math.ceil(diasRestantes)),

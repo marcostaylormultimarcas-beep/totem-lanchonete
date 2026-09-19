@@ -46,7 +46,7 @@ export function useVisionPrimeStatus(orgId: string | null) {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setStatus({ active: false }); setLoading(false); return; }
-    const { data } = await supabase.rpc('vision_prime_my_status' as any, { _org: orgId });
+    const { data } = await supabase.rpc('vision_prime_my_status', { _org: orgId });
     const r: any = data || {};
     setStatus({ active: Boolean(r.active), sinceYear: r.since_year });
     setLoading(false);

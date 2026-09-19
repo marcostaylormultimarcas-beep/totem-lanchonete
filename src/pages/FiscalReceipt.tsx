@@ -38,7 +38,7 @@ const FiscalReceipt = () => {
 
     let active = true;
     (async () => {
-      const { data, error } = await supabase.rpc('visionfood_order_receipt' as any, {
+      const { data, error } = await supabase.rpc('visionfood_order_receipt', {
         _order_id: orderId,
       });
       if (!active) return;

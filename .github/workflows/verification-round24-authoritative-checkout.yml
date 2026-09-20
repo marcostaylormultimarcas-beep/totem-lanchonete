@@ -19,7 +19,7 @@ jobs:
       - name: Assert authoritative checkout cutover
         run: |
           grep -q "quote_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
-          grep -q "create_order_checkout_v3" src/components/kiosk/PaymentScreen.tsx
+          grep -q "create_order_checkout_v4" src/components/kiosk/PaymentScreen.tsx
           ! grep -q "create_order_checkout_v2" src/components/kiosk/PaymentScreen.tsx
           grep -q "_delivery_context" src/components/kiosk/PaymentScreen.tsx
           grep -q "_coupon_code" src/components/kiosk/PaymentScreen.tsx

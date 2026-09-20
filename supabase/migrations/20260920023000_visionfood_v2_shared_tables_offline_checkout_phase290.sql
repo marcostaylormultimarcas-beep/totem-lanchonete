@@ -52,6 +52,12 @@ alter table public.orders
   add column if not exists table_label text not null default '',
   add column if not exists client_request_id uuid;
 
+alter table public.orders
+  add constraint orders_table_id_fkey
+    foreign key (table_id) references private.restaurant_tables(id) on delete restrict,
+  add constraint orders_table_session_id_fkey
+    foreign key (table_session_id) references private.table_sessions(id) on delete restrict;
+
 create unique index if not exists orders_org_client_request_uidx
   on public.orders(organization_id, client_request_id)
   where client_request_id is not null;

@@ -29,7 +29,7 @@ const MesasPanel = ({ organizationId, orgSlug }: Props) => {
     if (!organizationId) { setTables([]); return; }
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc('visionfood_admin_tables' as any, { _org: organizationId });
+      const { data, error } = await supabase.rpc('visionfood_admin_tables', { _org: organizationId });
       if (error) throw error;
       setTables((Array.isArray(data) ? data : []) as TableRow[]);
     } catch (error: any) {
@@ -51,7 +51,7 @@ const MesasPanel = ({ organizationId, orgSlug }: Props) => {
 
   const addTable = async () => {
     if (!organizationId || !label.trim()) return;
-    const { data, error } = await supabase.rpc('visionfood_upsert_table' as any, {
+    const { data, error } = await supabase.rpc('visionfood_upsert_table', {
       _org: organizationId, _label: label.trim(), _table_id: null,
     });
     if (error || !(data as any)?.ok) {
@@ -66,7 +66,7 @@ const MesasPanel = ({ organizationId, orgSlug }: Props) => {
   const rotate = async (row: TableRow) => {
     if (!organizationId) return;
     if (!confirm(`Trocar o QR da ${row.label}? O QR anterior deixará de funcionar.`)) return;
-    const { data, error } = await supabase.rpc('visionfood_rotate_table_token' as any, {
+    const { data, error } = await supabase.rpc('visionfood_rotate_table_token', {
       _org: organizationId, _table_id: row.id,
     });
     if (error || !(data as any)?.ok) {
@@ -79,7 +79,7 @@ const MesasPanel = ({ organizationId, orgSlug }: Props) => {
 
   const closeSession = async (row: TableRow) => {
     if (!row.open_session_id) return;
-    const { data, error } = await supabase.rpc('visionfood_close_table_session' as any, {
+    const { data, error } = await supabase.rpc('visionfood_close_table_session', {
       _session_id: row.open_session_id,
     });
     const result: any = data;

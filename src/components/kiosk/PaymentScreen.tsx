@@ -413,10 +413,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   useEffect(() => {
     if (!offlineQueued || !isOnline || !orgId) return;
 
-    const pending = loadPendingCheckout(orgId);
-    const localOrderId = pending?.companionLocalOrderId;
+    const pending = deviceOwnedKiosk ? null : loadPendingCheckout(orgId);
+    const localOrderId = deviceOwnedKiosk ? companionLocalOrderId : pending?.companionLocalOrderId;
     if (!localOrderId) {
-      setPaymentError('Este rascunho offline é anterior à fila segura por dispositivo. Ele foi preservado e precisa de revisão; não será enviado automaticamente.');
+      setPaymentError(deviceOwnedKiosk
+        ? 'A fila segura não retornou o identificador local deste pedido.'
+        : 'Este rascunho offline é anterior à fila segura por dispositivo. Ele foi preservado e precisa de revisão; não será enviado automaticamente.');
       return;
     }
 
@@ -436,7 +438,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
         if (item.state === 'synced' && item.authoritative_ack?.order_id) {
           const ack = item.authoritative_ack;
-          clearPendingCheckout(pending.clientRequestId);
+          if (pending?.clientRequestId) clearPendingCheckout(pending.clientRequestId);
           setOfflineQueued(false);
           setCurrentOrderId(String(ack.order_id));
           setGeneratedNumber(String(ack.order_number || ''));
@@ -470,7 +472,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [offlineQueued, isOnline, orgId]);
+  }, [offlineQueued, isOnline, orgId, deviceOwnedKiosk, companionLocalOrderId]);
 
   if (offlineQueued && !confirmed) {
     return (

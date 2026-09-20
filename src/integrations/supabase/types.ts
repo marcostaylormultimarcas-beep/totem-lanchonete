@@ -2205,6 +2205,10 @@ export type Database = {
         Args: { _org: string }
         Returns: Json
       }
+      visionfood_delivery_history: {
+        Args: { _limit?: number; _org: string }
+        Returns: Json
+      }
       visionfood_dispatch_orders: {
         Args: { _entregador_id: string; _order_ids: string[] }
         Returns: Json

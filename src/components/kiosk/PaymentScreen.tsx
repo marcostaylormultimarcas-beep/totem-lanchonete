@@ -46,6 +46,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
+  const [offlineSyncAttempted, setOfflineSyncAttempted] = useState(false);
   const [clientRequestId] = useState(() => recoveredDraft?.clientRequestId || createClientRequestId());
   const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
@@ -83,7 +84,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
 
   useEffect(() => {
-    const online = () => setIsOnline(true);
+    const online = () => { setOfflineSyncAttempted(false); setIsOnline(true); };
     const offline = () => setIsOnline(false);
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
@@ -335,9 +336,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
 
   useEffect(() => {
-    if (!offlineQueued || !isOnline || method !== 'cash' || quoteLoading || quoteError || !serverQuote || saving) return;
+    if (!offlineQueued || !isOnline || method !== 'cash' || quoteLoading || quoteError || !serverQuote || saving || offlineSyncAttempted) return;
+    setOfflineSyncAttempted(true);
     void handleConfirmPayment();
-  }, [offlineQueued, isOnline, method, quoteLoading, quoteError, serverQuote, saving]);
+  }, [offlineQueued, isOnline, method, quoteLoading, quoteError, serverQuote, saving, offlineSyncAttempted]);
 
   if (offlineQueued && !confirmed) {
     return (
@@ -358,6 +360,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <p><strong>Pagamento:</strong> Dinheiro no balcão</p>
         </div>
         {paymentError && <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>}
+        {isOnline && paymentError && <button onClick={() => setOfflineSyncAttempted(false)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Tentar sincronizar novamente</button>}
         {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, a sincronização será tentada automaticamente. Não limpe os dados do navegador enquanto estiver pendente.</p>}
       </div>
     );

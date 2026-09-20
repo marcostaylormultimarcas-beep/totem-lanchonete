@@ -35,6 +35,9 @@ create unique index if not exists table_sessions_one_open_per_table_idx
 create index if not exists restaurant_tables_org_idx
   on private.restaurant_tables(organization_id, active, label);
 
+create unique index if not exists restaurant_tables_org_label_normalized_uidx
+  on private.restaurant_tables(organization_id, lower(btrim(label)));
+
 create index if not exists table_sessions_org_idx
   on private.table_sessions(organization_id, status, opened_at desc);
 
@@ -107,7 +110,6 @@ begin
 
   return jsonb_build_object(
     'ok',true,
-    'table_id',t.id,
     'label',t.label
   );
 end
@@ -126,7 +128,7 @@ as $function$
 declare
   result jsonb;
 begin
-  if auth.uid() is null or not public.usuario_dono_org(_org,auth.uid()) then
+  if auth.uid() is null or not private.usuario_dono_org(_org,auth.uid()) then
     raise exception 'forbidden';
   end if;
 
@@ -181,7 +183,7 @@ declare
   t private.restaurant_tables%rowtype;
   normalized_label text;
 begin
-  if auth.uid() is null or not public.usuario_dono_org(_org,auth.uid()) then
+  if auth.uid() is null or not private.usuario_dono_org(_org,auth.uid()) then
     raise exception 'forbidden';
   end if;
 
@@ -227,7 +229,7 @@ as $function$
 declare
   t private.restaurant_tables%rowtype;
 begin
-  if auth.uid() is null or not public.usuario_dono_org(_org,auth.uid()) then
+  if auth.uid() is null or not private.usuario_dono_org(_org,auth.uid()) then
     raise exception 'forbidden';
   end if;
 
@@ -407,7 +409,7 @@ begin
   for update;
 
   if not found then return jsonb_build_object('ok',false,'reason','not_found'); end if;
-  if not public.usuario_dono_org(s.organization_id,auth.uid()) then
+  if not private.usuario_dono_org(s.organization_id,auth.uid()) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
   if s.status='closed' then return jsonb_build_object('ok',true,'already_closed',true); end if;

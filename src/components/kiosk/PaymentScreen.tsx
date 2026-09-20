@@ -95,8 +95,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   }, []);
 
   useEffect(() => {
-    if (!orgId || isDemoMode()) { setServerQuote(null); return; }
-    if (!isOnline) { setQuoteLoading(false); setQuoteError('offline'); return; }
+    if (!orgId || isDemoMode() || deviceOwnedKiosk) {
+      setServerQuote(null);
+      setQuoteLoading(false);
+      setQuoteError('');
+      return;
+    }
+    if (!isOnline) { setQuoteLoading(false); setQuoteError('Conexão necessária para o checkout web.'); return; }
     let cancelled = false;
     setQuoteLoading(true); setQuoteError('');
     supabase.rpc('quote_order_checkout_v2' as any, {
@@ -109,7 +114,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       else setServerQuote(data as any);
     }).finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
-  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems), isOnline]);
+  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems), isOnline, deviceOwnedKiosk]);
 
   const pixKey = storeSettings.pixKeyManual || '';
   const pixConfigured = Boolean(pixKey);

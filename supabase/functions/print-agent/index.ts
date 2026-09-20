@@ -89,6 +89,7 @@ function buildReceipt(opts: {
   const typeLabel = order.order_type === 'delivery' || order.order_type === 'viagem'
     ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL';
   ep.ln(`Tipo: ${typeLabel}`);
+  if (order.table_label) ep.bold(true).ln(`Mesa: ${order.table_label}`).bold(false);
   if ((order.order_type === 'delivery' || order.order_type === 'viagem') && order.delivery_address) {
     ep.ln(`Endereco: ${order.delivery_address}`);
     if (order.delivery_reference) ep.ln(`Ref: ${order.delivery_reference}`);

@@ -16,6 +16,7 @@ interface MenuScreenProps {
   onBack: () => void;
   initialProduct?: Product | null;
   onInitialProductHandled?: () => void;
+  deviceOwnedKiosk?: boolean;
 }
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -24,7 +25,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
-const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled }: MenuScreenProps) => {
+const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled, deviceOwnedKiosk = false }: MenuScreenProps) => {
   const orgId = useOrgId();
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [activeCategory, setActiveCategory] = useState<string>('hamburgueres');
@@ -355,7 +356,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct} baudRate={balancaBaud} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
+        <ProductModal product={selectedProduct} baudRate={balancaBaud} deviceOwnedKiosk={deviceOwnedKiosk} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
       {showUpsell && (
         <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />

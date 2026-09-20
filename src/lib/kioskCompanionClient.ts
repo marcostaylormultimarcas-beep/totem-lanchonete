@@ -90,6 +90,10 @@ export async function getKioskCompanionQueue() {
   return companionFetch('/v1/queue', { method: 'GET' });
 }
 
+export async function syncKioskCompanionQueueOnce() {
+  return companionFetch('/v1/sync', { method: 'POST' });
+}
+
 export function clearKioskCompanionLocalSession() {
   localSession = null;
 }

@@ -245,7 +245,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     if (saving) return;
     setPaymentError('');
 
-    if (!isDemoMode() && !isOnline) {
+    if (!isDemoMode() && deviceOwnedKiosk) {
       if (!method) {
         setPaymentError('Escolha uma forma de pagamento.');
         return;
@@ -264,21 +264,19 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       setSaving(true);
       try {
         const queued = await enqueueOfflineOrderOnCompanion(buildCompanionOfflineDraft());
-        const companionLocalOrderId = String(queued.local_order_id || '');
-        const companionClientRequestId = String(queued.client_request_id || '');
-        if (!companionLocalOrderId || !companionClientRequestId) {
+        const localOrderId = String(queued.local_order_id || '');
+        const queueClientRequestId = String(queued.client_request_id || '');
+        if (!localOrderId || !queueClientRequestId) {
           throw new Error('companion_queue_ack_invalid');
         }
 
-        savePendingCheckout({
-          ...buildPendingDraft('queued_offline', method),
-          clientRequestId: companionClientRequestId,
-          companionLocalOrderId,
-          companionClientRequestId,
-        });
+        clearPendingCheckout();
+        setCompanionLocalOrderId(localOrderId);
         setOfflineQueued(true);
         setPaymentError('');
-        toast.info('Pedido salvo na fila segura deste dispositivo. Ele ainda não foi enviado à cozinha.');
+        toast.info(isOnline
+          ? 'Pedido entregue à fila segura do totem e aguardando validação autoritativa.'
+          : 'Pedido salvo na fila segura deste dispositivo. Ele ainda não foi enviado à cozinha.');
       } catch (error: any) {
         const message = String(error?.message || 'companion_unavailable');
         setPaymentError(
@@ -290,6 +288,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       } finally {
         setSaving(false);
       }
+      return;
+    }
+
+    if (!isDemoMode() && !isOnline) {
+      const message = 'O checkout web autenticado exige conexão. O pedido não foi enviado como pedido do dispositivo.';
+      setPaymentError(message);
+      toast.error('Conexão obrigatória', { description: message });
       return;
     }
 

@@ -55,7 +55,7 @@ const EntregadoresPanel = ({ organizationId }: { organizationId: string | null }
 
   const fetchLogs = async () => {
     if (!organizationId) return;
-    const { data, error } = await supabase.rpc('visionfood_delivery_history' as any, {
+    const { data, error } = await supabase.rpc('visionfood_delivery_history', {
       _org: organizationId,
       _limit: 100,
     });

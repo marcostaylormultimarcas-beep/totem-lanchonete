@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { clearPendingCheckout, loadPendingCheckout } from '@/lib/offlineCheckoutQueue';
 import { getKioskCompanionStatus } from '@/lib/kioskCompanionClient';
 import { clearKioskCustomerBrowserState, isDeviceOwnedKioskStatus } from '@/lib/kioskDeviceMode';
+import { warmKioskPublicData } from '@/lib/kioskPublicDataWarmup';
 
 type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
@@ -216,6 +217,13 @@ const Index = () => {
     void resolveDeviceMode();
     return () => { cancelled = true; };
   }, [isPhysicalKioskRoute, orgId]);
+
+  useEffect(() => {
+    if (!deviceOwnedKiosk || !orgId) return;
+    void warmKioskPublicData(orgId).catch((error) => {
+      console.warn('[Index] kiosk public data warm-up incomplete:', error);
+    });
+  }, [deviceOwnedKiosk, orgId]);
 
   // Reseta carrinho/estado ao trocar de loja (orgId muda)
   useEffect(() => {

@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicDeliveryAreas } from '@/lib/publicDeliveryAreas';
 import { fetchViaCep, maskCep, normalizeCep } from '@/lib/cep';
 import { toast } from 'sonner';
 
@@ -73,15 +74,14 @@ const CheckoutScreen = ({
 
     const loadDeliveryData = async () => {
       try {
-        const [storefront, areasResult] = await Promise.all([
+        const [storefront, areas] = await Promise.all([
           fetchPublicStorefrontConfig(orgId),
-          supabase.rpc('visionfood_public_delivery_areas', { _org: orgId }),
+          fetchPublicDeliveryAreas(orgId),
         ]);
 
         if (cancelled) return;
         setDeliveryMode((storefront.delivery_mode || 'bairros') as DeliveryMode);
-        if (areasResult.error) throw areasResult.error;
-        setBairros((Array.isArray(areasResult.data) ? areasResult.data : []) as Bairro[]);
+        setBairros(areas as Bairro[]);
       } catch (error) {
         if (!cancelled) {
           console.warn('[Checkout] delivery data error:', error);

@@ -75,6 +75,24 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
+    // O totem físico nunca depende de auth de cliente/dono para descobrir a loja.
+    // Em cold-start offline, usa somente o último snapshot público já sincronizado.
+    const isPhysicalKioskRoute =
+      typeof window !== 'undefined' && window.location.pathname.startsWith('/cardapio/');
+    if (isPhysicalKioskRoute) {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        try {
+          const data = await fetchPublicOrganization({ id: stored });
+          if (data) applyOrg(data);
+        } catch (error) {
+          console.warn('[OrgContext] cached kiosk organization unavailable:', error);
+        }
+      }
+      setLoading(false);
+      return;
+    }
+
     // 1. Usuário autenticado: org do dono
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {

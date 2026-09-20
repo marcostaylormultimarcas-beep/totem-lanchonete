@@ -10,6 +10,7 @@ import { canQueueOffline, clearPendingCheckout, createClientRequestId, loadPendi
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 import { Crown } from 'lucide-react';
 import { enqueueOfflineOrderOnCompanion, getKioskCompanionQueue, syncKioskCompanionQueueOnce } from '@/lib/kioskCompanionClient';
+import { fetchPublicCheckoutPaymentConfig } from '@/lib/publicCheckoutPaymentConfig';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -122,22 +123,21 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   useEffect(() => {
     if (!orgId) return;
     const fetchSettings = async () => {
-      const { data, error } = await supabase.rpc('visionfood_checkout_payment_config', { _org: orgId });
-      const config: any = data;
-      if (error || !config?.ok) {
-        console.warn('Não foi possível carregar as configurações públicas de pagamento:', error || config);
-        return;
+      try {
+        const config = await fetchPublicCheckoutPaymentConfig(orgId);
+        setStoreSettings({
+          storeName: config.store_name || 'VisionFood',
+          whatsappNumber: config.whatsapp_number || '',
+          pixKeyManual: config.pix_key_manual || '',
+          payCash: config.pay_cash_enabled !== false,
+          payPix: config.pay_pix_enabled !== false,
+          payTerminal: Boolean(config.pay_card_terminal_enabled),
+          payOnline: Boolean(config.pay_card_online_enabled),
+          terminalId: config.mp_terminal_id || '',
+        });
+      } catch (error) {
+        console.warn('Não foi possível carregar as configurações públicas de pagamento:', error);
       }
-      setStoreSettings({
-        storeName: config.store_name || 'VisionFood',
-        whatsappNumber: config.whatsapp_number || '',
-        pixKeyManual: config.pix_key_manual || '',
-        payCash: config.pay_cash_enabled !== false,
-        payPix: config.pay_pix_enabled !== false,
-        payTerminal: Boolean(config.pay_card_terminal_enabled),
-        payOnline: Boolean(config.pay_card_online_enabled),
-        terminalId: config.mp_terminal_id || '',
-      });
     };
     void fetchSettings();
   }, [orgId]);

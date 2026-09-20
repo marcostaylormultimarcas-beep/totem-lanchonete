@@ -494,7 +494,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         </div>
         {paymentError && <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>}
         {isOnline && paymentError && <p className="text-xs text-muted-foreground">A fila local permanece preservada. O companion continuará verificando a reconciliação sem transformar este pedido em checkout autenticado.</p>}
-        {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, o companion tentará a sincronização autoritativa automaticamente. Não limpe os dados locais enquanto estiver pendente.</p>}
+        {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, o companion tentará a sincronização autoritativa automaticamente. A fila durável permanece no companion.</p>}
+        {deviceOwnedKiosk && (
+          <button onClick={() => onDone()} className="touch-btn w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg font-bold">
+            Liberar Totem para o Próximo Cliente
+          </button>
+        )}
       </div>
     );
   };

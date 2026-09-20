@@ -90,6 +90,8 @@ try {
 
     await assert.rejects(
       queue.ackSynced(claimed.local_order_id, {
+        ok: true,
+        state: 'synced',
         order_id: ORDER_ID,
         client_request_id: second.client_request_id,
         device_id: DEVICE_ID,

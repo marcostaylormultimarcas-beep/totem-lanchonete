@@ -423,7 +423,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       </nav>
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct}
+        <ProductModal product={selectedProduct} deviceOwnedKiosk={deviceOwnedKiosk}
           onAdd={(item) => { if (onAddToCart) onAddToCart(item); setSelectedProduct(null); }}
           onClose={() => setSelectedProduct(null)} />
       )}

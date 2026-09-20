@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { isDemoMode } from '@/lib/demoMode';
 import type { AppliedCoupon } from './CartScreen';
+import { canQueueOffline, clearPendingCheckout, createClientRequestId, loadPendingCheckout, savePendingCheckout, type PendingCheckoutDraft } from '@/lib/offlineCheckoutQueue';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 import { Crown } from 'lucide-react';
 
@@ -25,12 +26,14 @@ interface PaymentScreenProps {
   deliveryCep?: string;
   appliedCoupon?: AppliedCoupon | null;
   scheduledFor?: string | null;
+  tableToken?: string;
+  tableLabel?: string;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }
 
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const [method, setMethod] = useState<Method | null>(null);

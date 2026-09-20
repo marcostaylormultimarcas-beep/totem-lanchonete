@@ -13,6 +13,7 @@ interface StartScreenProps {
   onGoToCart?: () => void;
   onSelectProduct?: (product: Product) => void;
   cartCount?: number;
+  deviceOwnedKiosk?: boolean;
 }
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -21,7 +22,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
-const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {
+const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0, deviceOwnedKiosk = false }: StartScreenProps) => {
   const orgId = useOrgId();
   const [storeName, setStoreName] = useState('VisionFood');
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
@@ -159,15 +160,19 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           <span className="text-white">{brandRest}</span>
         </h1>
         <div className="flex items-center gap-2">
-          <Link to="/clube" className="w-10 h-10 rounded-full vf-chip flex items-center justify-center text-[#FF7A00] hover:bg-[#FF7A00]/10 transition" title="Clube">
-            <Sparkles className="w-[18px] h-[18px]" />
-          </Link>
-          <Link to="/meus-pedidos" className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Meus Pedidos">
-            <ClipboardList className="w-[18px] h-[18px]" />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF7A00] text-white rounded-full text-[10px] font-bold flex items-center justify-center">{cartCount}</span>
-            )}
-          </Link>
+          {!deviceOwnedKiosk && (
+            <>
+              <Link to="/clube" className="w-10 h-10 rounded-full vf-chip flex items-center justify-center text-[#FF7A00] hover:bg-[#FF7A00]/10 transition" title="Clube">
+                <Sparkles className="w-[18px] h-[18px]" />
+              </Link>
+              <Link to="/meus-pedidos" className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Meus Pedidos">
+                <ClipboardList className="w-[18px] h-[18px]" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF7A00] text-white rounded-full text-[10px] font-bold flex items-center justify-center">{cartCount}</span>
+                )}
+              </Link>
+            </>
+          )}
           <button onClick={onGoToCart || onStart} className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Notificações">
             <Bell className="w-[18px] h-[18px]" />
           </button>
@@ -382,11 +387,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
       <div className="mt-6 text-center text-[11px] text-zinc-600">
         © {new Date().getFullYear()} {storeName} · by VisionTek
-        <div className="mt-2">
-          <Link to="/admin" className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300">
-            <Settings className="w-3 h-3" /> Painel
-          </Link>
-        </div>
+        {!deviceOwnedKiosk && (
+          <div className="mt-2">
+            <Link to="/admin" className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300">
+              <Settings className="w-3 h-3" /> Painel
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Bottom nav */}
@@ -395,9 +402,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           {[
             { icon: Home, label: 'Início', active: true, onClick: () => {} },
             { icon: Search, label: 'Buscar', onClick: onStart },
-            { icon: ClipboardList, label: 'Pedidos', to: '/meus-pedidos' },
+            ...(!deviceOwnedKiosk ? [{ icon: ClipboardList, label: 'Pedidos', to: '/meus-pedidos' }] : []),
             { icon: Heart, label: 'Favoritos', onClick: onStart },
-            { icon: User, label: 'Perfil', to: '/meus-pedidos' },
+            ...(!deviceOwnedKiosk ? [{ icon: User, label: 'Perfil', to: '/meus-pedidos' }] : []),
           ].map((item, i) => {
             const Icon = item.icon;
             const inner = (

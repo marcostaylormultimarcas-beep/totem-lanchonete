@@ -31,6 +31,8 @@ export interface PendingCheckoutDraft {
   scheduledFor: string | null;
   tableToken: string;
   tableLabel: string;
+  companionLocalOrderId?: string;
+  companionClientRequestId?: string;
 }
 
 export function loadPendingCheckout(organizationId?: string | null): PendingCheckoutDraft | null {

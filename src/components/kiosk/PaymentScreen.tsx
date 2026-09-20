@@ -47,6 +47,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
   const [offlineSyncAttempted, setOfflineSyncAttempted] = useState(false);
+  const [requiresLogin, setRequiresLogin] = useState(false);
   const [clientRequestId] = useState(() => recoveredDraft?.clientRequestId || createClientRequestId());
   const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
@@ -317,7 +318,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     } catch (err: any) {
       console.error('Error saving order:', err);
       const rawMessage = String(err?.message || '');
-      const message = rawMessage.includes('checkout_phone_rate_limited')
+      const authExpired = rawMessage.includes('authentication_required') || rawMessage.includes('JWT') || rawMessage.includes('token');
+      setRequiresLogin(authExpired);
+      const message = authExpired
+        ? 'Sua sessão expirou. Entre novamente para sincronizar este pedido com segurança.'
+        : rawMessage.includes('checkout_phone_rate_limited')
         ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
         : rawMessage.includes('checkout_rate_limited')
           ? 'A loja está recebendo muitos pedidos neste momento. Aguarde um instante e tente novamente.'
@@ -360,7 +365,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <p><strong>Pagamento:</strong> Dinheiro no balcão</p>
         </div>
         {paymentError && <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>}
-        {isOnline && paymentError && <button onClick={() => setOfflineSyncAttempted(false)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Tentar sincronizar novamente</button>}
+        {isOnline && paymentError && (requiresLogin
+          ? <button onClick={() => window.location.assign(`/auth?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Entrar novamente</button>
+          : <button onClick={() => setOfflineSyncAttempted(false)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Tentar sincronizar novamente</button>)}
         {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, a sincronização será tentada automaticamente. Não limpe os dados do navegador enquanto estiver pendente.</p>}
       </div>
     );

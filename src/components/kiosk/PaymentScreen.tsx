@@ -177,6 +177,32 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     onDone();
   };
 
+  const buildPendingDraft = (state: 'submitting' | 'queued_offline', selectedMethod: Method): PendingCheckoutDraft => ({
+    version: 1,
+    organizationId: orgId || '',
+    clientRequestId,
+    state,
+    createdAt: recoveredDraft?.createdAt || new Date().toISOString(),
+    method: selectedMethod,
+    cart,
+    customerName,
+    customerPhone,
+    customerCpf: customerCpf || '',
+    orderType,
+    deliveryAddress: deliveryAddress || '',
+    deliveryReference: deliveryReference || '',
+    deliveryRecipient: deliveryRecipient || '',
+    bairroId: bairroId || '',
+    bairroNome: bairroNome || '',
+    bairroTaxa: rawFee,
+    bairroTempo: Number(bairroTempo || 0),
+    deliveryCep: deliveryCep || '',
+    appliedCoupon: appliedCoupon || null,
+    scheduledFor: scheduledFor || null,
+    tableToken,
+    tableLabel,
+  });
+
   const handleConfirmPayment = async () => {
     if (saving) return;
     setPaymentError('');

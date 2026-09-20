@@ -62,7 +62,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [serverQuote, setServerQuote] = useState<any>(null);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
-  const { config: primeCfg } = useVisionPrimeConfig(orgId);
+  const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
   const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;

@@ -36,13 +36,17 @@ interface PaymentScreenProps {
 const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
-  const [method, setMethod] = useState<Method | null>(null);
+  const recoveredDraft = orgId ? loadPendingCheckout(orgId) : null;
+  const [method, setMethod] = useState<Method | null>((recoveredDraft?.method as Method | undefined) || null);
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
+  const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
+  const [clientRequestId] = useState(() => recoveredDraft?.clientRequestId || createClientRequestId());
   const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
@@ -79,7 +83,16 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
 
   useEffect(() => {
+    const online = () => setIsOnline(true);
+    const offline = () => setIsOnline(false);
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    return () => { window.removeEventListener('online', online); window.removeEventListener('offline', offline); };
+  }, []);
+
+  useEffect(() => {
     if (!orgId || isDemoMode()) { setServerQuote(null); return; }
+    if (!isOnline) { setQuoteLoading(false); setQuoteError('offline'); return; }
     let cancelled = false;
     setQuoteLoading(true); setQuoteError('');
     supabase.rpc('quote_order_checkout_v2' as any, {
@@ -92,7 +105,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       else setServerQuote(data as any);
     }).finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
-  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems)]);
+  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems), isOnline]);
 
   const pixKey = storeSettings.pixKeyManual || '';
   const pixConfigured = Boolean(pixKey);

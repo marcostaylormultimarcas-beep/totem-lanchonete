@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { loadPublicDataWithFallback } from '@/lib/publicCache';
 
-const CACHE_PREFIX = 'visionfood_public_storefront_v2:';
+const CACHE_PREFIX = 'visionfood_public_storefront_v1:';
 
 export interface PublicStorefrontConfig {
   organization_id?: string;

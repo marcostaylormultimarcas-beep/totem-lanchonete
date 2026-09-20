@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
@@ -17,7 +17,9 @@ import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { toast } from 'sonner';
-import { loadPendingCheckout } from '@/lib/offlineCheckoutQueue';
+import { clearPendingCheckout, loadPendingCheckout } from '@/lib/offlineCheckoutQueue';
+import { getKioskCompanionStatus } from '@/lib/kioskCompanionClient';
+import { clearKioskCustomerBrowserState, isDeviceOwnedKioskStatus } from '@/lib/kioskDeviceMode';
 
 type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
@@ -44,10 +46,12 @@ interface PendingOrderState {
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
   const orgId = useOrgId();
   const homePath = slug ? `/cardapio/${slug}` : '/';
+  const isPhysicalKioskRoute = location.pathname.startsWith('/cardapio/');
   const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -70,6 +74,8 @@ const Index = () => {
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
   const [tableToken, setTableToken] = useState('');
   const [tableLabel, setTableLabel] = useState('');
+  const [deviceOwnedKiosk, setDeviceOwnedKiosk] = useState(false);
+  const [deviceModeOrgId, setDeviceModeOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orgId) { setDeliveryEnabled(true); return; }
@@ -168,9 +174,53 @@ const Index = () => {
     };
   }, []);
 
+  // A rota /cardapio/:slug só entra em modo device-owned quando o companion
+  // local está enrolado para a mesma organização. O cardápio web mantém auth normal.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isPhysicalKioskRoute || !orgId) {
+      setDeviceOwnedKiosk(false);
+      setDeviceModeOrgId(orgId || null);
+      return;
+    }
+
+    setDeviceModeOrgId(null);
+    const resolveDeviceMode = async () => {
+      try {
+        const status = await getKioskCompanionStatus();
+        if (cancelled) return;
+
+        const deviceOwned = isDeviceOwnedKioskStatus(status, orgId);
+        setDeviceOwnedKiosk(deviceOwned);
+
+        if (deviceOwned) {
+          // Storage cleanup is synchronous and remains effective even when internet is down.
+          clearKioskCustomerBrowserState();
+          setIsAuthenticated(false);
+          // Best-effort revocation of only this browser session; device checkout never relies on it.
+          void supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+        } else if (status?.enrolled && status?.organization_id && status.organization_id !== orgId) {
+          toast.error('Este totem está vinculado a outra loja. O modo offline por dispositivo foi bloqueado.');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDeviceOwnedKiosk(false);
+          console.warn('[Index] companion device mode unavailable:', error);
+        }
+      } finally {
+        if (!cancelled) setDeviceModeOrgId(orgId);
+      }
+    };
+
+    void resolveDeviceMode();
+    return () => { cancelled = true; };
+  }, [isPhysicalKioskRoute, orgId]);
+
   // Reseta carrinho/estado ao trocar de loja (orgId muda)
   useEffect(() => {
     if (!orgId) return;
+    if (isPhysicalKioskRoute && deviceModeOrgId !== orgId) return;
     sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
     setCart([]);
     setCustomerName('');
@@ -183,6 +233,15 @@ const Index = () => {
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
+    setScheduledFor(null);
+    setPendingProduct(null);
+
+    if (deviceOwnedKiosk) {
+      clearPendingCheckout();
+      setStep('landing');
+      return;
+    }
+
     const pendingCheckout = loadPendingCheckout(orgId);
     if (pendingCheckout) {
       setOrderType(pendingCheckout.orderType);
@@ -209,7 +268,7 @@ const Index = () => {
     } else {
       setStep('landing');
     }
-  }, [orgId]);
+  }, [orgId, isPhysicalKioskRoute, deviceModeOrgId, deviceOwnedKiosk]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -257,6 +316,9 @@ const Index = () => {
     setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
     setTrackingOrderId('');
     setAppliedCoupon(null);
+    setScheduledFor(null);
+    setPendingProduct(null);
+    if (deviceOwnedKiosk) clearKioskCustomerBrowserState();
   };
 
   const handlePaymentDone = (orderId?: string) => {
@@ -270,6 +332,12 @@ const Index = () => {
 
   const handleCheckout = async (sched?: string | null) => {
     setScheduledFor(sched || null);
+
+    if (deviceOwnedKiosk) {
+      setStep('checkout');
+      return;
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
 
     if (session) {
@@ -296,10 +364,22 @@ const Index = () => {
     navigate(`/auth?returnTo=${encodeURIComponent(homePath)}`);
   };
 
+  const resolvingDeviceMode = Boolean(
+    isPhysicalKioskRoute && orgId && deviceModeOrgId !== orgId,
+  );
+
+  if (resolvingDeviceMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">
+        Preparando totem...
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Sininho de notificações (canto superior direito) */}
-      {step !== 'landing' && (
+      {step !== 'landing' && !deviceOwnedKiosk && (
         <div className="fixed top-3 right-3 z-50">
           <NotificationBell orgId={orgId} />
         </div>
@@ -341,7 +421,7 @@ const Index = () => {
         />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} />
+        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated && !deviceOwnedKiosk} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} deviceOwnedKiosk={deviceOwnedKiosk} />
       )}
       {step === 'checkout' && (
         <CheckoutScreen
@@ -365,12 +445,13 @@ const Index = () => {
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
           tableToken={tableToken} tableLabel={tableLabel}
+          deviceOwnedKiosk={deviceOwnedKiosk}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}
       {step === 'tracking' && trackingOrderId && (
         <TotemSuccess orderId={trackingOrderId} onRelease={async () => {
-          await supabase.auth.signOut();
+          if (!deviceOwnedKiosk) await supabase.auth.signOut({ scope: 'local' });
           resetOrder();
         }} />
       )}

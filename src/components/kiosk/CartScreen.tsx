@@ -26,13 +26,14 @@ interface CartScreenProps {
   orgId: string | null;
   appliedCoupon: AppliedCoupon | null;
   onApplyCoupon: (c: AppliedCoupon | null) => void;
+  deviceOwnedKiosk?: boolean;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon }: CartScreenProps) => {
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false }: CartScreenProps) => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
   const { config: primeCfg } = useVisionPrimeConfig(orgId);
-  const { status: primeStatus } = useVisionPrimeStatus(orgId);
+  const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
 
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
@@ -62,6 +63,10 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   }, [storeStatus.nextOpenAt]);
 
   useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setCustomerPhone('');
+      return;
+    }
     let cancelled = false;
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user || cancelled) return;
@@ -69,7 +74,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       if (!cancelled && data?.phone) setCustomerPhone(data.phone);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [deviceOwnedKiosk]);
 
   const validateCoupon = async (code: string, successMessage: string) => {
     if (!orgId) return false;
@@ -104,14 +109,14 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
 
   // Auto-aplica cupom pendente vindo de notificação (sininho), sempre validado no servidor.
   useEffect(() => {
-    if (!orgId || appliedCoupon) return;
+    if (!orgId || appliedCoupon || deviceOwnedKiosk) return;
     let pending = '';
     try { pending = localStorage.getItem('pending_coupon') || ''; } catch { /* ignore */ }
     if (!pending) return;
     try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
     const code = pending.trim().toUpperCase();
     validateCoupon(code, `Cupom ${code} aplicado da sua notificação!`);
-  }, [orgId, appliedCoupon]);
+  }, [orgId, appliedCoupon, deviceOwnedKiosk]);
 
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
@@ -145,7 +150,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
           <ArrowLeft className="w-7 h-7" />
         </button>
         <h2 className="text-xl font-bold">Seu Pedido</h2>
-        {primeBadge}
+        {!deviceOwnedKiosk && primeBadge}
         <div className="ml-auto"><StoreStatusBadge orgId={orgId} compact /></div>
       </div>
 
@@ -159,9 +164,9 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
         </div>
       ) : (
         <div className="flex-1 p-4 space-y-3">
-          <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />
+          {!deviceOwnedKiosk && <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />}
 
-          {primeCfg?.ativo && !primeStatus.active && (
+          {!deviceOwnedKiosk && primeCfg?.ativo && !primeStatus.active && (
             <button onClick={goPrime}
               className="w-full text-left rounded-xl p-3 border-2 flex items-center gap-3"
               style={{ borderColor: '#d4a04c', background: 'linear-gradient(135deg, rgba(246,197,96,0.12), rgba(212,136,30,0.08))' }}>
@@ -263,7 +268,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
           {/* Status da loja → libera, agenda ou bloqueia o checkout */}
           {storeStatus.open ? (
             <button onClick={() => onCheckout(null)} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
-              {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
+              {deviceOwnedKiosk || isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
             </button>
           ) : (
             <div className="space-y-2">

@@ -78,6 +78,10 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
 
   const validateCoupon = async (code: string, successMessage: string) => {
     if (!orgId) return false;
+    if (deviceOwnedKiosk && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('Cupom exige validação online. Nenhum desconto foi aplicado offline.');
+      return false;
+    }
     const { data, error } = await supabase.rpc('validate_checkout_coupon', {
       _organization_id: orgId, _codigo: code, _subtotal: subtotal,
     });

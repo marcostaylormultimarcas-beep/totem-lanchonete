@@ -131,14 +131,22 @@ async function cacheFirstAsset(request) {
   return network;
 }
 
-async function cacheFirstPublicMedia(request) {
-  const cache = await caches.open(MEDIA_CACHE);
-  const cached = await cache.match(request);
+async function serveCachedPublicMedia(request) {
+  const url = new URL(request.url);
+
+  if (url.origin === self.location.origin) {
+    const shell = await caches.open(SHELL_CACHE);
+    const shellAsset = await shell.match(request, { ignoreSearch: true });
+    if (shellAsset) return shellAsset;
+  }
+
+  const media = await caches.open(MEDIA_CACHE);
+  const cached = await media.match(request);
   if (cached) return cached;
 
-  const network = await fetch(request);
-  if (network.ok || network.type === 'opaque') cache.put(request, network.clone()).catch(() => {});
-  return network;
+  // Only URLs explicitly warmed from public RPC snapshots are persisted in MEDIA_CACHE.
+  // Other images remain network-only so authenticated/private media is not retained here.
+  return fetch(request);
 }
 
 async function precachePublicMedia(urls) {
@@ -161,7 +169,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
 
   if (request.destination === 'image' && isSafePublicMediaUrl(url.href)) {
-    event.respondWith(cacheFirstPublicMedia(request));
+    event.respondWith(serveCachedPublicMedia(request));
     return;
   }
 

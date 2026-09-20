@@ -125,6 +125,13 @@ const Index = () => {
   }, [orgId]);
 
   useEffect(() => {
+    // Enquanto a rota física ainda resolve o companion — e durante todo o modo
+    // device-owned — não tocar em sessão de cliente nem iniciar auth online.
+    if (isPhysicalKioskRoute && (deviceModeOrgId !== orgId || deviceOwnedKiosk)) {
+      setIsAuthenticated(false);
+      return;
+    }
+
     let isMounted = true;
 
     const syncAuthAndRestoreOrder = async () => {
@@ -173,7 +180,7 @@ const Index = () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isPhysicalKioskRoute, deviceModeOrgId, deviceOwnedKiosk, orgId]);
 
   // A rota /cardapio/:slug só entra em modo device-owned quando o companion
   // local está enrolado para a mesma organização. O cardápio web mantém auth normal.
@@ -282,6 +289,16 @@ const Index = () => {
     if (!orgId) return;
     const token = (searchParams.get('mesa') || '').trim();
     if (!token) return;
+
+    // O QR de mesa é uma capacidade autoritativa. Sem rede não presumimos
+    // mesa/label nem persistimos o token em snapshot público.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setTableToken('');
+      setTableLabel('');
+      toast.error('Este QR de mesa precisa de internet para validação. Nenhuma mesa foi presumida offline.');
+      return;
+    }
+
     let cancelled = false;
     supabase.rpc('visionfood_public_table_context', {
       _organization_id: orgId,
@@ -427,6 +444,7 @@ const Index = () => {
           onBack={() => setStep('location')}
           initialProduct={pendingProduct}
           onInitialProductHandled={() => setPendingProduct(null)}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'cart' && (
@@ -464,7 +482,7 @@ const Index = () => {
           resetOrder();
         }} />
       )}
-      {step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
+      {!deviceOwnedKiosk && step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
         <PartnersFooter orgId={orgId} />
       )}
     </div>

@@ -318,7 +318,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     } catch (err: any) {
       console.error('Error saving order:', err);
       const rawMessage = String(err?.message || '');
-      const authExpired = rawMessage.includes('authentication_required') || rawMessage.includes('JWT') || rawMessage.includes('token');
+      const authExpired = /authentication_required|jwt expired|invalid jwt|token has expired/i.test(rawMessage);
       setRequiresLogin(authExpired);
       const message = authExpired
         ? 'Sua sessão expirou. Entre novamente para sincronizar este pedido com segurança.'
@@ -328,7 +328,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           ? 'A loja está recebendo muitos pedidos neste momento. Aguarde um instante e tente novamente.'
           : rawMessage.includes('payment_method_disabled')
             ? 'Essa forma de pagamento foi desativada pela loja. Volte e escolha outra opção.'
-            : rawMessage.includes('invalid removed ingredient for product')
+            : rawMessage.includes('invalid_table_token') || rawMessage.includes('table_orders_disabled')
+              ? 'Esta mesa não está mais disponível. Leia novamente o QR correto da mesa.'
+              : rawMessage.includes('invalid removed ingredient for product')
               ? 'Este produto foi atualizado pela loja. Volte ao carrinho, revise os ingredientes e tente novamente.'
               : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
       setPaymentError(message);

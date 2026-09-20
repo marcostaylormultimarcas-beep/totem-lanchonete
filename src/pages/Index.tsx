@@ -216,7 +216,7 @@ const Index = () => {
     const token = (searchParams.get('mesa') || '').trim();
     if (!token) return;
     let cancelled = false;
-    supabase.rpc('visionfood_public_table_context' as any, {
+    supabase.rpc('visionfood_public_table_context', {
       _organization_id: orgId,
       _table_token: token,
     }).then(({ data, error }) => {

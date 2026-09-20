@@ -241,10 +241,12 @@ begin
   limit 1
   for update;
 
-  if not found or e.expires_at<=now() then
+  if not found then
     return jsonb_build_object('ok',false,'reason','invalid_enrollment');
   end if;
 
+  -- A claim already committed may be retried after a local crash, even if the
+  -- enrollment window later expired, but only with the exact same device/hash.
   if e.claimed_at is not null then
     if e.claimed_device_id=_device_id
        and e.claimed_credential_hash=credential_hash then
@@ -256,6 +258,10 @@ begin
       );
     end if;
     return jsonb_build_object('ok',false,'reason','enrollment_already_claimed');
+  end if;
+
+  if e.expires_at<=now() then
+    return jsonb_build_object('ok',false,'reason','invalid_enrollment');
   end if;
 
   if e.purpose='enroll' then

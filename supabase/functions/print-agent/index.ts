@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
       const origin = req.headers.get('origin') || 'https://app';
 
       const jobs = (claim.jobs || []).map((order: any) => {
-        const trackUrl = `${origin}/acompanhar/${order.order_number}`;
+        const trackUrl = `${origin}/acompanhar/${order.id}`;
         const bytes = buildReceipt({ storeName, order, paperWidth, trackUrl });
         return {
           order_id: order.id,

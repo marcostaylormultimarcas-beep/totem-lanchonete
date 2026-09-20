@@ -43,9 +43,15 @@ describe('offlineCheckoutQueue', () => {
   beforeEach(() => { memory.clear(); vi.clearAllMocks(); });
 
   it('persists and restores the same idempotency key and table context', () => {
-    savePendingCheckout(draft);
+    savePendingCheckout({
+      ...draft,
+      companionLocalOrderId: '00000000-0000-4000-8000-000000000003',
+      companionClientRequestId: draft.clientRequestId,
+    });
     const restored = loadPendingCheckout('org-a');
     expect(restored?.clientRequestId).toBe(draft.clientRequestId);
+    expect(restored?.companionClientRequestId).toBe(draft.clientRequestId);
+    expect(restored?.companionLocalOrderId).toBe('00000000-0000-4000-8000-000000000003');
     expect(restored?.tableToken).toBe(draft.tableToken);
     expect(restored?.tableLabel).toBe('Mesa 12');
     expect(restored?.state).toBe('queued_offline');

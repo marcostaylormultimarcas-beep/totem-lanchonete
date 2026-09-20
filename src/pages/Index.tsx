@@ -396,6 +396,7 @@ const Index = () => {
           onSelectProduct={(p) => { setPendingProduct(p); setStep('location'); }}
           onGoToCart={() => setStep('cart')}
           cartCount={cart.length}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'location' && (

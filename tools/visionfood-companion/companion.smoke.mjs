@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DurableQueue, validateAllowedOrigin } from './companion.mjs';
+import { DurableQueue, syncNextQueuedOrder, validateAllowedOrigin } from './companion.mjs';
 
 const DEVICE_ID = '11111111-1111-4111-8111-111111111111';
 const ORG_ID = '22222222-2222-4222-8222-222222222222';
@@ -98,9 +98,14 @@ try {
     );
 
     const synced = await queue.ackSynced(claimed.local_order_id, {
+      ok: true,
+      state: 'synced',
       order_id: ORDER_ID,
       client_request_id: claimed.client_request_id,
       device_id: DEVICE_ID,
+      order_number: '101',
+      payment_method: 'cash',
+      payment_status: 'pending',
     });
 
     assert.equal(synced.state, 'synced');
@@ -108,6 +113,119 @@ try {
     assert.equal(snapshot.items.length, 2);
     assert.equal(snapshot.items[0].state, 'synced');
     assert.equal(snapshot.items[0].authoritative_ack.order_id, ORDER_ID);
+  });
+
+
+  await check('sync transitório volta para pending_local sem perder FIFO', async () => {
+    const result = await syncNextQueuedOrder({
+      queue,
+      device: {
+        device_id: DEVICE_ID,
+        organization_id: ORG_ID,
+        credential: 'a'.repeat(64),
+      },
+      rpc: async () => { throw new Error('network_unavailable'); },
+    });
+    assert.equal(result.state, 'pending_local');
+    assert.equal(result.retryable, true);
+    const snapshot = await queue.snapshot();
+    const pending = snapshot.items.find((item) => item.local_order_id === second.local_order_id);
+    assert.equal(pending.state, 'pending_local');
+    assert.match(pending.last_error, /network_unavailable/);
+  });
+
+  await check('sync autoritativo usa device+client_request e aceita somente ACK coerente', async () => {
+    let receivedBody = null;
+    const result = await syncNextQueuedOrder({
+      queue,
+      device: {
+        device_id: DEVICE_ID,
+        organization_id: ORG_ID,
+        credential: 'b'.repeat(64),
+      },
+      rpc: async (body) => {
+        receivedBody = body;
+        return {
+          ok: true,
+          state: 'synced',
+          device_id: body._device_id,
+          client_request_id: body._client_request_id,
+          order_id: '44444444-4444-4444-8444-444444444444',
+          order_number: '102',
+          total: 25.5,
+          payment_method: 'cash',
+          payment_status: 'pending',
+          idempotent: false,
+        };
+      },
+    });
+    assert.equal(receivedBody._device_id, DEVICE_ID);
+    assert.equal(receivedBody._client_request_id, second.client_request_id);
+    assert.equal(receivedBody._local_order_id, second.local_order_id);
+    assert.equal(result.state, 'synced');
+    const snapshot = await queue.snapshot();
+    const synced = snapshot.items.find((item) => item.local_order_id === second.local_order_id);
+    assert.equal(synced.state, 'synced');
+    assert.equal(synced.authoritative_ack.payment_status, 'pending');
+    assert.equal(synced.authoritative_ack.total, 25.5);
+  });
+
+  await check('conflito autoritativo permanece needs_attention e não é apagado', async () => {
+    const conflict = await queue.enqueue({
+      organization_id: ORG_ID,
+      payment_method: 'cash',
+      items: [{ product_id: 'p3', quantity: 1 }],
+      customer_name: 'Cliente 3',
+    });
+    const result = await syncNextQueuedOrder({
+      queue,
+      device: {
+        device_id: DEVICE_ID,
+        organization_id: ORG_ID,
+        credential: 'c'.repeat(64),
+      },
+      rpc: async () => ({
+        ok: false,
+        state: 'needs_attention',
+        reason: 'commercial_terms_changed',
+        device_id: DEVICE_ID,
+        client_request_id: conflict.client_request_id,
+      }),
+    });
+    assert.equal(result.state, 'needs_attention');
+    const snapshot = await queue.snapshot();
+    const stored = snapshot.items.find((item) => item.local_order_id === conflict.local_order_id);
+    assert.equal(stored.state, 'needs_attention');
+    assert.equal(stored.last_error, 'commercial_terms_changed');
+  });
+
+  await check('ACK incoerente nunca marca pedido como synced', async () => {
+    const pending = await queue.enqueue({
+      organization_id: ORG_ID,
+      payment_method: 'cash',
+      items: [{ product_id: 'p4', quantity: 1 }],
+      customer_name: 'Cliente 4',
+    });
+    const result = await syncNextQueuedOrder({
+      queue,
+      device: {
+        device_id: DEVICE_ID,
+        organization_id: ORG_ID,
+        credential: 'd'.repeat(64),
+      },
+      rpc: async (body) => ({
+        ok: true,
+        state: 'synced',
+        device_id: '55555555-5555-4555-8555-555555555555',
+        client_request_id: body._client_request_id,
+        order_id: '66666666-6666-4666-8666-666666666666',
+      }),
+    });
+    assert.equal(result.state, 'needs_attention');
+    const snapshot = await queue.snapshot();
+    const stored = snapshot.items.find((item) => item.local_order_id === pending.local_order_id);
+    assert.equal(stored.state, 'needs_attention');
+    assert.match(stored.last_error, /authoritative_ack_invalid:ack_device_mismatch/);
   });
 
   await check('arquivos da fila são gravados com permissão privada', async () => {

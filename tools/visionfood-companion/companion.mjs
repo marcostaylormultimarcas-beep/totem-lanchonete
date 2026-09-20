@@ -11,6 +11,7 @@ const DEFAULT_PORT = 43129;
 const MAX_BODY_BYTES = 1024 * 1024;
 const LOCAL_SESSION_TTL_MS = 10 * 60 * 1000;
 const HEARTBEAT_MS = 30 * 1000;
+const SYNC_MS = 10 * 1000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HEX_64_RE = /^[0-9a-f]{64}$/i;
 const FORBIDDEN_AUTH_KEYS = new Set([
@@ -214,6 +215,20 @@ export class DurableQueue {
     });
   }
 
+  async releaseForRetry(localOrderId, reason) {
+    return this.#withLock(async () => {
+      const state = await this.#readState();
+      const item = state.items.find((entry) => entry.local_order_id === localOrderId);
+      if (!item) throw new Error('local_order_not_found');
+      if (item.state === 'synced') throw new Error('synced_order_is_immutable');
+      item.state = 'pending_local';
+      item.last_error = String(reason || 'sync_retry_required').slice(0, 500);
+      item.updated_at = nowIso();
+      await atomicWriteJson(this.filePath, state);
+      return structuredClone(item);
+    });
+  }
+
   async markNeedsAttention(localOrderId, reason) {
     return this.#withLock(async () => {
       const state = await this.#readState();
@@ -234,7 +249,8 @@ export class DurableQueue {
       const item = state.items.find((entry) => entry.local_order_id === localOrderId);
       if (!item) throw new Error('local_order_not_found');
       if (item.state !== 'syncing') throw new Error('order_not_syncing');
-      if (!ack || ack.client_request_id !== item.client_request_id) throw new Error('ack_client_request_mismatch');
+      if (!ack || ack.ok !== true || ack.state !== 'synced') throw new Error('ack_state_invalid');
+      if (ack.client_request_id !== item.client_request_id) throw new Error('ack_client_request_mismatch');
       if (ack.device_id !== this.deviceId) throw new Error('ack_device_mismatch');
       if (!isUuid(ack.order_id)) throw new Error('ack_order_id_invalid');
 
@@ -243,6 +259,15 @@ export class DurableQueue {
         order_id: ack.order_id,
         client_request_id: ack.client_request_id,
         device_id: ack.device_id,
+        order_number: ack.order_number ?? null,
+        delivery_code: ack.delivery_code ?? '',
+        total: ack.total ?? null,
+        payment_method: ack.payment_method ?? null,
+        payment_status: ack.payment_status ?? null,
+        table_label: ack.table_label ?? '',
+        table_session_id: ack.table_session_id ?? null,
+        idempotent: Boolean(ack.idempotent),
+        reconciliation: ack.reconciliation ?? null,
         acknowledged_at: nowIso(),
       };
       item.last_error = null;
@@ -282,6 +307,64 @@ export class DurableQueue {
           authoritative_ack,
         })),
     };
+  }
+}
+
+export async function syncNextQueuedOrder({ queue, device, rpc }) {
+  if (!queue || typeof queue.claimNext !== 'function') throw new Error('invalid_queue');
+  if (!device || !isUuid(device.device_id) || !isUuid(device.organization_id) || !HEX_64_RE.test(device.credential || '')) {
+    throw new Error('device_not_enrolled');
+  }
+  if (typeof rpc !== 'function') throw new Error('invalid_sync_rpc');
+
+  const item = await queue.claimNext();
+  if (!item) return { processed: false, state: 'idle' };
+
+  if (item.payload?.organization_id !== device.organization_id) {
+    await queue.markNeedsAttention(item.local_order_id, 'organization_mismatch');
+    return { processed: true, state: 'needs_attention', reason: 'organization_mismatch' };
+  }
+
+  try {
+    const result = await rpc({
+      _device_id: device.device_id,
+      _credential: device.credential,
+      _client_request_id: item.client_request_id,
+      _local_order_id: item.local_order_id,
+      _payload: item.payload,
+    });
+
+    if (result?.ok === true && result?.state === 'synced') {
+      try {
+        const synced = await queue.ackSynced(item.local_order_id, result);
+        return {
+          processed: true,
+          state: 'synced',
+          local_order_id: synced.local_order_id,
+          client_request_id: synced.client_request_id,
+          order_id: synced.authoritative_ack.order_id,
+          idempotent: Boolean(synced.authoritative_ack.idempotent),
+        };
+      } catch (error) {
+        const reason = `authoritative_ack_invalid:${String(error?.message || error)}`;
+        await queue.markNeedsAttention(item.local_order_id, reason);
+        return { processed: true, state: 'needs_attention', reason };
+      }
+    }
+
+    if (result?.state === 'needs_attention') {
+      const reason = String(result?.reason || 'needs_attention');
+      await queue.markNeedsAttention(item.local_order_id, reason);
+      return { processed: true, state: 'needs_attention', reason };
+    }
+
+    const reason = String(result?.reason || 'authoritative_sync_not_acknowledged');
+    await queue.releaseForRetry(item.local_order_id, reason);
+    return { processed: true, state: 'pending_local', retryable: true, reason };
+  } catch (error) {
+    const reason = String(error?.message || error || 'authoritative_sync_unavailable');
+    await queue.releaseForRetry(item.local_order_id, reason);
+    return { processed: true, state: 'pending_local', retryable: true, reason };
   }
 }
 
@@ -360,6 +443,22 @@ export async function startCompanion(options = {}) {
       await queueCache.recoverInterrupted();
     }
     return queueCache;
+  };
+
+  const syncOnce = async () => {
+    const device = await loadDevice();
+    if (!device?.device_id) return { processed: false, state: 'not_enrolled' };
+    const queue = await getQueue();
+    return syncNextQueuedOrder({
+      queue,
+      device,
+      rpc: (body) => postRpc({
+        supabaseUrl,
+        publishableKey,
+        name: 'visionfood_sync_kiosk_order',
+        body,
+      }),
+    });
   };
 
   const finalizePendingEnrollment = async (pending) => {
@@ -544,6 +643,12 @@ export async function startCompanion(options = {}) {
         return;
       }
 
+      if (req.method === 'POST' && requestUrl.pathname === '/v1/sync') {
+        const result = await syncOnce();
+        send(res, origin, 200, { ok: true, ...result });
+        return;
+      }
+
       send(res, origin, 404, { ok: false, reason: 'not_found' });
     } catch (error) {
       const message = String(error?.message || error);
@@ -580,6 +685,21 @@ export async function startCompanion(options = {}) {
     }
   };
   setTimeout(heartbeat, 1000).unref();
+
+  const syncLoop = async () => {
+    if (stopped) return;
+    try {
+      const result = await syncOnce();
+      if (result?.state === 'needs_attention') {
+        console.warn(nowIso(), 'offline order needs attention:', result.reason);
+      }
+    } catch (error) {
+      console.warn(nowIso(), 'offline sync unavailable:', error.message);
+    } finally {
+      if (!stopped) setTimeout(syncLoop, SYNC_MS).unref();
+    }
+  };
+  setTimeout(syncLoop, 1500).unref();
 
   console.log(nowIso(), `VisionFood companion listening on 127.0.0.1:${port} for ${allowedOrigin}`);
 

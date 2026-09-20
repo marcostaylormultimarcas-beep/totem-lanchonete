@@ -246,6 +246,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }
 
       if (!orgId) throw new Error('Loja não identificada. Recarregue o cardápio e tente novamente.');
+      if (!method) throw new Error('Escolha uma forma de pagamento.');
 
       const orderItems = cart.map(item => ({
         product_id: item.product.id,
@@ -260,8 +261,10 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         sold_by_weight: Boolean(item.weightKg),
       }));
 
-      // Cria o pedido e reserva a senha na mesma transação do banco.
-      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v3' as any, {
+      // Persiste a mesma chave antes da chamada: se a resposta se perder, o retry não cria outro pedido.
+      savePendingCheckout(buildPendingDraft('submitting', method));
+
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v4' as any, {
         _organization_id: orgId,
         _customer_name: customerName,
         _customer_phone: customerPhone,
@@ -279,11 +282,15 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         _scheduled_for: scheduledFor || null,
         _coupon_code: appliedCoupon?.codigo || '',
         _delivery_context: { cep: deliveryCep || '' },
+        _table_token: tableToken || null,
+        _client_request_id: clientRequestId,
       });
 
       if (error) throw error;
       const data = Array.isArray(checkoutRows) ? checkoutRows[0] : checkoutRows;
       if (!data?.id || !data?.order_number) throw new Error('Checkout não retornou o pedido criado.');
+      clearPendingCheckout(clientRequestId);
+      setOfflineQueued(false);
       const num = String(data.order_number);
       setGeneratedNumber(num);
       setDeliveryCode(String(data.delivery_code || ''));

@@ -38,7 +38,7 @@ export interface StoreStatus {
   schedulingEnabled: boolean;
 }
 
-const computeStatus = (now: Date, hours: BusinessHours): {
+export const computeStatus = (now: Date, hours: BusinessHours): {
   open: boolean; minutesUntilClose: number | null; nextOpenAt: Date | null;
 } => {
   const dayIdx = now.getDay();
@@ -47,10 +47,42 @@ const computeStatus = (now: Date, hours: BusinessHours): {
 
   let open = false;
   let minutesUntilClose: number | null = null;
+
+  // Uma janela cujo fim é menor que o início atravessa a meia-noite.
+  // Ex.: 12:00 -> 00:00 permanece aberta até 24:00 do mesmo dia;
+  // 22:00 -> 02:00 também cobre 00:00 -> 02:00 do dia seguinte.
   if (today?.enabled) {
     for (const [start, end] of today.windows) {
-      const s = toMin(start); const e = toMin(end);
-      if (curMin >= s && curMin < e) { open = true; minutesUntilClose = e - curMin; break; }
+      const s = toMin(start);
+      const e = toMin(end);
+      if (s === e) continue;
+
+      if (e > s) {
+        if (curMin >= s && curMin < e) {
+          open = true;
+          minutesUntilClose = e - curMin;
+          break;
+        }
+      } else if (curMin >= s) {
+        open = true;
+        minutesUntilClose = (24 * 60 - curMin) + e;
+        break;
+      }
+    }
+  }
+
+  if (!open) {
+    const previous = hours[DAY_KEYS[(dayIdx + 6) % 7]];
+    if (previous?.enabled) {
+      for (const [start, end] of previous.windows) {
+        const s = toMin(start);
+        const e = toMin(end);
+        if (e < s && curMin < e) {
+          open = true;
+          minutesUntilClose = e - curMin;
+          break;
+        }
+      }
     }
   }
 

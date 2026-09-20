@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
@@ -17,6 +17,7 @@ import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { toast } from 'sonner';
+import { loadPendingCheckout } from '@/lib/offlineCheckoutQueue';
 
 type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
@@ -37,11 +38,14 @@ interface PendingOrderState {
   bairroTaxa: number;
   bairroTempo: number;
   deliveryCep: string;
+  tableToken: string;
+  tableLabel: string;
 }
 
 const Index = () => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const orgId = useOrgId();
   const homePath = slug ? `/cardapio/${slug}` : '/';
   const [step, setStep] = useState<Step>('landing');
@@ -64,6 +68,8 @@ const Index = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
+  const [tableToken, setTableToken] = useState('');
+  const [tableLabel, setTableLabel] = useState('');
 
   useEffect(() => {
     if (!orgId) { setDeliveryEnabled(true); return; }
@@ -138,6 +144,8 @@ const Index = () => {
         setBairroTempo(parsed.bairroTempo || 0);
         setDeliveryCep(parsed.deliveryCep || '');
         setCustomerCpf(parsed.customerCpf || '');
+        setTableToken(parsed.tableToken || '');
+        setTableLabel(parsed.tableLabel || '');
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
       } catch (error) {
@@ -175,8 +183,57 @@ const Index = () => {
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
-    setStep('landing');
+    const pendingCheckout = loadPendingCheckout(orgId);
+    if (pendingCheckout) {
+      setOrderType(pendingCheckout.orderType);
+      setCart(pendingCheckout.cart || []);
+      setCustomerName(pendingCheckout.customerName || '');
+      setCustomerPhone(pendingCheckout.customerPhone || '');
+      setCustomerCpf(pendingCheckout.customerCpf || '');
+      setDeliveryAddress(pendingCheckout.deliveryAddress || '');
+      setDeliveryReference(pendingCheckout.deliveryReference || '');
+      setDeliveryRecipient(pendingCheckout.deliveryRecipient || '');
+      setBairroId(pendingCheckout.bairroId || '');
+      setBairroNome(pendingCheckout.bairroNome || '');
+      setBairroTaxa(Number(pendingCheckout.bairroTaxa || 0));
+      setBairroTempo(Number(pendingCheckout.bairroTempo || 0));
+      setDeliveryCep(pendingCheckout.deliveryCep || '');
+      setAppliedCoupon(pendingCheckout.appliedCoupon || null);
+      setScheduledFor(pendingCheckout.scheduledFor || null);
+      setTableToken(pendingCheckout.tableToken || '');
+      setTableLabel(pendingCheckout.tableLabel || '');
+      setStep('payment');
+      toast.info(pendingCheckout.state === 'queued_offline'
+        ? 'Pedido salvo neste dispositivo. Ele será sincronizado quando a conexão voltar.'
+        : 'Recuperamos um pedido que estava sendo enviado.');
+    } else {
+      setStep('landing');
+    }
   }, [orgId]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    const token = (searchParams.get('mesa') || '').trim();
+    if (!token) return;
+    let cancelled = false;
+    supabase.rpc('visionfood_public_table_context' as any, {
+      _organization_id: orgId,
+      _table_token: token,
+    }).then(({ data, error }) => {
+      if (cancelled) return;
+      const result: any = data;
+      if (error || !result?.ok) {
+        setTableToken('');
+        setTableLabel('');
+        toast.error('QR de mesa inválido ou desativado.');
+        return;
+      }
+      setTableToken(token);
+      setTableLabel(String(result.label || 'Mesa'));
+      setOrderType('local');
+    });
+    return () => { cancelled = true; };
+  }, [orgId, searchParams]);
 
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
@@ -231,6 +288,7 @@ const Index = () => {
       deliveryReference,
       deliveryRecipient,
       bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+      tableToken, tableLabel,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
@@ -246,7 +304,12 @@ const Index = () => {
           <NotificationBell orgId={orgId} />
         </div>
       )}
-      {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
+      {step === 'landing' && <LandingScreen onStart={() => setStep(tableToken && tableLabel ? 'menu' : 'start')} />}
+      {step !== 'landing' && tableToken && tableLabel && (
+        <div className="fixed top-3 left-3 z-50 rounded-full bg-primary px-3 py-1.5 text-xs font-black text-primary-foreground shadow-lg">
+          🍽️ {tableLabel}
+        </div>
+      )}
       {step === 'start' && (
         <StartScreen
           onStart={() => setStep('location')}
@@ -301,6 +364,7 @@ const Index = () => {
           bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo} deliveryCep={deliveryCep}
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
+          tableToken={tableToken} tableLabel={tableLabel}
           onBack={() => setStep('checkout')} onDone={handlePaymentDone}
         />
       )}

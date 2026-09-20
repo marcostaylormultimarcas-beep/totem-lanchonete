@@ -19,6 +19,7 @@ import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesign
 const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
 const OrdersPanel = lazy(() => import('@/components/admin/OrdersPanel'));
+const MesasPanel = lazy(() => import('@/components/admin/MesasPanel'));
 const DashboardPanel = lazy(() => import('@/components/admin/DashboardPanel'));
 const MasterPanel = lazy(() => import('@/components/admin/MasterPanel'));
 const SuperAdminPanel = lazy(() => import('@/components/admin/SuperAdminPanel'));
@@ -96,7 +97,7 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'delivery' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores'>('orders');
+  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'delivery' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores' | 'mesas'>('orders');
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -951,6 +952,7 @@ const AdminPage = () => {
         const ALL_TABS = [
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
+          { key: 'mesas' as const, label: 'Mesas', icon: MapPin, requires: 'admin' as const, quick: true },
           { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const, quick: true },
           { key: 'leads' as const, label: 'Clientes', icon: Users, requires: 'admin' as const, quick: true },
           { key: 'financeiro' as const, label: 'Financeiro', icon: CreditCard, requires: 'admin' as const, quick: true },
@@ -1091,6 +1093,12 @@ const AdminPage = () => {
       <>
       <VencimentoBanner organizationId={activeOrgId} />
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
+      {tab === 'mesas' && (
+        <MesasPanel
+          organizationId={activeOrgId}
+          orgSlug={allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug || null}
+        />
+      )}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} onNavigate={(t) => setTab(t as any)} />}
       {tab === 'senhas' && (
         <SenhasPanel

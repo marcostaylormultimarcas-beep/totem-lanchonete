@@ -265,7 +265,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       // Persiste a mesma chave antes da chamada: se a resposta se perder, o retry não cria outro pedido.
       savePendingCheckout(buildPendingDraft('submitting', method));
 
-      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v4' as any, {
+      const { data: checkoutRows, error } = await supabase.rpc('create_order_checkout_v4', {
         _organization_id: orgId,
         _customer_name: customerName,
         _customer_phone: customerPhone,

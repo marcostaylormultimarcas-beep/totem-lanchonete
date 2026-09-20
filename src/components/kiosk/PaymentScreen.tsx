@@ -11,6 +11,7 @@ import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPri
 import { Crown } from 'lucide-react';
 import { enqueueOfflineOrderOnCompanion, getKioskCompanionQueue, syncKioskCompanionQueueOnce } from '@/lib/kioskCompanionClient';
 import { fetchPublicCheckoutPaymentConfig } from '@/lib/publicCheckoutPaymentConfig';
+import { isCheckoutQuoteReady } from '@/lib/checkoutQuoteReadiness';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -83,6 +84,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const authoritativeFee = serverQuote ? Number(serverQuote.delivery_fee || 0) : fee;
   const authoritativeFeeWaived = serverQuote?.prime_shipping_waived ? rawFee : feeWaived;
   const total = serverQuote ? Number(serverQuote.total) : clientTotal;
+  const authoritativeQuoteReady = isCheckoutQuoteReady({
+    deviceOwnedKiosk,
+    demoMode: isDemoMode(),
+    quoteLoading,
+    quoteError,
+    serverQuote,
+  });
   const primeSavings = authoritativePrimeDiscount + authoritativeFeeWaived;
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
@@ -657,10 +665,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     ? configuredMethods.filter((entry) => entry.key === 'cash')
     : configuredMethods;
 
-  // Auto-select if only one method enabled
+  // Auto-select only after the authoritative total is ready on web checkout.
   useEffect(() => {
-    if (!method && availableMethods.length === 1) setMethod(availableMethods[0].key);
-  }, [method, availableMethods]);
+    if (!method && availableMethods.length === 1 && authoritativeQuoteReady) {
+      setMethod(availableMethods[0].key);
+    }
+  }, [method, availableMethods, authoritativeQuoteReady]);
 
   const Header = ({ title }: { title: React.ReactNode }) => (
     <div className="flex items-center gap-4 p-4 border-b border-border">
@@ -691,7 +701,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               <p className="text-xs text-muted-foreground">Peça ao lojista para habilitar pelo menos uma opção de pagamento nas configurações.</p>
             </div>
           ) : availableMethods.map(m => (
-            <button key={m.key} disabled={!deviceOwnedKiosk && (quoteLoading || Boolean(quoteError) || (!isDemoMode() && !serverQuote))} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
+            <button key={m.key} disabled={!authoritativeQuoteReady} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors disabled:opacity-50">
               <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">{m.icon}</div>
               <div className="flex-1">
                 <p className="font-bold">{m.label}</p>
@@ -719,8 +729,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           {paymentError && (
             <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
           )}
-          <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido'}
+          {!authoritativeQuoteReady && !deviceOwnedKiosk && (
+            <div role="status" className="w-full rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+              {quoteError ? 'Não foi possível validar o total no servidor.' : 'Validando o total no servidor…'}
+            </div>
+          )}
+          <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido'}
           </button>
         </div>
       </div>
@@ -745,8 +760,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           {paymentError && (
             <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
           )}
-          <button onClick={handleConfirmPayment} disabled={saving} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Confirmar Pedido após usar a Maquininha'}
+          <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido após usar a Maquininha'}
           </button>
         </div>
       </div>
@@ -784,8 +799,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         {paymentError && (
           <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
         )}
-        <button onClick={handleConfirmPayment} disabled={saving || !pixKey} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : 'Já enviei o PIX — registrar pedido'}
+        <button onClick={handleConfirmPayment} disabled={saving || !pixKey || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Já enviei o PIX — registrar pedido'}
         </button>
       </div>
     </div>

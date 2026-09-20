@@ -12,6 +12,7 @@ interface ProductModalProps {
   onAdd: (item: CartItem) => void;
   onClose: () => void;
   baudRate?: number;
+  deviceOwnedKiosk?: boolean;
 }
 
 interface ReviewRow {
@@ -22,7 +23,7 @@ interface ReviewRow {
   author_name?: string;
 }
 
-const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModalProps) => {
+const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKiosk = false }: ProductModalProps) => {
   const orgId = useOrgId();
   const [quantity, setQuantity] = useState(1);
   const [removedIngredients, setRemovedIngredients] = useState<string[]>([]);
@@ -65,10 +66,22 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
     setReviews(rows);
   };
 
-  useEffect(() => { fetchReviews(); }, [product.id]);
+  useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setReviews([]);
+      return;
+    }
+    void fetchReviews();
+  }, [product.id, deviceOwnedKiosk]);
 
   // Verifica sessão e elegibilidade pra avaliar
   useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setUserId(null);
+      setCanReview(false);
+      setEligibleOrderId(null);
+      return;
+    }
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserId(user?.id || null);
@@ -87,7 +100,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
       setEligibleOrderId(eligibleId);
       setCanReview(Boolean(eligibleId));
     })();
-  }, [product.id]);
+  }, [product.id, deviceOwnedKiosk]);
 
   const avg = useMemo(() => {
     if (!reviews.length) return 0;

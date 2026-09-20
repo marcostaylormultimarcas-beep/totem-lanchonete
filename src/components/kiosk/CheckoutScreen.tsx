@@ -98,6 +98,11 @@ const CheckoutScreen = ({
 
   const validarCep = async () => {
     if (!orgId) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setCepResultado({ ok: false, motivo: 'offline_indisponivel' });
+      toast.error('A validação de CEP exige internet. Nenhum endereço ou frete foi presumido.');
+      return;
+    }
     if (deliveryMode === 'raio_km') {
       setCepResultado({ ok: false, motivo: 'modo_indisponivel' });
       toast.error('Entrega por raio temporariamente indisponível. A loja deve usar bairros ou lista de CEPs.');
@@ -268,6 +273,7 @@ const CheckoutScreen = ({
                           {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
                           {cepResultado.motivo === 'loja_indisponivel' && 'A loja está temporariamente indisponível para pedidos.'}
                           {cepResultado.motivo === 'modo_indisponivel' && 'A entrega por raio está temporariamente indisponível. Entre em contato com a loja.'}
+                          {cepResultado.motivo === 'offline_indisponivel' && 'A validação deste CEP exige internet. Nenhum endereço ou frete foi assumido offline.'}
                         </p>
                       </div>
                     </div>

@@ -640,7 +640,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   }
 
   // Construct the list of allowed methods from store settings
-  const availableMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
+  const configuredMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
     storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix', desc: 'Copie a chave Pix da loja e pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
     storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
     storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
@@ -648,6 +648,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     // Não coletar PAN/CVV diretamente no VisionFood.
     false && storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Indisponível até configurar gateway seguro', icon: <Globe className="w-6 h-6" /> },
   ].filter(Boolean) as any;
+  const availableMethods = deviceOwnedKiosk
+    ? configuredMethods.filter((entry) => entry.key === 'cash')
+    : configuredMethods;
 
   // Auto-select if only one method enabled
   useEffect(() => {
@@ -667,7 +670,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       <div className="min-h-screen flex flex-col">
         <Header title={<>Forma de <span className="text-primary">Pagamento</span></>} />
         <div className="flex-1 flex flex-col px-6 py-6 gap-3 max-w-md mx-auto w-full">
-          {quoteError && <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{quoteError}</div>}
+          {quoteError && !deviceOwnedKiosk && <div role="alert" className="rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{quoteError}</div>}
+          {deviceOwnedKiosk && !isOnline && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
+              Sem internet: o valor exibido é um snapshot local e será revalidado pelo servidor antes da criação autoritativa do pedido.
+            </div>
+          )}
           <div className="text-center mb-2">
             <p className="text-sm text-muted-foreground">Total a pagar</p>
             <p className="text-3xl font-black text-primary">{quoteLoading ? 'Calculando...' : formatCurrency(total)}</p>
@@ -678,7 +686,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               <p className="text-xs text-muted-foreground">Peça ao lojista para habilitar pelo menos uma opção de pagamento nas configurações.</p>
             </div>
           ) : availableMethods.map(m => (
-            <button key={m.key} disabled={quoteLoading || Boolean(quoteError) || (!isDemoMode() && !serverQuote)} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
+            <button key={m.key} disabled={!deviceOwnedKiosk && (quoteLoading || Boolean(quoteError) || (!isDemoMode() && !serverQuote))} onClick={() => setMethod(m.key)} className="touch-btn w-full kiosk-card p-4 flex items-center gap-4 text-left hover:border-primary border-2 border-transparent transition-colors">
               <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">{m.icon}</div>
               <div className="flex-1">
                 <p className="font-bold">{m.label}</p>

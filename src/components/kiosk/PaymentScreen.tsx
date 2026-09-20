@@ -145,7 +145,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     let msg = `🧾 *NOVO PEDIDO - ${storeSettings.storeName}*\n\n`;
     msg += `🔢 *SENHA DO PEDIDO: #${generatedNumber}*\n\n`;
     msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
-    msg += `📍 *LOCAL:* ${orderType === 'local' ? 'Comer no Local (Mesa)' : 'Para Viagem (Entrega)'}\n`;
+    msg += `📍 *LOCAL:* ${orderType === 'local' ? (tableLabel ? `Comer no Local — ${tableLabel}` : 'Comer no Local') : 'Para Viagem (Entrega)'}\n`;
     if (orderType === 'viagem' && deliveryAddress) {
       if (bairroNome) msg += `🏘️ *BAIRRO:* ${bairroNome}\n`;
       msg += `🏠 *ENDEREÇO:* ${deliveryAddress}\n`;
@@ -333,6 +333,36 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     }
   };
 
+
+  useEffect(() => {
+    if (!offlineQueued || !isOnline || method !== 'cash' || quoteLoading || quoteError || !serverQuote || saving) return;
+    void handleConfirmPayment();
+  }, [offlineQueued, isOnline, method, quoteLoading, quoteError, serverQuote, saving]);
+
+  if (offlineQueued && !confirmed) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-5 max-w-md mx-auto text-center">
+        <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center text-3xl">📡</div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black">{isOnline ? 'Sincronizando pedido…' : 'Pedido salvo offline'}</h2>
+          <p className="text-sm text-muted-foreground">
+            {isOnline
+              ? 'A conexão voltou. Estamos validando o total e enviando o pedido com a mesma chave idempotente.'
+              : 'Este pedido está salvo neste dispositivo. Ainda não chegou à cozinha, não gerou senha e nenhum pagamento foi confirmado.'}
+          </p>
+          {tableLabel && <p className="font-bold text-primary">🍽️ {tableLabel}</p>}
+        </div>
+        <div className="w-full kiosk-card p-4 text-left text-sm space-y-1">
+          <p><strong>Cliente:</strong> {customerName}</p>
+          <p><strong>Itens:</strong> {cart.reduce((sum, item) => sum + item.quantity, 0)}</p>
+          <p><strong>Pagamento:</strong> Dinheiro no balcão</p>
+        </div>
+        {paymentError && <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>}
+        {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, a sincronização será tentada automaticamente. Não limpe os dados do navegador enquanto estiver pendente.</p>}
+      </div>
+    );
+  };
+
   if (confirmed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto">
@@ -365,7 +395,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">📍 Local</p>
-            <p className="font-bold">{orderType === 'local' ? 'Comer no Local' : 'Para Viagem'}</p>
+            <p className="font-bold">{orderType === 'local' ? (tableLabel ? `Comer no Local — ${tableLabel}` : 'Comer no Local') : 'Para Viagem'}</p>
           </div>
           {orderType === 'viagem' && deliveryAddress && (
             <div className="space-y-1">

@@ -172,6 +172,81 @@ try {
     assert.equal(synced.authoritative_ack.total, 25.5);
   });
 
+
+  await check('crash após commit autoritativo reutiliza IDs e retry permanece idempotente', async () => {
+    const crashOrder = await queue.enqueue({
+      organization_id: ORG_ID,
+      payment_method: 'cash',
+      items: [{ product_id: 'p-crash', quantity: 1 }],
+      customer_name: 'Cliente crash',
+    });
+
+    const claimedBeforeCrash = await queue.claimNext();
+    assert.equal(claimedBeforeCrash.local_order_id, crashOrder.local_order_id);
+    assert.equal(claimedBeforeCrash.client_request_id, crashOrder.client_request_id);
+    assert.equal(claimedBeforeCrash.state, 'syncing');
+
+    const authoritativeOrders = new Map();
+    const fakeAuthoritativeRpc = async (body) => {
+      const key = body._client_request_id;
+      if (authoritativeOrders.has(key)) {
+        return { ...authoritativeOrders.get(key), idempotent: true };
+      }
+
+      const stored = {
+        ok: true,
+        state: 'synced',
+        device_id: body._device_id,
+        client_request_id: body._client_request_id,
+        order_id: '77777777-7777-4777-8777-777777777777',
+        order_number: '103',
+        total: 19.9,
+        payment_method: 'cash',
+        payment_status: 'pending',
+        idempotent: false,
+      };
+      authoritativeOrders.set(key, stored);
+      return stored;
+    };
+
+    // O servidor já confirmou e persistiu, mas o companion cai antes do ACK local.
+    const firstServerAck = await fakeAuthoritativeRpc({
+      _device_id: DEVICE_ID,
+      _credential: 'e'.repeat(64),
+      _client_request_id: claimedBeforeCrash.client_request_id,
+      _local_order_id: claimedBeforeCrash.local_order_id,
+      _payload: claimedBeforeCrash.payload,
+    });
+    assert.equal(firstServerAck.idempotent, false);
+    assert.equal(authoritativeOrders.size, 1);
+
+    const restarted = new DurableQueue({ rootDir, deviceId: DEVICE_ID });
+    await restarted.init();
+    assert.equal(await restarted.recoverInterrupted(), 1);
+
+    const retry = await syncNextQueuedOrder({
+      queue: restarted,
+      device: {
+        device_id: DEVICE_ID,
+        organization_id: ORG_ID,
+        credential: 'e'.repeat(64),
+      },
+      rpc: fakeAuthoritativeRpc,
+    });
+
+    assert.equal(retry.state, 'synced');
+    assert.equal(retry.idempotent, true);
+    assert.equal(authoritativeOrders.size, 1);
+
+    const snapshot = await restarted.snapshot();
+    const stored = snapshot.items.find((item) => item.local_order_id === crashOrder.local_order_id);
+    assert.equal(stored.state, 'synced');
+    assert.equal(stored.client_request_id, crashOrder.client_request_id);
+    assert.equal(stored.authoritative_ack.order_id, firstServerAck.order_id);
+    assert.equal(stored.authoritative_ack.idempotent, true);
+  });
+
+
   await check('conflito autoritativo permanece needs_attention e não é apagado', async () => {
     const conflict = await queue.enqueue({
       organization_id: ORG_ID,

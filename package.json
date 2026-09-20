@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run && node tools/visionfood-companion/companion.smoke.mjs",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "phase297:preflight": "node tools/visionfood-companion/phase297-preflight.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",

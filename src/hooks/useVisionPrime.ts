@@ -14,12 +14,12 @@ export interface VisionPrimeStatus {
 }
 
 /** Configuração pública do Vision Prime da loja. */
-export function useVisionPrimeConfig(orgId: string | null) {
+export function useVisionPrimeConfig(orgId: string | null, enabled = true) {
   const [config, setConfig] = useState<VisionPrimeConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!orgId) { setConfig(null); setLoading(false); return; }
+    if (!orgId || !enabled) { setConfig(null); setLoading(false); return; }
     let cancel = false;
     setLoading(true);
     supabase.rpc('vision_prime_public_config', { _org: orgId })
@@ -31,7 +31,7 @@ export function useVisionPrimeConfig(orgId: string | null) {
       });
     // Public clients no longer subscribe directly to the protected config table.
     return () => { cancel = true; };
-  }, [orgId]);
+  }, [orgId, enabled]);
 
   return { config, loading };
 }

@@ -32,7 +32,7 @@ interface CartScreenProps {
 const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false }: CartScreenProps) => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
-  const { config: primeCfg } = useVisionPrimeConfig(orgId);
+  const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
   const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
 
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);

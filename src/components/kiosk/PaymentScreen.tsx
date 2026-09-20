@@ -9,6 +9,7 @@ import type { AppliedCoupon } from './CartScreen';
 import { canQueueOffline, clearPendingCheckout, createClientRequestId, loadPendingCheckout, savePendingCheckout, type PendingCheckoutDraft } from '@/lib/offlineCheckoutQueue';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 import { Crown } from 'lucide-react';
+import { enqueueOfflineOrderOnCompanion, getKioskCompanionQueue, syncKioskCompanionQueueOnce } from '@/lib/kioskCompanionClient';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -46,7 +47,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
-  const [offlineSyncAttempted, setOfflineSyncAttempted] = useState(false);
   const [requiresLogin, setRequiresLogin] = useState(false);
   const [clientRequestId] = useState(() => recoveredDraft?.clientRequestId || createClientRequestId());
   const [deliveryCode, setDeliveryCode] = useState('');
@@ -85,7 +85,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
 
   useEffect(() => {
-    const online = () => { setOfflineSyncAttempted(false); setIsOnline(true); };
+    const online = () => setIsOnline(true);
     const offline = () => setIsOnline(false);
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
@@ -205,6 +205,35 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     tableLabel,
   });
 
+  const buildCompanionOfflineDraft = () => ({
+    organization_id: orgId || '',
+    payment_method: 'cash' as const,
+    payment_status: 'pending' as const,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    customer_cpf: customerCpf || '',
+    order_type: orderType,
+    delivery_address: deliveryAddress || '',
+    delivery_reference: deliveryReference || '',
+    delivery_recipient: deliveryRecipient || '',
+    bairro_id: bairroId || null,
+    bairro_nome: bairroNome || '',
+    delivery_fee: rawFee,
+    items: quoteItems,
+    scheduled_for: scheduledFor || null,
+    coupon_code: appliedCoupon?.codigo || '',
+    delivery_context: { cep: deliveryCep || '' },
+    table_token: tableToken || null,
+    offline_snapshot: {
+      displayed_subtotal: authoritativeSubtotal,
+      displayed_coupon_discount: authoritativeCouponDiscount,
+      displayed_delivery_fee: authoritativeFee,
+      displayed_total: total,
+      prime_discount: authoritativePrimeDiscount,
+      prime_shipping_waived: authoritativeFeeWaived > 0,
+    },
+  });
+
   const handleConfirmPayment = async () => {
     if (saving) return;
     setPaymentError('');
@@ -224,9 +253,36 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         toast.error('Conexão obrigatória', { description: message });
         return;
       }
-      savePendingCheckout(buildPendingDraft('queued_offline', method));
-      setOfflineQueued(true);
-      toast.info('Pedido salvo neste dispositivo. Ele ainda não foi enviado à cozinha.');
+
+      setSaving(true);
+      try {
+        const queued = await enqueueOfflineOrderOnCompanion(buildCompanionOfflineDraft());
+        const companionLocalOrderId = String(queued.local_order_id || '');
+        const companionClientRequestId = String(queued.client_request_id || '');
+        if (!companionLocalOrderId || !companionClientRequestId) {
+          throw new Error('companion_queue_ack_invalid');
+        }
+
+        savePendingCheckout({
+          ...buildPendingDraft('queued_offline', method),
+          clientRequestId: companionClientRequestId,
+          companionLocalOrderId,
+          companionClientRequestId,
+        });
+        setOfflineQueued(true);
+        setPaymentError('');
+        toast.info('Pedido salvo na fila segura deste dispositivo. Ele ainda não foi enviado à cozinha.');
+      } catch (error: any) {
+        const message = String(error?.message || 'companion_unavailable');
+        setPaymentError(
+          message.includes('device_not_enrolled')
+            ? 'Este totem ainda não possui identidade de dispositivo válida. O pedido não foi enfileirado.'
+            : 'Não foi possível gravar o pedido na fila durável do totem. O pedido não foi confirmado.',
+        );
+        toast.error('Fila offline indisponível', { description: 'Nenhum pedido foi criado no servidor.' });
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -343,10 +399,66 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
 
   useEffect(() => {
-    if (!offlineQueued || !isOnline || method !== 'cash' || quoteLoading || quoteError || !serverQuote || saving || offlineSyncAttempted) return;
-    setOfflineSyncAttempted(true);
-    void handleConfirmPayment();
-  }, [offlineQueued, isOnline, method, quoteLoading, quoteError, serverQuote, saving, offlineSyncAttempted]);
+    if (!offlineQueued || !isOnline || !orgId) return;
+
+    const pending = loadPendingCheckout(orgId);
+    const localOrderId = pending?.companionLocalOrderId;
+    if (!localOrderId) {
+      setPaymentError('Este rascunho offline é anterior à fila segura por dispositivo. Ele foi preservado e precisa de revisão; não será enviado automaticamente.');
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const reconcile = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        await syncKioskCompanionQueueOnce();
+        const queue: any = await getKioskCompanionQueue();
+        const item = Array.isArray(queue?.items)
+          ? queue.items.find((entry: any) => entry.local_order_id === localOrderId)
+          : null;
+        if (cancelled || !item) return;
+
+        if (item.state === 'synced' && item.authoritative_ack?.order_id) {
+          const ack = item.authoritative_ack;
+          clearPendingCheckout(pending.clientRequestId);
+          setOfflineQueued(false);
+          setCurrentOrderId(String(ack.order_id));
+          setGeneratedNumber(String(ack.order_number || ''));
+          setDeliveryCode(String(ack.delivery_code || ''));
+          setPaymentError('');
+          setConfirmed(true);
+          return;
+        }
+
+        if (item.state === 'needs_attention') {
+          const reason = String(item.last_error || 'needs_attention');
+          const message = reason.includes('commercial_terms_changed')
+            ? 'Preço, desconto ou frete mudou enquanto o totem estava offline. O pedido foi preservado para revisão e não foi criado no servidor.'
+            : reason.includes('customer_benefit_requires_authentication')
+              ? 'Este pedido usava um benefício de cliente que exige autenticação. O pedido foi preservado para revisão.'
+              : 'O servidor encontrou uma divergência que exige revisão. O pedido local foi preservado e não foi criado incorretamente.';
+          setPaymentError(message);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setPaymentError('A fila local continua preservada. A sincronização autoritativa ainda não pôde ser concluída.');
+        }
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void reconcile();
+    const timer = window.setInterval(() => { void reconcile(); }, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [offlineQueued, isOnline, orgId]);
 
   if (offlineQueued && !confirmed) {
     return (
@@ -367,10 +479,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <p><strong>Pagamento:</strong> Dinheiro no balcão</p>
         </div>
         {paymentError && <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>}
-        {isOnline && paymentError && (requiresLogin
-          ? <button onClick={() => window.location.assign(`/auth?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Entrar novamente</button>
-          : <button onClick={() => setOfflineSyncAttempted(false)} className="touch-btn w-full rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground">Tentar sincronizar novamente</button>)}
-        {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, a sincronização será tentada automaticamente. Não limpe os dados do navegador enquanto estiver pendente.</p>}
+        {isOnline && paymentError && <p className="text-xs text-muted-foreground">A fila local permanece preservada. O companion continuará verificando a reconciliação sem transformar este pedido em checkout autenticado.</p>}
+        {!isOnline && <p className="text-xs text-muted-foreground">Ao recuperar a conexão, o companion tentará a sincronização autoritativa automaticamente. Não limpe os dados locais enquanto estiver pendente.</p>}
       </div>
     );
   };

@@ -9,7 +9,7 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-agent-token',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-agent-token, x-app-origin',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -171,7 +171,16 @@ Deno.serve(async (req) => {
       const storeName = (setRow?.store_name || 'Pedido').toString();
       const paperWidth = Number(cfgRow?.paper_width || 48);
       const slug = orgRow?.slug || '';
-      const origin = req.headers.get('origin') || 'https://app';
+      const rawOrigin = req.headers.get('x-app-origin') || req.headers.get('origin') || 'https://app';
+      let origin = 'https://app';
+      try {
+        const parsedOrigin = new URL(rawOrigin);
+        if (parsedOrigin.protocol === 'http:' || parsedOrigin.protocol === 'https:') {
+          origin = parsedOrigin.origin;
+        }
+      } catch {
+        // Keep the legacy fallback for previously downloaded agents.
+      }
 
       const jobs = (claim.jobs || []).map((order: any) => {
         const trackUrl = `${origin}/acompanhar/${order.id}`;

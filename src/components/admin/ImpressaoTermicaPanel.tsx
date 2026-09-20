@@ -152,6 +152,7 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
 import net from 'node:net';
 
 const ENDPOINT = '${endpoint}';
+const APP_ORIGIN = ${JSON.stringify(window.location.origin)};
 const TOKEN    = '${cfg.agent_token}';
 const PRINTER_IP   = '${cfg.printer_ip || '192.168.0.100'}';
 const PRINTER_PORT = ${cfg.printer_port || 9100};
@@ -162,7 +163,7 @@ const log = (...a) => console.log(new Date().toISOString(), '-', ...a);
 async function call(action, body) {
   const r = await fetch(ENDPOINT + '/' + action, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-agent-token': TOKEN },
+    headers: { 'content-type': 'application/json', 'x-agent-token': TOKEN, 'x-app-origin': APP_ORIGIN },
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));

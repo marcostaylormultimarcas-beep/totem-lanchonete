@@ -206,6 +206,28 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const handleConfirmPayment = async () => {
     if (saving) return;
     setPaymentError('');
+
+    if (!isDemoMode() && !isOnline) {
+      if (!method) {
+        setPaymentError('Escolha uma forma de pagamento.');
+        return;
+      }
+      if (!orgId) {
+        setPaymentError('Loja não identificada. Recarregue o cardápio e tente novamente.');
+        return;
+      }
+      if (!canQueueOffline(method)) {
+        const message = 'Esta forma de pagamento exige conexão com o servidor. Nenhum pagamento será repetido ou confirmado offline.';
+        setPaymentError(message);
+        toast.error('Conexão obrigatória', { description: message });
+        return;
+      }
+      savePendingCheckout(buildPendingDraft('queued_offline', method));
+      setOfflineQueued(true);
+      toast.info('Pedido salvo neste dispositivo. Ele ainda não foi enviado à cozinha.');
+      return;
+    }
+
     if (!isDemoMode() && (quoteLoading || quoteError || !serverQuote)) {
       toast.error('Total ainda não foi validado pelo servidor.'); return;
     }

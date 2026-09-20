@@ -29,15 +29,16 @@ interface PaymentScreenProps {
   scheduledFor?: string | null;
   tableToken?: string;
   tableLabel?: string;
+  deviceOwnedKiosk?: boolean;
   onBack: () => void;
   onDone: (orderId?: string) => void;
 }
 
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', deviceOwnedKiosk = false, onBack, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
-  const recoveredDraft = orgId ? loadPendingCheckout(orgId) : null;
+  const recoveredDraft = !deviceOwnedKiosk && orgId ? loadPendingCheckout(orgId) : null;
   const [method, setMethod] = useState<Method | null>((recoveredDraft?.method as Method | undefined) || null);
   const [copied, setCopied] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -47,6 +48,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
+  const [companionLocalOrderId, setCompanionLocalOrderId] = useState(recoveredDraft?.companionLocalOrderId || '');
   const [requiresLogin, setRequiresLogin] = useState(false);
   const [clientRequestId] = useState(() => recoveredDraft?.clientRequestId || createClientRequestId());
   const [deliveryCode, setDeliveryCode] = useState('');
@@ -60,7 +62,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteError, setQuoteError] = useState('');
   const { config: primeCfg } = useVisionPrimeConfig(orgId);
-  const { status: primeStatus } = useVisionPrimeStatus(orgId);
+  const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
   const primeActive = Boolean(primeStatus.active && primeCfg?.ativo);

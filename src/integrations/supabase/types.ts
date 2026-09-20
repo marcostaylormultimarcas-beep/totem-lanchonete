@@ -818,6 +818,7 @@ export type Database = {
           customer_cpf: string
           customer_name: string
           customer_phone: string
+          client_request_id: string | null
           data_reembolso: string | null
           delivery_address: string | null
           delivery_cep: string
@@ -844,6 +845,9 @@ export type Database = {
           scheduled_for: string | null
           status: string
           status_reembolso: string
+          table_id: string | null
+          table_label: string
+          table_session_id: string | null
           total: number
           updated_at: string
           user_id: string | null
@@ -855,6 +859,7 @@ export type Database = {
           customer_cpf?: string
           customer_name: string
           customer_phone?: string
+          client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_cep?: string
@@ -881,6 +886,9 @@ export type Database = {
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
+          table_id?: string | null
+          table_label?: string
+          table_session_id?: string | null
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -892,6 +900,7 @@ export type Database = {
           customer_cpf?: string
           customer_name?: string
           customer_phone?: string
+          client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_cep?: string
@@ -918,6 +927,9 @@ export type Database = {
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
+          table_id?: string | null
+          table_label?: string
+          table_session_id?: string | null
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -1971,6 +1983,37 @@ export type Database = {
         }
         Returns: Json
       }
+      create_order_checkout_v4: {
+        Args: {
+          _organization_id: string
+          _customer_name: string
+          _customer_phone?: string
+          _customer_cpf?: string
+          _order_type?: string
+          _delivery_address?: string
+          _delivery_reference?: string
+          _delivery_recipient?: string
+          _bairro_id?: string | null
+          _bairro_nome?: string
+          _delivery_fee?: number
+          _items?: Json
+          _total?: number
+          _payment_method?: string
+          _scheduled_for?: string | null
+          _coupon_code?: string
+          _delivery_context?: Json
+          _table_token?: string | null
+          _client_request_id?: string | null
+        }
+        Returns: {
+          id: string
+          order_number: string
+          delivery_code: string
+          table_label: string
+          table_session_id: string | null
+          idempotent: boolean
+        }[]
+      }
       email_already_registered: { Args: { _email: string }; Returns: boolean }
       entregador_available_orders: {
         Args: { _entregador_id: string; _password: string }
@@ -2217,6 +2260,8 @@ export type Database = {
         Args: { _order_id: string }
         Returns: Json
       }
+      visionfood_admin_tables: { Args: { _org: string }; Returns: Json }
+      visionfood_close_table_session: { Args: { _session_id: string }; Returns: Json }
       visionfood_profile_count: { Args: { _org: string }; Returns: number }
       visionfood_public_called_tickets: {
         Args: { _limit?: number; _org: string }
@@ -2241,6 +2286,10 @@ export type Database = {
         Args: { _org: string }
         Returns: Json
       }
+      visionfood_public_table_context: {
+        Args: { _organization_id: string; _table_token: string }
+        Returns: Json
+      }
       visionfood_public_theme: { Args: { _org: string }; Returns: Json }
       visionfood_push_predictive_stock: {
         Args: {
@@ -2248,6 +2297,14 @@ export type Database = {
           _ingredient_name: string
           _org: string
         }
+        Returns: Json
+      }
+      visionfood_rotate_table_token: {
+        Args: { _org: string; _table_id: string }
+        Returns: Json
+      }
+      visionfood_upsert_table: {
+        Args: { _label: string; _org: string; _table_id?: string | null }
         Returns: Json
       }
       visionfood_update_order_status: {

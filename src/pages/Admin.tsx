@@ -296,6 +296,7 @@ const AdminPage = () => {
       ['categoryIcons', { category_icons: s.categoryIcons as any }],
       ['categories', { categories: s.categories as any }],
       ['instagram', { instagram_url: s.instagramUrl || '' }],
+      ['balancaBaudRate', { balanca_baud_rate: s.balancaBaudRate === 4800 ? 4800 : 9600 }],
       ['pixKeyManual', { pix_key_manual: s.pixKeyManual || '' }],
       ['payCashEnabled', { pay_cash_enabled: Boolean(s.payCashEnabled) }],
       ['payPixEnabled', { pay_pix_enabled: Boolean(s.payPixEnabled) }],

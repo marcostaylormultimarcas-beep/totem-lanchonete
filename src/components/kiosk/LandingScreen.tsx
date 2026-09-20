@@ -3,6 +3,7 @@ import { Clock, Lock, Crown } from 'lucide-react';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { useOrgId } from '@/contexts/OrgContext';
 import { useStoreStatus } from '@/hooks/useStoreStatus';
+import QRCode from 'react-qr-code';
 
 interface LandingScreenProps {
   onStart: () => void;
@@ -42,7 +43,6 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
   const allowClick = canOrder && !status.loading;
 
   const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data=${encodeURIComponent(currentUrl)}`;
 
   return (
     <div
@@ -93,7 +93,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
         {/* QR Code */}
         <div className="flex flex-col items-center gap-2">
           <div className="bg-white rounded-2xl p-3 border-2 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-            <img src={qrSrc} alt="QR Code do cardápio" className="w-32 h-32 md:w-36 md:h-36 block" />
+            <QRCode value={currentUrl || '/'} size={144} aria-label="QR Code do cardápio" className="w-32 h-32 md:w-36 md:h-36 block" />
           </div>
           <p className="text-zinc-400 text-[11px] uppercase tracking-[0.25em]">Aponte a câmera</p>
         </div>

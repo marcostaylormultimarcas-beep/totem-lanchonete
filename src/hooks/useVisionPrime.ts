@@ -37,12 +37,12 @@ export function useVisionPrimeConfig(orgId: string | null) {
 }
 
 /** Status da assinatura do usuário autenticado para esta loja. */
-export function useVisionPrimeStatus(orgId: string | null) {
+export function useVisionPrimeStatus(orgId: string | null, enabled = true) {
   const [status, setStatus] = useState<VisionPrimeStatus>({ active: false });
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    if (!orgId) { setStatus({ active: false }); setLoading(false); return; }
+    if (!orgId || !enabled) { setStatus({ active: false }); setLoading(false); return; }
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setStatus({ active: false }); setLoading(false); return; }
@@ -52,7 +52,7 @@ export function useVisionPrimeStatus(orgId: string | null) {
     setLoading(false);
   };
 
-  useEffect(() => { refresh(); }, [orgId]);
+  useEffect(() => { refresh(); }, [orgId, enabled]);
 
   return { status, loading, refresh };
 }

@@ -93,7 +93,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           description: p.description || '',
           prepTimeMin: Number(p.prep_time_min ?? 0),
         }));
-        setProducts(mapped);
+        setProducts(mapped.filter((product) => !product.isCombo));
       } catch (error) {
         if (!cancelled) console.warn('[StartScreen] public catalog error:', error);
       } finally {

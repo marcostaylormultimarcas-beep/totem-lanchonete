@@ -360,16 +360,15 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       {/* Cart */}
       {cart.length > 0 && (
         <>
-          <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/96 backdrop-blur border-t border-zinc-800 px-3 pt-2.5 pb-[calc(0.65rem+env(safe-area-inset-bottom))] lg:hidden z-30">
-            <button onClick={onGoToCart} className="touch-btn w-full max-w-md mx-auto bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 rounded-xl px-4 py-3 flex items-center gap-3 shadow-[0_8px_24px_rgba(245,158,11,0.25)] active:scale-[0.99] transition-transform">
-              <div className="w-9 h-9 rounded-full bg-black/10 flex items-center justify-center shrink-0">
-                <ShoppingCart className="w-5 h-5" />
+          <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/92 backdrop-blur border-t border-zinc-800/80 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden z-30">
+            <button onClick={onGoToCart} className="touch-btn w-full max-w-md mx-auto bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-[0_6px_18px_rgba(245,158,11,0.22)] active:scale-[0.99] transition-transform">
+              <div className="w-8 h-8 rounded-full bg-black/10 flex items-center justify-center shrink-0">
+                <ShoppingCart className="w-[18px] h-[18px]" />
               </div>
-              <div className="flex-1 min-w-0 text-left leading-tight">
-                <p className="font-black text-base">Ver carrinho</p>
-                <p className="text-xs font-semibold opacity-75">{cart.length} {cart.length === 1 ? 'item' : 'itens'}</p>
-              </div>
-              <span className="font-black text-lg tabular-nums whitespace-nowrap">{formatCurrency(cartTotal)}</span>
+              <span className="flex-1 min-w-0 text-left font-black text-sm sm:text-base truncate">
+                Carrinho · {cart.length} {cart.length === 1 ? 'item' : 'itens'}
+              </span>
+              <span className="font-black text-base sm:text-lg tabular-nums whitespace-nowrap">{formatCurrency(cartTotal)}</span>
             </button>
           </div>
           <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-zinc-800 bg-zinc-950 p-4 gap-3 sticky top-0 h-screen overflow-y-auto">

@@ -213,16 +213,23 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
                 </p>
                 {source === 'gps' && (
                   <p className="text-[11px] text-orange-400 mt-1">
-                    {coords?.accuracyM && coords.accuracyM > MAX_EXACT_DESTINATION_ACCURACY_M
-                      ? 'GPS com baixa precisão — confirme o endereço. A rota usará o endereço se necessário.'
-                      : 'Localização aproximada pelo aparelho — confirme o número.'}
+                    {!coords
+                      ? 'Endereço alterado manualmente — a rota usará o endereço confirmado.'
+                      : coords.accuracyM && coords.accuracyM > MAX_EXACT_DESTINATION_ACCURACY_M
+                        ? 'GPS com baixa precisão — confirme o endereço. A rota usará o endereço se necessário.'
+                        : 'Localização aproximada pelo aparelho — confirme o número.'}
                   </p>
                 )}
               </div>
             </div>
             <input
               value={logradouro}
-              onChange={e => setLogradouro(e.target.value)}
+              onChange={e => {
+                if (source === 'gps' && e.target.value.trim() !== logradouro.trim()) {
+                  setCoords(null);
+                }
+                setLogradouro(e.target.value);
+              }}
               placeholder="Rua / avenida *"
               autoComplete="address-line1"
               className="w-full px-4 py-3 bg-[#18181B] border border-zinc-800 rounded-2xl text-white outline-none focus:border-orange-500/60"

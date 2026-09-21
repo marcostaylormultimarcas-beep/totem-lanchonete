@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoyaltyCard from './LoyaltyCard';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
-import { useStoreStatus } from '@/hooks/useStoreStatus';
+import { getSpecialClosure, useStoreStatus } from '@/hooks/useStoreStatus';
 import StoreStatusBadge from './StoreStatusBadge';
 
 export interface AppliedCoupon {
@@ -301,8 +301,13 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                   <div className="rounded-xl border border-primary/40 p-3 space-y-2 bg-primary/5">
                     <p className="text-sm font-bold flex items-center gap-2"><CalendarClock className="w-4 h-4 text-primary" /> Agendar para:</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
+                      <input
+                        type="date"
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={scheduledDate}
+                        onChange={e => setScheduledDate(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm"
+                      />
                       <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
                         className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
                     </div>
@@ -311,9 +316,16 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                       <button
                         onClick={() => {
                           if (!scheduledDate || !scheduledTime) { toast.error('Escolha data e hora'); return; }
-                          const iso = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
-                          if (new Date(iso) <= new Date()) { toast.error('Escolha uma data futura'); return; }
-                          onCheckout(iso);
+                          const localScheduled = new Date(`${scheduledDate}T${scheduledTime}:00`);
+                          if (localScheduled <= new Date()) { toast.error('Escolha uma data futura'); return; }
+
+                          const closure = getSpecialClosure(localScheduled, storeStatus.specialClosures);
+                          if (closure) {
+                            toast.error(`A loja estará fechada nessa data: ${closure.reason}.`);
+                            return;
+                          }
+
+                          onCheckout(localScheduled.toISOString());
                         }}
                         className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold">
                         Confirmar Agendamento

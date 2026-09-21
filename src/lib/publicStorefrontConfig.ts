@@ -19,6 +19,10 @@ export interface PublicStorefrontConfig {
   emergency_closed?: boolean;
   closed_message?: string;
   scheduling_enabled?: boolean;
+  scheduling_slot_minutes?: 15 | 30;
+  scheduling_capacity_enabled?: boolean;
+  scheduling_max_orders_per_slot?: number;
+  scheduling_preparation_lead_min?: number;
   balanca_baud_rate?: number;
   delivery_tempo_base_min?: number;
   delivery_mode?: 'bairros' | 'raio_km' | 'lista_ceps';

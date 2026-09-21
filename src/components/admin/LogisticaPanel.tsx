@@ -12,6 +12,7 @@ interface ReadyOrder {
   delivery_address: string | null;
   bairro_nome: string | null;
   total: number;
+  scheduled_for?: string | null;
 }
 
 interface Entregador {
@@ -24,6 +25,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
   const [mode, setMode] = useState<Mode>('manual');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [schedulingLeadMin, setSchedulingLeadMin] = useState(30);
 
   // Roteirização por região (lógica simples)
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
@@ -40,11 +42,12 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       setLoading(true);
       const { data } = await supabase
         .from('settings')
-        .select('delivery_assignment_mode')
+        .select('delivery_assignment_mode, scheduling_preparation_lead_min')
         .eq('organization_id', organizationId)
         .maybeSingle();
       const m = ((data as any)?.delivery_assignment_mode || 'manual') as Mode;
       setMode(m === 'free' ? 'free' : 'manual');
+      setSchedulingLeadMin(Math.max(0, Math.min(360, Number((data as any)?.scheduling_preparation_lead_min ?? 30))));
       setLoading(false);
     })();
   }, [organizationId]);
@@ -71,7 +74,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
     const [ordersRes, entRes] = await Promise.all([
       supabase
         .from('orders')
-        .select('id, order_number, customer_name, delivery_address, bairro_nome, total, status, order_type, entregador_id')
+        .select('id, order_number, customer_name, delivery_address, bairro_nome, total, status, order_type, entregador_id, scheduled_for')
         .eq('organization_id', organizationId)
         .eq('status', 'ready')
         .is('entregador_id', null)
@@ -84,9 +87,14 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
         .order('name'),
     ]);
     // Mantém apenas pedidos com endereço/bairro (entregas)
-    const rows = ((ordersRes.data as any[]) || []).filter(
-      (o) => o.delivery_address || o.bairro_nome
-    );
+    const now = Date.now();
+    const rows = ((ordersRes.data as any[]) || []).filter((o) => {
+      if (!(o.delivery_address || o.bairro_nome)) return false;
+      if (!o.scheduled_for) return true;
+      const scheduledAt = new Date(o.scheduled_for).getTime();
+      if (Number.isNaN(scheduledAt)) return true;
+      return now >= scheduledAt - schedulingLeadMin * 60000;
+    });
     setReadyOrders(rows as any);
     setEntregadores(((entRes.data as any[]) || []) as any);
     setLoadingRoutes(false);
@@ -312,6 +320,11 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
                             </p>
                             {o.delivery_address && (
                               <p className="text-muted-foreground truncate">{o.delivery_address}</p>
+                            )}
+                            {o.scheduled_for && (
+                              <p className="text-violet-300 font-semibold">
+                                📅 {new Date(o.scheduled_for).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </p>
                             )}
                           </div>
                           <span className="text-primary font-bold text-xs">

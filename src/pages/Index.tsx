@@ -28,6 +28,7 @@ type Step = 'landing' | 'start' | 'location' | 'table' | 'address' | 'menu' | 'c
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 
 interface PendingOrderState {
+  organizationId?: string;
   step: Step;
   orderType: 'local' | 'viagem';
   cart: CartItem[];
@@ -44,6 +45,8 @@ interface PendingOrderState {
   deliveryCep: string;
   tableToken: string;
   tableLabel: string;
+  appliedCoupon?: AppliedCoupon | null;
+  scheduledFor?: string | null;
 }
 
 const Index = () => {
@@ -144,6 +147,10 @@ const Index = () => {
       restored = true;
       try {
         const parsed = JSON.parse(pendingOrder) as PendingOrderState;
+        if (parsed.organizationId && parsed.organizationId !== orgId) {
+          console.warn('[Index] pending auth checkout belongs to another organization; discarding it.');
+          return;
+        }
         setOrderType(parsed.orderType);
         setCart(parsed.cart || []);
         setCustomerName(parsed.customerName || '');
@@ -159,6 +166,8 @@ const Index = () => {
         setCustomerCpf(parsed.customerCpf || '');
         setTableToken(parsed.tableToken || '');
         setTableLabel(parsed.tableLabel || '');
+        setAppliedCoupon(parsed.appliedCoupon || null);
+        setScheduledFor(parsed.scheduledFor || null);
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
       } catch (error) {
@@ -253,11 +262,28 @@ const Index = () => {
     });
   }, [deviceOwnedKiosk, orgId]);
 
-  // Reseta carrinho/estado ao trocar de loja (orgId muda)
+  // Reseta carrinho/estado ao trocar de loja (orgId muda), mas nunca apaga
+  // um checkout que acabou de ser salvo para atravessar o login.
   useEffect(() => {
     if (!orgId) return;
     if (isPhysicalKioskRoute && deviceModeOrgId !== orgId) return;
-    sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+
+    if (!deviceOwnedKiosk) {
+      const pendingAuthOrder = sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY);
+      if (pendingAuthOrder) {
+        try {
+          const parsed = JSON.parse(pendingAuthOrder) as PendingOrderState;
+          // Snapshots novos são vinculados à organização. Snapshot legado sem
+          // organizationId é preservado uma única vez para não perder o pedido
+          // de quem já entrou no fluxo antes desta correção.
+          if (!parsed.organizationId || parsed.organizationId === orgId) return;
+          sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+        } catch {
+          sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+        }
+      }
+    }
+
     setCart([]);
     setCustomerName('');
     setCustomerPhone('');
@@ -392,6 +418,7 @@ const Index = () => {
     // é mantido pelo listener do Supabase. Se não há sessão conhecida, salvar o
     // pedido e abrir o login imediatamente.
     const pendingOrder: PendingOrderState = {
+      organizationId: orgId || undefined,
       step: 'checkout',
       orderType,
       cart,
@@ -403,6 +430,8 @@ const Index = () => {
       deliveryRecipient,
       bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
       tableToken, tableLabel,
+      appliedCoupon,
+      scheduledFor: sched || null,
     };
 
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));

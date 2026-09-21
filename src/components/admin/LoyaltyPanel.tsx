@@ -1,424 +1,803 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Award, Calendar, Check, Coins, Gift, History, Image as ImageIcon,
+  Loader2, Package, Pencil, Plus, RotateCcw, Save, Trash2, Upload, Users, WalletCards,
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { Award, Save, Loader2, Upload, Image as ImageIcon, Gift, Check, History, Trash2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
+import { formatCurrency } from '@/data/store';
 
 interface Config {
   id?: string;
   ativo: boolean;
-  meta_pedidos: number;
+  earning_mode: 'spend' | 'order';
+  points_per_real: number;
+  points_per_order: number;
   valor_minimo_pedido: number;
-  premio_recompensa: string;
-  descricao_premio: string;
-  premio_imagem: string;
   valido_de: string;
   valido_ate: string;
+}
+
+interface Reward {
+  id: string;
+  title: string;
+  description: string;
+  image_url: string;
+  points_cost: number;
+  reward_type: 'benefit' | 'product';
+  product_id: string | null;
+  estimated_cost: number | null;
+  active: boolean;
+  sort_order: number;
+}
+
+interface RewardForm {
+  id?: string;
+  title: string;
+  description: string;
+  image_url: string;
+  points_cost: number;
+  product_id: string;
+  active: boolean;
+}
+
+interface ProductOption {
+  id: string;
+  name: string;
+  price: number;
+  cost_price: number | null;
 }
 
 interface Resgate {
   id: string;
   telefone_cliente: string;
   premio_texto: string;
+  premio_descricao?: string;
   premio_imagem: string;
   codigo_resgate: string;
+  points_spent?: number;
   status: 'pendente' | 'utilizado';
   created_at: string;
   used_at: string | null;
 }
 
-const DEFAULT: Config = {
+interface Summary {
+  active_customers: number;
+  points_issued: number;
+  points_reversed: number;
+  points_spent: number;
+  outstanding_points: number;
+  pending_rewards: number;
+}
+
+const DEFAULT_CONFIG: Config = {
   ativo: false,
-  meta_pedidos: 10,
-  valor_minimo_pedido: 30,
-  premio_recompensa: 'Ganhe um brinde especial',
-  descricao_premio: '',
-  premio_imagem: '',
+  earning_mode: 'spend',
+  points_per_real: 1,
+  points_per_order: 1,
+  valor_minimo_pedido: 0,
   valido_de: '',
   valido_ate: '',
 };
 
-const formatDate = (d: string) => {
-  if (!d) return null;
-  const parsed = new Date(d.length <= 10 ? `${d}T12:00:00` : d);
-  return isNaN(parsed.getTime()) ? d : parsed.toLocaleDateString('pt-BR');
+const DEFAULT_REWARD: RewardForm = {
+  title: '',
+  description: '',
+  image_url: '',
+  points_cost: 100,
+  product_id: '',
+  active: true,
 };
 
+const EMPTY_SUMMARY: Summary = {
+  active_customers: 0,
+  points_issued: 0,
+  points_reversed: 0,
+  points_spent: 0,
+  outstanding_points: 0,
+  pending_rewards: 0,
+};
 
-const formatPhone = (p: string) => {
-  const d = p.replace(/\D/g, '');
-  if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7)}`;
-  if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6)}`;
-  return p;
+const formatPhone = (value: string) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 11) return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return digits || 'Cliente';
 };
 
 const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => {
-  const [config, setConfig] = useState<Config>(DEFAULT);
-  const [saved, setSaved] = useState<Config | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [resgates, setResgates] = useState<Resgate[]>([]);
+  const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [rewardForm, setRewardForm] = useState<RewardForm>(DEFAULT_REWARD);
+  const [showRewardForm, setShowRewardForm] = useState(false);
   const [filter, setFilter] = useState<'pendente' | 'todos'>('pendente');
+  const [loading, setLoading] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [savingReward, setSavingReward] = useState(false);
+  const [uploadingReward, setUploadingReward] = useState(false);
+  const [redeemingId, setRedeemingId] = useState<string | null>(null);
 
   const fetchAll = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const [{ data: cfg }, { data: rs }] = await Promise.all([
-      supabase.from('config_fidelidade' as any).select('*').eq('organization_id', organizationId).maybeSingle(),
-      supabase.from('resgates_fidelidade' as any).select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(100),
-    ]);
-    if (cfg) {
-      const d = cfg as any;
-      const loaded: Config = {
-        id: d.id,
-        ativo: !!d.ativo,
-        meta_pedidos: Number(d.meta_pedidos) || 10,
-        valor_minimo_pedido: Number(d.valor_minimo_pedido) || 0,
-        premio_recompensa: d.premio_recompensa || '',
-        descricao_premio: d.descricao_premio || '',
-        premio_imagem: d.premio_imagem || '',
-        valido_de: (d.data_inicio || '').slice(0, 10),
-        valido_ate: (d.data_fim || '').slice(0, 10),
-      };
-      setConfig(loaded);
-      setSaved(loaded);
-    } else {
-      setConfig(DEFAULT);
-      setSaved(null);
+    try {
+      const [cfgResult, rewardsResult, resgatesResult, productsResult, summaryResult] = await Promise.all([
+        supabase.from('config_fidelidade').select('*').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('loyalty_rewards').select('*').eq('organization_id', organizationId).order('points_cost', { ascending: true }),
+        supabase.from('resgates_fidelidade').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(100),
+        supabase.from('products').select('id,name,price,cost_price').eq('organization_id', organizationId).eq('available', true).order('name'),
+        supabase.rpc('loyalty_admin_summary', { _organization_id: organizationId }),
+      ]);
+
+      if (cfgResult.error) throw cfgResult.error;
+      if (rewardsResult.error) throw rewardsResult.error;
+      if (resgatesResult.error) throw resgatesResult.error;
+      if (productsResult.error) throw productsResult.error;
+
+      const row = cfgResult.data;
+      if (row) {
+        setConfig({
+          id: row.id,
+          ativo: Boolean(row.ativo),
+          earning_mode: row.earning_mode === 'order' ? 'order' : 'spend',
+          points_per_real: Math.max(0.01, Number(row.points_per_real) || 1),
+          points_per_order: Math.max(1, Number(row.points_per_order) || 1),
+          valor_minimo_pedido: Math.max(0, Number(row.valor_minimo_pedido) || 0),
+          valido_de: row.data_inicio ? row.data_inicio.slice(0, 10) : '',
+          valido_ate: row.data_fim ? row.data_fim.slice(0, 10) : '',
+        });
+      } else {
+        setConfig(DEFAULT_CONFIG);
+      }
+
+      setRewards((rewardsResult.data || []).map(row => ({
+        id: row.id,
+        title: row.title,
+        description: row.description || '',
+        image_url: row.image_url || '',
+        points_cost: Number(row.points_cost) || 1,
+        reward_type: row.reward_type === 'product' ? 'product' : 'benefit',
+        product_id: row.product_id,
+        estimated_cost: row.estimated_cost == null ? null : Number(row.estimated_cost),
+        active: Boolean(row.active),
+        sort_order: Number(row.sort_order) || 0,
+      })));
+      setResgates((resgatesResult.data || []) as Resgate[]);
+      setProducts((productsResult.data || []).map(product => ({
+        id: product.id,
+        name: product.name,
+        price: Number(product.price) || 0,
+        cost_price: product.cost_price == null ? null : Number(product.cost_price),
+      })));
+
+      const stats = summaryResult.data as any;
+      if (!summaryResult.error && stats?.ok) {
+        setSummary({
+          active_customers: Number(stats.active_customers) || 0,
+          points_issued: Number(stats.points_issued) || 0,
+          points_reversed: Number(stats.points_reversed) || 0,
+          points_spent: Number(stats.points_spent) || 0,
+          outstanding_points: Number(stats.outstanding_points) || 0,
+          pending_rewards: Number(stats.pending_rewards) || 0,
+        });
+      }
+    } catch (error) {
+      console.error('[LoyaltyPanel] load error', error);
+      toast.error('Não foi possível carregar a fidelidade.');
+    } finally {
+      setLoading(false);
     }
-    setResgates((rs as any) || []);
-    setLoading(false);
   };
 
   useEffect(() => {
-    fetchAll();
+    void fetchAll();
     if (!organizationId) return;
-    const channel = supabase.channel('admin-resgates-' + organizationId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'resgates_fidelidade', filter: `organization_id=eq.${organizationId}` }, fetchAll)
+
+    const channel = supabase
+      .channel(`admin-loyalty-${organizationId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resgates_fidelidade', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loyalty_points_ledger', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    return () => { void supabase.removeChannel(channel); };
   }, [organizationId]);
 
-  const save = async () => {
+  const saveConfig = async () => {
     if (!organizationId) return;
-    if (config.meta_pedidos < 1) { toast.error('Meta deve ser ao menos 1.'); return; }
-    if (!config.premio_recompensa.trim()) { toast.error('Informe o prêmio.'); return; }
+    if (config.points_per_real <= 0 || config.points_per_real > 1000) {
+      toast.error('Pontos por R$ 1 deve ser maior que zero e no máximo 1.000.');
+      return;
+    }
+    if (config.points_per_order < 1) {
+      toast.error('Pontos por pedido deve ser ao menos 1.');
+      return;
+    }
+    if (config.valor_minimo_pedido < 0) {
+      toast.error('O valor mínimo não pode ser negativo.');
+      return;
+    }
     if (config.valido_de && config.valido_ate && config.valido_de > config.valido_ate) {
       toast.error('A data final deve ser posterior à data inicial.');
       return;
     }
-    setSaving(true);
-    let payload: Record<string, any> = {
-      organization_id: organizationId,
-      ativo: config.ativo,
-      meta_pedidos: config.meta_pedidos,
-      valor_minimo_pedido: config.valor_minimo_pedido,
-      premio_recompensa: config.premio_recompensa.trim(),
-      descricao_premio: config.descricao_premio.trim(),
-      premio_imagem: config.premio_imagem,
-      data_inicio: config.valido_de || null,
-      data_fim: config.valido_ate || null,
-    };
 
-    // Tolerância a colunas ausentes no banco externo (PGRST204)
-    for (let attempt = 0; attempt < 4; attempt++) {
-      let error: any = null;
-      let newId: string | undefined;
-      if (config.id) {
-        ({ error } = await supabase.from('config_fidelidade' as any).update(payload).eq('id', config.id));
-      } else {
-        const res = await supabase.from('config_fidelidade' as any).insert(payload).select().maybeSingle();
-        error = res.error;
-        newId = (res.data as any)?.id;
-      }
-      if (!error) {
-        setSaving(false);
-        const next = { ...config, id: config.id || newId };
-        setConfig(next);
-        setSaved(next);
-        toast.success('Cartão Fidelidade salvo com sucesso!');
-        return;
-      }
-      const missing = error.code === 'PGRST204' && /'([^']+)' column/.exec(error.message || '')?.[1];
-      if (missing && missing in payload) {
-        const { [missing]: _drop, ...rest } = payload;
-        payload = rest;
-        toast.warning(`Campo "${missing}" não existe no banco e foi ignorado.`);
-        continue;
-      }
-      setSaving(false);
-      console.error('[fidelidade] erro ao salvar', error);
-      toast.error('Erro ao salvar: ' + (error.message || 'desconhecido') + (error.hint ? ` (${error.hint})` : ''));
-      return;
+    setSavingConfig(true);
+    try {
+      const payload = {
+        organization_id: organizationId,
+        ativo: config.ativo,
+        earning_mode: config.earning_mode,
+        points_per_real: config.points_per_real,
+        points_per_order: Math.max(1, Math.trunc(config.points_per_order)),
+        valor_minimo_pedido: config.valor_minimo_pedido,
+        data_inicio: config.valido_de ? `${config.valido_de}T00:00:00.000Z` : null,
+        data_fim: config.valido_ate ? `${config.valido_ate}T23:59:59.999Z` : null,
+      };
+
+      const { data, error } = await supabase
+        .from('config_fidelidade')
+        .upsert(payload, { onConflict: 'organization_id' })
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+
+      setConfig(current => ({ ...current, id: data?.id || current.id }));
+      toast.success('Regras de pontos salvas.');
+      await fetchAll();
+    } catch (error) {
+      console.error('[LoyaltyPanel] config save error', error);
+      toast.error('Não foi possível salvar as regras de fidelidade.');
+    } finally {
+      setSavingConfig(false);
     }
-    setSaving(false);
   };
 
-  const removeProgram = async () => {
-    if (!config.id) return;
-    if (!confirm('Excluir o programa de fidelidade cadastrado? Esta ação não pode ser desfeita.')) return;
-    setDeleting(true);
-    const { error } = await supabase.from('config_fidelidade' as any).delete().eq('id', config.id);
-    setDeleting(false);
-    if (error) {
-      console.error('[fidelidade] erro ao excluir', error);
-      toast.error('Erro ao excluir: ' + error.message);
-      return;
-    }
-    setConfig(DEFAULT);
-    setSaved(null);
-    toast.success('Programa de fidelidade excluído.');
+  const selectedProduct = useMemo(
+    () => products.find(product => product.id === rewardForm.product_id) || null,
+    [products, rewardForm.product_id],
+  );
+
+  const equivalentSpend = useMemo(() => {
+    if (config.earning_mode !== 'spend' || config.points_per_real <= 0) return null;
+    return rewardForm.points_cost / config.points_per_real;
+  }, [config.earning_mode, config.points_per_real, rewardForm.points_cost]);
+
+  const resetRewardForm = () => {
+    setRewardForm(DEFAULT_REWARD);
+    setShowRewardForm(false);
   };
 
+  const editReward = (reward: Reward) => {
+    setRewardForm({
+      id: reward.id,
+      title: reward.title,
+      description: reward.description,
+      image_url: reward.image_url,
+      points_cost: reward.points_cost,
+      product_id: reward.product_id || '',
+      active: reward.active,
+    });
+    setShowRewardForm(true);
+  };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const selectRewardProduct = (productId: string) => {
+    const product = products.find(item => item.id === productId);
+    setRewardForm(current => ({
+      ...current,
+      product_id: productId,
+      title: current.title || product?.name || '',
+    }));
+  };
+
+  const uploadRewardImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (!file || !organizationId) return;
-    setUploading(true);
+    setUploadingReward(true);
     try {
       const url = await uploadProductImage(file, organizationId);
-      setConfig(c => ({ ...c, premio_imagem: url }));
-      toast.success('Imagem enviada. Clique em Salvar para confirmar.');
-    } catch (err) {
-      toast.error(err instanceof StorageLimitError ? err.message : 'Erro ao enviar imagem.');
+      setRewardForm(current => ({ ...current, image_url: url }));
+      toast.success('Imagem enviada. Salve a recompensa para confirmar.');
+    } catch (error) {
+      toast.error(error instanceof StorageLimitError ? error.message : 'Erro ao enviar imagem.');
     } finally {
-      setUploading(false);
+      setUploadingReward(false);
     }
+  };
+
+  const saveReward = async () => {
+    if (!organizationId) return;
+    const title = rewardForm.title.trim();
+    if (!title) {
+      toast.error('Informe o nome da recompensa.');
+      return;
+    }
+    if (!Number.isFinite(rewardForm.points_cost) || rewardForm.points_cost < 1) {
+      toast.error('Informe um custo em pontos maior que zero.');
+      return;
+    }
+
+    const product = products.find(item => item.id === rewardForm.product_id);
+    const payload = {
+      organization_id: organizationId,
+      title,
+      description: rewardForm.description.trim(),
+      image_url: rewardForm.image_url,
+      points_cost: Math.trunc(rewardForm.points_cost),
+      reward_type: product ? 'product' : 'benefit',
+      product_id: product?.id || null,
+      estimated_cost: product?.cost_price ?? null,
+      active: rewardForm.active,
+    };
+
+    setSavingReward(true);
+    try {
+      if (rewardForm.id) {
+        const { error } = await supabase
+          .from('loyalty_rewards')
+          .update(payload)
+          .eq('id', rewardForm.id)
+          .eq('organization_id', organizationId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('loyalty_rewards').insert(payload);
+        if (error) throw error;
+      }
+
+      toast.success(rewardForm.id ? 'Recompensa atualizada.' : 'Recompensa criada.');
+      resetRewardForm();
+      await fetchAll();
+    } catch (error) {
+      console.error('[LoyaltyPanel] reward save error', error);
+      toast.error('Não foi possível salvar a recompensa.');
+    } finally {
+      setSavingReward(false);
+    }
+  };
+
+  const removeReward = async (reward: Reward) => {
+    if (!organizationId || !window.confirm(`Excluir a recompensa "${reward.title}"?`)) return;
+    const { error } = await supabase
+      .from('loyalty_rewards')
+      .delete()
+      .eq('id', reward.id)
+      .eq('organization_id', organizationId);
+    if (error) {
+      toast.error('Não foi possível excluir a recompensa.');
+      return;
+    }
+    toast.success('Recompensa excluída.');
+    await fetchAll();
   };
 
   const redeem = async (id: string) => {
-    if (!confirm('Confirmar entrega deste prêmio ao cliente?')) return;
-    const { data, error } = await supabase.rpc('redeem_loyalty_prize' as any, { _resgate_id: id });
-    const res: any = data;
-    if (error || !res?.ok) {
-      toast.error('Não foi possível resgatar: ' + (res?.reason || error?.message || 'erro'));
-      return;
+    if (!window.confirm('Confirmar que este prêmio foi entregue ao cliente?')) return;
+    setRedeemingId(id);
+    try {
+      const { data, error } = await supabase.rpc('redeem_loyalty_prize', { _resgate_id: id });
+      const result = data as any;
+      if (error || !result?.ok) throw error || new Error(result?.reason || 'redeem_failed');
+      toast.success('Prêmio marcado como utilizado.');
+      await fetchAll();
+    } catch (error) {
+      console.error('[LoyaltyPanel] redemption error', error);
+      toast.error('Não foi possível concluir a entrega do prêmio.');
+    } finally {
+      setRedeemingId(null);
     }
-    toast.success('Prêmio marcado como utilizado!');
-    fetchAll();
   };
 
-  const filtered = filter === 'pendente' ? resgates.filter(r => r.status === 'pendente') : resgates;
+  const filteredRedemptions = filter === 'pendente'
+    ? resgates.filter(item => item.status === 'pendente')
+    : resgates;
 
-  if (!organizationId) return <div className="p-4 text-muted-foreground">Selecione uma loja.</div>;
-  if (loading) return <div className="p-4 flex items-center gap-2 text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin"/> Carregando…</div>;
+  if (!organizationId) {
+    return <div className="p-4 text-muted-foreground">Selecione uma loja.</div>;
+  }
+
+  if (loading && !config.id && rewards.length === 0) {
+    return (
+      <div className="p-6 flex items-center justify-center gap-2 text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin" /> Carregando fidelidade…
+      </div>
+    );
+  }
 
   return (
-    <div className="px-4 space-y-4">
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-5">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center">
-            <Award className="w-6 h-6 text-primary" />
+    <div className="px-4 space-y-5">
+      <section className="bg-card border border-border rounded-2xl p-5 space-y-5">
+        <div className="flex items-start gap-3">
+          <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+            <Coins className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-foreground">Cartão Fidelidade</h2>
-            <p className="text-xs text-muted-foreground">Personalize as regras do seu programa de fidelidade.</p>
+            <h2 className="text-lg font-black">Programa de Pontos</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Pontos entram somente após pagamento confirmado + pedido entregue/retirado. Descontos não pontuam e a taxa de entrega não entra na base.
+            </p>
           </div>
         </div>
 
         <label className="flex items-center justify-between gap-3 bg-muted/40 rounded-xl px-4 py-3 cursor-pointer">
           <div>
-            <div className="text-sm font-semibold text-foreground">Programa ativo</div>
-            <div className="text-xs text-muted-foreground">Quando ativo, os clientes veem o cartão na loja.</div>
+            <p className="text-sm font-bold">Programa ativo</p>
+            <p className="text-xs text-muted-foreground">Quando ativo, clientes veem saldo, regras e recompensas.</p>
           </div>
           <input
             type="checkbox"
-            className="w-12 h-7 appearance-none rounded-full bg-muted relative cursor-pointer transition-colors checked:bg-primary
-              before:content-[''] before:absolute before:top-0.5 before:left-0.5 before:w-6 before:h-6 before:bg-background before:rounded-full before:transition-transform
-              checked:before:translate-x-5"
             checked={config.ativo}
-            onChange={e => setConfig(c => ({ ...c, ativo: e.target.checked }))}
+            onChange={event => setConfig(current => ({ ...current, ativo: event.target.checked }))}
+            className="w-5 h-5 accent-primary"
           />
         </label>
 
+        <div>
+          <label className="text-xs font-bold text-muted-foreground">Como o cliente ganha pontos</label>
+          <div className="grid sm:grid-cols-2 gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => setConfig(current => ({ ...current, earning_mode: 'spend' }))}
+              className={`rounded-xl border p-3 text-left transition ${config.earning_mode === 'spend' ? 'border-primary bg-primary/10' : 'border-border bg-muted/30'}`}
+            >
+              <p className="font-bold text-sm">Por valor gasto</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Recomendado. Quem compra mais, acumula mais.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfig(current => ({ ...current, earning_mode: 'order' }))}
+              className={`rounded-xl border p-3 text-left transition ${config.earning_mode === 'order' ? 'border-primary bg-primary/10' : 'border-border bg-muted/30'}`}
+            >
+              <p className="font-bold text-sm">Por pedido</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Todo pedido elegível vale a mesma quantidade.</p>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          {config.earning_mode === 'spend' ? (
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Pontos por R$ 1 gasto</label>
+              <input
+                type="number"
+                min="0.01"
+                max="1000"
+                step="0.01"
+                value={config.points_per_real}
+                onChange={event => setConfig(current => ({ ...current, points_per_real: Number(event.target.value) || 0 }))}
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1">Ex.: 1 = R$ 42 elegíveis geram 42 pontos.</p>
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Pontos por pedido</label>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={config.points_per_order}
+                onChange={event => setConfig(current => ({ ...current, points_per_order: Number(event.target.value) || 0 }))}
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-bold text-muted-foreground">Valor mínimo do pedido (R$)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={config.valor_minimo_pedido}
+              onChange={event => setConfig(current => ({ ...current, valor_minimo_pedido: Number(event.target.value) || 0 }))}
+              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">Use 0 para não exigir valor mínimo.</p>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Carimbos para completar</label>
-            <input type="number" min={1} value={config.meta_pedidos}
-              onChange={e => setConfig(c => ({ ...c, meta_pedidos: parseInt(e.target.value) || 0 }))}
-              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
+            <label className="text-xs font-bold text-muted-foreground">Válido a partir de (opcional)</label>
+            <input
+              type="date"
+              value={config.valido_de}
+              onChange={event => setConfig(current => ({ ...current, valido_de: event.target.value }))}
+              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+            />
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">Valor mínimo do pedido (R$)</label>
-            <input type="number" min={0} step="0.01" value={config.valor_minimo_pedido}
-              onChange={e => setConfig(c => ({ ...c, valor_minimo_pedido: parseFloat(e.target.value) || 0 }))}
-              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
+            <label className="text-xs font-bold text-muted-foreground">Válido até (opcional)</label>
+            <input
+              type="date"
+              value={config.valido_ate}
+              onChange={event => setConfig(current => ({ ...current, valido_ate: event.target.value }))}
+              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+            />
           </div>
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground">Texto da recompensa</label>
-          <input type="text" maxLength={120} placeholder="Ex: Ganhe um X-Burger Grátis"
-            value={config.premio_recompensa}
-            onChange={e => setConfig(c => ({ ...c, premio_recompensa: e.target.value }))}
-            className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 text-xs text-muted-foreground">
+          <b className="text-foreground">Proteção automática:</b> um pedido só pontua uma vez. Cancelamentos/estornos depois da pontuação geram reversão. No totem, identificar nome e telefone é opcional; sem identificação o pedido continua normalmente, mas não acumula pontos.
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground">Descrição extra (opcional)</label>
-          <textarea maxLength={300} rows={2}
-            placeholder="Detalhes do prêmio que aparecem no modal do cliente."
-            value={config.descricao_premio}
-            onChange={e => setConfig(c => ({ ...c, descricao_premio: e.target.value }))}
-            className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground resize-none" />
+        <button
+          onClick={() => { void saveConfig(); }}
+          disabled={savingConfig}
+          className="w-full min-h-11 rounded-xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          Salvar regras
+        </button>
+      </section>
+
+      <section className="grid grid-cols-2 lg:grid-cols-3 gap-2">
+        {[
+          { label: 'Clientes com pontos', value: summary.active_customers, icon: Users },
+          { label: 'Pontos emitidos', value: summary.points_issued, icon: Coins },
+          { label: 'Pontos disponíveis', value: summary.outstanding_points, icon: WalletCards },
+          { label: 'Pontos resgatados', value: summary.points_spent, icon: Gift },
+          { label: 'Pontos estornados', value: summary.points_reversed, icon: RotateCcw },
+          { label: 'Prêmios pendentes', value: summary.pending_rewards, icon: Award },
+        ].map(item => {
+          const Icon = item.icon;
+          return (
+            <div key={item.label} className="bg-card border border-border rounded-xl p-3">
+              <Icon className="w-4 h-4 text-primary mb-2" />
+              <p className="text-xl font-black">{item.value}</p>
+              <p className="text-[10px] text-muted-foreground">{item.label}</p>
+            </div>
+          );
+        })}
+      </section>
+
+      <section className="bg-card border border-border rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-black flex items-center gap-2"><Gift className="w-5 h-5 text-primary" /> Catálogo de Recompensas</h3>
+            <p className="text-xs text-muted-foreground mt-1">Cadastre quantos prêmios quiser. O cliente escolhe onde gastar seus pontos.</p>
+          </div>
+          <button
+            onClick={() => { setRewardForm(DEFAULT_REWARD); setShowRewardForm(true); }}
+            className="min-h-10 px-3 rounded-xl bg-primary text-primary-foreground text-xs font-bold flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" /> Novo
+          </button>
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-muted-foreground">Foto do prêmio</label>
-          <div className="mt-1 flex items-center gap-3">
-            <div className="w-20 h-20 rounded-xl bg-muted border border-border overflow-hidden flex items-center justify-center flex-shrink-0">
-              {config.premio_imagem ? (
-                <img src={config.premio_imagem} alt="Prêmio" className="w-full h-full object-cover" />
-              ) : (
-                <ImageIcon className="w-7 h-7 text-muted-foreground" />
+        {showRewardForm && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <h4 className="font-bold">{rewardForm.id ? 'Editar recompensa' : 'Nova recompensa'}</h4>
+
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Produto da loja (opcional)</label>
+              <select
+                value={rewardForm.product_id}
+                onChange={event => selectRewardProduct(event.target.value)}
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+              >
+                <option value="">Benefício / recompensa manual</option>
+                {products.map(product => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} — venda {formatCurrency(product.price)}
+                  </option>
+                ))}
+              </select>
+              {selectedProduct && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Custo cadastrado: <b className="text-foreground">
+                    {selectedProduct.cost_price == null ? 'não informado' : formatCurrency(selectedProduct.cost_price)}
+                  </b>
+                </p>
               )}
             </div>
-            <label className="touch-btn flex-1 bg-muted hover:bg-muted/70 text-foreground py-3 rounded-lg flex items-center justify-center gap-2 cursor-pointer text-sm">
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {uploading ? 'Enviando...' : 'Enviar imagem'}
-              <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
-            </label>
-            {config.premio_imagem && (
-              <button onClick={() => setConfig(c => ({ ...c, premio_imagem: '' }))}
-                className="text-xs text-destructive underline">Remover</button>
-            )}
-          </div>
-        </div>
 
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Válido a partir de (opcional)</label>
-            <input type="date" value={config.valido_de}
-              onChange={e => setConfig(c => ({ ...c, valido_de: e.target.value }))}
-              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Válido até (opcional)</label>
-            <input type="date" value={config.valido_ate}
-              onChange={e => setConfig(c => ({ ...c, valido_ate: e.target.value }))}
-              className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-foreground" />
-          </div>
-        </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Nome da recompensa</label>
+              <input
+                value={rewardForm.title}
+                onChange={event => setRewardForm(current => ({ ...current, title: event.target.value }))}
+                maxLength={120}
+                placeholder="Ex.: Batata grátis ou R$ 5 de desconto"
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+              />
+            </div>
 
-        <button onClick={save} disabled={saving}
-          className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? 'Salvando...' : 'Salvar configurações'}
-        </button>
-      </div>
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Descrição</label>
+              <textarea
+                value={rewardForm.description}
+                onChange={event => setRewardForm(current => ({ ...current, description: event.target.value }))}
+                maxLength={300}
+                rows={2}
+                placeholder="Explique como o cliente recebe o prêmio."
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 resize-none"
+              />
+            </div>
 
-      {/* Programa Cadastrado */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Award className="w-5 h-5 text-primary" />
-          <h3 className="text-base font-bold text-foreground">Programa Cadastrado</h3>
-        </div>
-
-        {!saved ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">Nenhum programa de fidelidade cadastrado ainda.</p>
-        ) : (
-          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    saved.ativo ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'
-                  }`}>
-                    {saved.ativo ? 'Ativo' : 'Inativo'}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-primary/15 text-primary">
-                    {saved.meta_pedidos} carimbos
-                  </span>
-                </div>
-                <div className="mt-2 text-sm font-bold text-foreground break-words">{saved.premio_recompensa}</div>
-                {saved.descricao_premio && (
-                  <div className="text-xs text-muted-foreground break-words">{saved.descricao_premio}</div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground">Custo em pontos</label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={rewardForm.points_cost}
+                  onChange={event => setRewardForm(current => ({ ...current, points_cost: Number(event.target.value) || 0 }))}
+                  className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
+                />
+                {equivalentSpend != null && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Equivale a cerca de {formatCurrency(equivalentSpend)} em compras elegíveis.
+                  </p>
                 )}
-                <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {saved.valido_de || saved.valido_ate ? (
-                    <span>
-                      {saved.valido_de ? formatDate(saved.valido_de) : 'sem início'} — {saved.valido_ate ? formatDate(saved.valido_ate) : 'sem fim'}
-                    </span>
-                  ) : (
-                    <span>Sem período de validade definido</span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Valor mínimo do pedido: R$ {saved.valor_minimo_pedido.toFixed(2).replace('.', ',')}
-                </div>
               </div>
-              <button onClick={removeProgram} disabled={deleting}
-                aria-label="Excluir programa de fidelidade"
-                className="touch-btn flex-shrink-0 p-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 disabled:opacity-60">
-                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+
+              <label className="flex items-center gap-2 rounded-xl border border-border p-3 mt-5 sm:mt-0 sm:self-end">
+                <input
+                  type="checkbox"
+                  checked={rewardForm.active}
+                  onChange={event => setRewardForm(current => ({ ...current, active: event.target.checked }))}
+                  className="w-5 h-5 accent-primary"
+                />
+                <span className="text-sm font-bold">Recompensa ativa</span>
+              </label>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-muted-foreground">Imagem</label>
+              <div className="mt-1 flex items-center gap-3">
+                <div className="w-16 h-16 rounded-xl bg-muted border border-border overflow-hidden flex items-center justify-center">
+                  {rewardForm.image_url
+                    ? <img src={rewardForm.image_url} alt="" className="w-full h-full object-cover" />
+                    : <ImageIcon className="w-6 h-6 text-muted-foreground" />}
+                </div>
+                <label className="flex-1 min-h-11 rounded-xl border border-dashed border-border flex items-center justify-center gap-2 cursor-pointer text-sm">
+                  {uploadingReward ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {uploadingReward ? 'Enviando…' : 'Enviar imagem'}
+                  <input type="file" accept="image/*" className="hidden" onChange={uploadRewardImage} disabled={uploadingReward} />
+                </label>
+              </div>
+            </div>
+
+            {selectedProduct?.cost_price != null && (
+              <div className="rounded-xl border border-success/25 bg-success/5 p-3 text-xs">
+                <b>Custo estimado do prêmio: {formatCurrency(selectedProduct.cost_price)}</b>
+                {rewardForm.points_cost > 0 && (
+                  <span className="text-muted-foreground"> · {formatCurrency(selectedProduct.cost_price / rewardForm.points_cost)} de custo por ponto resgatado</span>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={resetRewardForm}
+                className="flex-1 min-h-11 rounded-xl border border-border font-bold text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { void saveReward(); }}
+                disabled={savingReward}
+                className="flex-1 min-h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {savingReward ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Salvar
               </button>
             </div>
           </div>
         )}
-      </div>
 
+        {rewards.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Nenhuma recompensa cadastrada.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rewards.map(reward => (
+              <div key={reward.id} className={`rounded-xl border p-3 flex items-center gap-3 ${reward.active ? 'border-border' : 'border-border opacity-60'}`}>
+                <div className="w-14 h-14 rounded-xl bg-muted overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  {reward.image_url
+                    ? <img src={reward.image_url} alt={reward.title} className="w-full h-full object-cover" />
+                    : reward.reward_type === 'product'
+                      ? <Package className="w-5 h-5 text-primary" />
+                      : <Gift className="w-5 h-5 text-primary" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-sm truncate">{reward.title}</p>
+                    {!reward.active && <span className="text-[9px] rounded-full bg-muted px-2 py-0.5">INATIVA</span>}
+                  </div>
+                  {reward.description && <p className="text-[11px] text-muted-foreground truncate">{reward.description}</p>}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[11px]">
+                    <b className="text-primary">{reward.points_cost} pts</b>
+                    {reward.estimated_cost != null && <span className="text-muted-foreground">custo estimado {formatCurrency(reward.estimated_cost)}</span>}
+                    {config.earning_mode === 'spend' && config.points_per_real > 0 && (
+                      <span className="text-muted-foreground">≈ {formatCurrency(reward.points_cost / config.points_per_real)} em compras</span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => editReward(reward)} className="p-2 rounded-lg border border-border" aria-label="Editar recompensa">
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button onClick={() => { void removeReward(reward); }} className="p-2 rounded-lg bg-destructive/10 text-destructive" aria-label="Excluir recompensa">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {/* Registro de Prêmios */}
-      <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+      <section className="bg-card border border-border rounded-2xl p-5 space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-primary" />
-            <h3 className="text-base font-bold text-foreground">Registro de Prêmios</h3>
+          <div>
+            <h3 className="font-black flex items-center gap-2"><History className="w-5 h-5 text-primary" /> Prêmios Resgatados</h3>
+            <p className="text-xs text-muted-foreground mt-1">O cliente reserva com pontos e mostra o código à loja. Confirme aqui somente quando entregar o prêmio.</p>
           </div>
           <div className="flex gap-1 bg-muted rounded-lg p-1">
-            <button onClick={() => setFilter('pendente')}
-              className={`px-3 py-1.5 rounded text-xs font-semibold ${filter === 'pendente' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+            <button
+              onClick={() => setFilter('pendente')}
+              className={`px-3 py-1.5 rounded text-xs font-bold ${filter === 'pendente' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+            >
               Pendentes
             </button>
-            <button onClick={() => setFilter('todos')}
-              className={`px-3 py-1.5 rounded text-xs font-semibold ${filter === 'todos' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
+            <button
+              onClick={() => setFilter('todos')}
+              className={`px-3 py-1.5 rounded text-xs font-bold ${filter === 'todos' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}
+            >
               Todos
             </button>
           </div>
         </div>
 
-        {filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">Nenhum prêmio {filter === 'pendente' ? 'pendente' : 'gerado ainda'}.</p>
+        {filteredRedemptions.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            Nenhum prêmio {filter === 'pendente' ? 'pendente' : 'resgatado ainda'}.
+          </p>
         ) : (
           <div className="space-y-2">
-            {filtered.map(r => (
-              <div key={r.id} className={`flex items-center gap-3 p-3 rounded-xl border ${
-                r.status === 'pendente' ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/30 opacity-70'
-              }`}>
-                <div className="w-12 h-12 rounded-lg bg-background border border-border overflow-hidden flex-shrink-0 flex items-center justify-center">
-                  {r.premio_imagem ? (
-                    <img src={r.premio_imagem} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <Gift className="w-5 h-5 text-primary" />
-                  )}
+            {filteredRedemptions.map(item => (
+              <div key={item.id} className="rounded-xl border border-border p-3 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-lg bg-muted overflow-hidden flex items-center justify-center">
+                  {item.premio_imagem
+                    ? <img src={item.premio_imagem} alt="" className="w-full h-full object-cover" />
+                    : <Gift className="w-4 h-4 text-primary" />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-foreground truncate">{r.premio_texto}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatPhone(r.telefone_cliente)} · <span className="font-mono text-primary">{r.codigo_resgate}</span>
-                  </div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {new Date(r.created_at).toLocaleString('pt-BR')}
-                    {r.used_at && ` · usado em ${new Date(r.used_at).toLocaleString('pt-BR')}`}
-                  </div>
+                  <p className="font-bold text-sm truncate">{item.premio_texto}</p>
+                  <p className="text-xs font-mono text-primary">{item.codigo_resgate}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {formatPhone(item.telefone_cliente)}
+                    {Number(item.points_spent) > 0 ? ` · ${item.points_spent} pts` : ''}
+                    {' · '}
+                    {new Date(item.created_at).toLocaleDateString('pt-BR')}
+                  </p>
                 </div>
-                {r.status === 'pendente' ? (
-                  <button onClick={() => redeem(r.id)}
-                    className="touch-btn bg-success text-success-foreground px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1">
-                    <Check className="w-4 h-4" /> Entregar
+                {item.status === 'pendente' ? (
+                  <button
+                    onClick={() => { void redeem(item.id); }}
+                    disabled={redeemingId === item.id}
+                    className="px-3 min-h-9 rounded-lg bg-success text-success-foreground text-xs font-bold flex items-center gap-1 disabled:opacity-60"
+                  >
+                    {redeemingId === item.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                    Entreguei
                   </button>
                 ) : (
-                  <span className="text-xs text-success font-semibold flex items-center gap-1">
-                    <Check className="w-3 h-3" /> Utilizado
-                  </span>
+                  <span className="text-xs text-success font-bold flex items-center gap-1"><Check className="w-3 h-3" /> Utilizado</span>
                 )}
               </div>
             ))}
           </div>
         )}
+      </section>
+
+      <div className="pb-4 text-[11px] text-muted-foreground flex items-start gap-2">
+        <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
+        Alterações no catálogo valem para novos resgates. Prêmios já reservados mantêm nome, descrição, imagem e pontos do momento em que foram resgatados.
       </div>
     </div>
   );

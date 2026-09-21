@@ -132,7 +132,7 @@ const LoyaltyCard = ({
         return;
       }
 
-      const { data, error } = await supabase.rpc('loyalty_customer_state', {
+      const { data, error } = await supabase.rpc('loyalty_customer_state' as any, {
         _organization_id: organizationId,
       });
       const result = data as any;
@@ -260,7 +260,7 @@ const LoyaltyCard = ({
 
     setRedeeming(reward.id);
     try {
-      const { data, error } = await supabase.rpc('loyalty_redeem_reward', {
+      const { data, error } = await supabase.rpc('loyalty_redeem_reward' as any, {
         _organization_id: organizationId,
         _reward_id: reward.id,
       });

@@ -79,6 +79,7 @@ const Index = () => {
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
   const [openScheduleOnCart, setOpenScheduleOnCart] = useState(false);
+  const [resumePaymentAfterSchedule, setResumePaymentAfterSchedule] = useState(false);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
   const [tableToken, setTableToken] = useState('');
   const [tableLabel, setTableLabel] = useState('');
@@ -473,6 +474,8 @@ const Index = () => {
     setTrackingOrderId('');
     setAppliedCoupon(null);
     setScheduledFor(null);
+    setOpenScheduleOnCart(false);
+    setResumePaymentAfterSchedule(false);
     setPendingProduct(null);
     if (deviceOwnedKiosk) {
       setTableToken('');
@@ -497,6 +500,16 @@ const Index = () => {
 
   const handleCheckout = (sched?: string | null) => {
     setScheduledFor(sched || null);
+
+    const shouldResumePayment = Boolean(
+      sched && resumePaymentAfterSchedule && (deviceOwnedKiosk || isAuthenticated),
+    );
+    setResumePaymentAfterSchedule(false);
+
+    if (shouldResumePayment) {
+      setStep('payment');
+      return;
+    }
 
     if (deviceOwnedKiosk || isAuthenticated) {
       setStep('checkout');
@@ -642,8 +655,18 @@ const Index = () => {
       )}
       {step === 'address' && (
         <AddressSelect
-          onConfirm={(addr, ref) => { setDeliveryAddress(addr); setDeliveryReference(ref); setStep('menu'); }}
+          onConfirm={(addr, ref, details) => {
+            setDeliveryAddress(addr);
+            setDeliveryReference(ref);
+            setDeliveryCep(details?.cep || '');
+            setBairroId('');
+            setBairroNome(details?.bairro || '');
+            setBairroTaxa(0);
+            setBairroTempo(0);
+            setStep('menu');
+          }}
           onBack={() => setStep('location')}
+          allowCurrentLocation={!deviceOwnedKiosk}
         />
       )}
       {step === 'menu' && (
@@ -662,7 +685,10 @@ const Index = () => {
           cart={cart}
           onRemove={removeFromCart}
           onCheckout={handleCheckout}
-          onBack={() => setStep('menu')}
+          onBack={() => {
+            setResumePaymentAfterSchedule(false);
+            setStep('menu');
+          }}
           isAuthenticated={isAuthenticated && !deviceOwnedKiosk}
           orgId={orgId}
           appliedCoupon={appliedCoupon}
@@ -670,13 +696,14 @@ const Index = () => {
           deviceOwnedKiosk={deviceOwnedKiosk}
           openScheduleOnMount={openScheduleOnCart}
           onScheduleOpened={() => setOpenScheduleOnCart(false)}
+          onScheduleCancelled={() => setResumePaymentAfterSchedule(false)}
         />
       )}
       {step === 'checkout' && (
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId} deliveryCep={deliveryCep}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryCep={deliveryCep}
           onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
           onDeliveryCepChange={setDeliveryCep}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
@@ -701,10 +728,12 @@ const Index = () => {
           deviceOwnedKiosk={deviceOwnedKiosk}
           onBack={() => setStep('checkout')}
           onScheduleAnotherDay={() => {
+            setResumePaymentAfterSchedule(true);
             setOpenScheduleOnCart(true);
             setStep('cart');
           }}
           onBackToCart={() => {
+            setResumePaymentAfterSchedule(false);
             setOpenScheduleOnCart(false);
             setStep('cart');
           }}

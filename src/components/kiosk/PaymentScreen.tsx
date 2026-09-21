@@ -458,6 +458,20 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       })
     : '';
 
+  const scheduledOrderDate = scheduledFor ? new Date(scheduledFor) : null;
+  const validScheduledOrderDate = scheduledOrderDate && !Number.isNaN(scheduledOrderDate.getTime())
+    ? scheduledOrderDate
+    : null;
+  const scheduledOrderLabel = validScheduledOrderDate
+    ? validScheduledOrderDate.toLocaleString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
   const renderPaymentError = () => {
     if (!paymentError) return null;
 
@@ -633,7 +647,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           <CheckCircle2 className="w-12 h-12 text-success" />
         </div>
         <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold text-success">Pedido Confirmado!</h2>
+          <h2 className="text-3xl font-bold text-success">{scheduledOrderLabel ? 'Pedido Agendado!' : 'Pedido Confirmado!'}</h2>
+          {scheduledOrderLabel && (
+            <div className="mt-3 rounded-xl border border-primary/30 bg-primary/10 px-4 py-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Data e horário agendados</p>
+              <p className="text-primary font-black capitalize mt-1">{scheduledOrderLabel}</p>
+            </div>
+          )}
           <div className="flex items-center justify-center gap-2 mt-3">
             <Ticket className="w-8 h-8 text-primary" />
             <span className="text-4xl font-black text-primary">#{generatedNumber}</span>
@@ -757,7 +777,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
         {currentOrderId && (
           <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
-            📍 Acompanhar Pedido
+            📍 {scheduledOrderLabel ? 'Acompanhar Pedido Agendado' : 'Acompanhar Pedido'}
           </button>
         )}
 

@@ -41,7 +41,7 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 
 const EntregadorDashboard = () => {
   const navigate = useNavigate();
-  const session = getEntregadorSession();
+  const [session] = useState(() => getEntregadorSession());
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
@@ -267,7 +267,7 @@ const EntregadorDashboard = () => {
       initialSendTimerRef.current = null;
       void send();
     }, 2500);
-  }, [session, stopTracking]);
+  }, [session, stopTracking, expireSession]);
 
   useEffect(() => () => stopTracking(), [stopTracking]);
 
@@ -370,7 +370,7 @@ const EntregadorDashboard = () => {
     }
     setMode((res.mode === 'free' ? 'free' : 'manual'));
     setAvailable(res.orders || []);
-  }, [session]);
+  }, [session, expireSession]);
 
   // Carga inicial + polling de segurança
   useEffect(() => {

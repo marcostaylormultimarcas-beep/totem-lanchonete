@@ -208,6 +208,13 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
                 )}
               </div>
             </div>
+            <input
+              value={logradouro}
+              onChange={e => setLogradouro(e.target.value)}
+              placeholder="Rua / avenida *"
+              autoComplete="address-line1"
+              className="w-full px-4 py-3 bg-[#18181B] border border-zinc-800 rounded-2xl text-white outline-none focus:border-orange-500/60"
+            />
             <div className="grid grid-cols-2 gap-2">
               <input value={numero} onChange={e => setNumero(e.target.value)} placeholder="Número"
                 className="px-4 py-3 bg-[#18181B] border border-zinc-800 rounded-2xl text-white outline-none focus:border-orange-500/60" />

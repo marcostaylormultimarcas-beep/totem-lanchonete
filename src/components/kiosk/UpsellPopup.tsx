@@ -13,13 +13,19 @@ const UpsellPopup = ({ combo, onAccept, onDecline }: UpsellPopupProps) => {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-3 sm:p-4 animate-fade-in"
+      style={{
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        paddingTop: 'max(12px, env(safe-area-inset-top))',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+      }}
       onClick={onDecline}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[90%] max-w-sm overflow-hidden text-center"
+        className="relative my-auto w-[90%] max-w-sm overflow-hidden text-center"
         style={{
           background: '#18181B',
           borderRadius: '24px',

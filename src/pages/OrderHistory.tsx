@@ -16,6 +16,41 @@ const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): 
     );
   });
 
+const resolveInitialAuthSession = (ms = 5000): Promise<any> =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: number | undefined;
+    let subscription: { unsubscribe: () => void } | null = null;
+
+    const finish = (session: any, error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer) window.clearTimeout(timer);
+      subscription?.unsubscribe();
+      if (error) reject(error);
+      else resolve(session);
+    };
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        event === 'INITIAL_SESSION' ||
+        event === 'SIGNED_IN' ||
+        event === 'TOKEN_REFRESHED' ||
+        event === 'SIGNED_OUT'
+      ) {
+        finish(session);
+      }
+    });
+
+    subscription = data.subscription;
+    if (settled) subscription.unsubscribe();
+
+    timer = window.setTimeout(
+      () => finish(null, new Error('auth_session_timeout')),
+      ms,
+    );
+  });
+
 interface Order {
   id: string;
   order_number: string;
@@ -84,11 +119,7 @@ const OrderHistory = () => {
       setLoadError('');
 
       try {
-        const { data: { session } } = await withTimeout(
-          supabase.auth.getSession(),
-          5000,
-          'auth_session_timeout',
-        );
+        const session = await resolveInitialAuthSession();
 
         if (cancelled) return;
         if (!session) {

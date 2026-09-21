@@ -3,6 +3,23 @@ import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 
 const STORAGE_KEY = 'visionfood_pending_checkout_v1';
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const hasValidRecoveredCart = (cart: CartItem[]) => cart.length > 0 && cart.every((item) => {
+  const productId = item?.product?.id;
+  const quantity = Number(item?.quantity);
+  const weight = item?.weightKg;
+  const validWeight = weight == null || (Number.isFinite(Number(weight)) && Number(weight) > 0 && Number(weight) <= 100);
+  return Boolean(
+    item &&
+    typeof item.id === 'string' && item.id.length > 0 &&
+    typeof productId === 'string' && UUID_RE.test(productId) &&
+    Number.isInteger(quantity) && quantity > 0 && quantity <= 100 &&
+    validWeight &&
+    Array.isArray(item.removedIngredients) &&
+    Array.isArray(item.selectedExtras)
+  );
+});
 
 export type CheckoutMethod = 'pix' | 'cash' | 'terminal' | 'online';
 export type PendingCheckoutState = 'submitting' | 'queued_offline';
@@ -47,7 +64,8 @@ export function loadPendingCheckout(organizationId?: string | null): PendingChec
       !parsed.clientRequestId ||
       !parsed.createdAt ||
       !parsed.method ||
-      !Array.isArray(parsed.cart)
+      !Array.isArray(parsed.cart) ||
+      !hasValidRecoveredCart(parsed.cart)
     ) {
       localStorage.removeItem(STORAGE_KEY);
       return null;

@@ -402,19 +402,39 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
       {/* Social/footer */}
       {(instagramUrl || whatsappNumber) && (
-        <div className="mt-8 flex justify-center gap-3 px-5">
-          {instagramUrl && (
-            <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
-              className="w-11 h-11 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition" aria-label="Instagram">
-              <Instagram className="w-5 h-5" />
-            </a>
-          )}
-          {whatsappNumber && (
-            <a href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
-              className="w-11 h-11 rounded-full bg-[#25D366] flex items-center justify-center text-white shadow-lg active:scale-95 transition" aria-label="WhatsApp">
-              <MessageCircle className="w-5 h-5" />
-            </a>
-          )}
+        <div className="px-5 mt-8 vf-fade-in">
+          <div className="vf-chip rounded-2xl px-4 py-4 max-w-md mx-auto">
+            <div className="text-center">
+              <div className="text-sm font-bold text-white">Siga e fale conosco</div>
+              <div className="text-[11px] text-zinc-500 mt-1">Acompanhe novidades ou chame a loja</div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {instagramUrl && (
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-h-11 rounded-xl border border-white/[0.06] bg-zinc-900/70 px-3 flex items-center justify-center gap-2 text-sm font-semibold text-zinc-200 hover:border-[#FF7A00]/35 hover:text-white active:scale-[0.98] transition"
+                  aria-label="Abrir Instagram"
+                >
+                  <Instagram className="w-[18px] h-[18px] text-pink-400" />
+                  Instagram
+                </a>
+              )}
+              {whatsappNumber && (
+                <a
+                  href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-h-11 rounded-xl border border-white/[0.06] bg-zinc-900/70 px-3 flex items-center justify-center gap-2 text-sm font-semibold text-zinc-200 hover:border-[#FF7A00]/35 hover:text-white active:scale-[0.98] transition"
+                  aria-label="Abrir WhatsApp"
+                >
+                  <MessageCircle className="w-[18px] h-[18px] text-emerald-400" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -45,6 +45,9 @@ interface PendingOrderState {
   bairroTaxa: number;
   bairroTempo: number;
   deliveryCep: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAccuracyM?: number | null;
   tableToken: string;
   tableLabel: string;
   appliedCoupon?: AppliedCoupon | null;
@@ -73,6 +76,9 @@ const Index = () => {
   const [bairroTaxa, setBairroTaxa] = useState(0);
   const [bairroTempo, setBairroTempo] = useState(0);
   const [deliveryCep, setDeliveryCep] = useState('');
+  const [deliveryLat, setDeliveryLat] = useState<number | null>(null);
+  const [deliveryLng, setDeliveryLng] = useState<number | null>(null);
+  const [deliveryAccuracyM, setDeliveryAccuracyM] = useState<number | null>(null);
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -167,6 +173,9 @@ const Index = () => {
         setBairroTaxa(parsed.bairroTaxa || 0);
         setBairroTempo(parsed.bairroTempo || 0);
         setDeliveryCep(parsed.deliveryCep || '');
+        setDeliveryLat(Number.isFinite(Number(parsed.deliveryLat)) ? Number(parsed.deliveryLat) : null);
+        setDeliveryLng(Number.isFinite(Number(parsed.deliveryLng)) ? Number(parsed.deliveryLng) : null);
+        setDeliveryAccuracyM(Number.isFinite(Number(parsed.deliveryAccuracyM)) ? Number(parsed.deliveryAccuracyM) : null);
         setCustomerCpf(parsed.customerCpf || '');
         setTableToken(parsed.tableToken || '');
         setTableLabel(parsed.tableLabel || '');
@@ -211,6 +220,9 @@ const Index = () => {
         setBairroTaxa(parsed.bairroTaxa || 0);
         setBairroTempo(parsed.bairroTempo || 0);
         setDeliveryCep(parsed.deliveryCep || '');
+        setDeliveryLat(Number.isFinite(Number(parsed.deliveryLat)) ? Number(parsed.deliveryLat) : null);
+        setDeliveryLng(Number.isFinite(Number(parsed.deliveryLng)) ? Number(parsed.deliveryLng) : null);
+        setDeliveryAccuracyM(Number.isFinite(Number(parsed.deliveryAccuracyM)) ? Number(parsed.deliveryAccuracyM) : null);
         setTableToken(parsed.tableToken || '');
         setTableLabel(parsed.tableLabel || '');
         setAppliedCoupon(parsed.appliedCoupon || null);
@@ -281,6 +293,9 @@ const Index = () => {
       bairroTaxa,
       bairroTempo,
       deliveryCep,
+      deliveryLat,
+      deliveryLng,
+      deliveryAccuracyM,
       tableToken,
       tableLabel,
       appliedCoupon,
@@ -292,6 +307,7 @@ const Index = () => {
     orgId, deviceOwnedKiosk, isAuthenticated, step, orderType, cart,
     customerName, customerPhone, customerCpf, deliveryAddress, deliveryReference,
     deliveryRecipient, bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+    deliveryLat, deliveryLng, deliveryAccuracyM,
     tableToken, tableLabel, appliedCoupon, scheduledFor,
   ]);
 
@@ -376,6 +392,7 @@ const Index = () => {
     setDeliveryReference('');
     setDeliveryRecipient('');
     setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
+    setDeliveryLat(null); setDeliveryLng(null); setDeliveryAccuracyM(null);
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
@@ -403,6 +420,9 @@ const Index = () => {
       setBairroTaxa(Number(pendingCheckout.bairroTaxa || 0));
       setBairroTempo(Number(pendingCheckout.bairroTempo || 0));
       setDeliveryCep(pendingCheckout.deliveryCep || '');
+      setDeliveryLat(Number.isFinite(Number(pendingCheckout.deliveryLat)) ? Number(pendingCheckout.deliveryLat) : null);
+      setDeliveryLng(Number.isFinite(Number(pendingCheckout.deliveryLng)) ? Number(pendingCheckout.deliveryLng) : null);
+      setDeliveryAccuracyM(Number.isFinite(Number(pendingCheckout.deliveryAccuracyM)) ? Number(pendingCheckout.deliveryAccuracyM) : null);
       setAppliedCoupon(pendingCheckout.appliedCoupon || null);
       setScheduledFor(pendingCheckout.scheduledFor || null);
       setTableToken(pendingCheckout.tableToken || '');
@@ -471,6 +491,7 @@ const Index = () => {
     setDeliveryReference('');
     setDeliveryRecipient('');
     setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
+    setDeliveryLat(null); setDeliveryLng(null); setDeliveryAccuracyM(null);
     setTrackingOrderId('');
     setAppliedCoupon(null);
     setScheduledFor(null);
@@ -531,6 +552,7 @@ const Index = () => {
       deliveryReference,
       deliveryRecipient,
       bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+      deliveryLat, deliveryLng, deliveryAccuracyM,
       tableToken, tableLabel,
       appliedCoupon,
       scheduledFor: sched || null,
@@ -659,6 +681,9 @@ const Index = () => {
             setDeliveryAddress(addr);
             setDeliveryReference(ref);
             setDeliveryCep(details?.cep || '');
+            setDeliveryLat(Number.isFinite(Number(details?.latitude)) ? Number(details?.latitude) : null);
+            setDeliveryLng(Number.isFinite(Number(details?.longitude)) ? Number(details?.longitude) : null);
+            setDeliveryAccuracyM(Number.isFinite(Number(details?.accuracyM)) ? Number(details?.accuracyM) : null);
             setBairroId('');
             setBairroNome(details?.bairro || '');
             setBairroTaxa(0);
@@ -707,7 +732,12 @@ const Index = () => {
           onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
           onDeliveryCepChange={setDeliveryCep}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
-          onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
+          onDeliveryAddressChange={(value) => {
+            setDeliveryAddress(value);
+            setDeliveryLat(null);
+            setDeliveryLng(null);
+            setDeliveryAccuracyM(null);
+          }} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
           onContinue={() => setStep('payment')} onBack={() => {
             sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
@@ -722,6 +752,7 @@ const Index = () => {
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo} deliveryCep={deliveryCep}
+          deliveryLat={deliveryLat} deliveryLng={deliveryLng} deliveryAccuracyM={deliveryAccuracyM}
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
           tableToken={tableToken} tableLabel={tableLabel}

@@ -565,8 +565,10 @@ const Index = () => {
         />
       )}
       {step === 'tracking' && trackingOrderId && (
-        <TotemSuccess orderId={trackingOrderId} onRelease={async () => {
-          if (!deviceOwnedKiosk) await supabase.auth.signOut({ scope: 'local' });
+        <TotemSuccess orderId={trackingOrderId} onRelease={() => {
+          // Web/mobile customers must stay authenticated so they can return to
+          // "Meus Pedidos". Physical device-owned kiosks already clear customer
+          // browser state inside resetOrder().
           resetOrder();
         }} />
       )}

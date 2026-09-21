@@ -53,6 +53,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [checkingSchedule, setCheckingSchedule] = useState(false);
 
   useEffect(() => {
     if (!openScheduleOnMount) return;
@@ -63,12 +64,84 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   // Defaults para o agendamento = próximo horário de abertura
   useEffect(() => {
     if (storeStatus.nextOpenAt && !scheduledDate) {
-      const d = storeStatus.nextOpenAt;
+      const d = new Date(storeStatus.nextOpenAt);
+      const slot = storeStatus.schedulingSlotMinutes || 30;
+      const minute = d.getMinutes();
+      const alignedMinute = Math.ceil(minute / slot) * slot;
+      if (alignedMinute >= 60) {
+        d.setHours(d.getHours() + 1, 0, 0, 0);
+      } else {
+        d.setMinutes(alignedMinute, 0, 0);
+      }
       const pad = (n: number) => String(n).padStart(2, '0');
       setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
       setScheduledTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
     }
-  }, [storeStatus.nextOpenAt]);
+  }, [storeStatus.nextOpenAt, storeStatus.schedulingSlotMinutes, scheduledDate]);
+
+  const confirmSchedule = async () => {
+    if (!scheduledDate || !scheduledTime) {
+      toast.error('Escolha data e hora.');
+      return;
+    }
+    if (!orgId) {
+      toast.error('Loja não identificada.');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('O agendamento precisa de internet para confirmar a disponibilidade do horário.');
+      return;
+    }
+
+    const localScheduled = new Date(`${scheduledDate}T${scheduledTime}:00`);
+    if (Number.isNaN(localScheduled.getTime()) || localScheduled <= new Date()) {
+      toast.error('Escolha uma data futura.');
+      return;
+    }
+
+    const slotMinutes = storeStatus.schedulingSlotMinutes || 30;
+    if (localScheduled.getMinutes() % slotMinutes !== 0) {
+      toast.error(`Escolha um horário em intervalos de ${slotMinutes} minutos.`);
+      return;
+    }
+
+    const closure = getSpecialClosure(localScheduled, storeStatus.specialClosures);
+    if (closure) {
+      toast.error(`A loja estará fechada nessa data: ${closure.reason}.`);
+      return;
+    }
+
+    setCheckingSchedule(true);
+    try {
+      const { data, error } = await supabase.rpc('visionfood_schedule_availability' as any, {
+        _organization_id: orgId,
+        _scheduled_for: localScheduled.toISOString(),
+      });
+      const result: any = data;
+      if (error) {
+        console.error('visionfood_schedule_availability', error);
+        toast.error('Não foi possível confirmar esse horário agora. Tente novamente.');
+        return;
+      }
+      if (!result?.ok) {
+        const reason = String(result?.reason || '');
+        const messages: Record<string, string> = {
+          schedule_slot_full: 'Esse horário atingiu o limite de pedidos. Escolha outro horário.',
+          schedule_slot_alignment: `Escolha um horário em intervalos de ${Number(result?.slot_minutes || slotMinutes)} minutos.`,
+          schedule_outside_business_hours: 'A loja não funciona nesse horário. Escolha outro.',
+          store_closed_special_date: 'A loja estará fechada nessa data.',
+          scheduling_disabled: 'A loja desativou os agendamentos.',
+          schedule_must_be_future: 'Escolha uma data e horário futuros.',
+        };
+        toast.error(messages[reason] || 'Esse horário não está disponível para agendamento.');
+        return;
+      }
+
+      onCheckout(localScheduled.toISOString());
+    } finally {
+      setCheckingSchedule(false);
+    }
+  };
 
   useEffect(() => {
     if (deviceOwnedKiosk) {
@@ -316,27 +389,28 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                         onChange={e => setScheduledDate(e.target.value)}
                         className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm"
                       />
-                      <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
-                        className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
+                      <input
+                        type="time"
+                        step={storeStatus.schedulingSlotMinutes * 60}
+                        value={scheduledTime}
+                        onChange={e => setScheduledTime(e.target.value)}
+                        className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm"
+                      />
+                    </div>
+                    <div className="text-[11px] text-muted-foreground rounded-lg bg-muted/40 px-3 py-2">
+                      Horários de {storeStatus.schedulingSlotMinutes} em {storeStatus.schedulingSlotMinutes} minutos.
+                      {storeStatus.schedulingCapacityEnabled && storeStatus.schedulingMaxOrdersPerSlot > 0
+                        ? ` Limite: ${storeStatus.schedulingMaxOrdersPerSlot} pedido(s) por intervalo.`
+                        : ' Sem limite de quantidade por horário.'}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => setScheduleMode(false)} className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1">Cancelar</button>
+                      <button onClick={() => setScheduleMode(false)} disabled={checkingSchedule} className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1 disabled:opacity-50">Cancelar</button>
                       <button
-                        onClick={() => {
-                          if (!scheduledDate || !scheduledTime) { toast.error('Escolha data e hora'); return; }
-                          const localScheduled = new Date(`${scheduledDate}T${scheduledTime}:00`);
-                          if (localScheduled <= new Date()) { toast.error('Escolha uma data futura'); return; }
-
-                          const closure = getSpecialClosure(localScheduled, storeStatus.specialClosures);
-                          if (closure) {
-                            toast.error(`A loja estará fechada nessa data: ${closure.reason}.`);
-                            return;
-                          }
-
-                          onCheckout(localScheduled.toISOString());
-                        }}
-                        className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold">
-                        Confirmar Agendamento
+                        onClick={confirmSchedule}
+                        disabled={checkingSchedule}
+                        className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                        {checkingSchedule ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+                        {checkingSchedule ? 'Verificando...' : 'Confirmar Agendamento'}
                       </button>
                     </div>
                   </div>

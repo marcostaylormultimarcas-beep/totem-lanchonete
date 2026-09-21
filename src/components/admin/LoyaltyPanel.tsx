@@ -489,7 +489,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
 
   return (
     <div className="px-4 space-y-5">
-      <section className="bg-card border border-border rounded-2xl p-5 space-y-4">
+      <section data-testid="loyalty-program-summary" className="bg-card border border-border rounded-2xl p-5 space-y-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-lg font-black flex items-center gap-2">

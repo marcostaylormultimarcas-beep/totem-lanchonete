@@ -53,7 +53,15 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
     lockedSlugRef.current = slug;
     setLockedSlug(slug);
     if (!slug) return;
+
     localStorage.setItem('kiosk_slug', slug);
+    const normalizedSlug = slug.trim().toLowerCase();
+    const currentOrgSlug = org?.slug?.trim().toLowerCase() || '';
+    if (org?.id && currentOrgSlug === normalizedSlug) {
+      localStorage.setItem(STORAGE_KEY, org.id);
+      return;
+    }
+
     const data = await fetchPublicOrganization({ slug });
     if (data) {
       localStorage.setItem(STORAGE_KEY, data.id);
@@ -153,14 +161,28 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
 export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const { slug } = useParams<{ slug: string }>();
   const normalizedSlug = slug?.trim().toLowerCase() || '';
-  const { lockToSlug, orgId } = useOrg();
-  const [ready, setReady] = useState(false);
-  const [found, setFound] = useState<boolean | null>(null);
+  const { lockToSlug, orgId, org } = useOrg();
+  const currentOrgMatchesSlug = Boolean(
+    normalizedSlug &&
+    org?.id &&
+    orgId === org.id &&
+    org.slug?.trim().toLowerCase() === normalizedSlug
+  );
+  const [ready, setReady] = useState(currentOrgMatchesSlug);
+  const [found, setFound] = useState<boolean | null>(currentOrgMatchesSlug ? true : null);
 
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(currentOrgMatchesSlug ? !!org?.paused : false);
 
   useEffect(() => {
     const sync = async () => {
+      if (currentOrgMatchesSlug) {
+        await lockToSlug(normalizedSlug);
+        setFound(true);
+        setPaused(!!org?.paused);
+        setReady(true);
+        return;
+      }
+
       setReady(false);
       setFound(null);
       setPaused(false);

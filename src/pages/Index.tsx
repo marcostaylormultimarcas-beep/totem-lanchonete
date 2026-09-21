@@ -530,8 +530,19 @@ const Index = () => {
 
   if (resolvingDeviceMode) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground">
-        Preparando totem...
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto w-14 h-14 rounded-2xl border border-primary/20 bg-primary/10 flex items-center justify-center shadow-lg shadow-primary/5">
+            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          </div>
+          <h1 className="mt-5 text-lg font-black text-foreground">Preparando sua experiência</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Estamos carregando a loja e verificando o ambiente de atendimento.
+          </p>
+          <div className="mt-5 h-1.5 w-32 mx-auto overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/2 rounded-full bg-primary animate-pulse" />
+          </div>
+        </div>
       </div>
     );
   }

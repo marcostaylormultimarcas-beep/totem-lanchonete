@@ -50,6 +50,12 @@ const joinDeliveryAddress = (address: string, number: string) => {
   return houseNumber ? `${base}, nº ${houseNumber}` : base;
 };
 
+const normalizeAreaName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
 
 interface CheckoutScreenProps {
   name: string;
@@ -60,6 +66,7 @@ interface CheckoutScreenProps {
   deliveryReference: string;
   deliveryRecipient: string;
   bairroId: string;
+  bairroNome?: string;
   deliveryCep: string;
   onBairroChange: (id: string, nome: string, taxa: number, tempo: number) => void;
   onDeliveryCepChange: (cep: string) => void;
@@ -77,7 +84,7 @@ interface CheckoutScreenProps {
 const CheckoutScreen = ({
   name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
-  bairroId, deliveryCep, onBairroChange, onDeliveryCepChange,
+  bairroId, bairroNome = '', deliveryCep, onBairroChange, onDeliveryCepChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
   onContinue, onBack, deviceOwnedKiosk = false,
@@ -128,6 +135,20 @@ const CheckoutScreen = ({
     void loadDeliveryData();
     return () => { cancelled = true; };
   }, [orgId, orderType]);
+
+  useEffect(() => {
+    if (orderType !== 'viagem' || deliveryMode !== 'bairros' || bairroId || !bairroNome || bairros.length === 0) {
+      return;
+    }
+
+    const expected = normalizeAreaName(bairroNome);
+    if (!expected) return;
+
+    const match = bairros.find((item) => normalizeAreaName(item.nome_bairro) === expected);
+    if (match) {
+      onBairroChange(match.id, match.nome_bairro, Number(match.valor_taxa), match.tempo_estimado);
+    }
+  }, [bairroId, bairroNome, bairros, deliveryMode, onBairroChange, orderType]);
 
   const validarCep = async () => {
     if (!orgId) return;

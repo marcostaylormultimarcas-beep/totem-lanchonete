@@ -84,8 +84,9 @@ const EntregadorDashboard = () => {
   };
 
   const getExactDestination = (order: DeliveryOrder) => {
-    const lat = Number(order.delivery_lat);
-    const lng = Number(order.delivery_lng);
+    if (typeof order.delivery_lat !== 'number' || typeof order.delivery_lng !== 'number') return null;
+    const lat = order.delivery_lat;
+    const lng = order.delivery_lng;
     if (
       !Number.isFinite(lat) || !Number.isFinite(lng)
       || lat < -90 || lat > 90 || lng < -180 || lng > 180

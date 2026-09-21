@@ -112,7 +112,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
               <>
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-amber-400 font-semibold text-sm">
-                  {status.emergencyClosed ? status.message : 'Fechado agora'}
+                  {status.emergencyClosed || status.specialClosure ? status.message : 'Fechado agora'}
                   {status.nextOpenAt && !status.emergencyClosed ? ` · abre ${fmtTime(status.nextOpenAt)}` : ''}
                 </span>
               </>

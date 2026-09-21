@@ -936,7 +936,7 @@ const EntregadorDashboard = () => {
                       onClick={() => toggleMap(o)}
                       className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
                     >
-                      <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : 'Ver rota no mapa'}
+                      <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar mapa' : 'Ver localização no mapa'}
                     </button>
                     {navigationUrl && (
                       <a

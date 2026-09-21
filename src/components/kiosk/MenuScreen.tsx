@@ -319,7 +319,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
               >
                 <button
                   onClick={() => setSelectedProduct(product)}
-                  className="w-full aspect-[4/3] bg-zinc-950/60 overflow-hidden block"
+                  className="w-full aspect-[3/2] sm:aspect-[4/3] bg-zinc-950/60 overflow-hidden block"
                 >
                   {isUrlImg ? (
                     <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />

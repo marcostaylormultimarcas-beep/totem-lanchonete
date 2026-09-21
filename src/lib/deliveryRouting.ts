@@ -1,4 +1,5 @@
-export const MAX_EXACT_DESTINATION_ACCURACY_M = 200;
+export const MAX_EXACT_DESTINATION_ACCURACY_M = 100;
+export const MAX_DRIVER_CONFIRM_ACCURACY_M = 100;
 
 export interface RoutePoint {
   lat: number;

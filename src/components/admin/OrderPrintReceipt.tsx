@@ -16,6 +16,8 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
   const total = Number(order.total || 0);
   const discount = Math.max(0, subtotal - total);
   const created = new Date(order.created_at);
+  const scheduled = order.scheduled_for ? new Date(order.scheduled_for) : null;
+  const scheduledValid = scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled : null;
 
   const content = (
     <div id="print-receipt-area" className={`print-receipt ${formatClass}`}>
@@ -25,6 +27,11 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
           {created.toLocaleDateString('pt-BR')} {created.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
         </p>
         <p className="pr-order-num">PEDIDO #{order.order_number}</p>
+        {scheduledValid && (
+          <p style={{ fontWeight: 900, fontSize: '1.1em', marginTop: 6 }}>
+            AGENDADO: {scheduledValid.toLocaleDateString('pt-BR')} às {scheduledValid.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        )}
       </div>
 
       <div className="pr-divider" />

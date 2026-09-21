@@ -1700,6 +1700,9 @@ const AdminPage = () => {
                 <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
                   <Image className="w-3 h-3" /> Imagem do Banner
                 </label>
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  Tamanho recomendado: 1920 × 768 px (proporção 2,5:1). Mantenha textos e elementos importantes no centro, pois a imagem pode ser recortada conforme a tela.
+                </p>
                 <div className="flex gap-2">
                   <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingBannerIdx === idx ? 'opacity-50 pointer-events-none' : ''}`}>
                     {uploadingBannerIdx === idx ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}

@@ -319,7 +319,22 @@ const LoyaltyCard = ({
 
   if (!config?.ativo) return null;
 
-  if (!state.signedIn && !stateLoading) {
+  if (stateLoading) {
+    return (
+      <div className={`rounded-2xl border border-primary/20 bg-card/70 p-4 ${className}`}>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 animate-pulse" />
+          <div className="flex-1">
+            <div className="h-3 w-28 rounded bg-muted animate-pulse" />
+            <div className="mt-2 h-6 w-36 rounded bg-muted/70 animate-pulse" />
+          </div>
+        </div>
+        <p className="mt-3 text-[11px] text-muted-foreground">Sincronizando sua fidelidade…</p>
+      </div>
+    );
+  }
+
+  if (!state.signedIn) {
     const returnTo = encodeURIComponent(location.pathname + location.search);
     return (
       <div className={`relative overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-br from-card via-card to-primary/10 p-4 ${className}`}>

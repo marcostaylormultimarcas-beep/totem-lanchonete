@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, CheckCircle2, Clock, Loader2, PackageCheck, Truck, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CheckCircle2, Clock, Loader2, PackageCheck, Truck, UtensilsCrossed, X } from 'lucide-react';
 
 interface OrderTrackingProps {
   orderId: string;
@@ -47,6 +47,7 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
   const [status, setStatus] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [orderType, setOrderType] = useState('');
+  const [scheduledFor, setScheduledFor] = useState('');
   const [showDeliveryAlert, setShowDeliveryAlert] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -78,6 +79,7 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
       setStatus(newStatus);
       setOrderNumber(newNumber);
       setOrderType(String(result.order_type || ''));
+      setScheduledFor(String(result.scheduled_for || ''));
 
       if (changed) notifyStatus(newStatus, newNumber);
 
@@ -124,12 +126,33 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
     };
   }, [orderId]);
 
-  const steps = useMemo(
-    () => ['delivery', 'viagem'].includes(orderType)
-      ? ALL_STEPS
-      : ALL_STEPS.filter(step => step.key !== 'out_for_delivery'),
-    [orderType],
+  const scheduledDate = scheduledFor ? new Date(scheduledFor) : null;
+  const validScheduledDate = scheduledDate && !Number.isNaN(scheduledDate.getTime()) ? scheduledDate : null;
+  const waitingForScheduledTime = Boolean(
+    validScheduledDate
+      && validScheduledDate.getTime() > Date.now()
+      && status === 'pending',
   );
+  const scheduledLabel = validScheduledDate
+    ? validScheduledDate.toLocaleString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
+  const steps = useMemo(() => {
+    const base = ['delivery', 'viagem'].includes(orderType)
+      ? ALL_STEPS
+      : ALL_STEPS.filter(step => step.key !== 'out_for_delivery');
+
+    if (!waitingForScheduledTime) return base;
+    return base.map(step => step.key === 'pending'
+      ? { ...step, label: 'Pedido Agendado', icon: CalendarClock }
+      : step);
+  }, [orderType, waitingForScheduledTime]);
 
   if (loading) {
     return (
@@ -182,11 +205,22 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="text-center flex-1">
-            <h2 className="text-xl font-bold">Acompanhe seu Pedido</h2>
+            <h2 className="text-xl font-bold">{waitingForScheduledTime ? 'Pedido Agendado' : 'Acompanhe seu Pedido'}</h2>
             <p className="text-primary font-black text-2xl mt-1">#{orderNumber}</p>
           </div>
           <div className="w-5" aria-hidden="true" />
         </div>
+
+        {waitingForScheduledTime && scheduledLabel && (
+          <div className="rounded-xl border border-primary/35 bg-primary/10 p-4 text-center">
+            <CalendarClock className="w-7 h-7 text-primary mx-auto mb-2" />
+            <p className="font-black text-foreground">Agendado para</p>
+            <p className="text-sm text-primary font-bold capitalize mt-1">{scheduledLabel}</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Seu pedido foi recebido e ficará aguardando o horário agendado antes do início do preparo.
+            </p>
+          </div>
+        )}
 
         {showDeliveryAlert && (
           <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-3 text-center animate-pulse">

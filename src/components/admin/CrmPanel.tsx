@@ -432,87 +432,116 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-[100] bg-background/85 backdrop-blur-md flex items-center justify-center p-3" onClick={() => setSelected(null)}>
-          <div className="max-w-xl w-full max-h-[92vh] overflow-y-auto kiosk-card p-5 border border-primary/30 space-y-4" onClick={e => e.stopPropagation()}>
-            <div>
+        <div
+          className="fixed inset-0 z-[140] bg-background/90 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-3"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="w-full sm:max-w-xl max-h-[calc(100dvh-0.5rem)] sm:max-h-[92dvh] kiosk-card border border-primary/30 rounded-t-3xl sm:rounded-2xl overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-5 pb-3 border-b border-border/60 bg-background/95 shrink-0">
               <h3 className="font-black text-lg">{selected.name}</h3>
               <p className="text-xs text-muted-foreground">
                 {selected.phone_normalized} · {selected.confirmed_orders} compra(s) confirmada(s) · {formatCurrency(selected.confirmed_revenue)}
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-xl bg-muted/50 p-3">
-                <p className="text-muted-foreground">Ticket médio</p>
-                <p className="font-bold">{formatCurrency(selected.average_ticket)}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-4 overscroll-contain">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-muted-foreground">Ticket médio</p>
+                  <p className="font-bold">{formatCurrency(selected.average_ticket)}</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-muted-foreground">Última compra</p>
+                  <p className="font-bold">{selected.last_purchase_at ? new Date(selected.last_purchase_at).toLocaleDateString('pt-BR') : 'Nenhuma confirmada'}</p>
+                </div>
               </div>
-              <div className="rounded-xl bg-muted/50 p-3">
-                <p className="text-muted-foreground">Última compra</p>
-                <p className="font-bold">{selected.last_purchase_at ? new Date(selected.last_purchase_at).toLocaleDateString('pt-BR') : 'Nenhuma confirmada'}</p>
-              </div>
-            </div>
 
-            <div className="rounded-xl border border-border p-3 space-y-2">
-              <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /><p className="font-bold text-sm">Perfil CRM</p></div>
-              <label className="text-xs block">Consentimento de marketing
-                <select value={profileConsent} onChange={e => setProfileConsent(e.target.value as any)}
-                  className="w-full mt-1 bg-muted rounded-lg px-3 py-2">
-                  <option value="unknown">Não informado</option>
-                  <option value="opt_in">Autorizado</option>
-                  <option value="opt_out">Não deseja receber</option>
+              <div className="rounded-xl border border-border p-3 space-y-2">
+                <div className="flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-primary" /><p className="font-bold text-sm">Perfil CRM</p></div>
+                <label className="text-xs block">Consentimento de marketing
+                  <select value={profileConsent} onChange={e => setProfileConsent(e.target.value as any)}
+                    className="w-full mt-1 bg-muted rounded-lg px-3 py-2">
+                    <option value="unknown">Não informado</option>
+                    <option value="opt_in">Autorizado</option>
+                    <option value="opt_out">Não deseja receber</option>
+                  </select>
+                </label>
+                <label className="text-xs block">Aniversário
+                  <input type="date" value={profileBirthDate} onChange={e => setProfileBirthDate(e.target.value)}
+                    className="w-full mt-1 bg-muted rounded-lg px-3 py-2" />
+                </label>
+                <label className="text-xs block"><Tag className="w-3 h-3 inline mr-1" />Tags
+                  <input value={profileTags} onChange={e => setProfileTags(e.target.value)}
+                    placeholder="VIP, almoço, pizza..." className="w-full mt-1 bg-muted rounded-lg px-3 py-2" />
+                </label>
+                <label className="text-xs block">Observações
+                  <textarea value={profileNotes} onChange={e => setProfileNotes(e.target.value)}
+                    rows={2} className="w-full mt-1 bg-muted rounded-lg px-3 py-2 resize-none" />
+                </label>
+                <button onClick={() => void saveProfile()} disabled={savingProfile}
+                  className="w-full py-2 rounded-lg border border-primary/30 text-primary font-bold text-sm">
+                  {savingProfile ? 'Salvando…' : 'Salvar perfil'}
+                </button>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Objetivo</label>
+                <select value={objetivo} onChange={e => setObjetivo(e.target.value)}
+                  className="w-full bg-muted rounded-lg px-3 py-2">
+                  {OBJETIVOS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
                 </select>
+              </div>
+
+              <label className="text-xs font-semibold text-muted-foreground block">
+                Contexto extra <span className="font-normal">(opcional)</span>
+                <input value={extras} onChange={e => setExtras(e.target.value)}
+                  placeholder="Ex.: cupom válido, novidade real, horário..."
+                  className="w-full mt-1 bg-muted rounded-lg px-3 py-2 text-sm" />
               </label>
-              <label className="text-xs block">Aniversário
-                <input type="date" value={profileBirthDate} onChange={e => setProfileBirthDate(e.target.value)}
-                  className="w-full mt-1 bg-muted rounded-lg px-3 py-2" />
-              </label>
-              <label className="text-xs block"><Tag className="w-3 h-3 inline mr-1" />Tags
-                <input value={profileTags} onChange={e => setProfileTags(e.target.value)}
-                  placeholder="VIP, almoço, pizza..." className="w-full mt-1 bg-muted rounded-lg px-3 py-2" />
-              </label>
-              <label className="text-xs block">Observações
-                <textarea value={profileNotes} onChange={e => setProfileNotes(e.target.value)}
-                  rows={2} className="w-full mt-1 bg-muted rounded-lg px-3 py-2 resize-none" />
-              </label>
-              <button onClick={() => void saveProfile()} disabled={savingProfile}
-                className="w-full py-2 rounded-lg border border-primary/30 text-primary font-bold text-sm">
-                {savingProfile ? 'Salvando…' : 'Salvar perfil'}
+
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground mb-1 block">Mensagem</label>
+                <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
+                  placeholder="Toque em “Gerar mensagem” ou escreva aqui. Você pode editar antes de abrir o WhatsApp."
+                  className="w-full bg-muted rounded-lg px-3 py-2 text-sm resize-none" />
+              </div>
+
+              <p className="text-[10px] text-muted-foreground pb-2">
+                “Abrir WhatsApp” registra uma interação aberta. O CRM só atribui conversão quando houver novo pedido entregue e pago em até 30 dias.
+              </p>
+            </div>
+
+            <div
+              className="shrink-0 border-t border-border bg-background/95 backdrop-blur px-4 pt-3"
+              style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => void generate()}
+                  disabled={generating || selected.consent_status === 'opt_out'}
+                  className="py-3 rounded-xl bg-primary text-primary-foreground font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {generating ? 'Gerando…' : 'Gerar mensagem'}
+                </button>
+                <button
+                  onClick={() => void openWhatsApp()}
+                  disabled={!message.trim()}
+                  className="py-3 rounded-xl bg-success text-success-foreground font-black text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  <MessageCircle className="w-4 h-4" /> Abrir WhatsApp
+                </button>
+              </div>
+              <button
+                onClick={() => setSelected(null)}
+                className="w-full mt-2 py-2 rounded-lg text-xs font-bold text-muted-foreground"
+              >
+                Fechar
               </button>
             </div>
-
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Objetivo</label>
-              <select value={objetivo} onChange={e => setObjetivo(e.target.value)}
-                className="w-full bg-muted rounded-lg px-3 py-2">
-                {OBJETIVOS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-              </select>
-            </div>
-
-            <input value={extras} onChange={e => setExtras(e.target.value)}
-              placeholder="Contexto extra: cupom válido, novidade real, horário..."
-              className="w-full bg-muted rounded-lg px-3 py-2 text-sm" />
-
-            <button onClick={() => void generate()} disabled={generating || selected.consent_status === 'opt_out'}
-              className="w-full bg-primary text-primary-foreground py-2.5 rounded-lg font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-              Gerar mensagem
-            </button>
-
-            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4}
-              placeholder="A mensagem aparecerá aqui e pode ser editada antes de abrir o WhatsApp."
-              className="w-full bg-muted rounded-lg px-3 py-2 text-sm resize-none" />
-
-            <div className="flex gap-2">
-              <button onClick={() => setSelected(null)}
-                className="flex-1 py-2.5 rounded-lg bg-muted border border-border font-bold text-sm">Fechar</button>
-              <button onClick={() => void openWhatsApp()}
-                className="flex-1 py-2.5 rounded-lg bg-success text-success-foreground font-bold text-sm flex items-center justify-center gap-2">
-                <MessageCircle className="w-4 h-4" /> Abrir WhatsApp
-              </button>
-            </div>
-            <p className="text-[10px] text-muted-foreground">
-              “Abrir WhatsApp” registra uma interação aberta. O CRM só atribui conversão quando houver novo pedido entregue e pago em até 30 dias.
-            </p>
           </div>
         </div>
       )}

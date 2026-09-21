@@ -248,11 +248,9 @@ const EntregadorDashboard = () => {
           _order_id: orderId,
         });
         if (trackingGeneration !== trackingGenerationRef.current) return;
+        if (isInvalidSession(data)) expireSession();
         const result: any = data;
-        if (isInvalidSession(result)) {
-          expireSession();
-          return;
-        }
+        if (isInvalidSession(data)) return;
         if (result?.reason === 'order_not_assigned') {
           stopTracking();
           setMapOpenId(null);

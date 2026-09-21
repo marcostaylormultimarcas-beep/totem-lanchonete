@@ -5,7 +5,7 @@ import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Za
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 import VencimentoBanner from '@/components/admin/VencimentoBanner';
 import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +17,7 @@ import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesign
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
+import { AdminTab, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
@@ -72,6 +73,8 @@ interface AdminUser {
 
 const AdminPage = () => {
   const navigate = useNavigate();
+
+  const [searchParams, setSearchParams] = useSearchParams();
   const { orgId: ctxOrgId, setOrgId, org, refresh: refreshOrg } = useOrg();
   const [authenticated, setAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -97,7 +100,18 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'delivery' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores' | 'mesas'>('orders');
+  const [tab, setTabState] = useState<AdminTab>(() => parseAdminTab(searchParams.get('tab')));
+
+  const setTab = (nextTab: AdminTab) => {
+    setTabState(nextTab);
+    setSearchParams(withAdminTabSearchParams(searchParams, nextTab), { replace: false });
+  };
+
+  useEffect(() => {
+    const urlTab = parseAdminTab(searchParams.get('tab'));
+    setTabState(current => current === urlTab ? current : urlTab);
+  }, [searchParams]);
+
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');

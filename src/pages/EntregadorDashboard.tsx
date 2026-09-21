@@ -7,7 +7,7 @@ import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin'
 import { formatCurrency } from '@/data/store';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
-import { googleMapsDirectionsUrl } from '@/lib/deliveryRouting';
+import { googleMapsDirectionsUrl, MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 
 interface DeliveryOrder {
   id: string;
@@ -93,6 +93,15 @@ const EntregadorDashboard = () => {
       !Number.isFinite(lat) || !Number.isFinite(lng)
       || lat < -90 || lat > 90 || lng < -180 || lng > 180
     ) return null;
+
+    if (
+      typeof order.delivery_accuracy_m === 'number'
+      && Number.isFinite(order.delivery_accuracy_m)
+      && order.delivery_accuracy_m > MAX_EXACT_DESTINATION_ACCURACY_M
+    ) {
+      return null;
+    }
+
     return { lat, lng };
   };
 
@@ -131,7 +140,7 @@ const EntregadorDashboard = () => {
 
   const refreshDistance = async (orderId: string) => {
     const order = orders.find((o) => o.id === orderId);
-    if (!order?.delivery_address) return;
+    if (!order || (!order.delivery_address && !getExactDestination(order))) return;
     setRefreshingLoc(orderId);
     try {
       const dest = await resolveDestination(order);
@@ -228,7 +237,17 @@ const EntregadorDashboard = () => {
           _order_id: orderId,
         });
         if (trackingGeneration !== trackingGenerationRef.current) return;
-        if (isInvalidSession(data)) expireSession();
+        const result: any = data;
+        if (isInvalidSession(result)) {
+          expireSession();
+          return;
+        }
+        if (result?.reason === 'order_not_assigned') {
+          stopTracking();
+          setMapOpenId(null);
+          setRiderPos(null);
+          toast.info('Esta entrega não está mais atribuída a você. O rastreamento foi encerrado.');
+        }
       } finally {
         if (trackingGeneration === trackingGenerationRef.current) locationRequestInFlightRef.current = false;
       }
@@ -246,6 +265,7 @@ const EntregadorDashboard = () => {
   const toggleMap = async (order: DeliveryOrder) => {
     if (mapOpenId === order.id) {
       setMapOpenId(null);
+      setRiderPos(null);
       stopTracking();
       return;
     }
@@ -314,9 +334,14 @@ const EntregadorDashboard = () => {
       }, 8000);
     }
     ativos.forEach(o => knownIds.current.add(o.id));
+    if (mapOpenId && !ativos.some(o => o.id === mapOpenId)) {
+      setMapOpenId(null);
+      setRiderPos(null);
+      stopTracking();
+    }
     setOrders(list);
     setLoading(false);
-  }, [session, navigate, playAlert]);
+  }, [session, playAlert, expireSession, mapOpenId, stopTracking]);
 
   const fetchAvailable = useCallback(async () => {
     if (!session) return;
@@ -439,6 +464,7 @@ const EntregadorDashboard = () => {
       setOrders(prev => prev.filter(o => o.id !== orderId));
       stopTracking();
       if (mapOpenId === orderId) setMapOpenId(null);
+      setRiderPos(null);
       await fetchAvailable();
       toast.success(res?.returned_to_queue
         ? 'Entrega devolvida à disputa. Outro entregador poderá aceitar.'
@@ -505,7 +531,7 @@ const EntregadorDashboard = () => {
 
     // ====== TRAVA DE SEGURANÇA (Geofence 200m) ======
     const order = orders.find((o) => o.id === orderId);
-    if (order?.delivery_address) {
+    if (order && (order.delivery_address || getExactDestination(order))) {
       setGeoChecking(orderId);
       setGeofenceError((p) => ({ ...p, [orderId]: null }));
       try {
@@ -575,6 +601,9 @@ const EntregadorDashboard = () => {
     }
     toast.success('✅ Entrega confirmada!');
     setCodeInputs(p => ({ ...p, [orderId]: '' }));
+    stopTracking();
+    if (mapOpenId === orderId) setMapOpenId(null);
+    setRiderPos(null);
     // Move imediatamente para o Histórico via update otimista
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
     fetchOrders(true);

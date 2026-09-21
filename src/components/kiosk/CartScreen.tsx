@@ -27,9 +27,11 @@ interface CartScreenProps {
   appliedCoupon: AppliedCoupon | null;
   onApplyCoupon: (c: AppliedCoupon | null) => void;
   deviceOwnedKiosk?: boolean;
+  openScheduleOnMount?: boolean;
+  onScheduleOpened?: () => void;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false }: CartScreenProps) => {
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false, openScheduleOnMount = false, onScheduleOpened }: CartScreenProps) => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
   const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
@@ -51,6 +53,12 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+
+  useEffect(() => {
+    if (!openScheduleOnMount) return;
+    setScheduleMode(true);
+    onScheduleOpened?.();
+  }, [openScheduleOnMount, onScheduleOpened]);
 
   // Defaults para o agendamento = próximo horário de abertura
   useEffect(() => {

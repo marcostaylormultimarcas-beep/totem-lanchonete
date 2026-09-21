@@ -1634,7 +1634,12 @@ export type Database = {
           pay_cash_enabled: boolean
           pay_pix_enabled: boolean
           pix_key_manual: string
+          scheduling_capacity_enabled: boolean
           scheduling_enabled: boolean
+          scheduling_max_orders_per_slot: number
+          scheduling_preparation_lead_min: number
+          scheduling_slot_minutes: number
+          special_closures: Json
           share_image: string
           store_name: string
           taxa_vision_percent: number
@@ -1689,7 +1694,12 @@ export type Database = {
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_capacity_enabled?: boolean
           scheduling_enabled?: boolean
+          scheduling_max_orders_per_slot?: number
+          scheduling_preparation_lead_min?: number
+          scheduling_slot_minutes?: number
+          special_closures?: Json
           share_image?: string
           store_name?: string
           taxa_vision_percent?: number
@@ -1744,7 +1754,12 @@ export type Database = {
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_capacity_enabled?: boolean
           scheduling_enabled?: boolean
+          scheduling_max_orders_per_slot?: number
+          scheduling_preparation_lead_min?: number
+          scheduling_slot_minutes?: number
+          special_closures?: Json
           share_image?: string
           store_name?: string
           taxa_vision_percent?: number

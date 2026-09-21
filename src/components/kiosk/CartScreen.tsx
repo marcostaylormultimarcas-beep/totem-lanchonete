@@ -269,8 +269,12 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
             <span>Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-          {/* Status da loja → libera, agenda ou bloqueia o checkout */}
-          {storeStatus.open ? (
+          {/* Status da loja → nunca concluir aberto/fechado antes da configuração terminar de carregar */}
+          {storeStatus.loading ? (
+            <button disabled className="touch-btn w-full bg-muted text-muted-foreground py-4 rounded-xl text-lg cursor-wait flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" /> Verificando horário da loja…
+            </button>
+          ) : storeStatus.open ? (
             <button onClick={() => onCheckout(null)} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
               {deviceOwnedKiosk || isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
             </button>

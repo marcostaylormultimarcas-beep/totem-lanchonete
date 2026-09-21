@@ -194,10 +194,14 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     return encodeURIComponent(msg);
   };
 
-  const handleSendToKitchen = () => {
-    const whatsappUrl = `https://wa.me/${storeSettings.whatsappNumber}?text=${buildWhatsAppMessage()}`;
-    window.open(whatsappUrl, '_blank');
-    onDone();
+  const handleShareWhatsApp = () => {
+    const phone = storeSettings.whatsappNumber.replace(/\D/g, '');
+    if (!phone) {
+      toast.error('WhatsApp da loja não configurado.');
+      return;
+    }
+    const whatsappUrl = `https://wa.me/${phone}?text=${buildWhatsAppMessage()}`;
+    window.open(whatsappUrl, '_blank', 'noopener');
   };
 
   const buildPendingDraft = (state: 'submitting' | 'queued_offline', selectedMethod: Method): PendingCheckoutDraft => ({
@@ -658,9 +662,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
 
 
-        <button onClick={handleSendToKitchen} className="touch-btn w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3">
-          <MessageCircle className="w-7 h-7" /> ENVIAR PEDIDO PARA A COZINHA
-        </button>
+        {!deviceOwnedKiosk && storeSettings.whatsappNumber && (
+          <button onClick={handleShareWhatsApp} className="touch-btn w-full bg-success/10 border border-success/30 text-success py-4 rounded-xl text-base flex items-center justify-center gap-2">
+            <MessageCircle className="w-5 h-5" /> Compartilhar pedido no WhatsApp
+          </button>
+        )}
 
 
         {currentOrderId && (
@@ -670,7 +676,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         )}
 
         <button onClick={() => onDone()} className="touch-btn w-full bg-primary/10 border-2 border-primary text-primary py-4 rounded-xl text-lg flex items-center justify-center gap-2">
-          🏠 Voltar ao Menu Inicial
+          {deviceOwnedKiosk ? '✅ Finalizar e liberar o totem' : '🏠 Voltar ao Menu Inicial'}
         </button>
       </div>
     );

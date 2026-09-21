@@ -19,6 +19,37 @@ interface Bairro {
 
 type DeliveryMode = 'bairros' | 'raio_km' | 'lista_ceps';
 
+const splitDeliveryAddress = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return { address: '', number: '' };
+
+  // Formato novo usado nesta tela: "Rua / bairro / cidade, nº 123".
+  const canonical = trimmed.match(/^(.*),\s*n[º°o.]?\s*([^,]+)$/i);
+  if (canonical) {
+    return { address: canonical[1].trim(), number: canonical[2].trim() };
+  }
+
+  // Compatibilidade com o formato já salvo pelo fluxo de CEP:
+  // "Rua, 123 - Bairro, Cidade/UF".
+  const legacy = trimmed.match(/^(.+?),\s*([^,]+?)\s+-\s+(.+)$/);
+  const legacyNumber = legacy?.[2]?.trim() || '';
+  if (legacy && (/\d/.test(legacyNumber) || /^s\/?n$/i.test(legacyNumber))) {
+    return {
+      address: `${legacy[1].trim()} - ${legacy[3].trim()}`,
+      number: legacyNumber,
+    };
+  }
+
+  return { address: trimmed, number: '' };
+};
+
+const joinDeliveryAddress = (address: string, number: string) => {
+  const base = address.trim();
+  const houseNumber = number.trim();
+  if (!base) return '';
+  return houseNumber ? `${base}, nº ${houseNumber}` : base;
+};
+
 
 interface CheckoutScreenProps {
   name: string;
@@ -153,6 +184,7 @@ const CheckoutScreen = ({
   };
 
   const selectedBairro = bairros.find(b => b.id === bairroId);
+  const deliveryAddressParts = splitDeliveryAddress(deliveryAddress);
   const identifiedCustomerValid = name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 8;
   const baseValid = deviceOwnedKiosk
     ? (!showKioskIdentification || identifiedCustomerValid)
@@ -163,7 +195,11 @@ const CheckoutScreen = ({
   const bairroNeeded = orderType === 'viagem' && deliveryMode === 'bairros' && bairros.length > 0;
   const bairroValid = !bairroNeeded || !!selectedBairro;
   const deliveryValid = orderType === 'viagem'
-    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid && cepValid
+    ? deliveryAddressParts.address.trim().length >= 5
+      && deliveryAddressParts.number.trim().length > 0
+      && deliveryRecipient.trim().length >= 2
+      && bairroValid
+      && cepValid
     : true;
   const isValid = baseValid && deliveryValid && cpfValid;
 
@@ -360,17 +396,35 @@ const CheckoutScreen = ({
               )}
 
 
-              <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                <div className="relative">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Rua / endereço"
+                    value={deliveryAddressParts.address}
+                    onChange={e => onDeliveryAddressChange(joinDeliveryAddress(e.target.value, deliveryAddressParts.number))}
+                    className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                    maxLength={200}
+                  />
+                </div>
                 <input
                   type="text"
-                  placeholder="Endereço completo (rua, nº)"
-                  value={deliveryAddress}
-                  onChange={e => onDeliveryAddressChange(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-                  maxLength={200}
+                  inputMode="text"
+                  autoComplete="address-line2"
+                  aria-label="Número do endereço"
+                  placeholder="Número *"
+                  value={deliveryAddressParts.number}
+                  onChange={e => onDeliveryAddressChange(joinDeliveryAddress(deliveryAddressParts.address, e.target.value))}
+                  className="w-full px-3 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={20}
                 />
               </div>
+              {!deliveryAddressParts.number && (
+                <p className="text-[11px] text-muted-foreground -mt-2 ml-1">
+                  Informe o número do imóvel para continuar.
+                </p>
+              )}
               <div className="relative">
                 <Navigation className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 const KIOSK_ORG_STORAGE_KEY = 'kiosk_org_id';
 const KIOSK_SLUG_STORAGE_KEY = 'kiosk_slug';
+const GOOGLE_OAUTH_RETURN_TO_KEY = 'visionfood_google_oauth_return_to';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const cleanPhone = (value: string) => value.replace(/\D/g, '');
@@ -35,7 +36,14 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const returnTo = searchParams.get('returnTo') || getKioskHomePath();
+  const storedGoogleReturnTo = (() => {
+    try {
+      return sessionStorage.getItem(GOOGLE_OAUTH_RETURN_TO_KEY) || '';
+    } catch {
+      return '';
+    }
+  })();
+  const returnTo = searchParams.get('returnTo') || storedGoogleReturnTo || getKioskHomePath();
   const { orgId, org } = useOrg();
 
   const resolveSignupOrganizationId = async () => {
@@ -61,7 +69,14 @@ const Auth = () => {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate(returnTo);
+      if (session) {
+        try {
+          sessionStorage.removeItem(GOOGLE_OAUTH_RETURN_TO_KEY);
+        } catch {
+          // Navegação continua mesmo se o storage do navegador estiver indisponível.
+        }
+        navigate(returnTo);
+      }
     });
   }, [navigate, returnTo]);
 
@@ -150,7 +165,27 @@ const Auth = () => {
     setLoading(false);
   };
 
-  // Login com Google removido conforme solicitação.
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      sessionStorage.setItem(GOOGLE_OAUTH_RETURN_TO_KEY, returnTo);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth`,
+        },
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      try {
+        sessionStorage.removeItem(GOOGLE_OAUTH_RETURN_TO_KEY);
+      } catch {
+        // O erro de OAuth abaixo continua sendo exibido.
+      }
+      toast.error(error?.message || 'Não foi possível entrar com Google');
+      setLoading(false);
+    }
+  };
 
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -183,8 +218,24 @@ const Auth = () => {
             <p className="text-muted-foreground text-sm">{heroMap[mode].s}</p>
           </div>
 
-          {/* Login com Google removido */}
-
+          {mode === 'login' && (
+            <>
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={loading}
+                className="w-full bg-card border border-border py-3.5 rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-muted transition disabled:opacity-50"
+              >
+                <span className="w-6 h-6 rounded-full bg-background border border-border flex items-center justify-center text-sm font-black">G</span>
+                Continuar com Google
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="h-px bg-border flex-1" />
+                <span className="text-xs text-muted-foreground">ou continue com e-mail</span>
+                <div className="h-px bg-border flex-1" />
+              </div>
+            </>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (

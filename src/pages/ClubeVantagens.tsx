@@ -11,6 +11,17 @@ interface PartnerCoupon {
   cupons: { id: string; codigo: string; tipo: string; valor: number }[];
 }
 
+const CLUB_CATALOG_TIMEOUT_MS = 7000;
+
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+
 const ClubeVantagens = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,9 +59,13 @@ const ClubeVantagens = () => {
         }
         setAuthed(true);
 
-        const { data: catalog, error } = await supabase.rpc('clube_vantagens_catalog' as any, {
-          _fallback_org: orgId,
-        });
+        const { data: catalog, error } = await withTimeout(
+          supabase.rpc('clube_vantagens_catalog' as any, {
+            _fallback_org: orgId,
+          }),
+          CLUB_CATALOG_TIMEOUT_MS,
+          'club_catalog_timeout',
+        );
         if (cancelled) return;
         if (error) throw error;
 
@@ -71,8 +86,15 @@ const ClubeVantagens = () => {
         setData(grouped);
       } catch (error) {
         if (cancelled) return;
-        console.error('Clube de Vantagens:', error);
         setData([]);
+
+        if (error instanceof Error && error.message === 'club_catalog_timeout') {
+          console.warn('Clube de Vantagens: consulta demorou além do esperado; exibindo estado sem benefícios.');
+          setLoadError(false);
+          return;
+        }
+
+        console.error('Clube de Vantagens:', error);
         setLoadError(true);
       } finally {
         if (!cancelled) setLoading(false);
@@ -174,7 +196,7 @@ const ClubeVantagens = () => {
                   <Store className="w-8 h-8 text-primary" />
                 </div>
                 <div>
-                  <p className="font-black text-lg">Nenhum benefício disponível agora</p>
+                  <p className="font-black text-lg">Nenhum benefício disponível no momento</p>
                   <p className="text-sm text-muted-foreground mt-1 max-w-sm mx-auto">
                     Quando a loja publicar novos parceiros e cupons, eles aparecerão aqui automaticamente.
                   </p>

@@ -7,7 +7,7 @@ import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin'
 import { formatCurrency } from '@/data/store';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
-import { fetchRoadRoute, formatRouteDistance, formatRouteDuration, googleMapsDirectionsUrl, type RoadRoute } from '@/lib/deliveryRouting';
+import { googleMapsDirectionsUrl } from '@/lib/deliveryRouting';
 
 interface DeliveryOrder {
   id: string;
@@ -54,9 +54,6 @@ const EntregadorDashboard = () => {
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
-  const [roadRoutes, setRoadRoutes] = useState<Record<string, RoadRoute>>({});
-  const [routeLoading, setRouteLoading] = useState<string | null>(null);
-  const routeRequestRef = useRef<Record<string, { at: number; origin: { lat: number; lng: number } }>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
@@ -254,35 +251,6 @@ const EntregadorDashboard = () => {
       await resolveDestination(order);
     }
   };
-
-  useEffect(() => {
-    if (!mapOpenId || !riderPos) return;
-    const destination = destCoords[mapOpenId];
-    if (!destination) return;
-
-    const last = routeRequestRef.current[mapOpenId];
-    const movedM = last ? haversineMeters(last.origin, riderPos) : Number.POSITIVE_INFINITY;
-    if (last && Date.now() - last.at < 30000 && movedM < 80) return;
-
-    let cancelled = false;
-    const timer = window.setTimeout(async () => {
-      routeRequestRef.current[mapOpenId] = {
-        at: Date.now(),
-        origin: { lat: riderPos.lat, lng: riderPos.lng },
-      };
-      setRouteLoading(mapOpenId);
-      const route = await fetchRoadRoute(riderPos, destination);
-      if (!cancelled && route) {
-        setRoadRoutes(prev => ({ ...prev, [mapOpenId]: route }));
-      }
-      if (!cancelled) setRouteLoading(null);
-    }, 500);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [mapOpenId, riderPos, destCoords]);
 
   useEffect(() => {
     if (!session) navigate('/entregador/login');
@@ -739,19 +707,8 @@ const EntregadorDashboard = () => {
                       <LiveDeliveryMap
                         rider={riderPos}
                         destination={destCoords[o.id] ? { ...destCoords[o.id], label: o.delivery_address || 'Destino' } : null}
-                        route={roadRoutes[o.id]?.points || null}
                         height={300}
                       />
-                      {roadRoutes[o.id] ? (
-                        <div className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-center">
-                          <p className="text-sm font-black text-blue-300">
-                            🛣️ {formatRouteDistance(roadRoutes[o.id].distanceM)} · {formatRouteDuration(roadRoutes[o.id].durationSec)}
-                          </p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">Estimativa pela rota viária atual. O app de navegação pode ajustar conforme trânsito e condições da via.</p>
-                        </div>
-                      ) : routeLoading === o.id ? (
-                        <p className="text-xs text-blue-300 text-center animate-pulse">Calculando rota pelas ruas...</p>
-                      ) : null}
                       <p className="text-[11px] text-amber-400/90 text-center">
                         📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
                         {exactDestination ? ' • 📍 destino GPS do cliente' : ' • 📍 destino aproximado pelo endereço'}

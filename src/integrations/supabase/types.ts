@@ -525,10 +525,10 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
-          last_lat: number | null
-          last_lng: number | null
-          last_location_at: string | null
-          last_location_order_id: string | null
+          ultima_lat: number | null
+          ultima_lng: number | null
+          ultima_localizacao_at: string | null
+          ultima_localizacao_pedido_id: string | null
           name: string
           organization_id: string
           password: string
@@ -539,10 +539,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          last_lat?: number | null
-          last_lng?: number | null
-          last_location_at?: string | null
-          last_location_order_id?: string | null
+          ultima_lat?: number | null
+          ultima_lng?: number | null
+          ultima_localizacao_at?: string | null
+          ultima_localizacao_pedido_id?: string | null
           name: string
           organization_id: string
           password: string
@@ -553,10 +553,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          last_lat?: number | null
-          last_lng?: number | null
-          last_location_at?: string | null
-          last_location_order_id?: string | null
+          ultima_lat?: number | null
+          ultima_lng?: number | null
+          ultima_localizacao_at?: string | null
+          ultima_localizacao_pedido_id?: string | null
           name?: string
           organization_id?: string
           password?: string

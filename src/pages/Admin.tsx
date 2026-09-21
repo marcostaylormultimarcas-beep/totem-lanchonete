@@ -16,9 +16,9 @@ import InstallAppButton from '@/components/pwa/InstallAppButton';
 import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
+import CrmPanel from '@/components/admin/CrmPanel';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
-const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
 const OrdersPanel = lazy(() => import('@/components/admin/OrdersPanel'));
 const MesasPanel = lazy(() => import('@/components/admin/MesasPanel'));

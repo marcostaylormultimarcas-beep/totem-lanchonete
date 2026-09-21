@@ -125,23 +125,46 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
   const confirmarLocalizacao = async () => {
     const n = normalizeCep(cepLoja);
     if (n.length !== 8) return toast.error('Informe um CEP válido.');
-    if (!street.trim()) return toast.error('Informe a rua da loja.');
-    if (!number.trim()) return toast.error('Informe o número da loja.');
-    if (!city.trim() || stateUf.trim().length !== 2) return toast.error('Confira cidade e UF.');
+    if (!street.trim()) return toast.error('Confira o campo Rua / Avenida.');
+    if (!number.trim()) return toast.error('Preencha o campo Número ou informe S/N.');
+    if (!city.trim() || stateUf.trim().length !== 2) return toast.error('Confira os campos Cidade e UF.');
 
     setBuscandoCep(true);
+
+    const normalizedNumber = number.trim().toLowerCase().replace(/\s+/g, '');
+    const withoutExactNumber = ['0', 's/n', 'sn', 'semnumero', 'semnúmero'].includes(normalizedNumber);
     const fullAddress = buildOriginAddress();
-    const coords = await geocodeAddress(fullAddress);
+    const streetAddress = [
+      street.trim(),
+      neighborhood.trim(),
+      [city.trim(), stateUf.trim().toUpperCase()].filter(Boolean).join(' - '),
+      `CEP ${maskCep(cepLoja)}`,
+      'Brasil',
+    ].filter(Boolean).join(', ');
+
+    let coords = withoutExactNumber ? null : await geocodeAddress(fullAddress);
+    let usedStreetFallback = withoutExactNumber;
+
+    if (!coords) {
+      coords = await geocodeAddress(streetAddress);
+      usedStreetFallback = Boolean(coords);
+    }
+
     if (!coords) {
       setBuscandoCep(false);
-      return toast.error('Não foi possível confirmar essa localização. Confira rua, número, cidade e CEP.');
+      return toast.error('Os campos estão preenchidos, mas o mapa não encontrou esse endereço. Confira principalmente Rua / Avenida, Número, Cidade e CEP.');
     }
 
     setLat(coords.lat);
     setLng(coords.lng);
     setEndereco(fullAddress.replace(', Brasil', ''));
     setBuscandoCep(false);
-    toast.success('Localização da loja confirmada.');
+
+    if (usedStreetFallback) {
+      toast.warning('Localização confirmada pelo logradouro/CEP. Como o número não foi localizado, a origem pode ficar aproximada.');
+    } else {
+      toast.success('Localização exata da loja confirmada.');
+    }
   };
 
   const salvar = async () => {
@@ -236,17 +259,20 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-[1fr_auto] gap-2">
-          <input
-            value={cepLoja}
-            onChange={e => {
-              setCepLoja(maskCep(e.target.value));
-              invalidateOriginCoords();
-            }}
-            placeholder="CEP 00000-000"
-            maxLength={9}
-            className="px-3 py-2 bg-muted rounded-lg outline-none"
-          />
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2 items-end">
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-muted-foreground">CEP</span>
+            <input
+              value={cepLoja}
+              onChange={e => {
+                setCepLoja(maskCep(e.target.value));
+                invalidateOriginCoords();
+              }}
+              placeholder="00000-000"
+              maxLength={9}
+              className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+            />
+          </label>
           <button
             type="button"
             onClick={buscarCepLoja}
@@ -259,53 +285,71 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
         </div>
 
         <div className="grid sm:grid-cols-[2fr_0.7fr] gap-2">
-          <input
-            value={street}
-            onChange={e => { setStreet(e.target.value); invalidateOriginCoords(); }}
-            placeholder="Rua / Avenida"
-            maxLength={160}
-            className="px-3 py-2 bg-muted rounded-lg outline-none"
-          />
-          <input
-            value={number}
-            onChange={e => { setNumber(e.target.value); invalidateOriginCoords(); }}
-            placeholder="Número"
-            maxLength={20}
-            className="px-3 py-2 bg-muted rounded-lg outline-none"
-          />
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-muted-foreground">Rua / Avenida</span>
+            <input
+              value={street}
+              onChange={e => { setStreet(e.target.value); invalidateOriginCoords(); }}
+              placeholder="Rua / Avenida"
+              maxLength={160}
+              className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+            />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-muted-foreground">Número</span>
+            <input
+              value={number}
+              onChange={e => { setNumber(e.target.value); invalidateOriginCoords(); }}
+              placeholder="Ex.: 123 ou S/N"
+              maxLength={20}
+              className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+            />
+          </label>
         </div>
 
-        <input
-          value={complement}
-          onChange={e => { setComplement(e.target.value); invalidateOriginCoords(); }}
-          placeholder="Complemento (opcional)"
-          maxLength={100}
-          className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
-        />
+        <label className="space-y-1 block">
+          <span className="text-xs font-bold text-muted-foreground">Complemento <span className="font-normal">(opcional)</span></span>
+          <input
+            value={complement}
+            onChange={e => { setComplement(e.target.value); invalidateOriginCoords(); }}
+            placeholder="Sala, bloco, referência..."
+            maxLength={100}
+            className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+        </label>
 
         <div className="grid sm:grid-cols-2 gap-2">
-          <input
-            value={neighborhood}
-            onChange={e => { setNeighborhood(e.target.value); invalidateOriginCoords(); }}
-            placeholder="Bairro"
-            maxLength={100}
-            className="px-3 py-2 bg-muted rounded-lg outline-none"
-          />
-          <div className="grid grid-cols-[1fr_74px] gap-2">
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-muted-foreground">Bairro</span>
             <input
-              value={city}
-              onChange={e => { setCity(e.target.value); invalidateOriginCoords(); }}
-              placeholder="Cidade"
+              value={neighborhood}
+              onChange={e => { setNeighborhood(e.target.value); invalidateOriginCoords(); }}
+              placeholder="Bairro"
               maxLength={100}
-              className="px-3 py-2 bg-muted rounded-lg outline-none"
+              className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
             />
-            <input
-              value={stateUf}
-              onChange={e => { setStateUf(e.target.value.toUpperCase().slice(0, 2)); invalidateOriginCoords(); }}
-              placeholder="UF"
-              maxLength={2}
-              className="px-3 py-2 bg-muted rounded-lg outline-none uppercase"
-            />
+          </label>
+          <div className="grid grid-cols-[1fr_74px] gap-2">
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-muted-foreground">Cidade</span>
+              <input
+                value={city}
+                onChange={e => { setCity(e.target.value); invalidateOriginCoords(); }}
+                placeholder="Cidade"
+                maxLength={100}
+                className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-xs font-bold text-muted-foreground">UF</span>
+              <input
+                value={stateUf}
+                onChange={e => { setStateUf(e.target.value.toUpperCase().slice(0, 2)); invalidateOriginCoords(); }}
+                placeholder="UF"
+                maxLength={2}
+                className="w-full px-3 py-2 bg-muted rounded-lg outline-none uppercase"
+              />
+            </label>
           </div>
         </div>
 
@@ -331,7 +375,7 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
           </div>
         ) : (
           <p className="text-xs text-amber-400">
-            Depois de preencher rua e número, confirme a localização para evitar cálculo saindo do centro do CEP.
+            Confira os campos acima. Se a loja não tiver número, informe S/N; nesse caso a localização será confirmada pelo logradouro/CEP.
           </p>
         )}
       </div>

@@ -44,6 +44,9 @@ export interface PendingCheckoutDraft {
   bairroTaxa: number;
   bairroTempo: number;
   deliveryCep: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAccuracyM?: number | null;
   appliedCoupon: AppliedCoupon | null;
   scheduledFor: string | null;
   tableToken: string;

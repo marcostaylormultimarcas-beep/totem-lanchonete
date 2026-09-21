@@ -35,7 +35,8 @@ const StoreStatusBadge = ({ orgId, compact = false }: { orgId: string | null; co
     <div className={`flex items-center gap-2 rounded-lg ${compact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'} bg-destructive/10 border border-destructive/40 text-destructive`}>
       <Clock className="w-4 h-4 shrink-0" />
       <span className="font-semibold">
-        Fechado{s.nextOpenAt ? ` · abre ${fmtTime(s.nextOpenAt)}` : ''}
+        {s.specialClosure ? s.message : 'Fechado'}
+        {s.nextOpenAt && !s.emergencyClosed ? ` · abre ${fmtTime(s.nextOpenAt)}` : ''}
       </span>
     </div>
   );

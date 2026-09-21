@@ -822,7 +822,11 @@ export type Database = {
           data_reembolso: string | null
           delivery_address: string | null
           delivery_accuracy_m: number | null
+          delivery_assigned_at: string | null
           delivery_cep: string
+          delivery_issue_at: string | null
+          delivery_issue_reason: string | null
+          delivery_started_at: string | null
           delivery_lat: number | null
           delivery_lng: number | null
           delivery_code: string
@@ -866,7 +870,11 @@ export type Database = {
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_accuracy_m?: number | null
+          delivery_assigned_at?: string | null
           delivery_cep?: string
+          delivery_issue_at?: string | null
+          delivery_issue_reason?: string | null
+          delivery_started_at?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
           delivery_code?: string
@@ -910,7 +918,11 @@ export type Database = {
           data_reembolso?: string | null
           delivery_address?: string | null
           delivery_accuracy_m?: number | null
+          delivery_assigned_at?: string | null
           delivery_cep?: string
+          delivery_issue_at?: string | null
+          delivery_issue_reason?: string | null
+          delivery_started_at?: string | null
           delivery_lat?: number | null
           delivery_lng?: number | null
           delivery_code?: string
@@ -2053,6 +2065,22 @@ export type Database = {
         Args: { _entregador_id: string; _order_id: string; _password: string }
         Returns: Json
       }
+      entregador_claim_order_session: {
+        Args: { _order_id: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_decline_order_session: {
+        Args: { _order_id: string; _reason: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_report_delivery_issue_session: {
+        Args: { _order_id: string; _reason: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_start_delivery_session: {
+        Args: { _order_id: string; _session_token: string }
+        Returns: Json
+      }
       entregador_login: {
         Args: { _org_slug: string; _password: string; _username: string }
         Returns: Json
@@ -2297,6 +2325,10 @@ export type Database = {
         Returns: boolean
       }
       visionfood_profile_count: { Args: { _org: string }; Returns: number }
+      visionfood_return_delivery_to_queue: {
+        Args: { _order_id: string; _reason: string }
+        Returns: Json
+      }
       visionfood_public_called_tickets: {
         Args: { _limit?: number; _org: string }
         Returns: Json

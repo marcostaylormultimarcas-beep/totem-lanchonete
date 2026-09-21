@@ -1,371 +1,205 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Users, MessageCircle, Search, TrendingUp, Calendar, DollarSign, ShoppingBag, Target } from 'lucide-react';
+import { Loader2, Users, MessageCircle, Search, TrendingUp, Calendar, DollarSign, ShoppingBag, Target, Crown } from 'lucide-react';
 import { formatCurrency } from '@/data/store';
 import { BRAND_NAME } from '@/config/brandConfig';
 
 interface Props { organizationId: string | null; storeName?: string }
 
-interface OrderRow {
+type Contact = {
   id: string;
-  user_id: string | null;
-  customer_name: string;
-  customer_phone: string;
-  total: number;
-  created_at: string;
-  items: any;
-  status: string;
-}
-
-interface CustomerSummary {
-  key: string;
-  phone: string;
+  phone_normalized: string;
   name: string;
   email: string;
-  orders: number;
-  totalSpent: number;
-  lastOrderAt: string | null;
-  daysSince: number | null;
-  topProduct: string;
-  isLead: boolean;
+  lifecycle_stage: 'lead' | 'customer' | 'vip';
+  confirmed_orders: number;
+  confirmed_revenue: number;
+  last_purchase_at: string | null;
+  favorite_product: string;
+  consent_status: 'unknown' | 'opt_in' | 'opt_out';
   source: string;
-}
+};
 
-type FilterKey = 'all' | 'clientes' | 'leads';
+type FilterKey = 'all' | 'clientes' | 'leads' | 'vip';
 
-const normalizePhone = (raw: string) => (raw || '').replace(/\D/g, '');
 const buildWaUrl = (phone: string, msg: string) => {
-  let n = normalizePhone(phone);
+  let n = (phone || '').replace(/\D/g, '');
   if (!n) return '#';
   if (n.length <= 11) n = '55' + n;
   return `https://wa.me/${n}?text=${encodeURIComponent(msg)}`;
 };
 
 const formatPhone = (raw: string) => {
-  const n = normalizePhone(raw);
+  const n = (raw || '').replace(/\D/g, '');
   if (n.length === 11) return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`;
   if (n.length === 10) return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`;
   return raw || '-';
 };
 
-const fallbackContactUrl = (msg: string) => `https://wa.me/?text=${encodeURIComponent(msg)}`;
-
 const ClientesLeadsPanel = ({ organizationId, storeName }: Props) => {
   const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [profileContacts, setProfileContacts] = useState<Array<{ key: string; userId: string; email: string; phone: string; name: string; source: string; created_at: string }>>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
   const [filter, setFilter] = useState<FilterKey>('all');
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (!organizationId) { setOrders([]); setProfileContacts([]); setLoading(false); return; }
-    setLoading(true);
-    (async () => {
-      // public.clientes is a legacy, unscoped table (no organization_id/user_id).
-      // Keep tenant data fail-closed and derive the current CRM list from scoped orders.
-      const ordersRes = await supabase.from('orders')
-        .select('id, user_id, customer_name, customer_phone, total, created_at, items, status')
-        .eq('organization_id', organizationId)
-        .neq('status', 'cancelled')
-        .order('created_at', { ascending: false })
-        .limit(5000);
-
-      setOrders((ordersRes.data as OrderRow[]) || []);
-      setProfileContacts([]);
+    if (!organizationId) {
+      setContacts([]);
       setLoading(false);
-    })();
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    supabase
+      .from('crm_contacts' as any)
+      .select('id,phone_normalized,name,email,lifecycle_stage,confirmed_orders,confirmed_revenue,last_purchase_at,favorite_product,consent_status,source')
+      .eq('organization_id', organizationId)
+      .order('confirmed_revenue', { ascending: false })
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error('[ClientesLeads] CRM load failed', error);
+          setContacts([]);
+        } else {
+          setContacts(((data as any[]) || []).map((c: any) => ({
+            ...c,
+            confirmed_orders: Number(c.confirmed_orders || 0),
+            confirmed_revenue: Number(c.confirmed_revenue || 0),
+          })));
+        }
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
   }, [organizationId]);
-
-
-  const customers = useMemo<CustomerSummary[]>(() => {
-    const now = Date.now();
-    const map = new Map<string, CustomerSummary & { productCounts: Map<string, number> }>();
-    const keyByUserId = new Map(profileContacts.map((p) => [p.userId, p.key]));
-    const keyByPhone = new Map(profileContacts.filter((p) => p.phone.length >= 8).map((p) => [p.phone, p.key]));
-
-    for (const p of profileContacts) {
-      map.set(p.key, {
-        key: p.key,
-        phone: p.phone,
-        name: p.name,
-        email: p.email,
-        orders: 0,
-        totalSpent: 0,
-        lastOrderAt: null,
-        daysSince: null,
-        topProduct: '-',
-        isLead: true,
-        source: p.source,
-        productCounts: new Map(),
-      });
-    }
-
-    for (const o of orders) {
-      const phone = normalizePhone(o.customer_phone);
-      const key = (o.user_id && keyByUserId.get(o.user_id)) || keyByPhone.get(phone) || (phone.length >= 8 ? phone : `order:${o.id}`);
-      let entry = map.get(key);
-      if (!entry) {
-        entry = {
-          key,
-          phone,
-          email: '',
-          name: o.customer_name || 'Sem nome',
-          orders: 0,
-          totalSpent: 0,
-          lastOrderAt: o.created_at,
-          daysSince: 0,
-          topProduct: '-',
-          isLead: false,
-          source: 'Pedidos',
-          productCounts: new Map(),
-        };
-        map.set(key, entry);
-      }
-      entry.isLead = false;
-      entry.source = entry.source === 'Cadastro' ? 'Cadastro + Pedidos' : 'Pedidos';
-      if (!entry.phone && phone) entry.phone = phone;
-      entry.orders += 1;
-      entry.totalSpent += Number(o.total) || 0;
-      const created = new Date(o.created_at);
-      if (!entry.lastOrderAt || created > new Date(entry.lastOrderAt)) {
-        entry.lastOrderAt = o.created_at;
-        if (o.customer_name) entry.name = o.customer_name;
-      }
-      const items = Array.isArray(o.items) ? o.items : [];
-      for (const it of items) {
-        const name = it?.name || it?.product_name;
-        if (!name) continue;
-        const qty = Number(it?.quantity) || 1;
-        entry.productCounts.set(name, (entry.productCounts.get(name) || 0) + qty);
-      }
-    }
-
-    const list: CustomerSummary[] = [];
-    for (const c of map.values()) {
-      let top = '-'; let topQty = 0;
-      for (const [name, q] of c.productCounts.entries()) {
-        if (q > topQty) { top = name; topQty = q; }
-      }
-      const daysSince = c.lastOrderAt ? Math.floor((now - new Date(c.lastOrderAt).getTime()) / 86400000) : null;
-      list.push({
-        key: c.key,
-        phone: c.phone,
-        name: c.name,
-        email: c.email,
-        orders: c.orders,
-        totalSpent: c.totalSpent,
-        lastOrderAt: c.lastOrderAt,
-        daysSince,
-        topProduct: top,
-        isLead: c.isLead,
-        source: c.source,
-      });
-    }
-    return list.sort((a, b) => {
-      if (a.isLead !== b.isLead) return a.isLead ? 1 : -1;
-      return b.totalSpent - a.totalSpent;
-    });
-  }, [orders, profileContacts]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return customers.filter(c => {
-      if (filter === 'clientes' && c.isLead) return false;
-      if (filter === 'leads' && !c.isLead) return false;
-      if (term) {
-        const hay = `${c.name} ${c.email} ${c.phone}`.toLowerCase();
-        if (!hay.includes(term)) return false;
-      }
+    return contacts.filter(c => {
+      if (filter === 'clientes' && !['customer','vip'].includes(c.lifecycle_stage)) return false;
+      if (filter === 'leads' && c.lifecycle_stage !== 'lead') return false;
+      if (filter === 'vip' && c.lifecycle_stage !== 'vip') return false;
+      if (term && !`${c.name} ${c.email} ${c.phone_normalized} ${c.favorite_product}`.toLowerCase().includes(term)) return false;
       return true;
     });
-  }, [customers, filter, search]);
+  }, [contacts, filter, search]);
 
   const stats = useMemo(() => {
-    const clientes = customers.filter(c => !c.isLead).length;
-    const leads = customers.filter(c => c.isLead).length;
-    const totalGasto = customers.reduce((s, c) => s + c.totalSpent, 0);
-    return { clientes, leads, totalGasto, total: customers.length };
-  }, [customers]);
+    const clientes = contacts.filter(c => ['customer','vip'].includes(c.lifecycle_stage)).length;
+    const leads = contacts.filter(c => c.lifecycle_stage === 'lead').length;
+    const vip = contacts.filter(c => c.lifecycle_stage === 'vip').length;
+    const receita = contacts.reduce((sum, c) => sum + c.confirmed_revenue, 0);
+    return { clientes, leads, vip, receita, total: contacts.length };
+  }, [contacts]);
 
-  const waMessageFor = (c: CustomerSummary) => {
+  const waMessageFor = (c: Contact) => {
     const store = storeName || BRAND_NAME;
-    if (c.isLead) {
-      return `Olá ${c.name !== 'Lead sem nome' ? c.name : ''}! 👋 Aqui é da ${store}. Vimos que você se interessou pelo nosso cardápio e queremos te dar um cupom especial de boas-vindas pra você experimentar 🍔✨. Quer aproveitar?`;
+    if (c.lifecycle_stage === 'lead') {
+      return `Olá ${c.name || ''}! Aqui é da ${store}. Se quiser conhecer nosso cardápio, posso te ajudar por aqui.`;
     }
-    return `Olá ${c.name}! Aqui é da ${store}, tudo bem? Preparamos uma novidade pra você 💛`;
+    return `Olá ${c.name}! Aqui é da ${store}. Temos novidades e será um prazer receber você novamente.`;
   };
 
   if (!organizationId) {
-    return <div className="kiosk-card p-6 text-zinc-400">Selecione uma loja.</div>;
+    return <div className="kiosk-card p-6 text-muted-foreground">Selecione uma loja.</div>;
   }
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-yellow-600/10 border border-amber-500/30 flex items-center justify-center">
-          <Users className="w-5 h-5 text-amber-400" />
+        <div className="w-10 h-10 rounded-xl bg-primary/15 border border-primary/30 flex items-center justify-center">
+          <Users className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h2 className="text-xl font-bold bg-gradient-to-r from-amber-300 to-yellow-500 bg-clip-text text-transparent">
-            Clientes e Leads
-          </h2>
-          <p className="text-xs text-zinc-500">Captura de leads + base ativa de compradores</p>
+          <h2 className="text-xl font-bold">Clientes e Leads</h2>
+          <p className="text-xs text-muted-foreground">Base CRM persistente · receita somente de pedidos entregues e pagos</p>
         </div>
       </div>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Total contatos', value: stats.total, icon: Users, color: 'text-amber-300' },
-          { label: 'Clientes ativos', value: stats.clientes, icon: ShoppingBag, color: 'text-emerald-400' },
-          { label: 'Novos leads', value: stats.leads, icon: Target, color: 'text-amber-400' },
-          { label: 'Receita total', value: formatCurrency(stats.totalGasto), icon: DollarSign, color: 'text-emerald-400' },
-        ].map((k) => (
-          <div key={k.label} className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-4">
+          { label: 'Contatos', value: stats.total, icon: Users },
+          { label: 'Clientes', value: stats.clientes, icon: ShoppingBag },
+          { label: 'Leads reais', value: stats.leads, icon: Target },
+          { label: 'Receita confirmada', value: formatCurrency(stats.receita), icon: DollarSign },
+        ].map(k => (
+          <div key={k.label} className="kiosk-card p-4">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] uppercase tracking-wider text-zinc-500">{k.label}</span>
-              <k.icon className={`w-4 h-4 ${k.color}`} />
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{k.label}</span>
+              <k.icon className="w-4 h-4 text-primary" />
             </div>
-            <div className={`mt-2 text-2xl font-bold ${k.color}`}>{k.value}</div>
+            <div className="mt-2 text-2xl font-bold">{k.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 p-4 space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="kiosk-card p-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
           {([
             { k: 'all', label: 'Todos', icon: Users },
-            { k: 'clientes', label: 'Apenas Clientes', icon: ShoppingBag },
-            { k: 'leads', label: 'Apenas Leads', icon: Target },
-          ] as const).map((f) => {
-            const active = filter === f.k;
-            return (
-              <button
-                key={f.k}
-                onClick={() => setFilter(f.k)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border transition-all ${
-                  active
-                    ? 'bg-gradient-to-r from-amber-500 to-yellow-600 text-zinc-950 border-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]'
-                    : 'bg-zinc-950 text-zinc-300 border-zinc-800 hover:border-amber-500/40'
-                }`}
-              >
-                <f.icon className="w-3.5 h-3.5" />
-                {f.label}
-              </button>
-            );
-          })}
+            { k: 'clientes', label: 'Clientes', icon: ShoppingBag },
+            { k: 'leads', label: 'Leads', icon: Target },
+            { k: 'vip', label: 'VIP', icon: Crown },
+          ] as const).map(item => (
+            <button key={item.k} onClick={() => setFilter(item.k)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 border ${filter === item.k ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted border-border'}`}>
+              <item.icon className="w-3.5 h-3.5" /> {item.label}
+            </button>
+          ))}
         </div>
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome ou telefone..."
-            className="w-full pl-9 pr-3 py-2 rounded-lg bg-zinc-950 border border-zinc-800 text-sm text-zinc-200 focus:border-amber-500/60 outline-none"
-          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Buscar por nome, telefone ou produto favorito"
+            className="w-full pl-9 pr-3 py-2 rounded-lg bg-muted border border-border text-sm outline-none" />
         </div>
       </div>
 
-      {/* Table */}
-      <div className="rounded-xl bg-zinc-900/80 border border-zinc-800 overflow-hidden">
+      <div className="kiosk-card overflow-hidden">
         {loading ? (
-          <div className="p-10 flex items-center justify-center text-zinc-500">
+          <div className="p-10 flex items-center justify-center text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin mr-2" /> Carregando contatos...
           </div>
         ) : filtered.length === 0 ? (
-          <div className="p-10 text-center text-zinc-500 text-sm">Nenhum contato neste filtro.</div>
+          <div className="p-10 text-center text-muted-foreground text-sm">Nenhum contato neste filtro.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-950/80 border-b border-zinc-800">
-                <tr className="text-left text-[11px] uppercase tracking-wider text-amber-300/80">
-                  <th className="px-4 py-3">Contato</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">WhatsApp</th>
-                  <th className="px-4 py-3">Mais pedido</th>
-                  <th className="px-4 py-3 text-right">Pedidos</th>
-                  <th className="px-4 py-3 text-right">Total gasto</th>
-                  <th className="px-4 py-3">Última atividade</th>
-                  <th className="px-4 py-3 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => (
-                  <tr key={c.key} className="border-b border-zinc-800/60 hover:bg-zinc-950/40 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-zinc-100">{c.name}</div>
-                      {c.email && <div className="text-[10px] text-zinc-500">{c.email}</div>}
-                      <div className="text-[10px] text-zinc-500">Origem: {c.source}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {c.isLead ? (
-                        <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/40 inline-flex items-center gap-1">
-                          🎯 Novo Lead
-                        </span>
-                      ) : (
-                        <span className="px-2 py-1 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 inline-flex items-center gap-1">
-                          🛍️ Cliente Ativo
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center gap-2">
-                        <span className="text-zinc-400 font-mono text-xs">{formatPhone(c.phone)}</span>
-                        <a
-                          href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
-                          target="_blank"
-                          rel="noreferrer"
-                          title="Abrir WhatsApp"
-                          className="w-7 h-7 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 inline-flex items-center justify-center transition-colors"
-                        >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                        </a>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1 text-zinc-300">
-                        <TrendingUp className="w-3 h-3 text-amber-400" />
-                        {c.topProduct}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-zinc-300 font-semibold">{c.orders}</td>
-                    <td className="px-4 py-3 text-right text-emerald-400 font-bold">{formatCurrency(c.totalSpent)}</td>
-                    <td className="px-4 py-3">
-                      {c.lastOrderAt ? (
-                        <span className="inline-flex items-center gap-1 text-zinc-400 text-xs">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(c.lastOrderAt).toLocaleDateString('pt-BR')}
-                          <span className="text-zinc-600">· {c.daysSince}d</span>
-                        </span>
-                      ) : (
-                        <span className="text-zinc-600 text-xs italic">aguardando 1ª compra</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <a
-                        href={c.phone ? buildWaUrl(c.phone, waMessageFor(c)) : fallbackContactUrl(waMessageFor(c))}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
-                          c.isLead
-                            ? 'bg-amber-500/15 text-amber-300 border-amber-500/40 hover:bg-amber-500/25'
-                            : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                        }`}
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        {c.isLead ? 'Converter' : 'WhatsApp'}
-                      </a>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-border/50">
+            {filtered.map(c => (
+              <div key={c.id} className="p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center font-black shrink-0">
+                  {c.lifecycle_stage === 'vip' ? <Crown className="w-4 h-4" /> : (c.name || 'C').charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold truncate">{c.name || 'Sem nome'}</p>
+                    <span className="text-[9px] uppercase px-1.5 py-0.5 rounded bg-muted">{c.lifecycle_stage}</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{formatPhone(c.phone_normalized)} · {c.confirmed_orders} compra(s)</p>
+                  <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" /> {c.favorite_product || 'Sem produto favorito confirmado'}
+                    {c.last_purchase_at && <> · <Calendar className="w-3 h-3 ml-1" /> {new Date(c.last_purchase_at).toLocaleDateString('pt-BR')}</>}
+                  </p>
+                </div>
+                <div className="text-right hidden sm:block">
+                  <p className="font-bold text-success">{formatCurrency(c.confirmed_revenue)}</p>
+                  <p className="text-[10px] text-muted-foreground">confirmado</p>
+                </div>
+                {c.consent_status === 'opt_out' ? (
+                  <span className="text-[10px] px-2 py-1 rounded bg-destructive/10 text-destructive">Opt-out</span>
+                ) : (
+                  <a href={buildWaUrl(c.phone_normalized, waMessageFor(c))} target="_blank" rel="noreferrer"
+                    className="w-9 h-9 rounded-full bg-success/15 text-success border border-success/30 inline-flex items-center justify-center"
+                    title="Abrir WhatsApp">
+                    <MessageCircle className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
         )}
-        <div className="px-4 py-2 border-t border-zinc-800 text-[11px] text-zinc-500">
-          Exibindo {filtered.length} de {customers.length} contatos ({stats.clientes} clientes · {stats.leads} leads)
+        <div className="px-4 py-2 border-t border-border text-[11px] text-muted-foreground">
+          Exibindo {filtered.length} de {contacts.length} contatos · {stats.vip} VIP
         </div>
       </div>
     </div>

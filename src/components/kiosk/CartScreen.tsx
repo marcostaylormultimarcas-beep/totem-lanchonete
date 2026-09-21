@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles, CalendarClock, Clock } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
@@ -29,9 +29,10 @@ interface CartScreenProps {
   deviceOwnedKiosk?: boolean;
   openScheduleOnMount?: boolean;
   onScheduleOpened?: () => void;
+  onScheduleCancelled?: () => void;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false, openScheduleOnMount = false, onScheduleOpened }: CartScreenProps) => {
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false, openScheduleOnMount = false, onScheduleOpened, onScheduleCancelled }: CartScreenProps) => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
   const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
@@ -54,6 +55,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [scheduledDate, setScheduledDate] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
   const [checkingSchedule, setCheckingSchedule] = useState(false);
+  const scheduleConfirmingRef = useRef(false);
 
   useEffect(() => {
     if (!openScheduleOnMount) return;
@@ -80,6 +82,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   }, [storeStatus.nextOpenAt, storeStatus.schedulingSlotMinutes, scheduledDate]);
 
   const confirmSchedule = async () => {
+    if (scheduleConfirmingRef.current) return;
     if (!scheduledDate || !scheduledTime) {
       toast.error('Escolha data e hora.');
       return;
@@ -111,6 +114,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       return;
     }
 
+    scheduleConfirmingRef.current = true;
     setCheckingSchedule(true);
     try {
       const { data, error } = await supabase.rpc('visionfood_schedule_availability' as any, {
@@ -139,6 +143,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
 
       onCheckout(localScheduled.toISOString());
     } finally {
+      scheduleConfirmingRef.current = false;
       setCheckingSchedule(false);
     }
   };
@@ -404,13 +409,22 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                         : ' Sem limite de quantidade por horário.'}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => setScheduleMode(false)} disabled={checkingSchedule} className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1 disabled:opacity-50">Cancelar</button>
+                      <button
+                        onClick={() => {
+                          setScheduleMode(false);
+                          onScheduleCancelled?.();
+                        }}
+                        disabled={checkingSchedule}
+                        className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1 disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
                       <button
                         onClick={confirmSchedule}
                         disabled={checkingSchedule}
                         className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold disabled:opacity-50 flex items-center justify-center gap-2">
                         {checkingSchedule ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
-                        {checkingSchedule ? 'Verificando...' : 'Confirmar Agendamento'}
+                        {checkingSchedule ? 'Verificando...' : 'Confirmar horário e continuar'}
                       </button>
                     </div>
                   </div>

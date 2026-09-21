@@ -1157,6 +1157,12 @@ const AdminPage = () => {
       `}</style>
 
 
+      <Suspense fallback={
+        <div className="mx-4 mt-6 kiosk-card p-6 flex items-center justify-center gap-3 text-sm text-zinc-400">
+          <Loader2 className="w-5 h-5 animate-spin text-[#FF7A00]" />
+          <span>Carregando módulo...</span>
+        </div>
+      }>
       {/* Bloqueio por inadimplência (apenas lojista) */}
       {currentAdmin?.tier === 'admin' && (subscriptionStatus === 'inadimplente' || subscriptionStatus === 'cancelado') && tab !== 'assinatura' ? (
         <div className="mx-4 mt-6 kiosk-card p-8 text-center space-y-4 border-2 border-destructive/40">
@@ -2104,6 +2110,8 @@ const AdminPage = () => {
 
       </>
       )}
+
+      </Suspense>
 
       <footer className="mt-8 pb-28 md:pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
 

@@ -323,8 +323,14 @@ const EntregadorDashboard = () => {
       return;
     }
     const list: DeliveryOrder[] = res.orders || [];
-    // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro
+    // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro.
+    // Remove IDs que deixaram a atribuição para que uma futura reatribuição ao
+    // mesmo entregador seja notificada novamente.
     const ativos = list.filter(o => o.status !== 'delivered');
+    const activeIds = new Set(ativos.map(o => o.id));
+    for (const id of Array.from(knownIds.current)) {
+      if (!activeIds.has(id)) knownIds.current.delete(id);
+    }
     const novos = ativos.filter(o => !knownIds.current.has(o.id));
     if (!silent && novos.length > 0 && knownIds.current.size > 0) {
       playAlert();

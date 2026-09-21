@@ -205,10 +205,40 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         </button>
       </div>
 
+      {/* Categories */}
+      {!showFavorites && (
+      <section className="mt-7 vf-fade-in">
+        <div className="px-5 flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-white">Categorias</h2>
+          <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
+            Ver todas <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex gap-5 overflow-x-auto px-5 pb-2 hide-scrollbar">
+          {categories.map(cat => {
+            const active = activeCategory === cat.key;
+            const icon = cat.icon || '';
+            return (
+              <button key={cat.key} onClick={() => { setActiveCategory(cat.key); onStart(); }} className="flex flex-col items-center gap-2 flex-shrink-0 group">
+                <div className={`w-[68px] h-[68px] rounded-full flex items-center justify-center text-3xl transition-all duration-200 overflow-hidden ${active ? 'border-2 border-[#FF7A00] bg-[#FF7A00]/10 shadow-[0_0_20px_rgba(255,122,0,0.35)]' : 'vf-chip group-hover:border-[#FF7A00]/40'}`}>
+                  {isUrl(icon) ? (
+                    <img src={icon} alt={cat.label} className="w-full h-full object-cover" />
+                  ) : (
+                    <span>{icon}</span>
+                  )}
+                </div>
+                <span className={`text-[12px] font-semibold transition-colors max-w-[80px] truncate ${active ? 'text-[#FF7A00]' : 'text-zinc-400 group-hover:text-white'}`}>{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      )}
+
       {/* Banner rotativo */}
       {!showFavorites && banners.length > 0 && (
         <div className="px-4 sm:px-5 mt-5 vf-fade-in">
-          <div className="vf-banner relative overflow-hidden h-48 sm:h-56 lg:h-64 max-w-[1200px] mx-auto border border-white/[0.06]" style={{ borderRadius: 24 }}>
+          <div className="vf-banner relative overflow-hidden h-32 sm:h-40 lg:h-48 max-w-[1200px] mx-auto border border-white/[0.06]" style={{ borderRadius: 24 }}>
             {banners.map((banner, i) => {
               const link = (banner as any).link || (banner as any).url || '';
               const go = () => { if (link) window.open(link, '_blank', 'noopener'); else onStart(); };
@@ -259,36 +289,6 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
             )}
           </div>
         </div>
-      )}
-
-      {/* Categories */}
-      {!showFavorites && (
-      <section className="mt-7 vf-fade-in">
-        <div className="px-5 flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">Categorias</h2>
-          <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
-            Ver todas <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="flex gap-5 overflow-x-auto px-5 pb-2 hide-scrollbar">
-          {categories.map(cat => {
-            const active = activeCategory === cat.key;
-            const icon = cat.icon || '';
-            return (
-              <button key={cat.key} onClick={() => { setActiveCategory(cat.key); onStart(); }} className="flex flex-col items-center gap-2 flex-shrink-0 group">
-                <div className={`w-[68px] h-[68px] rounded-full flex items-center justify-center text-3xl transition-all duration-200 overflow-hidden ${active ? 'border-2 border-[#FF7A00] bg-[#FF7A00]/10 shadow-[0_0_20px_rgba(255,122,0,0.35)]' : 'vf-chip group-hover:border-[#FF7A00]/40'}`}>
-                  {isUrl(icon) ? (
-                    <img src={icon} alt={cat.label} className="w-full h-full object-cover" />
-                  ) : (
-                    <span>{icon}</span>
-                  )}
-                </div>
-                <span className={`text-[12px] font-semibold transition-colors max-w-[80px] truncate ${active ? 'text-[#FF7A00]' : 'text-zinc-400 group-hover:text-white'}`}>{cat.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
       )}
 
       {/* Mais pedidos / Favoritos */}

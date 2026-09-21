@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Tag, Loader2, Store, ShieldCheck, RefreshCw, Gift } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrgId } from '@/contexts/OrgContext';
+import { useOrg } from '@/contexts/OrgContext';
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { labelCategoria } from '@/lib/categorias';
 
@@ -14,7 +14,7 @@ interface PartnerCoupon {
 const ClubeVantagens = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const orgId = useOrgId();
+  const { orgId, loading: orgLoading } = useOrg();
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [origemNome, setOrigemNome] = useState<string>('');
@@ -31,17 +31,27 @@ const ClubeVantagens = () => {
   };
 
   useEffect(() => {
+    if (orgLoading) return;
+
+    let cancelled = false;
     const load = async () => {
       setLoading(true);
       setLoadError(false);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { setAuthed(false); setLoading(false); return; }
+        if (cancelled) return;
+
+        if (!session) {
+          setAuthed(false);
+          setData([]);
+          return;
+        }
         setAuthed(true);
 
         const { data: catalog, error } = await supabase.rpc('clube_vantagens_catalog' as any, {
-        _fallback_org: orgId,
-      });
+          _fallback_org: orgId,
+        });
+        if (cancelled) return;
         if (error) throw error;
 
         const result = catalog as any;
@@ -60,15 +70,20 @@ const ClubeVantagens = () => {
         }));
         setData(grouped);
       } catch (error) {
+        if (cancelled) return;
         console.error('Clube de Vantagens:', error);
         setData([]);
         setLoadError(true);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    load();
-  }, [orgId, reloadKey]);
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, orgLoading, reloadKey]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,29 +115,13 @@ const ClubeVantagens = () => {
         </section>
 
         {loading && (
-          <div className="space-y-3" aria-busy="true">
-            <div className="kiosk-card p-5">
-              <div className="flex items-center gap-3">
-                <Loader2 className="w-5 h-5 animate-spin text-primary" />
-                <div>
-                  <p className="font-bold">Carregando seus benefícios</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Só um instante enquanto buscamos as ofertas disponíveis.</p>
-                </div>
+          <div className="kiosk-card p-5" aria-busy="true">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 animate-spin text-primary shrink-0" />
+              <div>
+                <p className="font-bold">Carregando seus benefícios</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Só um instante enquanto buscamos as ofertas disponíveis.</p>
               </div>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {[0, 1].map(item => (
-                <div key={item} className="kiosk-card p-4 animate-pulse">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-muted" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 w-2/3 rounded bg-muted" />
-                      <div className="h-3 w-1/3 rounded bg-muted" />
-                    </div>
-                  </div>
-                  <div className="h-10 rounded-xl bg-muted mt-4" />
-                </div>
-              ))}
             </div>
           </div>
         )}

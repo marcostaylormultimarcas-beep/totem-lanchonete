@@ -484,8 +484,12 @@ const Index = () => {
   const handlePaymentDone = (orderId?: string) => {
     sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     if (orderId) {
-      setTrackingOrderId(orderId);
-      setStep('tracking');
+      if (deviceOwnedKiosk) {
+        setTrackingOrderId(orderId);
+        setStep('tracking');
+      } else {
+        navigate(`/acompanhar/${orderId}`);
+      }
     } else {
       resetOrder();
     }
@@ -707,13 +711,14 @@ const Index = () => {
           onDone={handlePaymentDone}
         />
       )}
-      {step === 'tracking' && trackingOrderId && (
-        <TotemSuccess orderId={trackingOrderId} onRelease={() => {
-          // Web/mobile customers must stay authenticated so they can return to
-          // "Meus Pedidos". Physical device-owned kiosks already clear customer
-          // browser state inside resetOrder().
-          resetOrder();
-        }} />
+      {deviceOwnedKiosk && step === 'tracking' && trackingOrderId && (
+        <TotemSuccess
+          orderId={trackingOrderId}
+          scheduledFor={scheduledFor}
+          onRelease={() => {
+            resetOrder();
+          }}
+        />
       )}
       {!deviceOwnedKiosk && step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
         <PartnersFooter orgId={orgId} />

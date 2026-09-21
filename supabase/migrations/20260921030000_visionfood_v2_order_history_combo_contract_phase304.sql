@@ -72,7 +72,7 @@ as $function$
       'extras',coalesce(p.extras,'[]'::jsonb),
       'ingredients',coalesce(p.ingredients,'[]'::jsonb),
       'sold_by_weight',coalesce(p.sold_by_weight,false),
-      'prep_time_min',coalesce(p.prep_time_min,0)
+      'prep_time_min',0
     )
     from public.settings s
     join public.products p

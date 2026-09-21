@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
+import TableSelect from '@/components/kiosk/TableSelect';
 import AddressSelect from '@/components/kiosk/AddressSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
@@ -22,7 +23,7 @@ import { getKioskCompanionStatus } from '@/lib/kioskCompanionClient';
 import { clearKioskCustomerBrowserState, isDeviceOwnedKioskStatus } from '@/lib/kioskDeviceMode';
 import { warmKioskPublicData } from '@/lib/kioskPublicDataWarmup';
 
-type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'table' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 
@@ -343,7 +344,11 @@ const Index = () => {
     setAppliedCoupon(null);
     setScheduledFor(null);
     setPendingProduct(null);
-    if (deviceOwnedKiosk) clearKioskCustomerBrowserState();
+    if (deviceOwnedKiosk) {
+      setTableToken('');
+      setTableLabel('');
+      clearKioskCustomerBrowserState();
+    }
   };
 
   const handlePaymentDone = (orderId?: string) => {
@@ -410,7 +415,7 @@ const Index = () => {
         </div>
       )}
       {step === 'landing' && <LandingScreen onStart={() => setStep(tableToken && tableLabel ? 'menu' : 'start')} />}
-      {step !== 'landing' && tableToken && tableLabel && (
+      {step !== 'landing' && step !== 'table' && tableToken && tableLabel && (
         <div className="fixed top-3 left-3 z-50 rounded-full bg-primary px-3 py-1.5 text-xs font-black text-primary-foreground shadow-lg">
           🍽️ {tableLabel}
         </div>
@@ -426,9 +431,47 @@ const Index = () => {
       )}
       {step === 'location' && (
         <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => {
-          if (type === 'delivery') { setOrderType('viagem'); setStep('address'); }
-          else { setOrderType(type); setStep('menu'); }
+          if (type === 'delivery') {
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('viagem');
+            setStep('address');
+            return;
+          }
+          if (type === 'viagem') {
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('viagem');
+            setStep('menu');
+            return;
+          }
+
+          setOrderType('local');
+          if (deviceOwnedKiosk) {
+            setStep('table');
+          } else {
+            setStep('menu');
+          }
         }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+      )}
+      {step === 'table' && deviceOwnedKiosk && (
+        <TableSelect
+          onSelectTable={(table) => {
+            // For enrolled kiosks the server accepts this private table UUID as
+            // the device-owned table selector. QR public tokens remain separate.
+            setTableToken(table.id);
+            setTableLabel(table.label);
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onBalcony={() => {
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onBack={() => setStep('location')}
+        />
       )}
       {step === 'address' && (
         <AddressSelect
@@ -441,7 +484,7 @@ const Index = () => {
           cart={cart}
           onAddToCart={addToCart}
           onGoToCart={() => setStep('cart')}
-          onBack={() => setStep('location')}
+          onBack={() => setStep(deviceOwnedKiosk && orderType === 'local' ? 'table' : 'location')}
           initialProduct={pendingProduct}
           onInitialProductHandled={() => setPendingProduct(null)}
           deviceOwnedKiosk={deviceOwnedKiosk}

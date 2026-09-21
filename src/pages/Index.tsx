@@ -78,6 +78,7 @@ const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+  const [openScheduleOnCart, setOpenScheduleOnCart] = useState(false);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
   const [tableToken, setTableToken] = useState('');
   const [tableLabel, setTableLabel] = useState('');
@@ -653,7 +654,19 @@ const Index = () => {
         />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated && !deviceOwnedKiosk} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} deviceOwnedKiosk={deviceOwnedKiosk} />
+        <CartScreen
+          cart={cart}
+          onRemove={removeFromCart}
+          onCheckout={handleCheckout}
+          onBack={() => setStep('menu')}
+          isAuthenticated={isAuthenticated && !deviceOwnedKiosk}
+          orgId={orgId}
+          appliedCoupon={appliedCoupon}
+          onApplyCoupon={setAppliedCoupon}
+          deviceOwnedKiosk={deviceOwnedKiosk}
+          openScheduleOnMount={openScheduleOnCart}
+          onScheduleOpened={() => setOpenScheduleOnCart(false)}
+        />
       )}
       {step === 'checkout' && (
         <CheckoutScreen
@@ -682,7 +695,16 @@ const Index = () => {
           scheduledFor={scheduledFor}
           tableToken={tableToken} tableLabel={tableLabel}
           deviceOwnedKiosk={deviceOwnedKiosk}
-          onBack={() => setStep('checkout')} onDone={handlePaymentDone}
+          onBack={() => setStep('checkout')}
+          onScheduleAnotherDay={() => {
+            setOpenScheduleOnCart(true);
+            setStep('cart');
+          }}
+          onBackToCart={() => {
+            setOpenScheduleOnCart(false);
+            setStep('cart');
+          }}
+          onDone={handlePaymentDone}
         />
       )}
       {step === 'tracking' && trackingOrderId && (

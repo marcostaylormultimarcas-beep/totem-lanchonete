@@ -65,6 +65,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
       { data: orderRows, error: ordersError },
       { data: recipeRows, error: recipesError },
       { data: ingredientRows, error: ingredientsError },
+      { data: productRows, error: productsError },
     ] = await Promise.all([
       supabase
         .from('v_financeiro_detalhado' as any)
@@ -91,20 +92,36 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
       (supabase.from('ingredientes') as any)
         .select('id,custo_unitario')
         .eq('organization_id', organizationId),
+      supabase
+        .from('products')
+        .select('id,cost_price,sold_by_weight')
+        .eq('organization_id', organizationId),
     ]);
 
     if (error) toast.error(error.message);
     setRows((data as any) || []);
     setTaxaVision(Number((s as any)?.taxa_vision_percent || 0));
 
-    if (ordersError || recipesError || ingredientsError) {
-      console.warn('[Financeiro] CMV data unavailable:', ordersError || recipesError || ingredientsError);
+    if (ordersError || recipesError || ingredientsError || productsError) {
+      console.warn('[Financeiro] CMV data unavailable:', ordersError || recipesError || ingredientsError || productsError);
       setCmvByOrder({});
     } else {
       const ingredientCost = new Map<string, number>();
       for (const ingredient of (ingredientRows as any[]) || []) {
         if (ingredient?.id && ingredient?.custo_unitario !== null && ingredient?.custo_unitario !== undefined) {
           ingredientCost.set(String(ingredient.id), Number(ingredient.custo_unitario));
+        }
+      }
+
+      const directCostByProduct = new Map<string, { cost: number; soldByWeight: boolean }>();
+      for (const product of productRows || []) {
+        const rawCost = product?.cost_price;
+        const cost = rawCost === null || rawCost === undefined ? null : Number(rawCost);
+        if (product?.id && cost !== null && Number.isFinite(cost) && cost >= 0) {
+          directCostByProduct.set(String(product.id), {
+            cost,
+            soldByWeight: Boolean(product.sold_by_weight),
+          });
         }
       }
 
@@ -132,20 +149,36 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
             continue;
           }
 
-          const recipes = recipesByProduct.get(String(productId));
-          if (!recipes?.length) {
-            complete = false;
+          const productKey = String(productId);
+          const recipes = recipesByProduct.get(productKey);
+          let recipeCost = 0;
+          let recipeComplete = Boolean(recipes?.length);
+
+          if (recipes?.length) {
+            for (const recipe of recipes) {
+              const unitCost = ingredientCost.get(recipe.ingredientId);
+              if (unitCost === undefined) {
+                recipeComplete = false;
+                break;
+              }
+              recipeCost += recipe.quantity * unitCost;
+            }
+          }
+
+          if (recipeComplete) {
+            cmv += recipeCost * quantity;
             continue;
           }
 
-          for (const recipe of recipes) {
-            const unitCost = ingredientCost.get(recipe.ingredientId);
-            if (unitCost === undefined) {
-              complete = false;
-              continue;
-            }
-            cmv += recipe.quantity * unitCost * quantity;
+          const directCost = directCostByProduct.get(productKey);
+          if (directCost) {
+            const weightKg = Math.max(0, Number(item?.weight_kg ?? item?.weightKg ?? 0));
+            const costUnits = directCost.soldByWeight && weightKg > 0 ? weightKg : quantity;
+            cmv += directCost.cost * costUnits;
+            continue;
           }
+
+          complete = false;
         }
 
         nextCmv[String(order.id)] = { cmv, complete };
@@ -305,7 +338,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
             <div>
               <h3 className="font-semibold">Resultado — DRE simplificada</h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Usa o custo atual dos ingredientes cadastrados nas receitas. Não inclui despesas fixas, impostos ou pró-labore.
+                Usa a ficha técnica completa como prioridade e, quando ela não estiver disponível, usa o custo direto cadastrado no produto. Não inclui despesas fixas, impostos ou pró-labore.
               </p>
             </div>
             {cmvSummary.margem !== null && (
@@ -325,7 +358,7 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
           </div>
           {!cmvSummary.complete && filteredRows.length > 0 && (
             <p className="mt-3 text-xs text-amber-400">
-              CMV completo em {cmvSummary.coverage.toFixed(0)}% dos pedidos filtrados. Cadastre receita e custo dos ingredientes dos produtos vendidos para liberar o lucro.
+              CMV completo em {cmvSummary.coverage.toFixed(0)}% dos pedidos filtrados. Cadastre a ficha técnica/custos dos ingredientes ou o custo direto do produto para liberar o lucro.
             </p>
           )}
         </div>

@@ -286,13 +286,27 @@ const AdminPage = () => {
     }
   };
 
+  const persistAuthoritativeCombo = async (combo: StoreSettings['combo']) => {
+    if (!activeOrgId) throw new Error('Loja não identificada para salvar o combo.');
+    const { data, error } = await supabase.rpc('visionfood_upsert_combo_product' as any, {
+      _org: activeOrgId,
+      _name: combo?.name || '',
+      _price: Number(combo?.price || 0),
+      _description: combo?.description || '',
+      _image: combo?.image || combo?.emoji || '',
+    });
+    const result: any = data;
+    if (error) throw error;
+    if (!result?.ok || !result?.product_id) throw new Error(result?.reason || 'combo_sync_failed');
+    return result;
+  };
+
   // Preferências não secretas da loja. Credenciais Mercado Pago permanecem
   // exclusivamente no MercadoPagoCard/RPC seguro e nunca entram neste payload.
   const saveSettingsToDb = async (s: StoreSettings) => {
     const fields: Array<[string, SettingsPayload]> = [
       ['storeName', { store_name: s.storeName }],
       ['whatsapp', { whatsapp_number: s.whatsappNumber }],
-      ['combo', { combo: s.combo as any }],
       ['banners', { banners: s.banners as any }],
       ['categoryIcons', { category_icons: s.categoryIcons as any }],
       ['categories', { categories: s.categories as any }],
@@ -306,6 +320,12 @@ const AdminPage = () => {
       ['mpTerminalId', { mp_terminal_id: s.mpTerminalId || '' }],
     ];
     let failed = false;
+    try {
+      await persistAuthoritativeCombo(s.combo);
+    } catch (error) {
+      failed = true;
+      showDatabaseError('saveSettings.combo', error);
+    }
     for (const [field, payload] of fields) {
       try {
         await persistSettingsFields(payload, `saveSettings.${field}`);

@@ -27,6 +27,7 @@ import { warmKioskPublicData } from '@/lib/kioskPublicDataWarmup';
 type Step = 'landing' | 'start' | 'location' | 'local-service' | 'table' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
+const ACTIVE_ORDER_STORAGE_KEY = 'active-kiosk-order';
 
 interface PendingOrderState {
   organizationId?: string;
@@ -178,10 +179,55 @@ const Index = () => {
       }
     };
 
+    const restoreActiveOrder = () => {
+      if (restored) return;
+      const activeOrder = sessionStorage.getItem(ACTIVE_ORDER_STORAGE_KEY);
+      if (!activeOrder) return;
+
+      try {
+        const parsed = JSON.parse(activeOrder) as PendingOrderState;
+        if (parsed.organizationId && parsed.organizationId !== orgId) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+          return;
+        }
+        if ((parsed.step !== 'checkout' && parsed.step !== 'payment') || !parsed.cart?.length) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+          return;
+        }
+
+        restored = true;
+        setOrderType(parsed.orderType);
+        setCart(parsed.cart);
+        setCustomerName(parsed.customerName || '');
+        setCustomerPhone(parsed.customerPhone || '');
+        setCustomerCpf(parsed.customerCpf || '');
+        setDeliveryAddress(parsed.deliveryAddress || '');
+        setDeliveryReference(parsed.deliveryReference || '');
+        setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setBairroId(parsed.bairroId || '');
+        setBairroNome(parsed.bairroNome || '');
+        setBairroTaxa(parsed.bairroTaxa || 0);
+        setBairroTempo(parsed.bairroTempo || 0);
+        setDeliveryCep(parsed.deliveryCep || '');
+        setTableToken(parsed.tableToken || '');
+        setTableLabel(parsed.tableLabel || '');
+        setAppliedCoupon(parsed.appliedCoupon || null);
+        setScheduledFor(parsed.scheduledFor || null);
+        setStep(parsed.step);
+        toast.info('Seu pedido em andamento foi recuperado.');
+      } catch (error) {
+        sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+        console.error('Erro ao restaurar checkout em andamento:', error);
+      }
+    };
+
     const applySession = (session: any) => {
       if (!isMounted) return;
       setIsAuthenticated(Boolean(session));
-      if (session) restorePendingOrder();
+      if (session) {
+        restorePendingOrder();
+        restoreActiveOrder();
+      }
     };
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -213,6 +259,40 @@ const Index = () => {
     };
   }, [isPhysicalKioskRoute, deviceModeOrgId, deviceOwnedKiosk, orgId]);
 
+  useEffect(() => {
+    if (!orgId || deviceOwnedKiosk || !isAuthenticated || cart.length === 0) return;
+    if (step !== 'checkout' && step !== 'payment') return;
+
+    const activeOrder: PendingOrderState = {
+      organizationId: orgId,
+      step,
+      orderType,
+      cart,
+      customerName,
+      customerPhone,
+      customerCpf,
+      deliveryAddress,
+      deliveryReference,
+      deliveryRecipient,
+      bairroId,
+      bairroNome,
+      bairroTaxa,
+      bairroTempo,
+      deliveryCep,
+      tableToken,
+      tableLabel,
+      appliedCoupon,
+      scheduledFor,
+    };
+
+    sessionStorage.setItem(ACTIVE_ORDER_STORAGE_KEY, JSON.stringify(activeOrder));
+  }, [
+    orgId, deviceOwnedKiosk, isAuthenticated, step, orderType, cart,
+    customerName, customerPhone, customerCpf, deliveryAddress, deliveryReference,
+    deliveryRecipient, bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+    tableToken, tableLabel, appliedCoupon, scheduledFor,
+  ]);
+
   // A rota /cardapio/:slug só entra em modo device-owned quando o companion
   // local está enrolado para a mesma organização. O cardápio web mantém auth normal.
   useEffect(() => {
@@ -234,6 +314,7 @@ const Index = () => {
         setDeviceOwnedKiosk(deviceOwned);
 
         if (deviceOwned) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
           // Storage cleanup is synchronous and remains effective even when internet is down.
           clearKioskCustomerBrowserState();
           setIsAuthenticated(false);
@@ -377,6 +458,7 @@ const Index = () => {
 
   const resetOrder = () => {
     sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     setStep('landing');
     setOrderType('local');
     setCart([]);
@@ -399,6 +481,7 @@ const Index = () => {
   };
 
   const handlePaymentDone = (orderId?: string) => {
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     if (orderId) {
       setTrackingOrderId(orderId);
       setStep('tracking');
@@ -435,6 +518,7 @@ const Index = () => {
       scheduledFor: sched || null,
     };
 
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
     toast.info('Faça login para finalizar e acompanhar seu pedido.');
     navigate(`/auth?returnTo=${encodeURIComponent(homePath)}`);
@@ -570,7 +654,10 @@ const Index = () => {
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
-          onContinue={() => setStep('payment')} onBack={() => setStep('cart')}
+          onContinue={() => setStep('payment')} onBack={() => {
+            sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+            setStep('cart');
+          }}
           deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}

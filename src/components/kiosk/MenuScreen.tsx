@@ -4,6 +4,7 @@ import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/dat
 import { useOrgId } from '@/contexts/OrgContext';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { fetchPublicCatalog } from '@/lib/publicCatalog';
+import { fetchPublicCombo } from '@/lib/publicCombo';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -38,7 +39,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
   const fetchData = useCallback(async () => {
     if (!orgId) return;
-    const [prods, settingsData] = await Promise.all([
+    const [prods, settingsData, publicCombo] = await Promise.all([
       fetchPublicCatalog(orgId).catch(error => {
         console.warn('[Menu] public catalog error:', error);
         return [];
@@ -46,6 +47,10 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       fetchPublicStorefrontConfig(orgId).catch(error => {
         console.warn('[Menu] storefront config error:', error);
         return {};
+      }),
+      fetchPublicCombo(orgId).catch(error => {
+        console.warn('[Menu] public combo error:', error);
+        return null;
       }),
     ]);
     const mappedProducts = prods.map((p) => ({
@@ -65,7 +70,27 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
     const authoritativeCombos = mappedProducts.filter(
       (product) => product.isCombo && product.category === 'visionfood_combo',
     );
-    setComboProduct(linkedCombo || (authoritativeCombos.length === 1 ? authoritativeCombos[0] : null));
+    const mappedPublicCombo = publicCombo ? ({
+      id: publicCombo.id,
+      name: publicCombo.name,
+      price: Number(publicCombo.price),
+      category: publicCombo.category,
+      image: publicCombo.image || '',
+      removableIngredients: (publicCombo.removable_ingredients as string[]) || [],
+      extras: (publicCombo.extras as { name: string; price: number }[]) || [],
+      isCombo: Boolean(publicCombo.is_combo),
+      ingredients: (publicCombo.ingredients as string[]) || [],
+      description: publicCombo.description || '',
+      soldByWeight: Boolean(publicCombo.sold_by_weight),
+      codigoBarras: publicCombo.codigo_barras || undefined,
+      prepTimeMin: Number(publicCombo.prep_time_min ?? 0),
+    }) as Product : null;
+
+    setComboProduct(
+      mappedPublicCombo
+      || linkedCombo
+      || (authoritativeCombos.length === 1 ? authoritativeCombos[0] : null),
+    );
     setProducts(mappedProducts.filter((product) => !product.isCombo));
     const baud = Number(settingsData.balanca_baud_rate ?? 9600);
     if (baud) setBalancaBaud(baud);
@@ -362,8 +387,8 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       {selectedProduct && (
         <ProductModal product={selectedProduct} baudRate={balancaBaud} deviceOwnedKiosk={deviceOwnedKiosk} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
-      {showUpsell && (
-        <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />
+      {showUpsell && comboProduct && (
+        <UpsellPopup combo={comboProduct} onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />
       )}
     </div>
   );

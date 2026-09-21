@@ -6,6 +6,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { SUPABASE_AUTH_STORAGE_KEY } from '@/config/supabaseConfig';
 import { formatCurrency } from '@/data/store';
 import { toast } from 'sonner';
+import { useOrgId } from '@/contexts/OrgContext';
+import LoyaltyCard from '@/components/kiosk/LoyaltyCard';
 
 const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -104,6 +106,7 @@ const OrderHistory = () => {
   const [user, setUser] = useState<any>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
+  const orgId = useOrgId();
 
   useEffect(() => {
     let cancelled = false;
@@ -238,6 +241,7 @@ const OrderHistory = () => {
       </div>
 
       <div className="flex-1 px-4 py-4 max-w-2xl mx-auto w-full space-y-3">
+        {orgId && <LoyaltyCard organizationId={orgId} className="mb-4" />}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />

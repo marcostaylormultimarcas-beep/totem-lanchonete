@@ -15,6 +15,7 @@ import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
+import OrgSwitcher from '@/components/admin/OrgSwitcher';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
@@ -25,7 +26,6 @@ const DashboardPanel = lazy(() => import('@/components/admin/DashboardPanel'));
 const MasterPanel = lazy(() => import('@/components/admin/MasterPanel'));
 const SuperAdminPanel = lazy(() => import('@/components/admin/SuperAdminPanel'));
 const PlansMatrixPanel = lazy(() => import('@/components/admin/PlansMatrixPanel'));
-const OrgSwitcher = lazy(() => import('@/components/admin/OrgSwitcher'));
 const ChangePasswordCard = lazy(() => import('@/components/admin/ChangePasswordCard'));
 const CouponsPanel = lazy(() => import('@/components/admin/CouponsPanel'));
 const LoyaltyPanel = lazy(() => import('@/components/admin/LoyaltyPanel'));
@@ -594,10 +594,15 @@ const AdminPage = () => {
       }
 
       setActiveOrgId(initialOrg);
-      if (initialOrg) {
-        try { await setOrgId(initialOrg); } catch (e) { console.error('[Admin] setOrgId failed', e); }
-      }
       setAuthenticated(true);
+
+      // O contexto público da loja é complementar ao shell administrativo.
+      // Não bloqueia mais a abertura do ADM caso a leitura pública demore.
+      if (initialOrg) {
+        void setOrgId(initialOrg).catch((e) => {
+          console.error('[Admin] setOrgId failed', e);
+        });
+      }
     } catch (e) {
       console.error('[Admin] bootstrapSession failed', e);
       setError('Não foi possível carregar o painel. Tente novamente.');
@@ -957,7 +962,6 @@ const AdminPage = () => {
   }
 
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
     <div className="admin-shell min-h-screen pb-8 text-zinc-100">
       <InstallAppButton />
 
@@ -2153,7 +2157,6 @@ const AdminPage = () => {
         </div>
       </nav>
     </div>
-    </Suspense>
   );
 };
 

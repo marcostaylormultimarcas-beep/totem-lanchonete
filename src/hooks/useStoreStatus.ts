@@ -71,6 +71,10 @@ export interface StoreStatus {
   message: string;
   hours: BusinessHours;
   schedulingEnabled: boolean;
+  schedulingSlotMinutes: 15 | 30;
+  schedulingCapacityEnabled: boolean;
+  schedulingMaxOrdersPerSlot: number;
+  schedulingPreparationLeadMin: number;
 }
 
 export const computeStatus = (
@@ -164,6 +168,10 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
   const [emergencyClosed, setEmergencyClosed] = useState(false);
   const [message, setMessage] = useState('Lanchonete fechada no momento');
   const [schedulingEnabled, setSchedulingEnabled] = useState(true);
+  const [schedulingSlotMinutes, setSchedulingSlotMinutes] = useState<15 | 30>(30);
+  const [schedulingCapacityEnabled, setSchedulingCapacityEnabled] = useState(false);
+  const [schedulingMaxOrdersPerSlot, setSchedulingMaxOrdersPerSlot] = useState(0);
+  const [schedulingPreparationLeadMin, setSchedulingPreparationLeadMin] = useState(30);
   const [loading, setLoading] = useState(true);
   const [, setTick] = useState(0);
 
@@ -188,6 +196,10 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
         setEmergencyClosed(ec);
         setMessage(data.closed_message || 'Lanchonete fechada no momento');
         setSchedulingEnabled(data.scheduling_enabled !== false);
+        setSchedulingSlotMinutes(data.scheduling_slot_minutes === 15 ? 15 : 30);
+        setSchedulingCapacityEnabled(Boolean(data.scheduling_capacity_enabled));
+        setSchedulingMaxOrdersPerSlot(Math.max(0, Number(data.scheduling_max_orders_per_slot || 0)));
+        setSchedulingPreparationLeadMin(Math.max(0, Math.min(360, Number(data.scheduling_preparation_lead_min ?? 30))));
 
         const status = computeStatus(new Date(), hrs, closures);
         console.log('[Vitrine] Status da loja:', {
@@ -242,5 +254,9 @@ export const useStoreStatus = (orgId: string | null): StoreStatus => {
     message: effectiveMessage,
     hours,
     schedulingEnabled,
+    schedulingSlotMinutes,
+    schedulingCapacityEnabled,
+    schedulingMaxOrdersPerSlot,
+    schedulingPreparationLeadMin,
   };
 };

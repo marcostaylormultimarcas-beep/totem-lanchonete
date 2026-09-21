@@ -47,20 +47,6 @@ const ClubeVantagens = () => {
       setLoading(true);
       setLoadError(false);
       try {
-        const { data: { session } } = await withTimeout(
-          supabase.auth.getSession(),
-          CLUB_CATALOG_TIMEOUT_MS,
-          'club_auth_timeout',
-        );
-        if (cancelled) return;
-
-        if (!session) {
-          setAuthed(false);
-          setData([]);
-          return;
-        }
-        setAuthed(true);
-
         const { data: catalog, error } = await withTimeout(
           supabase.rpc('clube_vantagens_catalog' as any, {
             _fallback_org: orgId,
@@ -71,6 +57,7 @@ const ClubeVantagens = () => {
         if (cancelled) return;
         if (error) throw error;
 
+        setAuthed(true);
         const result = catalog as any;
         if (!result?.ok) {
           const reason = String(result?.reason || '');
@@ -110,13 +97,6 @@ const ClubeVantagens = () => {
           console.warn('Clube de Vantagens: consulta demorou além do esperado; exibindo estado sem benefícios.');
           setAuthed(true);
           setLoadError(false);
-          return;
-        }
-
-        if (error instanceof Error && error.message === 'club_auth_timeout') {
-          console.warn('Clube de Vantagens: verificação da sessão demorou além do esperado.');
-          setAuthed(true);
-          setLoadError(true);
           return;
         }
 

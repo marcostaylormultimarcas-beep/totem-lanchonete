@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Tag, Loader2, Store, ShieldCheck, RefreshCw, Gift } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useOrg } from '@/contexts/OrgContext';
+import { useOrgId } from '@/contexts/OrgContext';
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { labelCategoria } from '@/lib/categorias';
 
@@ -25,7 +25,7 @@ const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): 
 const ClubeVantagens = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { orgId, loading: orgLoading } = useOrg();
+  const orgId = useOrgId();
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [origemNome, setOrigemNome] = useState<string>('');
@@ -42,14 +42,16 @@ const ClubeVantagens = () => {
   };
 
   useEffect(() => {
-    if (orgLoading) return;
-
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       setLoadError(false);
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          CLUB_CATALOG_TIMEOUT_MS,
+          'club_auth_timeout',
+        );
         if (cancelled) return;
 
         if (!session) {
@@ -90,7 +92,15 @@ const ClubeVantagens = () => {
 
         if (error instanceof Error && error.message === 'club_catalog_timeout') {
           console.warn('Clube de Vantagens: consulta demorou além do esperado; exibindo estado sem benefícios.');
+          setAuthed(true);
           setLoadError(false);
+          return;
+        }
+
+        if (error instanceof Error && error.message === 'club_auth_timeout') {
+          console.warn('Clube de Vantagens: verificação da sessão demorou além do esperado.');
+          setAuthed(true);
+          setLoadError(true);
           return;
         }
 
@@ -105,7 +115,7 @@ const ClubeVantagens = () => {
     return () => {
       cancelled = true;
     };
-  }, [orgId, orgLoading, reloadKey]);
+  }, [orgId, reloadKey]);
 
   return (
     <div className="min-h-screen bg-background">

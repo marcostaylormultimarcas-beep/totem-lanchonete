@@ -17,12 +17,12 @@ import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesign
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
+import MesasPanel from '@/components/admin/MesasPanel';
 import { AdminTab, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
 const OrdersPanel = lazy(() => import('@/components/admin/OrdersPanel'));
-const MesasPanel = lazy(() => import('@/components/admin/MesasPanel'));
 const DashboardPanel = lazy(() => import('@/components/admin/DashboardPanel'));
 const MasterPanel = lazy(() => import('@/components/admin/MasterPanel'));
 const SuperAdminPanel = lazy(() => import('@/components/admin/SuperAdminPanel'));

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 const KIOSK_ORG_STORAGE_KEY = 'kiosk_org_id';
 const KIOSK_SLUG_STORAGE_KEY = 'kiosk_slug';
 const GOOGLE_OAUTH_RETURN_TO_KEY = 'visionfood_google_oauth_return_to';
+const GOOGLE_OAUTH_ORG_ID_KEY = 'visionfood_google_oauth_org_id';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const cleanPhone = (value: string) => value.replace(/\D/g, '');
@@ -68,16 +69,41 @@ const Auth = () => {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        try {
-          sessionStorage.removeItem(GOOGLE_OAUTH_RETURN_TO_KEY);
-        } catch {
-          // Navegação continua mesmo se o storage do navegador estiver indisponível.
-        }
-        navigate(returnTo);
+    let cancelled = false;
+
+    const completeAuthenticatedReturn = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || cancelled) return;
+
+      let googleOrgId = '';
+      try {
+        googleOrgId = sessionStorage.getItem(GOOGLE_OAUTH_ORG_ID_KEY) || '';
+      } catch {
+        googleOrgId = '';
       }
-    });
+
+      if (googleOrgId) {
+        const { error: profileLinkError } = await supabase.rpc('visionfood_link_google_profile', {
+          _organization_id: googleOrgId,
+        });
+        if (profileLinkError) {
+          console.error('[google-oauth] profile organization link failed:', profileLinkError);
+          toast.error('Login com Google realizado, mas não foi possível vincular sua conta à loja.');
+        }
+      }
+
+      try {
+        sessionStorage.removeItem(GOOGLE_OAUTH_RETURN_TO_KEY);
+        sessionStorage.removeItem(GOOGLE_OAUTH_ORG_ID_KEY);
+      } catch {
+        // Navegação continua mesmo se o storage do navegador estiver indisponível.
+      }
+
+      if (!cancelled) navigate(returnTo);
+    };
+
+    void completeAuthenticatedReturn();
+    return () => { cancelled = true; };
   }, [navigate, returnTo]);
 
   const handleLogin = async () => {
@@ -168,7 +194,15 @@ const Auth = () => {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
+      const googleOrgId = await resolveSignupOrganizationId();
       sessionStorage.setItem(GOOGLE_OAUTH_RETURN_TO_KEY, returnTo);
+      if (googleOrgId) {
+        localStorage.setItem(KIOSK_ORG_STORAGE_KEY, googleOrgId);
+        sessionStorage.setItem(GOOGLE_OAUTH_ORG_ID_KEY, googleOrgId);
+      } else {
+        sessionStorage.removeItem(GOOGLE_OAUTH_ORG_ID_KEY);
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -179,6 +213,7 @@ const Auth = () => {
     } catch (error: any) {
       try {
         sessionStorage.removeItem(GOOGLE_OAUTH_RETURN_TO_KEY);
+        sessionStorage.removeItem(GOOGLE_OAUTH_ORG_ID_KEY);
       } catch {
         // O erro de OAuth abaixo continua sendo exibido.
       }

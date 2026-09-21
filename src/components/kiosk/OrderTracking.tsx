@@ -54,7 +54,9 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
   useEffect(() => {
     let active = true;
     let lastStatus = '';
-    let timer: number | undefined;
+    let pollTimer: number | undefined;
+    const channel = supabase
+      .channel(`customer-order-track-${orderId}-${Math.random().toString(36).slice(2, 8)}`);
 
     const fetchOrder = async (initial = false) => {
       const { data, error } = await supabase.rpc('visionfood_public_order_tracking', {
@@ -90,18 +92,35 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
       setLoading(false);
       setNotFound(false);
 
-      if ((newStatus === 'delivered' || newStatus === 'cancelled') && timer) {
-        window.clearInterval(timer);
-        timer = undefined;
+      if (newStatus === 'delivered' || newStatus === 'cancelled') {
+        if (pollTimer) {
+          window.clearInterval(pollTimer);
+          pollTimer = undefined;
+        }
       }
     };
 
     void fetchOrder(true);
-    timer = window.setInterval(() => void fetchOrder(false), 5000);
+
+    channel
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+        () => { void fetchOrder(false); },
+      )
+      .subscribe((realtimeStatus) => {
+        if (realtimeStatus === 'CHANNEL_ERROR' || realtimeStatus === 'TIMED_OUT') {
+          console.warn('[OrderTracking] realtime unavailable, polling fallback remains active:', realtimeStatus);
+        }
+      });
+
+    // Fallback for anonymous tracking or mobile websocket suspension.
+    pollTimer = window.setInterval(() => void fetchOrder(false), 15000);
 
     return () => {
       active = false;
-      if (timer) window.clearInterval(timer);
+      if (pollTimer) window.clearInterval(pollTimer);
+      void supabase.removeChannel(channel);
     };
   }, [orderId]);
 

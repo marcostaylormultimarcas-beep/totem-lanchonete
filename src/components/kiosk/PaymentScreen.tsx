@@ -113,14 +113,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     && Number.isFinite(deliveryLat)
     && typeof deliveryLng === 'number'
     && Number.isFinite(deliveryLng);
+  const normalizedDeliveryAccuracyM = typeof deliveryAccuracyM === 'number'
+    && Number.isFinite(deliveryAccuracyM)
+    && deliveryAccuracyM >= 0
+    && deliveryAccuracyM <= 100000
+      ? deliveryAccuracyM
+      : null;
   const deliveryContext = {
     cep: deliveryCep || '',
     ...(hasDeliveryGps ? {
       lat: Number(deliveryLat),
       lng: Number(deliveryLng),
-      accuracy_m: typeof deliveryAccuracyM === 'number' && Number.isFinite(deliveryAccuracyM)
-        ? Math.max(0, deliveryAccuracyM)
-        : null,
+      accuracy_m: normalizedDeliveryAccuracyM,
     } : {}),
   };
 
@@ -249,9 +253,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     deliveryCep: deliveryCep || '',
     deliveryLat: hasDeliveryGps ? deliveryLat : null,
     deliveryLng: hasDeliveryGps ? deliveryLng : null,
-    deliveryAccuracyM: hasDeliveryGps && typeof deliveryAccuracyM === 'number' && Number.isFinite(deliveryAccuracyM)
-      ? Math.max(0, deliveryAccuracyM)
-      : null,
+    deliveryAccuracyM: hasDeliveryGps ? normalizedDeliveryAccuracyM : null,
     appliedCoupon: appliedCoupon || null,
     scheduledFor: scheduledFor || null,
     tableToken,

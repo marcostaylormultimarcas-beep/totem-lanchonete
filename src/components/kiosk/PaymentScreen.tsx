@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2 } from 'lucide-react';
+import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, CalendarClock, ShoppingCart } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -12,6 +12,7 @@ import { Crown } from 'lucide-react';
 import { enqueueOfflineOrderOnCompanion, getKioskCompanionQueue, syncKioskCompanionQueueOnce } from '@/lib/kioskCompanionClient';
 import { fetchPublicCheckoutPaymentConfig } from '@/lib/publicCheckoutPaymentConfig';
 import { isCheckoutQuoteReady } from '@/lib/checkoutQuoteReadiness';
+import { computeStatus, getSpecialClosure, localDateKey, useStoreStatus } from '@/hooks/useStoreStatus';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -33,11 +34,13 @@ interface PaymentScreenProps {
   tableLabel?: string;
   deviceOwnedKiosk?: boolean;
   onBack: () => void;
+  onScheduleAnotherDay?: () => void;
+  onBackToCart?: () => void;
   onDone: (orderId?: string) => void;
 }
 
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', deviceOwnedKiosk = false, onBack, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', deviceOwnedKiosk = false, onBack, onScheduleAnotherDay, onBackToCart, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const recoveredDraft = !deviceOwnedKiosk && orgId ? loadPendingCheckout(orgId) : null;
@@ -47,6 +50,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [generatedNumber, setGeneratedNumber] = useState('');
   const [saving, setSaving] = useState(false);
   const [paymentError, setPaymentError] = useState('');
+  const [checkoutBlockReason, setCheckoutBlockReason] = useState<'special_closure' | ''>('');
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [offlineQueued, setOfflineQueued] = useState(() => recoveredDraft?.state === 'queued_offline');
@@ -65,6 +69,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [quoteError, setQuoteError] = useState('');
   const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
   const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
+  const storeStatus = useStoreStatus(orgId);
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
   const primeActive = Boolean(primeStatus.active && primeCfg?.ativo);
@@ -262,6 +267,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const handleConfirmPayment = async () => {
     if (saving) return;
     setPaymentError('');
+    setCheckoutBlockReason('');
 
     if (!isDemoMode() && deviceOwnedKiosk) {
       if (!method) {
@@ -403,11 +409,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       console.error('Error saving order:', err);
       const rawMessage = String(err?.message || '');
       const authExpired = /authentication_required|jwt expired|invalid jwt|token has expired/i.test(rawMessage);
+      const specialClosureError = rawMessage.includes('store_closed_special_date');
       setRequiresLogin(authExpired);
+      setCheckoutBlockReason(specialClosureError ? 'special_closure' : '');
       const message = authExpired
         ? 'Sua sessão expirou. Entre novamente para sincronizar este pedido com segurança.'
-        : rawMessage.includes('store_closed_special_date')
-          ? 'A loja está fechada hoje por uma folga, feriado ou data programada. Volte ao carrinho para verificar o próximo horário disponível ou agendar para outro dia.'
+        : specialClosureError
+          ? 'A loja está fechada na data escolhida.'
         : rawMessage.includes('checkout_phone_rate_limited')
         ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
         : rawMessage.includes('checkout_rate_limited')
@@ -420,13 +428,89 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               ? 'Este produto foi atualizado pela loja. Volte ao carrinho, revise os ingredientes e tente novamente.'
               : rawMessage || 'Não foi possível registrar o pedido. Tente novamente.';
       setPaymentError(message);
-      toast.error('Pedido não confirmado', { description: message });
+      if (specialClosureError) {
+        toast.error('Loja fechada', { description: 'Escolha outro dia para receber ou retirar seu pedido.' });
+      } else {
+        toast.error('Pedido não confirmado', { description: message });
+      }
       setConfirmed(false);
     } finally {
       setSaving(false);
     }
   };
 
+
+  const specialClosureBlocked = checkoutBlockReason === 'special_closure';
+  const closureTargetCandidate = scheduledFor ? new Date(scheduledFor) : new Date();
+  const closureTargetDate = Number.isNaN(closureTargetCandidate.getTime()) ? new Date() : closureTargetCandidate;
+  const closureRecord = getSpecialClosure(closureTargetDate, storeStatus.specialClosures);
+  const closureReason = closureRecord?.reason || storeStatus.specialClosureReason || 'Data programada';
+  const closureIsToday = localDateKey(closureTargetDate) === localDateKey(new Date());
+  const closureStatus = computeStatus(closureTargetDate, storeStatus.hours, storeStatus.specialClosures);
+  const nextOpening = scheduledFor ? closureStatus.nextOpenAt : storeStatus.nextOpenAt;
+  const nextOpeningLabel = nextOpening
+    ? nextOpening.toLocaleString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
+
+  const renderPaymentError = () => {
+    if (!paymentError) return null;
+
+    if (!specialClosureBlocked) {
+      return (
+        <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {paymentError}
+        </div>
+      );
+    }
+
+    return (
+      <div role="alert" className="w-full rounded-2xl border border-primary/35 bg-primary/5 p-4 text-left space-y-4">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+            <CalendarClock className="w-5 h-5 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-black text-foreground">
+              {closureIsToday ? 'Loja fechada hoje' : `Loja fechada em ${closureTargetDate.toLocaleDateString('pt-BR')}`} — {closureReason}
+            </p>
+            {nextOpeningLabel ? (
+              <p className="text-sm text-muted-foreground mt-1">
+                Próxima abertura: <strong className="text-foreground capitalize">{nextOpeningLabel}</strong>
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground mt-1">
+                Consulte a loja para confirmar a próxima abertura.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {storeStatus.schedulingEnabled && (
+            <button
+              type="button"
+              onClick={onScheduleAnotherDay || onBack}
+              className="touch-btn w-full rounded-xl bg-primary text-primary-foreground px-4 py-3 font-bold flex items-center justify-center gap-2"
+            >
+              <CalendarClock className="w-4 h-4" /> Agendar para outro dia
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onBackToCart || onBack}
+            className="touch-btn w-full rounded-xl bg-muted px-4 py-3 font-bold flex items-center justify-center gap-2"
+          >
+            <ShoppingCart className="w-4 h-4" /> Voltar ao carrinho
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // Payment method availability must be resolved before any conditional return
   // so hook order remains stable when the checkout transitions to confirmed/offline states.
@@ -738,17 +822,17 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <p className="text-sm text-muted-foreground">Apresente a senha do pedido no caixa e efetue o pagamento em dinheiro ao retirar.</p>
           </div>
           <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
-          {paymentError && (
-            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
-          )}
+          {renderPaymentError()}
           {!authoritativeQuoteReady && !deviceOwnedKiosk && (
             <div role="status" className="w-full rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-muted-foreground">
               {quoteError ? 'Não foi possível validar o total no servidor.' : 'Validando o total no servidor…'}
             </div>
           )}
-          <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido'}
-          </button>
+          {!specialClosureBlocked && (
+            <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+              <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -768,13 +852,13 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
               <p className="text-[11px] text-muted-foreground/80 font-mono">Terminal: {storeSettings.terminalId}</p>
             )}
           </div>
-          <Loader2 className="w-8 h-8 text-primary animate-spin" />
-          {paymentError && (
-            <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+          {!specialClosureBlocked && <Loader2 className="w-8 h-8 text-primary animate-spin" />}
+          {renderPaymentError()}
+          {!specialClosureBlocked && (
+            <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+              <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido após usar a Maquininha'}
+            </button>
           )}
-          <button onClick={handleConfirmPayment} disabled={saving || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Confirmar Pedido após usar a Maquininha'}
-          </button>
         </div>
       </div>
     );
@@ -808,12 +892,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         )}
 
         <div className="text-center"><p className="text-2xl font-black text-primary">{formatCurrency(total)}</p></div>
-        {paymentError && (
-          <div role="alert" className="w-full rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{paymentError}</div>
+        {renderPaymentError()}
+        {!specialClosureBlocked && (
+          <button onClick={handleConfirmPayment} disabled={saving || !pixKey || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
+            <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Já enviei o PIX — registrar pedido'}
+          </button>
         )}
-        <button onClick={handleConfirmPayment} disabled={saving || !pixKey || !authoritativeQuoteReady} className="touch-btn cta-breath w-full bg-success text-success-foreground py-5 rounded-xl text-xl flex items-center justify-center gap-3 disabled:opacity-50">
-          <Check className="w-6 h-6" /> {saving ? 'Salvando...' : !authoritativeQuoteReady ? 'Validando total…' : 'Já enviei o PIX — registrar pedido'}
-        </button>
       </div>
     </div>
   );

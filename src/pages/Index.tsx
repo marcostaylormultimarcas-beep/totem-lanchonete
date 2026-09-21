@@ -134,16 +134,14 @@ const Index = () => {
     }
 
     let isMounted = true;
+    let restored = false;
 
-    const syncAuthAndRestoreOrder = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!isMounted) return;
-
-      setIsAuthenticated(Boolean(session));
-
+    const restorePendingOrder = () => {
+      if (restored) return;
       const pendingOrder = sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY);
-      if (!session || !pendingOrder) return;
+      if (!pendingOrder) return;
 
+      restored = true;
       try {
         const parsed = JSON.parse(pendingOrder) as PendingOrderState;
         setOrderType(parsed.orderType);
@@ -170,12 +168,34 @@ const Index = () => {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const applySession = (session: any) => {
       if (!isMounted) return;
       setIsAuthenticated(Boolean(session));
+      if (session) restorePendingOrder();
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
     });
 
-    syncAuthAndRestoreOrder();
+    const syncInitialSession = async () => {
+      let timer: number | undefined;
+      try {
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<never>((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error('auth_session_timeout')), 5000);
+          }),
+        ]);
+        applySession(result.data.session);
+      } catch (error) {
+        if (isMounted) console.warn('[Index] initial auth session unavailable:', error);
+      } finally {
+        if (timer) window.clearTimeout(timer);
+      }
+    };
+
+    void syncInitialSession();
 
     return () => {
       isMounted = false;
@@ -360,21 +380,17 @@ const Index = () => {
     }
   };
 
-  const handleCheckout = async (sched?: string | null) => {
+  const handleCheckout = (sched?: string | null) => {
     setScheduledFor(sched || null);
 
-    if (deviceOwnedKiosk) {
+    if (deviceOwnedKiosk || isAuthenticated) {
       setStep('checkout');
       return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (session) {
-      setStep('checkout');
-      return;
-    }
-
+    // Não bloquear o clique esperando getSession(): o estado de autenticação já
+    // é mantido pelo listener do Supabase. Se não há sessão conhecida, salvar o
+    // pedido e abrir o login imediatamente.
     const pendingOrder: PendingOrderState = {
       step: 'checkout',
       orderType,

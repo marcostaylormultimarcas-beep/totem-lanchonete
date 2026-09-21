@@ -7,7 +7,7 @@ import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin'
 import { formatCurrency } from '@/data/store';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
-import { googleMapsDirectionsUrl, MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
+import { googleMapsDirectionsUrl, MAX_DRIVER_CONFIRM_ACCURACY_M, MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 
 interface DeliveryOrder {
   id: string;
@@ -126,13 +126,17 @@ const EntregadorDashboard = () => {
   };
 
   const getCurrentPositionAsync = () =>
-    new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+    new Promise<{ lat: number; lng: number; accuracyM: number }>((resolve, reject) => {
       if (!('geolocation' in navigator)) {
         reject(new Error('Geolocalização não suportada neste dispositivo.'));
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracyM: Math.max(0, Number(pos.coords.accuracy || 0)),
+        }),
         (err) => reject(err),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -149,6 +153,13 @@ const EntregadorDashboard = () => {
         return;
       }
       const me = await getCurrentPositionAsync();
+      if (me.accuracyM > MAX_DRIVER_CONFIRM_ACCURACY_M) {
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: `📍 GPS impreciso (±${Math.round(me.accuracyM)} m). Vá para um local com melhor sinal e atualize novamente.`,
+        }));
+        return;
+      }
       const distM = haversineMeters(me, dest);
       setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
       if (distM > MAX_DELIVERY_RADIUS_M) {
@@ -545,6 +556,14 @@ const EntregadorDashboard = () => {
           return;
         }
         const me = await getCurrentPositionAsync();
+        if (me.accuracyM > MAX_DRIVER_CONFIRM_ACCURACY_M) {
+          setGeoChecking(null);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: `📍 GPS impreciso (±${Math.round(me.accuracyM)} m). Vá para um local com melhor sinal e tente novamente.`,
+          }));
+          return;
+        }
         const distM = haversineMeters(me, dest);
         setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
         if (distM > MAX_DELIVERY_RADIUS_M) {
@@ -552,6 +571,25 @@ const EntregadorDashboard = () => {
           setGeofenceError((p) => ({
             ...p,
             [orderId]: `📍 Ação Bloqueada! Você precisa estar próximo ao endereço do cliente para finalizar esta entrega. Vá até o local. (você está a ${Math.round(distM)} m)`,
+          }));
+          return;
+        }
+        const { data: locationData, error: locationError } = await supabase.rpc('entregador_update_location_session' as any, {
+          _session_token: session.session_token,
+          _lat: me.lat,
+          _lng: me.lng,
+          _order_id: orderId,
+        });
+        const locationResult: any = locationData;
+        if (locationError || !locationResult?.ok) {
+          setGeoChecking(null);
+          if (isInvalidSession(locationResult)) {
+            expireSession();
+            return;
+          }
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível validar sua localização com o servidor. Tente novamente.',
           }));
           return;
         }
@@ -594,6 +632,11 @@ const EntregadorDashboard = () => {
           : '❌ Código incorreto! Confirme com o cliente.',
         invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
         too_many_attempts: 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
+        driver_location_required: 'Atualize sua localização antes de finalizar a entrega.',
+        driver_location_stale: 'Sua localização está desatualizada. Atualize o GPS e tente novamente.',
+        delivery_geofence_exceeded: res?.distance_m != null
+          ? `Você ainda está a ${Math.round(Number(res.distance_m))} m do destino. Aproxime-se do cliente.`
+          : 'Você ainda está fora do raio permitido para finalizar a entrega.',
       };
       toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
       if (isInvalidSession(res)) expireSession();

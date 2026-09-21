@@ -70,10 +70,15 @@ const Auth = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let handled = false;
 
-    const completeAuthenticatedReturn = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session || cancelled) return;
+    const completeAuthenticatedReturn = async (knownSession?: any) => {
+      if (handled || cancelled) return;
+
+      const session = knownSession || (await supabase.auth.getSession()).data.session;
+      if (!session || handled || cancelled) return;
+
+      handled = true;
 
       let googleOrgId = '';
       try {
@@ -102,8 +107,16 @@ const Auth = () => {
       if (!cancelled) navigate(returnTo);
     };
 
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) void completeAuthenticatedReturn(session);
+    });
+
     void completeAuthenticatedReturn();
-    return () => { cancelled = true; };
+
+    return () => {
+      cancelled = true;
+      authListener.subscription.unsubscribe();
+    };
   }, [navigate, returnTo]);
 
   const handleLogin = async () => {

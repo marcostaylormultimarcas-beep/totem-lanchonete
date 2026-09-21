@@ -183,7 +183,7 @@ const CheckoutScreen = ({
           <h3 className="text-2xl font-bold">{deviceOwnedKiosk ? 'Pedido rápido' : 'Quase lá!'}</h3>
           <p className="text-muted-foreground">
             {deviceOwnedKiosk
-              ? 'Não precisa criar conta nem fazer login. Identifique-se somente se quiser.'
+              ? 'Não precisa criar conta nem fazer login. Informe nome e telefone apenas se quiser identificar o pedido e acumular pontos.'
               : 'Informe seus dados para o pedido'}
           </p>
         </div>
@@ -195,8 +195,8 @@ const CheckoutScreen = ({
               onClick={() => setShowKioskIdentification(true)}
               className="touch-btn w-full rounded-xl border border-border bg-card px-4 py-4 text-left hover:border-primary transition"
             >
-              <p className="font-bold flex items-center gap-2"><UserCheck className="w-5 h-5 text-primary" /> Identificar meu pedido <span className="text-xs text-muted-foreground font-normal">(opcional)</span></p>
-              <p className="text-xs text-muted-foreground mt-1">Informe nome e telefone apenas se quiser deixar o pedido identificado.</p>
+              <p className="font-bold flex items-center gap-2"><UserCheck className="w-5 h-5 text-primary" /> Acumular pontos neste pedido <span className="text-xs text-muted-foreground font-normal">(opcional)</span></p>
+              <p className="text-xs text-muted-foreground mt-1">Nome e telefone vinculam este pedido à fidelidade. Sem preencher, você continua como visitante normalmente.</p>
             </button>
           )}
 

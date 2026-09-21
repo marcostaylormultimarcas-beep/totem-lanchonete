@@ -45,6 +45,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
         .select('id,order_number,customer_name,customer_phone,delivery_address,bairro_nome,delivery_distance_km,created_at,total,status,order_type')
         .eq('organization_id', organizationId)
         .eq('status', 'ready')
+        .is('entregador_id', null)
         .in('order_type', ['delivery', 'viagem'])
         .order('delivery_distance_km', { ascending: true, nullsFirst: false }),
       supabase.from('entregadores').select('id,name,active').eq('organization_id', organizationId).eq('active', true),
@@ -351,7 +352,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
                     className="px-3 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-500 to-yellow-600 text-zinc-950 inline-flex items-center gap-1 disabled:opacity-40"
                   >
                     {dispatching === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    VINCULAR & ENVIAR
+                    RESERVAR ROTA
                   </button>
                 </div>
               </div>
@@ -361,7 +362,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
           {entregadores.length === 0 && (
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-400 flex items-center gap-2">
               <Bike className="w-4 h-4 text-amber-400" />
-              Cadastre motoboys ativos na aba <b className="text-zinc-200">Entregadores</b> para conseguir despachar rotas.
+              Cadastre motoboys ativos na aba <b className="text-zinc-200">Entregadores</b> para reservar rotas.
             </div>
           )}
         </section>

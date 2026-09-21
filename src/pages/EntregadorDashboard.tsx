@@ -191,6 +191,7 @@ const EntregadorDashboard = () => {
   const stopTracking = useCallback(() => {
     trackingGenerationRef.current += 1;
     locationRequestInFlightRef.current = false;
+    lastSampleRef.current = null;
     if (initialSendTimerRef.current !== null) {
       clearTimeout(initialSendTimerRef.current);
       initialSendTimerRef.current = null;

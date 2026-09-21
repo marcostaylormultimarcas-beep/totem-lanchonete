@@ -1,26 +1,13 @@
-import { useState, useEffect } from 'react';
 import { X, Lock, Sparkles } from 'lucide-react';
-import { useOrgId } from '@/contexts/OrgContext';
-import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
-import { ComboSettings } from '@/data/store';
+import type { Product } from '@/data/store';
 
 interface UpsellPopupProps {
+  combo: Product;
   onAccept: () => void;
   onDecline: () => void;
 }
 
-const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' };
-
-const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
-  const orgId = useOrgId();
-  const [combo, setCombo] = useState<ComboSettings>(DEFAULT_COMBO);
-
-  useEffect(() => {
-    if (!orgId) return;
-    fetchPublicStorefrontConfig(orgId)
-      .then(data => { if (data.combo) setCombo(data.combo as ComboSettings); })
-      .catch(error => console.warn('[Upsell] storefront config error:', error));
-  }, [orgId]);
+const UpsellPopup = ({ combo, onAccept, onDecline }: UpsellPopupProps) => {
 
   const isUrl = (s: string) => !!s && (s.startsWith('http') || s.startsWith('/'));
 
@@ -69,7 +56,7 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
             />
           ) : (
             <div className="text-[7rem] leading-none drop-shadow-[0_10px_40px_rgba(255,122,0,0.5)]">
-              {combo.emoji}
+              {combo.image || '🍟🥤'}
             </div>
           )}
         </div>
@@ -97,7 +84,7 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
 
           {/* Descrição */}
           <p className="text-base text-white/60 leading-relaxed">
-            Adicione <span className="font-bold" style={{ color: '#FF7A00' }}>{combo.description}</span> à sua pizza e aproveite por apenas
+            Adicione <span className="font-bold" style={{ color: '#FF7A00' }}>{combo.description || combo.name.replace(/^Combo:\s*/i, '')}</span> e aproveite por apenas
           </p>
 
           {/* Card de preço com glow */}

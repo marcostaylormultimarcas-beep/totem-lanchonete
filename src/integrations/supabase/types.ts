@@ -1328,6 +1328,7 @@ export type Database = {
           available: boolean
           category: string
           codigo_barras: string | null
+          cost_price: number | null
           created_at: string
           data_vencimento: string | null
           description: string
@@ -1339,6 +1340,7 @@ export type Database = {
           lote: string | null
           low_stock_threshold: number
           manage_stock: boolean
+          markup_percent: number | null
           name: string
           organization_id: string | null
           prep_time_min: number
@@ -1353,6 +1355,7 @@ export type Database = {
           available?: boolean
           category?: string
           codigo_barras?: string | null
+          cost_price?: number | null
           created_at?: string
           data_vencimento?: string | null
           description?: string
@@ -1364,6 +1367,7 @@ export type Database = {
           lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
+          markup_percent?: number | null
           name: string
           organization_id?: string | null
           prep_time_min?: number
@@ -1378,6 +1382,7 @@ export type Database = {
           available?: boolean
           category?: string
           codigo_barras?: string | null
+          cost_price?: number | null
           created_at?: string
           data_vencimento?: string | null
           description?: string
@@ -1389,6 +1394,7 @@ export type Database = {
           lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
+          markup_percent?: number | null
           name?: string
           organization_id?: string | null
           prep_time_min?: number

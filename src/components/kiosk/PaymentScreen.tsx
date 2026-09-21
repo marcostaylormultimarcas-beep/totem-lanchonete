@@ -378,16 +378,14 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       setConfirmed(true);
       if (data) {
         setCurrentOrderId(data.id);
-        // Co-Marketing: recompensa só é consultada para cliente autenticado.
-        // Pedidos anônimos não expõem mais uma RPC baseada apenas no UUID do pedido.
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: pg, error: giftError } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
-          if (!giftError) {
-            const r = pg as any;
-            if (r?.ok) {
-              setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
-            }
+        // Co-Marketing: a RPC atual já é restrita a authenticated e valida
+        // ownership com auth.uid(); não faça uma segunda leitura de Auth aqui,
+        // pois ela é desnecessária e pode disputar o lock de sessão no mobile.
+        const { data: pg, error: giftError } = await supabase.rpc('parceria_generate_for_order' as any, { _order_id: data.id });
+        if (!giftError) {
+          const r = pg as any;
+          if (r?.ok) {
+            setPartnerGift({ codigo: r.codigo, discount_percent: Number(r.discount_percent), partner_name: r.partner_name, partner_slug: r.partner_slug });
           }
         }
       }

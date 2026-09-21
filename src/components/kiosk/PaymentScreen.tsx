@@ -406,6 +406,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       setRequiresLogin(authExpired);
       const message = authExpired
         ? 'Sua sessão expirou. Entre novamente para sincronizar este pedido com segurança.'
+        : rawMessage.includes('store_closed_special_date')
+          ? 'A loja está fechada hoje por uma folga, feriado ou data programada. Volte ao carrinho para verificar o próximo horário disponível ou agendar para outro dia.'
         : rawMessage.includes('checkout_phone_rate_limited')
         ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
         : rawMessage.includes('checkout_rate_limited')

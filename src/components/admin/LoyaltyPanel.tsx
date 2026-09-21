@@ -126,11 +126,11 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     setLoading(true);
     try {
       const [cfgResult, rewardsResult, resgatesResult, productsResult, summaryResult] = await Promise.all([
-        supabase.from('config_fidelidade').select('*').eq('organization_id', organizationId).maybeSingle(),
-        supabase.from('loyalty_rewards').select('*').eq('organization_id', organizationId).order('points_cost', { ascending: true }),
+        supabase.from('config_fidelidade' as any).select('*').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('loyalty_rewards' as any).select('*').eq('organization_id', organizationId).order('points_cost', { ascending: true }),
         supabase.from('resgates_fidelidade').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(100),
         supabase.from('products').select('id,name,price,cost_price').eq('organization_id', organizationId).eq('available', true).order('name'),
-        supabase.rpc('loyalty_admin_summary', { _organization_id: organizationId }),
+        supabase.rpc('loyalty_admin_summary' as any, { _organization_id: organizationId }),
       ]);
 
       if (cfgResult.error) throw cfgResult.error;
@@ -337,13 +337,13 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     try {
       if (rewardForm.id) {
         const { error } = await supabase
-          .from('loyalty_rewards')
+          .from('loyalty_rewards' as any)
           .update(payload)
           .eq('id', rewardForm.id)
           .eq('organization_id', organizationId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('loyalty_rewards').insert(payload);
+        const { error } = await supabase.from('loyalty_rewards' as any).insert(payload);
         if (error) throw error;
       }
 
@@ -361,7 +361,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const removeReward = async (reward: Reward) => {
     if (!organizationId || !window.confirm(`Excluir a recompensa "${reward.title}"?`)) return;
     const { error } = await supabase
-      .from('loyalty_rewards')
+      .from('loyalty_rewards' as any)
       .delete()
       .eq('id', reward.id)
       .eq('organization_id', organizationId);

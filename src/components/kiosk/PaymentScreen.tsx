@@ -418,6 +418,26 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   };
 
 
+  // Payment method availability must be resolved before any conditional return
+  // so hook order remains stable when the checkout transitions to confirmed/offline states.
+  const configuredMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
+    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix', desc: 'Copie a chave Pix da loja e pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
+    storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
+    storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
+    // Cartão online permanece oculto até existir checkout tokenizado pelo gateway.
+    // Não coletar PAN/CVV diretamente no VisionFood.
+    false && storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Indisponível até configurar gateway seguro', icon: <Globe className="w-6 h-6" /> },
+  ].filter(Boolean) as any;
+  const availableMethods = deviceOwnedKiosk
+    ? configuredMethods.filter((entry) => entry.key === 'cash')
+    : configuredMethods;
+
+  useEffect(() => {
+    if (!method && availableMethods.length === 1 && authoritativeQuoteReady) {
+      setMethod(availableMethods[0].key);
+    }
+  }, [method, availableMethods, authoritativeQuoteReady]);
+
   useEffect(() => {
     if (!offlineQueued || !isOnline || !orgId) return;
 
@@ -651,26 +671,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       </div>
     );
   }
-
-  // Construct the list of allowed methods from store settings
-  const configuredMethods: { key: Method; label: string; desc: string; icon: JSX.Element }[] = [
-    storeSettings.payPix && pixConfigured && { key: 'pix' as Method, label: 'Pix', desc: 'Copie a chave Pix da loja e pague pelo app do seu banco', icon: <QrCode className="w-6 h-6" /> },
-    storeSettings.payCash && { key: 'cash' as Method, label: 'Dinheiro no Balcão', desc: 'Pagar ao retirar o pedido', icon: <Banknote className="w-6 h-6" /> },
-    storeSettings.payTerminal && { key: 'terminal' as Method, label: 'Cartão na Maquininha', desc: 'Passe o cartão na maquininha ao lado', icon: <CreditCard className="w-6 h-6" /> },
-    // Cartão online permanece oculto até existir checkout tokenizado pelo gateway.
-    // Não coletar PAN/CVV diretamente no VisionFood.
-    false && storeSettings.payOnline && { key: 'online' as Method, label: 'Cartão Online', desc: 'Indisponível até configurar gateway seguro', icon: <Globe className="w-6 h-6" /> },
-  ].filter(Boolean) as any;
-  const availableMethods = deviceOwnedKiosk
-    ? configuredMethods.filter((entry) => entry.key === 'cash')
-    : configuredMethods;
-
-  // Auto-select only after the authoritative total is ready on web checkout.
-  useEffect(() => {
-    if (!method && availableMethods.length === 1 && authoritativeQuoteReady) {
-      setMethod(availableMethods[0].key);
-    }
-  }, [method, availableMethods, authoritativeQuoteReady]);
 
   const Header = ({ title }: { title: React.ReactNode }) => (
     <div className="flex items-center gap-4 p-4 border-b border-border">

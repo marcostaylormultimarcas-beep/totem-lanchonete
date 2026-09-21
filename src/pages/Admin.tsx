@@ -1790,15 +1790,34 @@ const AdminPage = () => {
           </div>
 
           <div className="kiosk-card p-4 space-y-4">
-            <h3 className="font-bold">📱 WhatsApp da Cozinha</h3>
-            <input placeholder="Número com código do país (ex: 5562994995768)" value={settings.whatsappNumber} onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
-            <p className="text-xs text-muted-foreground">Este número também é usado no ícone do WhatsApp do rodapé do totem.</p>
-          </div>
+            <div>
+              <h3 className="font-bold">🌐 Redes sociais e contato</h3>
+              <p className="text-xs text-muted-foreground mt-1">Os canais preenchidos aparecem na tela inicial da loja. Campos vazios ficam ocultos para o cliente.</p>
+            </div>
 
-          <div className="kiosk-card p-4 space-y-4">
-            <h3 className="font-bold">📷 Link do Instagram (rodapé)</h3>
-            <input placeholder="https://instagram.com/seuperfil" value={settings.instagramUrl || ''} onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={200} />
-            <p className="text-xs text-muted-foreground">Cole o link completo do perfil. Aparecerá no rodapé da tela inicial.</p>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">WhatsApp da loja</label>
+              <input
+                placeholder="Número com código do país (ex: 5562994995768)"
+                value={settings.whatsappNumber}
+                onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={20}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Também permanece sendo o número utilizado pela operação da cozinha onde esse campo já é usado.</p>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Instagram</label>
+              <input
+                placeholder="https://instagram.com/seuperfil"
+                value={settings.instagramUrl || ''}
+                onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={200}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Cole o link completo do perfil para exibir o atalho na home.</p>
+            </div>
           </div>
 
           {/* Imagem de compartilhamento / Favicon */}

@@ -408,7 +408,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
               <div className="text-sm font-bold text-white">Siga e fale conosco</div>
               <div className="text-[11px] text-zinc-500 mt-1">Acompanhe novidades ou chame a loja</div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className={`mt-3 grid gap-2 ${instagramUrl && whatsappNumber ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {instagramUrl && (
                 <a
                   href={instagramUrl}

@@ -92,6 +92,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     serverQuote,
   });
   const primeSavings = authoritativePrimeDiscount + authoritativeFeeWaived;
+  const normalizedCustomerPhone = customerPhone.replace(/\D/g, '');
+  const effectiveCustomerName = customerName.trim() || 'Cliente Totem';
+  const effectiveCustomerPhone = normalizedCustomerPhone.length >= 8 ? normalizedCustomerPhone : '';
+  const customerDisplay = customerName.trim()
+    ? [customerName.trim(), effectiveCustomerPhone].filter(Boolean).join(' — ')
+    : 'Visitante';
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
 
@@ -161,7 +167,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const buildWhatsAppMessage = () => {
     let msg = `🧾 *NOVO PEDIDO - ${storeSettings.storeName}*\n\n`;
     msg += `🔢 *SENHA DO PEDIDO: #${generatedNumber}*\n\n`;
-    msg += `👤 *CLIENTE:* ${customerName} - ${customerPhone}\n`;
+    msg += `👤 *CLIENTE:* ${customerDisplay}\n`;
     msg += `📍 *LOCAL:* ${orderType === 'local' ? (tableLabel ? `Comer no Local — ${tableLabel}` : 'Comer no Local') : 'Para Viagem (Entrega)'}\n`;
     if (orderType === 'viagem' && deliveryAddress) {
       if (bairroNome) msg += `🏘️ *BAIRRO:* ${bairroNome}\n`;
@@ -224,8 +230,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     organization_id: orgId || '',
     payment_method: 'cash' as const,
     payment_status: 'pending' as const,
-    customer_name: customerName,
-    customer_phone: customerPhone,
+    customer_name: effectiveCustomerName,
+    customer_phone: effectiveCustomerPhone,
     customer_cpf: customerCpf || '',
     order_type: orderType,
     delivery_address: deliveryAddress || '',
@@ -514,7 +520,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
           {tableLabel && <p className="font-bold text-primary">🍽️ {tableLabel}</p>}
         </div>
         <div className="w-full kiosk-card p-4 text-left text-sm space-y-1">
-          <p><strong>Cliente:</strong> {customerName}</p>
+          <p><strong>Cliente:</strong> {customerDisplay}</p>
           <p><strong>Itens:</strong> {cart.reduce((sum, item) => sum + item.quantity, 0)}</p>
           <p><strong>Pagamento:</strong> Dinheiro no balcão</p>
         </div>
@@ -558,7 +564,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         <div className="w-full kiosk-card p-4 space-y-3">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">👤 Cliente</p>
-            <p className="font-bold">{customerName} — {customerPhone}</p>
+            <p className="font-bold">{customerDisplay}</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">📍 Local</p>

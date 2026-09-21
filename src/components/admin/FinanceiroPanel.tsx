@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { DollarSign, Download, Loader2, Info, TrendingUp, Wallet } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 interface Row {
@@ -34,6 +35,12 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(false);
   const [taxaVision, setTaxaVision] = useState(0);
+  const [calcDetail, setCalcDetail] = useState<{
+    method: string;
+    bruto: number;
+    vision: number;
+    liquido: number;
+  } | null>(null);
 
   const load = async () => {
     if (!organizationId) return;
@@ -176,23 +183,18 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
                       <td className="py-2 text-right">{brl(v.bruto)}</td>
                       <td className="py-2 text-right font-bold text-primary">{brl(v.liquido)}</td>
                       <td className="py-2 text-right">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-                              <Info className="w-4 h-4" /> ver cálculo
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-xs">
-                            <div className="text-xs space-y-0.5">
-                              <div>Bruto: <strong>{brl(v.bruto)}</strong></div>
-                              <div>− Taxa gateway: <strong>não integrada</strong></div>
-                              <div>− Taxa Vision: <strong>{brl(v.vision)}</strong></div>
-                              <div className="pt-1 border-t border-border mt-1">
-                                = Líquido estimado: <strong className="text-primary">{brl(v.liquido)}</strong>
-                              </div>
-                            </div>
-                          </TooltipContent>
-                        </Tooltip>
+                        <button
+                          type="button"
+                          onClick={() => setCalcDetail({
+                            method: PAY_LABEL[k] || k,
+                            bruto: v.bruto,
+                            vision: v.vision,
+                            liquido: v.liquido,
+                          })}
+                          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          <Info className="w-4 h-4" /> ver cálculo
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -250,6 +252,44 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
             </div>
           )}
         </div>
+
+        <Dialog
+          open={Boolean(calcDetail)}
+          onOpenChange={(open) => {
+            if (!open) setCalcDetail(null);
+          }}
+        >
+          <DialogContent className="w-[calc(100%-2rem)] max-w-sm rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Cálculo do líquido estimado</DialogTitle>
+            </DialogHeader>
+            {calcDetail && (
+              <div className="space-y-3 text-sm">
+                <div className="text-muted-foreground">
+                  Forma de pagamento: <strong className="text-foreground">{calcDetail.method}</strong>
+                </div>
+                <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Valor bruto</span>
+                    <strong>{brl(calcDetail.bruto)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 text-muted-foreground">
+                    <span>− Taxa gateway</span>
+                    <strong>não integrada</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <span>− Taxa Vision</span>
+                    <strong>{brl(calcDetail.vision)}</strong>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 border-t border-border pt-2 text-base">
+                    <span>= Líquido estimado</span>
+                    <strong className="text-primary">{brl(calcDetail.liquido)}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   );

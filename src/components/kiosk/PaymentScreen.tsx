@@ -28,6 +28,9 @@ interface PaymentScreenProps {
   deliveryFee?: number;
   bairroTempo?: number;
   deliveryCep?: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAccuracyM?: number | null;
   appliedCoupon?: AppliedCoupon | null;
   scheduledFor?: string | null;
   tableToken?: string;
@@ -40,7 +43,7 @@ interface PaymentScreenProps {
 }
 
 
-const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', deviceOwnedKiosk = false, onBack, onScheduleAnotherDay, onBackToCart, onDone }: PaymentScreenProps) => {
+const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderType, deliveryAddress, deliveryReference, deliveryRecipient, bairroId, bairroNome, deliveryFee = 0, bairroTempo, deliveryCep, deliveryLat, deliveryLng, deliveryAccuracyM, appliedCoupon, scheduledFor, tableToken = '', tableLabel = '', deviceOwnedKiosk = false, onBack, onScheduleAnotherDay, onBackToCart, onDone }: PaymentScreenProps) => {
   const orgId = useOrgId();
   type Method = 'pix' | 'cash' | 'terminal' | 'online';
   const recoveredDraft = !deviceOwnedKiosk && orgId ? loadPendingCheckout(orgId) : null;
@@ -105,6 +108,17 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     : 'Visitante';
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
+  const hasDeliveryGps = orderType === 'viagem'
+    && Number.isFinite(Number(deliveryLat))
+    && Number.isFinite(Number(deliveryLng));
+  const deliveryContext = {
+    cep: deliveryCep || '',
+    ...(hasDeliveryGps ? {
+      lat: Number(deliveryLat),
+      lng: Number(deliveryLng),
+      accuracy_m: Number.isFinite(Number(deliveryAccuracyM)) ? Math.max(0, Number(deliveryAccuracyM)) : null,
+    } : {}),
+  };
 
   useEffect(() => {
     const online = () => setIsOnline(true);
@@ -127,14 +141,14 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     supabase.rpc('quote_order_checkout_v2' as any, {
       _organization_id: orgId, _order_type: orderType, _bairro_id: bairroId || null,
       _delivery_fee: rawFee, _items: quoteItems, _coupon_code: appliedCoupon?.codigo || '',
-      _delivery_context: { cep: deliveryCep || '' },
+      _delivery_context: deliveryContext,
     }).then(({ data, error }) => {
       if (cancelled) return;
       if (error || !data) { setServerQuote(null); setQuoteError(error?.message || 'Não foi possível calcular o total no servidor.'); }
       else setServerQuote(data as any);
     }).finally(() => { if (!cancelled) setQuoteLoading(false); });
     return () => { cancelled = true; };
-  }, [orgId, orderType, bairroId, rawFee, deliveryCep, appliedCoupon?.codigo, JSON.stringify(quoteItems), isOnline, deviceOwnedKiosk]);
+  }, [orgId, orderType, bairroId, rawFee, deliveryCep, deliveryLat, deliveryLng, deliveryAccuracyM, appliedCoupon?.codigo, JSON.stringify(quoteItems), isOnline, deviceOwnedKiosk]);
 
   const pixKey = storeSettings.pixKeyManual || '';
   const pixConfigured = Boolean(pixKey);
@@ -229,6 +243,9 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     bairroTaxa: rawFee,
     bairroTempo: Number(bairroTempo || 0),
     deliveryCep: deliveryCep || '',
+    deliveryLat: hasDeliveryGps ? Number(deliveryLat) : null,
+    deliveryLng: hasDeliveryGps ? Number(deliveryLng) : null,
+    deliveryAccuracyM: hasDeliveryGps && Number.isFinite(Number(deliveryAccuracyM)) ? Math.max(0, Number(deliveryAccuracyM)) : null,
     appliedCoupon: appliedCoupon || null,
     scheduledFor: scheduledFor || null,
     tableToken,
@@ -252,7 +269,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     items: quoteItems,
     scheduled_for: scheduledFor || null,
     coupon_code: appliedCoupon?.codigo || '',
-    delivery_context: { cep: deliveryCep || '' },
+    delivery_context: deliveryContext,
     table_token: tableToken || null,
     offline_snapshot: {
       displayed_subtotal: authoritativeSubtotal,
@@ -375,7 +392,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         _payment_method: method || '',
         _scheduled_for: scheduledFor || null,
         _coupon_code: appliedCoupon?.codigo || '',
-        _delivery_context: { cep: deliveryCep || '' },
+        _delivery_context: deliveryContext,
         _table_token: tableToken || null,
         _client_request_id: clientRequestId,
       });

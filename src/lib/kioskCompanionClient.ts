@@ -2,6 +2,12 @@ const COMPANION_BASE_URL = 'http://127.0.0.1:43129';
 
 let localSession: { token: string; expiresAt: number } | null = null;
 
+export interface CompanionKioskTable {
+  id: string;
+  label: string;
+  in_service: boolean;
+}
+
 export interface CompanionOfflineOrderDraft {
   organization_id: string;
   payment_method: 'cash';
@@ -84,6 +90,20 @@ export async function enqueueOfflineOrderOnCompanion(draft: CompanionOfflineOrde
     method: 'POST',
     body: JSON.stringify(draft),
   });
+}
+
+export async function getKioskCompanionTables(): Promise<{
+  ok: true;
+  stale: boolean;
+  saved_at: string;
+  tables: CompanionKioskTable[];
+}> {
+  return companionFetch('/v1/tables', { method: 'GET' }) as Promise<{
+    ok: true;
+    stale: boolean;
+    saved_at: string;
+    tables: CompanionKioskTable[];
+  }>;
 }
 
 export async function getKioskCompanionQueue() {

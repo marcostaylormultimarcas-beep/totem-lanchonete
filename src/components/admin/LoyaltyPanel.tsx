@@ -128,6 +128,8 @@ const formatPhone = (value: string) => {
 
 const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
+  const [savedConfig, setSavedConfig] = useState<Config | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [resgates, setResgates] = useState<Resgate[]>([]);
@@ -174,7 +176,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
 
       const row = cfgResult.data;
       if (row) {
-        setConfig({
+        const loadedConfig: Config = {
           id: row.id,
           ativo: Boolean(row.ativo),
           earning_mode: row.earning_mode === 'order' ? 'order' : 'spend',
@@ -183,9 +185,13 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
           valor_minimo_pedido: Math.max(0, Number(row.valor_minimo_pedido) || 0),
           valido_de: row.data_inicio ? row.data_inicio.slice(0, 10) : '',
           valido_ate: row.data_fim ? row.data_fim.slice(0, 10) : '',
-        });
+        };
+        setConfig(loadedConfig);
+        setSavedConfig(loadedConfig);
       } else {
         setConfig(DEFAULT_CONFIG);
+        setSavedConfig(null);
+        setEditorOpen(true);
       }
 
       setRewards((rewardsResult.data || []).map(row => ({
@@ -299,8 +305,12 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         .maybeSingle();
       if (error) throw error;
 
-      setConfig(current => ({ ...current, id: data?.id || current.id }));
-      toast.success('Regras de pontos salvas.');
+      const savedId = data?.id || config.id;
+      const nextSaved: Config = { ...config, id: savedId };
+      setConfig(nextSaved);
+      setSavedConfig(nextSaved);
+      setEditorOpen(false);
+      toast.success('Programa de pontos salvo e atualizado.');
       await fetchAll();
     } catch (error) {
       console.error('[LoyaltyPanel] config save error', error);
@@ -448,6 +458,23 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     ? resgates.filter(item => item.status === 'pendente')
     : resgates;
 
+  const activeRewardCount = rewards.filter(reward => reward.active).length;
+
+  const formatProgramRule = (value: Config) => (
+    value.earning_mode === 'spend'
+      ? `${value.points_per_real} ponto${value.points_per_real === 1 ? '' : 's'} por R$ 1 gasto`
+      : `${value.points_per_order} ponto${value.points_per_order === 1 ? '' : 's'} por pedido elegível`
+  );
+
+  const formatProgramValidity = (value: Config) => {
+    const start = value.valido_de ? new Date(`${value.valido_de}T12:00:00`).toLocaleDateString('pt-BR') : '';
+    const end = value.valido_ate ? new Date(`${value.valido_ate}T12:00:00`).toLocaleDateString('pt-BR') : '';
+    if (start && end) return `${start} até ${end}`;
+    if (start) return `A partir de ${start}`;
+    if (end) return `Até ${end}`;
+    return 'Sem data de término';
+  };
+
   if (!organizationId) {
     return <div className="p-4 text-muted-foreground">Selecione uma loja.</div>;
   }
@@ -462,6 +489,90 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
 
   return (
     <div className="px-4 space-y-5">
+      <section className="bg-card border border-border rounded-2xl p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-black flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" /> Programa cadastrado
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Veja rapidamente qual programa está valendo nesta loja e abra a edição quando precisar.
+            </p>
+          </div>
+          {savedConfig && (
+            <span className={`px-3 py-1.5 rounded-full text-[11px] font-black border ${
+              savedConfig.ativo
+                ? 'bg-success/10 text-success border-success/30'
+                : 'bg-muted text-muted-foreground border-border'
+            }`}>
+              {savedConfig.ativo ? '● ATIVO' : '○ INATIVO'}
+            </span>
+          )}
+        </div>
+
+        {savedConfig ? (
+          <div className={`rounded-2xl border p-4 ${
+            savedConfig.ativo ? 'border-primary/35 bg-primary/5' : 'border-border bg-muted/20'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
+                <Coins className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-base">
+                  {savedConfig.earning_mode === 'spend' ? 'Pontos por valor gasto' : 'Pontos por pedido'}
+                </p>
+                <p className="text-sm text-primary font-bold mt-0.5">{formatProgramRule(savedConfig)}</p>
+                <div className="grid sm:grid-cols-3 gap-2 mt-3 text-xs">
+                  <div className="rounded-xl bg-background/70 border border-border px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Pedido mínimo</p>
+                    <p className="font-bold mt-0.5">
+                      {savedConfig.valor_minimo_pedido > 0 ? formatCurrency(savedConfig.valor_minimo_pedido) : 'Sem mínimo'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-background/70 border border-border px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Validade</p>
+                    <p className="font-bold mt-0.5">{formatProgramValidity(savedConfig)}</p>
+                  </div>
+                  <div className="rounded-xl bg-background/70 border border-border px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Recompensas ativas</p>
+                    <p className="font-bold mt-0.5">{activeRewardCount}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setConfig(savedConfig);
+                setEditorOpen(open => !open);
+              }}
+              className="mt-4 w-full min-h-11 rounded-xl border border-primary/30 bg-primary/10 text-primary font-bold text-sm flex items-center justify-center gap-2"
+            >
+              <Pencil className="w-4 h-4" />
+              {editorOpen ? 'Fechar edição' : 'Editar programa'}
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-border p-5 text-center">
+            <Coins className="w-8 h-8 text-primary mx-auto mb-2" />
+            <p className="font-black">Nenhum programa de pontos cadastrado</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Crie as regras de pontuação e salve. Depois o programa aparecerá aqui com status e botão de edição.
+            </p>
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="mt-4 min-h-10 px-4 rounded-xl bg-primary text-primary-foreground text-sm font-bold"
+            >
+              Criar programa
+            </button>
+          </div>
+        )}
+      </section>
+
+      {editorOpen && (
       <section className="bg-card border border-border rounded-2xl p-5 space-y-5">
         <div className="flex items-start gap-3">
           <div className="w-11 h-11 rounded-xl bg-primary/15 flex items-center justify-center flex-shrink-0">
@@ -578,15 +689,31 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
           <b className="text-foreground">Proteção automática:</b> um pedido só pontua uma vez. Cancelamentos/estornos depois da pontuação geram reversão. No totem, identificar nome e telefone é opcional; sem identificação o pedido continua normalmente, mas não acumula pontos.
         </div>
 
-        <button
-          onClick={() => { void saveConfig(); }}
-          disabled={savingConfig}
-          className="w-full min-h-11 rounded-xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 disabled:opacity-60"
-        >
-          {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          Salvar regras
-        </button>
+        <div className="flex gap-2">
+          {savedConfig && (
+            <button
+              type="button"
+              onClick={() => {
+                setConfig(savedConfig);
+                setEditorOpen(false);
+              }}
+              disabled={savingConfig}
+              className="flex-1 min-h-11 rounded-xl border border-border font-bold"
+            >
+              Cancelar
+            </button>
+          )}
+          <button
+            onClick={() => { void saveConfig(); }}
+            disabled={savingConfig}
+            className="flex-1 min-h-11 rounded-xl bg-primary text-primary-foreground font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {savedConfig ? 'Salvar alterações' : 'Salvar programa'}
+          </button>
+        </div>
       </section>
+      )}
 
       <section className="grid grid-cols-2 lg:grid-cols-3 gap-2">
         {[

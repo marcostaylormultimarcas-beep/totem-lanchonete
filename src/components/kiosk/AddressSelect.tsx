@@ -75,7 +75,7 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
           timeout: 12000,
-          maximumAge: 60000,
+          maximumAge: 0,
         });
       });
 

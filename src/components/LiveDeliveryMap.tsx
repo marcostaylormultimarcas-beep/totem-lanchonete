@@ -45,11 +45,10 @@ const FitBounds = ({ points }: { points: [number, number][] }) => {
 interface Props {
   rider?: { lat: number; lng: number; updatedAt?: string } | null;
   destination?: { lat: number; lng: number; label?: string } | null;
-  route?: { lat: number; lng: number }[] | null;
   height?: string | number;
 }
 
-const LiveDeliveryMap = ({ rider, destination, route, height = 360 }: Props) => {
+const LiveDeliveryMap = ({ rider, destination, height = 360 }: Props) => {
   const points = useMemo(() => {
     const p: [number, number][] = [];
     if (rider) p.push([rider.lat, rider.lng]);
@@ -89,17 +88,12 @@ const LiveDeliveryMap = ({ rider, destination, route, height = 360 }: Props) => 
             <Popup>📍 {destination.label || 'Destino'}</Popup>
           </Marker>
         )}
-        {route && route.length > 1 ? (
-          <Polyline
-            positions={route.map(point => [point.lat, point.lng] as [number, number])}
-            pathOptions={{ color: '#f59e0b', weight: 5, opacity: 0.9 }}
-          />
-        ) : rider && destination ? (
+        {rider && destination && (
           <Polyline
             positions={[[rider.lat, rider.lng], [destination.lat, destination.lng]]}
             pathOptions={{ color: '#f59e0b', weight: 4, opacity: 0.8, dashArray: '8 8' }}
           />
-        ) : null}
+        )}
         <FitBounds points={points} />
       </MapContainer>
     </div>

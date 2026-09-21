@@ -2,6 +2,10 @@ export interface Product {
   id: string;
   name: string;
   price: number;
+  /** Custo direto por unidade; para produtos por peso, custo por kg. */
+  costPrice?: number | null;
+  /** Percentual de acréscimo sobre o custo usado como apoio de precificação. */
+  markupPercent?: number | null;
   category: string;
   image: string;
   removableIngredients: string[];

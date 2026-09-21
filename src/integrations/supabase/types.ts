@@ -2262,6 +2262,10 @@ export type Database = {
       }
       visionfood_admin_tables: { Args: { _org: string }; Returns: Json }
       visionfood_close_table_session: { Args: { _session_id: string }; Returns: Json }
+      visionfood_link_google_profile: {
+        Args: { _organization_id: string }
+        Returns: boolean
+      }
       visionfood_profile_count: { Args: { _org: string }; Returns: number }
       visionfood_public_called_tickets: {
         Args: { _limit?: number; _org: string }

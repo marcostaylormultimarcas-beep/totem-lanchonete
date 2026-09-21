@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { DurableQueue, syncNextQueuedOrder, validateAllowedOrigin } from './companion.mjs';
+import { DurableQueue, normalizeKioskTables, syncNextQueuedOrder, validateAllowedOrigin } from './companion.mjs';
 
 const DEVICE_ID = '11111111-1111-4111-8111-111111111111';
 const ORG_ID = '22222222-2222-4222-8222-222222222222';
@@ -308,6 +308,24 @@ try {
   await check('arquivos da fila são gravados com permissão privada', async () => {
     const stat = await fs.stat(path.join(rootDir, `queue-${DEVICE_ID}.json`));
     if (process.platform !== 'win32') assert.equal(stat.mode & 0o077, 0);
+  });
+
+  await check('lista de mesas do companion preserva mesa em atendimento como selecionável', async () => {
+    const tables = normalizeKioskTables([
+      { id: '88888888-8888-4888-8888-888888888888', label: 'Mesa 08', in_service: true },
+      { id: '99999999-9999-4999-8999-999999999999', label: 'Mesa 09', in_service: false },
+    ]);
+    assert.equal(tables.length, 2);
+    assert.deepEqual(tables[0], {
+      id: '88888888-8888-4888-8888-888888888888',
+      label: 'Mesa 08',
+      in_service: true,
+    });
+    assert.equal(tables[1].in_service, false);
+    assert.throws(
+      () => normalizeKioskTables([{ id: 'not-a-uuid', label: 'Mesa X', in_service: false }]),
+      /invalid_kiosk_table_id/,
+    );
   });
 
   await check('canal local aceita HTTPS/loopback e rejeita origem HTTP remota', async () => {

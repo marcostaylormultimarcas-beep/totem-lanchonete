@@ -71,6 +71,26 @@ interface Summary {
   pending_rewards: number;
 }
 
+interface CustomerWallet {
+  id: string;
+  telefone_cliente: string;
+  user_id: string | null;
+  points_balance: number;
+  points_earned_total: number;
+  points_spent_total: number;
+  updated_at: string;
+}
+
+interface AdminLedgerEntry {
+  id: string;
+  telefone_cliente: string;
+  entry_type: 'earn' | 'redeem' | 'reversal' | 'adjustment';
+  points: number;
+  balance_after: number;
+  description: string;
+  created_at: string;
+}
+
 const DEFAULT_CONFIG: Config = {
   ativo: false,
   earning_mode: 'spend',
@@ -112,6 +132,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [resgates, setResgates] = useState<Resgate[]>([]);
   const [summary, setSummary] = useState<Summary>(EMPTY_SUMMARY);
+  const [customers, setCustomers] = useState<CustomerWallet[]>([]);
+  const [ledgerHistory, setLedgerHistory] = useState<AdminLedgerEntry[]>([]);
   const [rewardForm, setRewardForm] = useState<RewardForm>(DEFAULT_REWARD);
   const [showRewardForm, setShowRewardForm] = useState(false);
   const [filter, setFilter] = useState<'pendente' | 'todos'>('pendente');
@@ -125,18 +147,30 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     if (!organizationId) return;
     setLoading(true);
     try {
-      const [cfgResult, rewardsResult, resgatesResult, productsResult, summaryResult] = await Promise.all([
+      const [cfgResult, rewardsResult, resgatesResult, productsResult, summaryResult, customersResult, historyResult] = await Promise.all([
         supabase.from('config_fidelidade' as any).select('*').eq('organization_id', organizationId).maybeSingle(),
         supabase.from('loyalty_rewards' as any).select('*').eq('organization_id', organizationId).order('points_cost', { ascending: true }),
         supabase.from('resgates_fidelidade').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(100),
         supabase.from('products').select('id,name,price,cost_price').eq('organization_id', organizationId).eq('available', true).order('name'),
         supabase.rpc('loyalty_admin_summary' as any, { _organization_id: organizationId }),
+        supabase.from('progresso_fidelidade' as any)
+          .select('id,telefone_cliente,user_id,points_balance,points_earned_total,points_spent_total,updated_at')
+          .eq('organization_id', organizationId)
+          .order('points_balance', { ascending: false })
+          .limit(100),
+        supabase.from('loyalty_points_ledger' as any)
+          .select('id,telefone_cliente,entry_type,points,balance_after,description,created_at')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
 
       if (cfgResult.error) throw cfgResult.error;
       if (rewardsResult.error) throw rewardsResult.error;
       if (resgatesResult.error) throw resgatesResult.error;
       if (productsResult.error) throw productsResult.error;
+      if (customersResult.error) throw customersResult.error;
+      if (historyResult.error) throw historyResult.error;
 
       const row = cfgResult.data;
       if (row) {
@@ -172,6 +206,26 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         name: product.name,
         price: Number(product.price) || 0,
         cost_price: product.cost_price == null ? null : Number(product.cost_price),
+      })));
+      setCustomers((customersResult.data || []).map((row: any) => ({
+        id: String(row.id || ''),
+        telefone_cliente: String(row.telefone_cliente || ''),
+        user_id: row.user_id ? String(row.user_id) : null,
+        points_balance: Number(row.points_balance) || 0,
+        points_earned_total: Number(row.points_earned_total) || 0,
+        points_spent_total: Number(row.points_spent_total) || 0,
+        updated_at: String(row.updated_at || ''),
+      })));
+      setLedgerHistory((historyResult.data || []).map((row: any) => ({
+        id: String(row.id || ''),
+        telefone_cliente: String(row.telefone_cliente || ''),
+        entry_type: ['earn', 'redeem', 'reversal', 'adjustment'].includes(row.entry_type)
+          ? row.entry_type as AdminLedgerEntry['entry_type']
+          : 'adjustment',
+        points: Number(row.points) || 0,
+        balance_after: Number(row.balance_after) || 0,
+        description: String(row.description || ''),
+        created_at: String(row.created_at || ''),
       })));
 
       const stats = summaryResult.data as any;
@@ -552,6 +606,73 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
             </div>
           );
         })}
+      </section>
+
+      <section className="grid lg:grid-cols-2 gap-3">
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <div>
+            <h3 className="font-black flex items-center gap-2"><Users className="w-5 h-5 text-primary" /> Clientes</h3>
+            <p className="text-xs text-muted-foreground mt-1">Saldo e utilização do programa por cliente.</p>
+          </div>
+          {customers.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-5">Nenhum cliente pontuou ainda.</p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {customers.map(customer => (
+                <div key={customer.id} className="rounded-xl border border-border p-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-black text-xs">
+                    {Math.max(0, customer.points_balance)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm">{formatPhone(customer.telefone_cliente)}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {customer.user_id ? 'Conta vinculada' : 'Identificado por telefone'}
+                      {customer.updated_at ? ` · atualizado ${new Date(customer.updated_at).toLocaleDateString('pt-BR')}` : ''}
+                    </p>
+                  </div>
+                  <div className="text-right text-[10px] text-muted-foreground">
+                    <p><b className="text-success">+{customer.points_earned_total}</b> ganhos</p>
+                    <p><b className="text-primary">−{customer.points_spent_total}</b> usados</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+          <div>
+            <h3 className="font-black flex items-center gap-2"><History className="w-5 h-5 text-primary" /> Histórico de pontos</h3>
+            <p className="text-xs text-muted-foreground mt-1">Últimas movimentações auditáveis da fidelidade.</p>
+          </div>
+          {ledgerHistory.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-5">Nenhuma movimentação ainda.</p>
+          ) : (
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {ledgerHistory.map(entry => (
+                <div key={entry.id} className="rounded-xl border border-border p-3 flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                    entry.points > 0 ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive'
+                  }`}>
+                    {entry.entry_type === 'reversal' ? <RotateCcw className="w-4 h-4" /> : <Coins className="w-4 h-4" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-xs truncate">{entry.description || 'Movimentação de pontos'}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatPhone(entry.telefone_cliente)} · {new Date(entry.created_at).toLocaleString('pt-BR')}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-sm font-black ${entry.points > 0 ? 'text-success' : 'text-destructive'}`}>
+                      {entry.points > 0 ? '+' : ''}{entry.points} pts
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">saldo {Math.max(0, entry.balance_after)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
 
       <section className="bg-card border border-border rounded-2xl p-5 space-y-4">

@@ -50,7 +50,7 @@ const OrderHistory = () => {
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let pollTimer: number | undefined;
 
-    const loadOrders = async (userId: string, initial = false) => {
+    const loadOrders = async (initial = false) => {
       if (initial) {
         setLoading(true);
         setLoadError('');
@@ -58,25 +58,20 @@ const OrderHistory = () => {
 
       try {
         const { data, error } = await withTimeout(
-          supabase
-            .from('orders')
-            .select('id,order_number,total,status,created_at,items,order_type,customer_cpf,nfe_url,delivery_code')
-            .eq('user_id', userId)
-            .order('created_at', { ascending: false })
-            .limit(50),
+          supabase.rpc('visionfood_my_orders' as any, { _limit: 50 }),
           10000,
           'order_history_timeout',
         );
 
         if (cancelled) return;
         if (error) throw error;
-        setOrders((data as Order[]) || []);
+        setOrders((Array.isArray(data) ? data : []) as Order[]);
         setLoadError('');
       } catch (error) {
         if (cancelled) return;
         console.error('[OrderHistory] load failed', error);
         if (initial) setOrders([]);
-        setLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
+        setLoadError('Não foi possível carregar seus pedidos agora. Tente novamente.');
       } finally {
         if (initial && !cancelled) setLoading(false);
       }
@@ -101,7 +96,7 @@ const OrderHistory = () => {
 
         const userId = session.user.id;
         setUser(session.user);
-        await loadOrders(userId, true);
+        await loadOrders(true);
         if (cancelled) return;
 
         channel = supabase
@@ -109,7 +104,7 @@ const OrderHistory = () => {
           .on(
             'postgres_changes',
             { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${userId}` },
-            () => { void loadOrders(userId, false); },
+            () => { void loadOrders(false); },
           )
           .subscribe((status) => {
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -118,7 +113,7 @@ const OrderHistory = () => {
           });
 
         // Safety net for mobile networks that suspend or drop the websocket.
-        pollTimer = window.setInterval(() => { void loadOrders(userId, false); }, 15000);
+        pollTimer = window.setInterval(() => { void loadOrders(false); }, 15000);
       } catch (error) {
         if (cancelled) return;
         console.error('[OrderHistory] auth/load failed', error);
@@ -175,7 +170,11 @@ const OrderHistory = () => {
             <p className="text-destructive font-bold">Não foi possível carregar seus pedidos</p>
             <p className="text-muted-foreground text-sm max-w-sm">{loadError}</p>
             <button
-              onClick={() => setRetryKey(key => key + 1)}
+              onClick={() => {
+                setLoading(true);
+                setLoadError('');
+                setRetryKey(key => key + 1);
+              }}
               className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold"
             >
               Tentar novamente

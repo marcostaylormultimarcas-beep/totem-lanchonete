@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Award, Check, Star, Gift, X, Trophy, History as HistoryIcon } from 'lucide-react';
 import { formatCurrency } from '@/data/store';
+import { fetchPublicLoyaltyConfig } from '@/lib/publicLoyaltyConfig';
 
 interface Props {
   organizationId: string | null;
@@ -33,6 +34,8 @@ const SEEN_KEY = (org: string, phone: string) => `fid-seen-${org}-${phone}`;
 
 const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) => {
   const [config, setConfig] = useState<Config | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configError, setConfigError] = useState(false);
   const [stamps, setStamps] = useState(0);
   const [resgates, setResgates] = useState<Resgate[]>([]);
   const [modal, setModal] = useState<Resgate | null>(null);
@@ -40,26 +43,38 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
   const [loyaltyPhone, setLoyaltyPhone] = useState('');
 
   useEffect(() => {
-    if (!organizationId) { setConfig(null); return; }
+    if (!organizationId) {
+      setConfig(null);
+      setConfigLoading(false);
+      setConfigError(false);
+      return;
+    }
 
-    supabase.rpc('visionfood_public_loyalty_config', { _org: organizationId })
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn('[loyalty] public config error:', error);
-          setConfig(null);
-          return;
-        }
-        const d = (data as any) || {};
-        if (Object.keys(d).length === 0) { setConfig(null); return; }
-        setConfig({
-          ativo: !!d.ativo,
-          meta_pedidos: Number(d.meta_pedidos) || 10,
-          valor_minimo_pedido: Number(d.valor_minimo_pedido) || 0,
-          premio_recompensa: d.premio_recompensa || '',
-          descricao_premio: d.descricao_premio || '',
-          premio_imagem: d.premio_imagem || '',
-        });
-      });
+    let cancelled = false;
+    setConfigLoading(true);
+    setConfigError(false);
+
+    const load = async () => {
+      try {
+        const data = await fetchPublicLoyaltyConfig(organizationId);
+        if (cancelled) return;
+        setConfig(data);
+        setConfigError(false);
+      } catch (error) {
+        if (cancelled) return;
+        console.warn('[loyalty] public config error:', error);
+        setConfigError(true);
+      } finally {
+        if (!cancelled) setConfigLoading(false);
+      }
+    };
+
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [organizationId]);
 
   const loadCustomerState = useCallback(async () => {
@@ -118,6 +133,23 @@ const LoyaltyCard = ({ organizationId, customerPhone, className = '' }: Props) =
     }
     setModal(null);
   };
+
+  if (configLoading && !config) {
+    return (
+      <div className={`rounded-2xl border border-primary/20 bg-card/70 p-5 ${className}`}>
+        <div className="h-4 w-36 rounded bg-muted animate-pulse" />
+        <div className="mt-4 h-9 rounded-xl bg-muted/70 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (configError && !config) {
+    return (
+      <div className={`rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground ${className}`}>
+        Cartão Fidelidade temporariamente indisponível. Tentaremos carregar novamente automaticamente.
+      </div>
+    );
+  }
 
   if (!config?.ativo) return null;
 

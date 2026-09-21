@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building, Search, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
@@ -102,6 +102,7 @@ const CheckoutScreen = ({
     | { ok: false; motivo: string }
     | null
   >(null);
+  const autoValidatedCepRef = useRef('');
 
   useEffect(() => {
     if (!orgId || orderType !== 'viagem') {
@@ -203,6 +204,14 @@ const CheckoutScreen = ({
       onBairroChange('', via.bairro || enderecoStr, Number(r.taxa), Number(r.tempo_min || 30));
     }
   };
+
+  useEffect(() => {
+    if (!orgId || deliveryMode !== 'lista_ceps' || validandoCep || cepResultado !== null) return;
+    const normalized = normalizeCep(deliveryCep);
+    if (normalized.length !== 8 || autoValidatedCepRef.current === normalized) return;
+    autoValidatedCepRef.current = normalized;
+    void validarCep();
+  }, [cepResultado, deliveryCep, deliveryMode, orgId, validandoCep]);
 
   const selectedBairro = bairros.find(b => b.id === bairroId);
   const deliveryAddressParts = splitDeliveryAddress(deliveryAddress);
@@ -331,10 +340,10 @@ const CheckoutScreen = ({
                   <label className="text-xs font-bold text-muted-foreground ml-1 flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
                   </label>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 min-w-0">
                     <input value={deliveryCep} onChange={e => { onDeliveryCepChange(maskCep(e.target.value)); setCepResultado(null); }}
-                      placeholder="00000-000" maxLength={9}
-                      className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
+                      placeholder="00000-000" maxLength={9} inputMode="numeric" autoComplete="postal-code"
+                      className="flex-1 min-w-0 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
                     <button onClick={validarCep} disabled={validandoCep}
                       className="touch-btn px-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">
                       {validandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Validar

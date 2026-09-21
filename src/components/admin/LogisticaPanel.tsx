@@ -169,7 +169,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       return;
     }
     const entNome = entregadores.find((e) => e.id === entregadorId)?.name || 'entregador';
-    toast.success(`🛵 ${ids.length} pedido(s) do bairro ${bairro} enviados para ${entNome}.`);
+    toast.success(`🛵 ${ids.length} pedido(s) do bairro ${bairro} reservados para ${entNome}. O entregador inicia a rota após a retirada.`);
     // remove despachados da lista
     setReadyOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
     setSelectedIds((prev) => {
@@ -262,7 +262,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
           )}
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Agrupa automaticamente todos os pedidos <span className="text-success font-semibold">prontos para entrega</span> pelo bairro de destino e permite atribuir um lote inteiro a um único entregador.
+          Agrupa automaticamente todos os pedidos <span className="text-success font-semibold">prontos para entrega</span> pelo bairro de destino e permite reservar um lote inteiro para um único entregador. O status só muda para “Saiu para entrega” quando o entregador confirmar a retirada no app.
         </p>
 
         <button
@@ -353,7 +353,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
                         className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <Send className="w-4 h-4" />
-                        Despachar Lote ({selectedCount})
+                        Reservar Lote ({selectedCount})
                       </button>
                     </div>
                   </div>

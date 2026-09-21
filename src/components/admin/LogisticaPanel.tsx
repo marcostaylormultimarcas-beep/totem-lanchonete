@@ -165,7 +165,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
         forbidden: 'Sem permissão para despachar estes pedidos.',
       };
       toast.error(error ? 'Erro ao despachar lote: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar o lote.'));
-      await load();
+      await fetchRouting();
       return;
     }
     const entNome = entregadores.find((e) => e.id === entregadorId)?.name || 'entregador';

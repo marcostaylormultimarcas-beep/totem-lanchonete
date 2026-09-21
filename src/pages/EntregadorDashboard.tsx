@@ -20,6 +20,7 @@ interface DeliveryOrder {
   total: number;
   status: string;
   created_at: string;
+  scheduled_for?: string | null;
   bairro_nome?: string;
 }
 
@@ -567,6 +568,14 @@ const EntregadorDashboard = () => {
                     <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
                   </div>
 
+                  {o.scheduled_for && (
+                    <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs">
+                      <p className="font-black text-violet-300">📅 Pedido agendado</p>
+                      <p className="text-slate-300 mt-0.5">
+                        {new Date(o.scheduled_for).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  )}
                   <div className="text-sm space-y-1.5">
                     <p className="flex items-center gap-2"><Package className="w-3.5 h-3.5 text-slate-500" /> <span className="font-semibold">{o.customer_name}</span></p>
                     {o.customer_phone && (
@@ -688,6 +697,11 @@ const EntregadorDashboard = () => {
                   <p className="text-sm font-semibold">
                     {o.bairro_nome ? `📍 Bairro: ${o.bairro_nome}` : '📍 Destino oculto até aceitar'}
                   </p>
+                  {o.scheduled_for && (
+                    <p className="text-xs font-bold text-violet-300">
+                      📅 Agendado: {new Date(o.scheduled_for).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
                   <p className="text-xs text-slate-500">
                     Nome, telefone e endereço completo são liberados somente após você aceitar o pedido.
                   </p>

@@ -109,20 +109,22 @@ const MesasPanel = ({ organizationId, orgSlug }: Props) => {
             Cada mesa usa um QR opaco. Pessoas diferentes fazem pedidos independentes, ligados à mesma sessão operacional da mesa.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <input
             value={label}
             onChange={e => setLabel(e.target.value)}
             maxLength={40}
             placeholder="Ex.: Mesa 12"
-            className="flex-1 bg-muted rounded-xl px-3 py-2 outline-none"
+            className="w-full min-w-0 bg-muted rounded-xl px-3 py-2 outline-none sm:flex-1"
           />
-          <button onClick={addTable} disabled={!organizationId || !label.trim()} className="touch-btn px-4 py-2 rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
-            <Plus className="w-4 h-4 inline mr-1" /> Criar
-          </button>
-          <button onClick={load} disabled={loading} className="touch-btn px-3 py-2 rounded-xl border">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex gap-2">
+            <button onClick={addTable} disabled={!organizationId || !label.trim()} className="touch-btn min-w-0 flex-1 px-4 py-2 rounded-xl bg-primary text-primary-foreground disabled:opacity-50 sm:flex-none">
+              <Plus className="w-4 h-4 inline mr-1" /> Criar
+            </button>
+            <button onClick={load} disabled={loading} className="touch-btn shrink-0 px-3 py-2 rounded-xl border" aria-label="Atualizar mesas" title="Atualizar mesas">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 

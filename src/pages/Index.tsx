@@ -29,6 +29,16 @@ type Step = 'landing' | 'start' | 'location' | 'local-service' | 'table' | 'addr
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 const ACTIVE_ORDER_STORAGE_KEY = 'active-kiosk-order';
 
+const normalizeDeliveryKey = (value: string) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
+
+const normalizeCepDigits = (value: string) => (value || '').replace(/\D/g, '').slice(0, 8);
+
 interface PendingOrderState {
   organizationId?: string;
   step: Step;
@@ -729,8 +739,37 @@ const Index = () => {
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
           bairroId={bairroId} bairroNome={bairroNome} deliveryCep={deliveryCep}
-          onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
-          onDeliveryCepChange={setDeliveryCep}
+          onBairroChange={(id, nome, taxa, tempo) => {
+            if (
+              deliveryLat != null
+              && deliveryLng != null
+              && bairroNome
+              && normalizeDeliveryKey(nome) !== normalizeDeliveryKey(bairroNome)
+            ) {
+              setDeliveryLat(null);
+              setDeliveryLng(null);
+              setDeliveryAccuracyM(null);
+            }
+            setBairroId(id);
+            setBairroNome(nome);
+            setBairroTaxa(taxa);
+            setBairroTempo(tempo);
+          }}
+          onDeliveryCepChange={(value) => {
+            const currentCep = normalizeCepDigits(deliveryCep);
+            const nextCep = normalizeCepDigits(value);
+            if (
+              deliveryLat != null
+              && deliveryLng != null
+              && currentCep
+              && currentCep !== nextCep
+            ) {
+              setDeliveryLat(null);
+              setDeliveryLng(null);
+              setDeliveryAccuracyM(null);
+            }
+            setDeliveryCep(value);
+          }}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
           onDeliveryAddressChange={(value) => {
             setDeliveryAddress(value);

@@ -2,7 +2,7 @@
 // Cold-start contract: complete Vite app shell + reusable public media.
 // Supabase API/Edge responses and browser/customer identity are never cached.
 
-const VERSION = 'vf-sw-v5-phase295';
+const VERSION = 'vf-sw-v6-phase304-ui';
 const SHELL_CACHE = VERSION + '-shell';
 const RUNTIME_CACHE = VERSION + '-runtime';
 const MEDIA_CACHE = VERSION + '-media';
@@ -101,14 +101,21 @@ async function cachedShellNavigation(request) {
 
 async function networkFirstNavigation(request) {
   const runtime = await caches.open(RUNTIME_CACHE);
-  try {
-    const network = await Promise.race([
-      fetch(request),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NAV_TIMEOUT_MS)),
-    ]);
+  const networkPromise = fetch(request).then((network) => {
     if (network && network.ok) runtime.put(request, network.clone()).catch(() => {});
     return network;
+  });
+
+  try {
+    return await Promise.race([
+      networkPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NAV_TIMEOUT_MS)),
+    ]);
   } catch {
+    // If the network is merely slow, keep the fetch alive so the latest online
+    // shell refreshes the runtime cache for the next navigation.
+    networkPromise.catch(() => {});
+
     const cachedRuntime = await runtime.match(request, { ignoreSearch: true });
     if (cachedRuntime) return cachedRuntime;
     const shell = await cachedShellNavigation(request);

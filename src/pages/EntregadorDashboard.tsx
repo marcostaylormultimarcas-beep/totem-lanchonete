@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon } from 'lucide-react';
+import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon, Navigation } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin';
 import { formatCurrency } from '@/data/store';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
+import { fetchRoadRoute, formatRouteDistance, formatRouteDuration, googleMapsDirectionsUrl, type RoadRoute } from '@/lib/deliveryRouting';
 
 interface DeliveryOrder {
   id: string;
@@ -22,6 +23,9 @@ interface DeliveryOrder {
   created_at: string;
   scheduled_for?: string | null;
   bairro_nome?: string;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  delivery_accuracy_m?: number | null;
 }
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -50,6 +54,9 @@ const EntregadorDashboard = () => {
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [roadRoutes, setRoadRoutes] = useState<Record<string, RoadRoute>>({});
+  const [routeLoading, setRouteLoading] = useState<string | null>(null);
+  const routeRequestRef = useRef<Record<string, { at: number; origin: { lat: number; lng: number } }>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
@@ -76,6 +83,36 @@ const EntregadorDashboard = () => {
     return 2 * R * Math.asin(Math.sqrt(h));
   };
 
+  const getExactDestination = (order: DeliveryOrder) => {
+    const lat = Number(order.delivery_lat);
+    const lng = Number(order.delivery_lng);
+    if (
+      !Number.isFinite(lat) || !Number.isFinite(lng)
+      || lat < -90 || lat > 90 || lng < -180 || lng > 180
+    ) return null;
+    return { lat, lng };
+  };
+
+  const resolveDestination = async (order: DeliveryOrder) => {
+    const exact = getExactDestination(order);
+    if (exact) {
+      setDestCoords(prev => {
+        const current = prev[order.id];
+        if (current?.lat === exact.lat && current?.lng === exact.lng) return prev;
+        return { ...prev, [order.id]: exact };
+      });
+      return exact;
+    }
+
+    const cached = destCoords[order.id];
+    if (cached) return cached;
+    if (!order.delivery_address) return null;
+
+    const geocoded = await geocodeAddress(order.delivery_address);
+    if (geocoded) setDestCoords(prev => ({ ...prev, [order.id]: geocoded }));
+    return geocoded;
+  };
+
   const getCurrentPositionAsync = () =>
     new Promise<{ lat: number; lng: number }>((resolve, reject) => {
       if (!('geolocation' in navigator)) {
@@ -94,14 +131,7 @@ const EntregadorDashboard = () => {
     if (!order?.delivery_address) return;
     setRefreshingLoc(orderId);
     try {
-      let dest = destCoords[orderId];
-      if (!dest) {
-        const c = await geocodeAddress(order.delivery_address);
-        if (c) {
-          dest = c;
-          setDestCoords((prev) => ({ ...prev, [orderId]: c }));
-        }
-      }
+      const dest = await resolveDestination(order);
       if (!dest) {
         setGeofenceError((p) => ({ ...p, [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa.' }));
         return;
@@ -219,11 +249,39 @@ const EntregadorDashboard = () => {
     setMapOpenId(order.id);
     setRiderPos(null);
     startTracking(order.id);
-    if (order.delivery_address && !destCoords[order.id]) {
-      const coords = await geocodeAddress(order.delivery_address);
-      if (coords) setDestCoords(prev => ({ ...prev, [order.id]: coords }));
+    if (order.delivery_address || getExactDestination(order)) {
+      await resolveDestination(order);
     }
   };
+
+  useEffect(() => {
+    if (!mapOpenId || !riderPos) return;
+    const destination = destCoords[mapOpenId];
+    if (!destination) return;
+
+    const last = routeRequestRef.current[mapOpenId];
+    const movedM = last ? haversineMeters(last.origin, riderPos) : Number.POSITIVE_INFINITY;
+    if (last && Date.now() - last.at < 30000 && movedM < 80) return;
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      routeRequestRef.current[mapOpenId] = {
+        at: Date.now(),
+        origin: { lat: riderPos.lat, lng: riderPos.lng },
+      };
+      setRouteLoading(mapOpenId);
+      const route = await fetchRoadRoute(riderPos, destination);
+      if (!cancelled && route) {
+        setRoadRoutes(prev => ({ ...prev, [mapOpenId]: route }));
+      }
+      if (!cancelled) setRouteLoading(null);
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mapOpenId, riderPos, destCoords]);
 
   useEffect(() => {
     if (!session) navigate('/entregador/login');
@@ -364,14 +422,7 @@ const EntregadorDashboard = () => {
       setGeoChecking(orderId);
       setGeofenceError((p) => ({ ...p, [orderId]: null }));
       try {
-        let dest = destCoords[orderId];
-        if (!dest) {
-          const c = await geocodeAddress(order.delivery_address);
-          if (c) {
-            dest = c;
-            setDestCoords((prev) => ({ ...prev, [orderId]: c }));
-          }
-        }
+        const dest = await resolveDestination(order);
         if (!dest) {
           setGeoChecking(null);
           setGeofenceError((p) => ({
@@ -546,6 +597,13 @@ const EntregadorDashboard = () => {
           ) : (
             pendentes.map(o => {
               const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
+              const exactDestination = getExactDestination(o);
+              const navigationDestination = exactDestination || destCoords[o.id];
+              const navigationUrl = navigationDestination
+                ? googleMapsDirectionsUrl(navigationDestination, riderPos)
+                : o.delivery_address
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.delivery_address)}&travelmode=driving`
+                  : '';
               return (
                 <div
                   key={o.id}
@@ -585,7 +643,7 @@ const EntregadorDashboard = () => {
                     )}
                     {o.delivery_address && (
                       <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}
+                        href={navigationUrl || '#'}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-start gap-2 text-blue-400 hover:underline"
                       >
@@ -656,22 +714,46 @@ const EntregadorDashboard = () => {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => toggleMap(o)}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
-                  >
-                    <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : '🗺️ Abrir Rota no Mapa'}
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      onClick={() => toggleMap(o)}
+                      className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
+                    >
+                      <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : 'Ver rota no mapa'}
+                    </button>
+                    {navigationUrl && (
+                      <a
+                        href={navigationUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2"
+                      >
+                        <Navigation className="w-5 h-5" /> Iniciar navegação
+                      </a>
+                    )}
+                  </div>
 
                   {mapOpenId === o.id && (
                     <div className="space-y-2">
                       <LiveDeliveryMap
                         rider={riderPos}
                         destination={destCoords[o.id] ? { ...destCoords[o.id], label: o.delivery_address || 'Destino' } : null}
+                        route={roadRoutes[o.id]?.points || null}
                         height={300}
                       />
+                      {roadRoutes[o.id] ? (
+                        <div className="rounded-xl border border-blue-400/30 bg-blue-400/10 px-3 py-2 text-center">
+                          <p className="text-sm font-black text-blue-300">
+                            🛣️ {formatRouteDistance(roadRoutes[o.id].distanceM)} · {formatRouteDuration(roadRoutes[o.id].durationSec)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Estimativa pela rota viária atual. O app de navegação pode ajustar conforme trânsito e condições da via.</p>
+                        </div>
+                      ) : routeLoading === o.id ? (
+                        <p className="text-xs text-blue-300 text-center animate-pulse">Calculando rota pelas ruas...</p>
+                      ) : null}
                       <p className="text-[11px] text-amber-400/90 text-center">
                         📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
+                        {exactDestination ? ' • 📍 destino GPS do cliente' : ' • 📍 destino aproximado pelo endereço'}
                       </p>
                     </div>
                   )}

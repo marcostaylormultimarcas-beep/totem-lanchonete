@@ -17,7 +17,6 @@ const ClubeVantagens = () => {
   const orgId = useOrgId();
   const [loading, setLoading] = useState(true);
   const [authed, setAuthed] = useState<boolean | null>(null);
-  const [origemCat, setOrigemCat] = useState<string>('');
   const [origemNome, setOrigemNome] = useState<string>('');
   const [data, setData] = useState<PartnerCoupon[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -48,7 +47,6 @@ const ClubeVantagens = () => {
         const result = catalog as any;
         if (!result?.ok) throw new Error('club_catalog_unavailable');
 
-        setOrigemCat(result.origem_categoria || 'outro');
         setOrigemNome(result.origem_nome || '');
         const grouped: PartnerCoupon[] = ((result.partners || []) as any[]).map(p => ({
           org: {

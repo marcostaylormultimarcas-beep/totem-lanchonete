@@ -183,7 +183,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
           ) : (
             <div className="w-full h-full flex items-center justify-center text-8xl bg-gradient-to-br from-zinc-900 to-zinc-800">{product.image}</div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-zinc-950/95 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent pointer-events-none" />
 
           {/* Top actions */}
           <div className="absolute top-4 left-4 right-4 flex items-center justify-between">

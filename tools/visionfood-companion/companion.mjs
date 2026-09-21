@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 
 const QUEUE_VERSION = 1;
 const DEVICE_VERSION = 1;
+const TABLE_CACHE_VERSION = 1;
 const DEFAULT_PORT = 43129;
 const MAX_BODY_BYTES = 1024 * 1024;
 const LOCAL_SESSION_TTL_MS = 10 * 60 * 1000;
@@ -33,6 +34,22 @@ const nowIso = () => new Date().toISOString();
 const isUuid = (value) => typeof value === 'string' && UUID_RE.test(value);
 const sha256Hex = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const randomSecret = () => crypto.randomBytes(32).toString('hex');
+
+export function normalizeKioskTables(value) {
+  if (!Array.isArray(value)) throw new Error('invalid_kiosk_tables');
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object' || !isUuid(entry.id)) {
+      throw new Error('invalid_kiosk_table_id');
+    }
+    const label = String(entry.label || '').trim();
+    if (!label || label.length > 40) throw new Error('invalid_kiosk_table_label');
+    return {
+      id: entry.id,
+      label,
+      in_service: Boolean(entry.in_service),
+    };
+  });
+}
 
 function assertNoAuthMaterial(value, keyPath = []) {
   if (Array.isArray(value)) {
@@ -432,6 +449,54 @@ export async function startCompanion(options = {}) {
     queueCache = null;
   };
 
+  const loadKioskTables = async () => {
+    const device = await loadDevice();
+    if (!device || device.version !== DEVICE_VERSION || !isUuid(device.device_id) || !isUuid(device.organization_id) || !HEX_64_RE.test(device.credential || '')) {
+      throw new Error('device_not_enrolled');
+    }
+
+    const cachePath = path.join(rootDir, `tables-${device.device_id}.json`);
+
+    try {
+      const result = await postRpc({
+        supabaseUrl,
+        publishableKey,
+        name: 'visionfood_kiosk_tables',
+        body: { _device_id: device.device_id, _credential: device.credential },
+      });
+      if (!result?.ok || result.organization_id !== device.organization_id) {
+        throw new Error(`kiosk_tables_rejected:${String(result?.reason || 'organization_mismatch')}`);
+      }
+
+      const tables = normalizeKioskTables(result.tables);
+      const savedAt = nowIso();
+      await atomicWriteJson(cachePath, {
+        version: TABLE_CACHE_VERSION,
+        device_id: device.device_id,
+        organization_id: device.organization_id,
+        saved_at: savedAt,
+        tables,
+      });
+      return { ok: true, stale: false, saved_at: savedAt, tables };
+    } catch (error) {
+      const cached = await readJsonOrNull(cachePath);
+      if (
+        cached?.version === TABLE_CACHE_VERSION &&
+        cached.device_id === device.device_id &&
+        cached.organization_id === device.organization_id &&
+        typeof cached.saved_at === 'string'
+      ) {
+        return {
+          ok: true,
+          stale: true,
+          saved_at: cached.saved_at,
+          tables: normalizeKioskTables(cached.tables),
+        };
+      }
+      throw error;
+    }
+  };
+
   const getQueue = async () => {
     const device = await loadDevice();
     if (!device || device.version !== DEVICE_VERSION || !isUuid(device.device_id) || !HEX_64_RE.test(device.credential || '')) {
@@ -619,6 +684,12 @@ export async function startCompanion(options = {}) {
       if (req.method === 'POST' && requestUrl.pathname === '/v1/enroll') {
         const body = await parseBody(req);
         const result = await enroll(String(body?.enrollment_token || ''));
+        send(res, origin, 200, result);
+        return;
+      }
+
+      if (req.method === 'GET' && requestUrl.pathname === '/v1/tables') {
+        const result = await loadKioskTables();
         send(res, origin, 200, result);
         return;
       }

@@ -571,6 +571,7 @@ const Index = () => {
           onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
           onContinue={() => setStep('payment')} onBack={() => setStep('cart')}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'payment' && (

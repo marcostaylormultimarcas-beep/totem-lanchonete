@@ -72,7 +72,23 @@ const ClubeVantagens = () => {
         if (error) throw error;
 
         const result = catalog as any;
-        if (!result?.ok) throw new Error('club_catalog_unavailable');
+        if (!result?.ok) {
+          const reason = String(result?.reason || '');
+
+          if (reason === 'unauthenticated') {
+            setAuthed(false);
+            setData([]);
+            return;
+          }
+
+          if (reason === 'origin_not_linked' || reason === 'origin_not_found') {
+            setData([]);
+            setLoadError(false);
+            return;
+          }
+
+          throw new Error('club_catalog_unavailable');
+        }
 
         setOrigemNome(result.origem_nome || '');
         const grouped: PartnerCoupon[] = ((result.partners || []) as any[]).map(p => ({

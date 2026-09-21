@@ -743,7 +743,6 @@ const Index = () => {
             if (
               deliveryLat != null
               && deliveryLng != null
-              && bairroNome
               && normalizeDeliveryKey(nome) !== normalizeDeliveryKey(bairroNome)
             ) {
               setDeliveryLat(null);
@@ -761,7 +760,6 @@ const Index = () => {
             if (
               deliveryLat != null
               && deliveryLng != null
-              && currentCep
               && currentCep !== nextCep
             ) {
               setDeliveryLat(null);

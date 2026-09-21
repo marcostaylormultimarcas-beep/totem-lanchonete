@@ -16,8 +16,19 @@ const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): 
     );
   });
 
-const resolveInitialAuthSession = (ms = 5000): Promise<any> =>
-  new Promise((resolve, reject) => {
+const hasPersistedAuthSession = () => {
+  try {
+    return Object.keys(localStorage).some((key) => key.startsWith(SUPABASE_AUTH_STORAGE_KEY));
+  } catch {
+    // If storage cannot be inspected, let Supabase resolve the session normally.
+    return true;
+  }
+};
+
+const resolveInitialAuthSession = (ms = 5000): Promise<any> => {
+  if (!hasPersistedAuthSession()) return Promise.resolve(null);
+
+  return new Promise((resolve, reject) => {
     let settled = false;
     let timer: number | undefined;
     let subscription: { unsubscribe: () => void } | null = null;
@@ -49,7 +60,19 @@ const resolveInitialAuthSession = (ms = 5000): Promise<any> =>
       () => finish(null, new Error('auth_session_timeout')),
       ms,
     );
+
+    void supabase.auth.getSession().then(
+      ({ data: { session }, error }) => {
+        if (error) finish(null, error);
+        else finish(session);
+      },
+      (error) => finish(
+        null,
+        error instanceof Error ? error : new Error('auth_session_error'),
+      ),
+    );
   });
+};
 
 interface Order {
   id: string;
@@ -123,7 +146,7 @@ const OrderHistory = () => {
 
         if (cancelled) return;
         if (!session) {
-          navigate('/auth');
+          navigate('/auth', { replace: true });
           return;
         }
 
@@ -186,7 +209,7 @@ const OrderHistory = () => {
 
     try {
       Object.keys(localStorage)
-        .filter((key) => key === SUPABASE_AUTH_STORAGE_KEY || key.startsWith(`${SUPABASE_AUTH_STORAGE_KEY}-`))
+        .filter((key) => key.startsWith(SUPABASE_AUTH_STORAGE_KEY))
         .forEach((key) => localStorage.removeItem(key));
     } catch (error) {
       console.warn('[OrderHistory] could not clear persisted auth storage before reload:', error);

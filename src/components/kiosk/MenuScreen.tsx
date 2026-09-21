@@ -33,7 +33,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const [showUpsell, setShowUpsell] = useState(false);
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
+  const [comboProduct, setComboProduct] = useState<Product | null>(null);
   const [balancaBaud, setBalancaBaud] = useState(9600);
 
   const fetchData = useCallback(async () => {
@@ -48,16 +48,25 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
         return {};
       }),
     ]);
-    setProducts(prods.map((p) => ({
-        id: p.id, name: p.name, price: Number(p.price), category: p.category,
-        image: p.image || '', removableIngredients: (p.removable_ingredients as string[]) || [],
-        extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
-        ingredients: (p.ingredients as string[]) || [], description: p.description || '',
-        soldByWeight: Boolean(p.sold_by_weight),
-        codigoBarras: p.codigo_barras || undefined,
-        prepTimeMin: Number(p.prep_time_min ?? 0),
-      })));
-    if (settingsData.combo) setCombo(settingsData.combo as any);
+    const mappedProducts = prods.map((p) => ({
+      id: p.id, name: p.name, price: Number(p.price), category: p.category,
+      image: p.image || '', removableIngredients: (p.removable_ingredients as string[]) || [],
+      extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
+      ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+      soldByWeight: Boolean(p.sold_by_weight),
+      codigoBarras: p.codigo_barras || undefined,
+      prepTimeMin: Number(p.prep_time_min ?? 0),
+    })) as Product[];
+
+    const comboConfig = (settingsData.combo || {}) as { product_id?: string };
+    const linkedCombo = comboConfig.product_id
+      ? mappedProducts.find((product) => product.id === comboConfig.product_id && product.isCombo)
+      : null;
+    const authoritativeCombos = mappedProducts.filter(
+      (product) => product.isCombo && product.category === 'visionfood_combo',
+    );
+    setComboProduct(linkedCombo || (authoritativeCombos.length === 1 ? authoritativeCombos[0] : null));
+    setProducts(mappedProducts.filter((product) => !product.isCombo));
     const baud = Number(settingsData.balanca_baud_rate ?? 9600);
     if (baud) setBalancaBaud(baud);
     const cats = settingsData.categories as CategoryItem[] | undefined;
@@ -173,7 +182,10 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const cartTotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const handleAddItem = (item: CartItem) => {
-    if (item.product.category === 'hamburgueres' || item.product.category === 'pizzas') {
+    if (
+      comboProduct &&
+      (item.product.category === 'hamburgueres' || item.product.category === 'pizzas')
+    ) {
       setPendingItem(item);
       setShowUpsell(true);
     } else {
@@ -185,23 +197,15 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const handleUpsellAccept = () => {
     if (pendingItem) {
       onAddToCart(pendingItem);
-      const comboItem: CartItem = {
-        id: crypto.randomUUID(),
-        product: {
-          id: 'combo-' + Date.now(),
-          name: `Combo: ${combo.name}`,
-          price: combo.price,
-          category: 'bebidas',
-          image: (combo as any).image || combo.emoji,
-          removableIngredients: [],
-          extras: [],
-          isCombo: true,
-        },
-        quantity: 1,
-        removedIngredients: [],
-        selectedExtras: [],
-      };
-      onAddToCart(comboItem);
+      if (comboProduct) {
+        onAddToCart({
+          id: crypto.randomUUID(),
+          product: comboProduct,
+          quantity: 1,
+          removedIngredients: [],
+          selectedExtras: [],
+        });
+      }
     }
     setShowUpsell(false);
     setPendingItem(null);

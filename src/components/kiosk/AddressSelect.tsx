@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, MapPin, Search, Loader2, CheckCircle2, ShieldCheck, LocateFixed } from 'lucide-react';
 import { fetchViaCep, maskCep, normalizeCep, reverseGeocodeCoords } from '@/lib/cep';
+import { MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 import { toast } from 'sonner';
 
 export interface AddressSelectionDetails {
@@ -96,9 +97,15 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
       setSource('gps');
       setCoords({ lat, lng, accuracyM: accuracy > 0 ? accuracy : undefined });
       setResolved(true);
-      toast.success('Localização encontrada. Confira o endereço e o número antes de continuar.', {
-        description: accuracy > 0 ? `Precisão aproximada do GPS: ${accuracy} m.` : undefined,
-      });
+      if (accuracy > MAX_EXACT_DESTINATION_ACCURACY_M) {
+        toast.warning('Localização encontrada, mas o GPS está com baixa precisão.', {
+          description: `Precisão aproximada: ${accuracy} m. O entregador usará o endereço confirmado se essa precisão continuar alta.`,
+        });
+      } else {
+        toast.success('Localização encontrada. Confira o endereço e o número antes de continuar.', {
+          description: accuracy > 0 ? `Precisão aproximada do GPS: ${accuracy} m.` : undefined,
+        });
+      }
     } catch (error: any) {
       const code = Number(error?.code || 0);
       const message = code === 1
@@ -205,7 +212,11 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
                   {cep ? ` · CEP ${cep}` : ''}
                 </p>
                 {source === 'gps' && (
-                  <p className="text-[11px] text-orange-400 mt-1">Localização aproximada pelo aparelho — confirme o número.</p>
+                  <p className="text-[11px] text-orange-400 mt-1">
+                    {coords?.accuracyM && coords.accuracyM > MAX_EXACT_DESTINATION_ACCURACY_M
+                      ? 'GPS com baixa precisão — confirme o endereço. A rota usará o endereço se necessário.'
+                      : 'Localização aproximada pelo aparelho — confirme o número.'}
+                  </p>
                 )}
               </div>
             </div>

@@ -210,6 +210,13 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
       .eq('organization_id', organizationId!);
     setSavingProfile(false);
     if (error) return toast.error(error.message);
+    setSelected(current => current ? {
+      ...current,
+      notes: profileNotes.slice(0, 2000),
+      tags,
+      birth_date: profileBirthDate || null,
+      consent_status: profileConsent,
+    } : current);
     toast.success('Perfil CRM atualizado.');
     await load();
   };

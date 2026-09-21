@@ -37,6 +37,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [favorites, setFavorites] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('vf_favoritos') || '[]'); } catch { return []; }
   });
+  const [showFavorites, setShowFavorites] = useState(false);
 
   const toggleFavorite = (id: string) => {
     setFavorites(prev => {
@@ -106,7 +107,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
     return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
-  const topProducts = products.slice(0, 6);
+  const displayedProducts = showFavorites
+    ? products.filter((product) => favorites.includes(product.id))
+    : products.slice(0, 6);
 
   useEffect(() => {
     if (banners.length <= 1) return;
@@ -203,7 +206,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       </div>
 
       {/* Banner rotativo */}
-      {banners.length > 0 && (
+      {!showFavorites && banners.length > 0 && (
         <div className="px-4 sm:px-5 mt-5 vf-fade-in">
           <div className="vf-banner relative overflow-hidden h-48 sm:h-56 lg:h-64 max-w-[1200px] mx-auto border border-white/[0.06]" style={{ borderRadius: 24 }}>
             {banners.map((banner, i) => {
@@ -259,6 +262,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       )}
 
       {/* Categories */}
+      {!showFavorites && (
       <section className="mt-7 vf-fade-in">
         <div className="px-5 flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">Categorias</h2>
@@ -285,19 +289,26 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           })}
         </div>
       </section>
+      )}
 
-      {/* Mais pedidos */}
+      {/* Mais pedidos / Favoritos */}
       <section className="mt-7 vf-fade-in">
         <div className="px-5 flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">Mais pedidos</h2>
-          <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
-            Ver tudo <ChevronRight className="w-4 h-4" />
-          </button>
+          <h2 className="text-lg font-bold text-white">{showFavorites ? 'Favoritos' : 'Mais pedidos'}</h2>
+          {showFavorites ? (
+            <button onClick={() => setShowFavorites(false)} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
+              Voltar ao início
+            </button>
+          ) : (
+            <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
+              Ver tudo <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-4 sm:px-5 max-w-[1200px] mx-auto">
-          {topProducts.map((product, idx) => {
+          {displayedProducts.map((product, idx) => {
             const fav = favorites.includes(product.id);
-            const badge = product.badge || (idx === 0 ? 'Mais pedido' : product.oldPrice ? 'Oferta' : '');
+            const badge = product.badge || (!showFavorites && idx === 0 ? 'Mais pedido' : product.oldPrice ? 'Oferta' : '');
             const promo = product.oldPrice && product.oldPrice > product.price;
             const eta = product.prepTimeMin && product.prepTimeMin > 0
               ? `${product.prepTimeMin}–${product.prepTimeMin + 10} min`
@@ -313,7 +324,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                     )}
                     {badge && (
                       <span className={`absolute top-2 left-2 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 max-w-[85%] truncate ${promo && !product.badge && idx !== 0 ? 'bg-red-600' : 'bg-[#FF7A00]'}`}>
-                        {idx === 0 && !product.badge ? '🔥 ' : ''}{badge}
+                        {!showFavorites && idx === 0 && !product.badge ? '🔥 ' : ''}{badge}
                       </span>
                     )}
                   </div>
@@ -351,9 +362,17 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
             );
           })}
         </div>
+        {showFavorites && displayedProducts.length === 0 && (
+          <div className="px-5 py-12 text-center">
+            <Heart className="w-12 h-12 mx-auto text-zinc-700 mb-3" />
+            <p className="font-bold text-white">Nenhum favorito ainda</p>
+            <p className="text-sm text-zinc-500 mt-1">Toque no coração de um produto para encontrá-lo aqui.</p>
+          </div>
+        )}
       </section>
 
       {/* Promo card */}
+      {!showFavorites && (
       <div className="px-5 mt-7 vf-fade-in">
         <button onClick={onStart} className="w-full vf-chip rounded-2xl px-4 py-4 flex items-center gap-4 hover:border-[#FF7A00]/40 transition">
           <div className="w-11 h-11 rounded-full bg-[#FF7A00]/10 flex items-center justify-center text-[#FF7A00]">
@@ -366,6 +385,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           <ChevronRight className="w-4 h-4 text-zinc-500" />
         </button>
       </div>
+      )}
 
       {/* Social/footer */}
       {(instagramUrl || whatsappNumber) && (
@@ -400,10 +420,10 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       <nav className="fixed bottom-0 inset-x-0 z-40 px-3 pb-3 pt-2" style={{ background: 'linear-gradient(180deg, rgba(11,11,13,0) 0%, #0B0B0D 35%)' }}>
         <div className="vf-chip rounded-2xl flex items-center justify-around px-2 py-2 max-w-md mx-auto backdrop-blur" style={{ background: 'rgba(24,24,27,0.92)' }}>
           {[
-            { icon: Home, label: 'Início', active: true, onClick: () => {} },
+            { icon: Home, label: 'Início', active: !showFavorites, onClick: () => { setShowFavorites(false); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
             { icon: Search, label: 'Buscar', onClick: onStart },
             ...(!deviceOwnedKiosk ? [{ icon: ClipboardList, label: 'Pedidos', to: '/meus-pedidos' }] : []),
-            { icon: Heart, label: 'Favoritos', onClick: onStart },
+            { icon: Heart, label: 'Favoritos', active: showFavorites, onClick: () => { setShowFavorites(true); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
             ...(!deviceOwnedKiosk ? [{ icon: User, label: 'Perfil', to: '/meus-pedidos' }] : []),
           ].map((item, i) => {
             const Icon = item.icon;

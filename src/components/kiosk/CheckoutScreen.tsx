@@ -40,6 +40,7 @@ interface CheckoutScreenProps {
   onDeliveryRecipientChange: (v: string) => void;
   onContinue: () => void;
   onBack: () => void;
+  deviceOwnedKiosk?: boolean;
 }
 
 const CheckoutScreen = ({
@@ -48,11 +49,12 @@ const CheckoutScreen = ({
   bairroId, deliveryCep, onBairroChange, onDeliveryCepChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
-  onContinue, onBack,
+  onContinue, onBack, deviceOwnedKiosk = false,
 }: CheckoutScreenProps) => {
   const orgId = useOrgId();
   const [bairros, setBairros] = useState<Bairro[]>([]);
   const [loadingBairros, setLoadingBairros] = useState(false);
+  const [showKioskIdentification, setShowKioskIdentification] = useState(false);
 
   // CEP / modo de entrega
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
@@ -151,7 +153,10 @@ const CheckoutScreen = ({
   };
 
   const selectedBairro = bairros.find(b => b.id === bairroId);
-  const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
+  const identifiedCustomerValid = name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 8;
+  const baseValid = deviceOwnedKiosk
+    ? (!showKioskIdentification || identifiedCustomerValid)
+    : identifiedCustomerValid;
   const cpfValid = !cpf || isValidCpf(cpf);
   const usaCep = orderType === 'viagem' && deliveryMode !== 'bairros';
   const cepValid = !usaCep || (cepResultado !== null && cepResultado.ok === true);
@@ -174,53 +179,87 @@ const CheckoutScreen = ({
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto w-full py-6">
         <div className="text-center space-y-2">
-          <span className="text-5xl">👤</span>
-          <h3 className="text-2xl font-bold">Quase lá!</h3>
-          <p className="text-muted-foreground">Informe seus dados para o pedido</p>
+          <span className="text-5xl">{deviceOwnedKiosk ? '⚡' : '👤'}</span>
+          <h3 className="text-2xl font-bold">{deviceOwnedKiosk ? 'Pedido rápido' : 'Quase lá!'}</h3>
+          <p className="text-muted-foreground">
+            {deviceOwnedKiosk
+              ? 'Não precisa criar conta nem fazer login. Identifique-se somente se quiser.'
+              : 'Informe seus dados para o pedido'}
+          </p>
         </div>
 
         <div className="w-full space-y-4">
-          <div className="relative">
-            <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Seu nome"
-              value={name}
-              onChange={e => onNameChange(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-              maxLength={100}
-            />
-          </div>
-          <div className="relative">
-            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="tel"
-              placeholder="Seu telefone"
-              value={phone}
-              onChange={e => onPhoneChange(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-              maxLength={20}
-            />
-          </div>
+          {deviceOwnedKiosk && !showKioskIdentification && (
+            <button
+              type="button"
+              onClick={() => setShowKioskIdentification(true)}
+              className="touch-btn w-full rounded-xl border border-border bg-card px-4 py-4 text-left hover:border-primary transition"
+            >
+              <p className="font-bold flex items-center gap-2"><UserCheck className="w-5 h-5 text-primary" /> Identificar meu pedido <span className="text-xs text-muted-foreground font-normal">(opcional)</span></p>
+              <p className="text-xs text-muted-foreground mt-1">Informe nome e telefone apenas se quiser deixar o pedido identificado.</p>
+            </button>
+          )}
 
-          <div className="relative">
-            <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="CPF na Nota (opcional)"
-              value={cpf}
-              onChange={e => onCpfChange(maskCpf(e.target.value))}
-              className={`w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 transition-all ${cpf && !cpfValid ? 'ring-2 ring-destructive' : 'focus:ring-primary'}`}
-              maxLength={14}
-            />
-            {cpf && !cpfValid && (
-              <p className="text-destructive text-xs mt-1 ml-1">CPF inválido</p>
-            )}
-            {!cpf && (
-              <p className="text-muted-foreground text-[11px] mt-1 ml-1">Preencha para receber a Nota Fiscal vinculada ao pedido</p>
-            )}
-          </div>
+          {(!deviceOwnedKiosk || showKioskIdentification) && (
+            <>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Seu nome"
+                  value={name}
+                  onChange={e => onNameChange(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={100}
+                />
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="tel"
+                  placeholder="Seu telefone"
+                  value={phone}
+                  onChange={e => onPhoneChange(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={20}
+                />
+              </div>
+
+              <div className="relative">
+                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="CPF na Nota (opcional)"
+                  value={cpf}
+                  onChange={e => onCpfChange(maskCpf(e.target.value))}
+                  className={`w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 transition-all ${cpf && !cpfValid ? 'ring-2 ring-destructive' : 'focus:ring-primary'}`}
+                  maxLength={14}
+                />
+                {cpf && !cpfValid && (
+                  <p className="text-destructive text-xs mt-1 ml-1">CPF inválido</p>
+                )}
+                {!cpf && (
+                  <p className="text-muted-foreground text-[11px] mt-1 ml-1">Preencha somente se quiser vincular CPF ao pedido.</p>
+                )}
+              </div>
+
+              {deviceOwnedKiosk && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNameChange('');
+                    onPhoneChange('');
+                    onCpfChange('');
+                    setShowKioskIdentification(false);
+                  }}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
+                >
+                  Prefiro continuar como visitante
+                </button>
+              )}
+            </>
+          )}
 
           {orderType === 'viagem' && (
             <>
@@ -365,7 +404,9 @@ const CheckoutScreen = ({
             isValid ? 'bg-primary text-primary-foreground cta-breath' : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >
-          Ir para Pagamento
+          {deviceOwnedKiosk
+            ? (showKioskIdentification ? 'Continuar com identificação' : 'Continuar como visitante')
+            : 'Ir para Pagamento'}
         </button>
       </div>
     </div>

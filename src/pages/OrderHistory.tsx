@@ -6,6 +6,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
 import { toast } from 'sonner';
 
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+
 interface Order {
   id: string;
   order_number: string;
@@ -31,29 +40,59 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 const OrderHistory = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
   const [user, setUser] = useState<any>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
+
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate('/auth');
-        return;
+      setLoading(true);
+      setLoadError('');
+
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          'auth_session_timeout',
+        );
+
+        if (cancelled) return;
+        if (!session) {
+          navigate('/auth');
+          return;
+        }
+        setUser(session.user);
+
+        const { data, error } = await withTimeout(
+          supabase
+            .from('orders')
+            .select('id,order_number,total,status,created_at,items,order_type,customer_cpf,nfe_url,delivery_code')
+            .eq('user_id', session.user.id)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          10000,
+          'order_history_timeout',
+        );
+
+        if (cancelled) return;
+        if (error) throw error;
+        setOrders((data as Order[]) || []);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('[OrderHistory] load failed', error);
+        setOrders([]);
+        setLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setUser(session.user);
-
-      const { data } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('created_at', { ascending: false });
-
-      setOrders((data as Order[]) || []);
-      setLoading(false);
     };
-    checkAuth();
-  }, [navigate]);
+
+    void checkAuth();
+    return () => { cancelled = true; };
+  }, [navigate, retryKey]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -87,6 +126,18 @@ const OrderHistory = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+            <Package className="w-16 h-16 text-destructive/40" />
+            <p className="text-destructive font-bold">Não foi possível carregar seus pedidos</p>
+            <p className="text-muted-foreground text-sm max-w-sm">{loadError}</p>
+            <button
+              onClick={() => setRetryKey(key => key + 1)}
+              className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">

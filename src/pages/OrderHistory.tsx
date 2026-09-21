@@ -47,6 +47,40 @@ const OrderHistory = () => {
 
   useEffect(() => {
     let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let pollTimer: number | undefined;
+
+    const loadOrders = async (userId: string, initial = false) => {
+      if (initial) {
+        setLoading(true);
+        setLoadError('');
+      }
+
+      try {
+        const { data, error } = await withTimeout(
+          supabase
+            .from('orders')
+            .select('id,order_number,total,status,created_at,items,order_type,customer_cpf,nfe_url,delivery_code')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50),
+          10000,
+          'order_history_timeout',
+        );
+
+        if (cancelled) return;
+        if (error) throw error;
+        setOrders((data as Order[]) || []);
+        setLoadError('');
+      } catch (error) {
+        if (cancelled) return;
+        console.error('[OrderHistory] load failed', error);
+        if (initial) setOrders([]);
+        setLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
+      } finally {
+        if (initial && !cancelled) setLoading(false);
+      }
+    };
 
     const checkAuth = async () => {
       setLoading(true);
@@ -64,34 +98,42 @@ const OrderHistory = () => {
           navigate('/auth');
           return;
         }
+
+        const userId = session.user.id;
         setUser(session.user);
-
-        const { data, error } = await withTimeout(
-          supabase
-            .from('orders')
-            .select('id,order_number,total,status,created_at,items,order_type,customer_cpf,nfe_url,delivery_code')
-            .eq('user_id', session.user.id)
-            .order('created_at', { ascending: false })
-            .limit(50),
-          10000,
-          'order_history_timeout',
-        );
-
+        await loadOrders(userId, true);
         if (cancelled) return;
-        if (error) throw error;
-        setOrders((data as Order[]) || []);
+
+        channel = supabase
+          .channel(`customer-orders-${userId}-${Math.random().toString(36).slice(2, 8)}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'orders', filter: `user_id=eq.${userId}` },
+            () => { void loadOrders(userId, false); },
+          )
+          .subscribe((status) => {
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              console.warn('[OrderHistory] realtime unavailable, polling fallback remains active:', status);
+            }
+          });
+
+        // Safety net for mobile networks that suspend or drop the websocket.
+        pollTimer = window.setInterval(() => { void loadOrders(userId, false); }, 15000);
       } catch (error) {
         if (cancelled) return;
-        console.error('[OrderHistory] load failed', error);
+        console.error('[OrderHistory] auth/load failed', error);
         setOrders([]);
         setLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
-      } finally {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       }
     };
 
     void checkAuth();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (pollTimer) window.clearInterval(pollTimer);
+      if (channel) void supabase.removeChannel(channel);
+    };
   }, [navigate, retryKey]);
 
   const formatDate = (dateStr: string) => {

@@ -26,6 +26,10 @@ interface DeliveryOrder {
   delivery_lat?: number | null;
   delivery_lng?: number | null;
   delivery_accuracy_m?: number | null;
+  delivery_assigned_at?: string | null;
+  delivery_started_at?: string | null;
+  delivery_issue_reason?: string | null;
+  delivery_issue_at?: string | null;
 }
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -43,6 +47,7 @@ const EntregadorDashboard = () => {
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
@@ -361,10 +366,123 @@ const EntregadorDashboard = () => {
       fetchAvailable();
       return;
     }
-    toast.success('🛵 Pedido aceito! Vá até a loja para retirar.');
+    toast.success('🛵 Pedido reservado para você. Retire na loja e confirme quando estiver com o pedido.');
     setAvailable(prev => prev.filter(o => o.id !== orderId));
     fetchOrders(true);
     setTab('pendentes');
+  };
+
+  const handleStartDelivery = async (orderId: string) => {
+    if (!session || deliveryAction) return;
+    setDeliveryAction(`start:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_start_delivery_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+      });
+      const res: any = data;
+      if (error || !res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          not_ready: 'O pedido ainda não está pronto para retirada.',
+          scheduled_not_released: 'Este pedido agendado ainda não entrou na janela operacional.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível iniciar a entrega.');
+        if (isInvalidSession(res)) expireSession();
+        await fetchOrders(true);
+        return;
+      }
+      setOrders(prev => prev.map(o => o.id === orderId
+        ? { ...o, status: 'out_for_delivery', delivery_started_at: new Date().toISOString(), delivery_issue_reason: null, delivery_issue_at: null }
+        : o));
+      toast.success('🛵 Entrega iniciada. Agora o pedido está oficialmente a caminho.');
+    } finally {
+      setDeliveryAction(null);
+    }
+  };
+
+  const handleDeclineOrder = async (orderId: string) => {
+    if (!session || deliveryAction) return;
+    const reason = window.prompt('Por que você não poderá realizar esta entrega? Informe um motivo para a loja.');
+    if (reason == null) return;
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 3) {
+      toast.error('Informe um motivo com pelo menos 3 caracteres.');
+      return;
+    }
+
+    setDeliveryAction(`decline:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_decline_order_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _reason: cleanReason,
+      });
+      const res: any = data;
+      if (error || !res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          already_picked_up: 'A entrega já foi iniciada. Use “Problema na entrega” para avisar a loja.',
+          reason_required: 'Informe o motivo da recusa.',
+          status_locked: 'Este pedido não pode mais ser recusado nesta etapa.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível devolver a entrega.');
+        if (isInvalidSession(res)) expireSession();
+        await fetchOrders(true);
+        return;
+      }
+
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      stopTracking();
+      if (mapOpenId === orderId) setMapOpenId(null);
+      await fetchAvailable();
+      toast.success(res?.returned_to_queue
+        ? 'Entrega devolvida à disputa. Outro entregador poderá aceitar.'
+        : 'Entrega devolvida para a loja escolher outro entregador.');
+      if (mode === 'free') setTab('disponiveis');
+    } finally {
+      setDeliveryAction(null);
+    }
+  };
+
+  const handleReportIssue = async (orderId: string) => {
+    if (!session || deliveryAction) return;
+    const reason = window.prompt('Descreva o problema na entrega. A loja será avisada e decidirá o próximo passo.');
+    if (reason == null) return;
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 3) {
+      toast.error('Descreva o problema com pelo menos 3 caracteres.');
+      return;
+    }
+
+    setDeliveryAction(`issue:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_report_delivery_issue_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _reason: cleanReason,
+      });
+      const res: any = data;
+      if (error || !res?.ok) {
+        toast.error(res?.reason === 'not_out_for_delivery'
+          ? 'A entrega ainda não foi iniciada.'
+          : 'Não foi possível registrar o problema.');
+        if (isInvalidSession(res)) expireSession();
+        return;
+      }
+
+      const issueAt = new Date().toISOString();
+      setOrders(prev => prev.map(o => o.id === orderId
+        ? { ...o, delivery_issue_reason: cleanReason, delivery_issue_at: issueAt }
+        : o));
+      toast.success('⚠️ Problema comunicado à loja. Aguarde orientação antes de abandonar a entrega.');
+    } finally {
+      setDeliveryAction(null);
+    }
   };
 
   const handleUnlockSound = async () => {
@@ -631,57 +749,108 @@ const EntregadorDashboard = () => {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-800 space-y-2">
-                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-orange-500" />
-                      Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        inputMode="numeric"
-                        pattern="\d{4}"
-                        maxLength={4}
-                        placeholder="0000"
-                        value={codeInputs[o.id] || ''}
-                        onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
-                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
-                      />
-                      <button
-                        onClick={() => handleConfirm(o.id)}
-                        disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
-                        className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="w-5 h-5" />
-                        {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
-                      <div className="text-xs">
-                        <span className="text-slate-400">Distância até o cliente: </span>
-                        {currentDistance[o.id] != null ? (
-                          <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {Math.round(currentDistance[o.id])} m
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 italic">não verificada</span>
-                        )}
-                        <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                  {(o.status === 'preparing' || o.status === 'ready') && (
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                        <p className="text-sm font-black text-amber-300">
+                          {o.status === 'ready' ? '📦 Pedido reservado para você' : '👨‍🍳 Pedido ainda em preparo'}
+                        </p>
+                        <p className="text-xs text-slate-300 mt-1">
+                          {o.status === 'ready'
+                            ? 'Retire o pedido na loja. Só depois confirme “Retirei · Iniciar entrega”.'
+                            : 'Aguarde o pedido ficar pronto. Se não puder atender, devolva a atribuição agora.'}
+                        </p>
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {o.status === 'ready' && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartDelivery(o.id)}
+                            disabled={deliveryAction != null}
+                            className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3 rounded-xl disabled:opacity-50"
+                          >
+                            {deliveryAction === `start:${o.id}` ? 'Iniciando...' : '✅ Retirei · Iniciar entrega'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeclineOrder(o.id)}
+                          disabled={deliveryAction != null}
+                          className="w-full border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold py-3 rounded-xl disabled:opacity-50"
+                        >
+                          {deliveryAction === `decline:${o.id}` ? 'Devolvendo...' : 'Não posso realizar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {o.status === 'out_for_delivery' && (
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      {o.delivery_issue_reason && (
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                          <p className="font-black text-amber-300">⚠️ Problema já comunicado à loja</p>
+                          <p className="text-slate-300 mt-1">{o.delivery_issue_reason}</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-orange-500" />
+                        Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          inputMode="numeric"
+                          pattern="\d{4}"
+                          maxLength={4}
+                          placeholder="0000"
+                          value={codeInputs[o.id] || ''}
+                          onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
+                          className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
+                        />
+                        <button
+                          onClick={() => handleConfirm(o.id)}
+                          disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
+                          className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                          {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
+                        <div className="text-xs">
+                          <span className="text-slate-400">Distância até o cliente: </span>
+                          {currentDistance[o.id] != null ? (
+                            <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {Math.round(currentDistance[o.id])} m
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 italic">não verificada</span>
+                          )}
+                          <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => refreshDistance(o.id)}
+                          disabled={refreshingLoc === o.id}
+                          className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
+                        </button>
+                      </div>
+                      {geofenceError[o.id] && (
+                        <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
+                          {geofenceError[o.id]}
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => refreshDistance(o.id)}
-                        disabled={refreshingLoc === o.id}
-                        className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        onClick={() => handleReportIssue(o.id)}
+                        disabled={deliveryAction != null}
+                        className="w-full border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold py-2.5 rounded-xl disabled:opacity-50"
                       >
-                        {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
+                        {deliveryAction === `issue:${o.id}` ? 'Comunicando...' : '⚠️ Problema na entrega'}
                       </button>
                     </div>
-                    {geofenceError[o.id] && (
-                      <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
-                        {geofenceError[o.id]}
-                      </div>
-                    )}
-                  </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button

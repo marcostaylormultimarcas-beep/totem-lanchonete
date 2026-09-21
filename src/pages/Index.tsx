@@ -4,6 +4,7 @@ import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
 import TableSelect from '@/components/kiosk/TableSelect';
+import LocalServiceSelect from '@/components/kiosk/LocalServiceSelect';
 import AddressSelect from '@/components/kiosk/AddressSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
@@ -23,7 +24,7 @@ import { getKioskCompanionStatus } from '@/lib/kioskCompanionClient';
 import { clearKioskCustomerBrowserState, isDeviceOwnedKioskStatus } from '@/lib/kioskDeviceMode';
 import { warmKioskPublicData } from '@/lib/kioskPublicDataWarmup';
 
-type Step = 'landing' | 'start' | 'location' | 'table' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'local-service' | 'table' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
 
@@ -492,12 +493,33 @@ const Index = () => {
           }
 
           setOrderType('local');
-          if (deviceOwnedKiosk) {
-            setStep('table');
-          } else {
-            setStep('menu');
-          }
+          setStep('local-service');
         }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+      )}
+      {step === 'local-service' && (
+        <LocalServiceSelect
+          tableLabel={tableLabel}
+          manualTableSelectionEnabled={deviceOwnedKiosk}
+          onBalcony={() => {
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onTable={() => {
+            setOrderType('local');
+            if (tableToken && tableLabel) {
+              setStep('menu');
+              return;
+            }
+            if (deviceOwnedKiosk) {
+              setStep('table');
+              return;
+            }
+            toast.info('Para receber na mesa pelo celular, escaneie o QR disponível na mesa.');
+          }}
+          onBack={() => setStep('location')}
+        />
       )}
       {step === 'table' && deviceOwnedKiosk && (
         <TableSelect
@@ -529,7 +551,7 @@ const Index = () => {
           cart={cart}
           onAddToCart={addToCart}
           onGoToCart={() => setStep('cart')}
-          onBack={() => setStep(deviceOwnedKiosk && orderType === 'local' ? 'table' : 'location')}
+          onBack={() => setStep(orderType === 'local' ? 'local-service' : 'location')}
           initialProduct={pendingProduct}
           onInitialProductHandled={() => setPendingProduct(null)}
           deviceOwnedKiosk={deviceOwnedKiosk}

@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Clock, Loader2, Save, Plus, Trash2, AlertTriangle, Power, CalendarClock } from 'lucide-react';
-import { BusinessHours, DAY_KEYS, DAY_LABELS, DEFAULT_HOURS, DayKey } from '@/hooks/useStoreStatus';
+import { Clock, Loader2, Save, Plus, Trash2, AlertTriangle, Power, CalendarClock, CalendarDays } from 'lucide-react';
+import { BusinessHours, DAY_KEYS, DAY_LABELS, DEFAULT_HOURS, DayKey, SpecialClosure, localDateKey, normalizeSpecialClosures } from '@/hooks/useStoreStatus';
 
 const OperacaoPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [hours, setHours] = useState<BusinessHours>(DEFAULT_HOURS);
   const [emergencyClosed, setEmergencyClosed] = useState(false);
   const [closedMessage, setClosedMessage] = useState('Lanchonete fechada no momento');
   const [schedulingEnabled, setSchedulingEnabled] = useState(true);
+  const [specialClosures, setSpecialClosures] = useState<SpecialClosure[]>([]);
+  const [closureDate, setClosureDate] = useState('');
+  const [closureReason, setClosureReason] = useState('Folga');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -17,13 +20,14 @@ const OperacaoPanel = ({ organizationId }: { organizationId: string | null }) =>
     (async () => {
       setLoading(true);
       const { data } = await supabase.from('settings')
-        .select('business_hours, emergency_closed, closed_message, scheduling_enabled')
+        .select('business_hours, emergency_closed, closed_message, scheduling_enabled, special_closures')
         .eq('organization_id', organizationId).maybeSingle();
       if (data) {
         setHours((data as any).business_hours || DEFAULT_HOURS);
         setEmergencyClosed(Boolean((data as any).emergency_closed));
         setClosedMessage((data as any).closed_message || 'Lanchonete fechada no momento');
         setSchedulingEnabled((data as any).scheduling_enabled !== false);
+        setSpecialClosures(normalizeSpecialClosures((data as any).special_closures));
       }
       setLoading(false);
     })();
@@ -58,10 +62,31 @@ const OperacaoPanel = ({ organizationId }: { organizationId: string | null }) =>
       emergency_closed: emergencyClosed,
       closed_message: closedMessage,
       scheduling_enabled: schedulingEnabled,
-    }).eq('organization_id', organizationId);
+      special_closures: specialClosures as any,
+    } as any).eq('organization_id', organizationId);
     setSaving(false);
     if (error) return toast.error('Erro: ' + error.message);
     toast.success('Operação atualizada!');
+  };
+
+  const addSpecialClosure = () => {
+    if (!closureDate) {
+      toast.error('Escolha a data da folga.');
+      return;
+    }
+
+    const reason = closureReason.trim().slice(0, 80) || 'Folga / fechado';
+    setSpecialClosures(current => normalizeSpecialClosures([
+      ...current.filter(item => item.date !== closureDate),
+      { date: closureDate, reason },
+    ]));
+    setClosureDate('');
+    setClosureReason('Folga');
+    toast.info('Data adicionada. Toque em "Salvar Configurações" para confirmar.');
+  };
+
+  const removeSpecialClosure = (date: string) => {
+    setSpecialClosures(current => current.filter(item => item.date !== date));
   };
 
   const toggleEmergency = async () => {
@@ -141,6 +166,93 @@ const OperacaoPanel = ({ organizationId }: { organizationId: string | null }) =>
             )}
           </div>
         ))}
+      </div>
+
+      {/* Folgas e feriados */}
+      <div className="kiosk-card p-4 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+            <CalendarDays className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="font-black text-lg">Folgas, Feriados e Dias Fechados</h2>
+            <p className="text-xs text-muted-foreground">
+              Programe datas em que a loja não abrirá. Elas têm prioridade sobre o horário semanal.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-[1fr_1.5fr_auto] gap-2">
+          <input
+            type="date"
+            min={localDateKey(new Date())}
+            value={closureDate}
+            onChange={e => setClosureDate(e.target.value)}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+          <input
+            value={closureReason}
+            onChange={e => setClosureReason(e.target.value)}
+            placeholder="Motivo: feriado, folga, manutenção..."
+            maxLength={80}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+          <button
+            type="button"
+            onClick={addSpecialClosure}
+            className="touch-btn px-4 py-2 rounded-lg bg-primary text-primary-foreground font-bold flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" /> Adicionar
+          </button>
+        </div>
+
+        {specialClosures.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+            Nenhuma folga ou feriado programado.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {specialClosures.map(item => {
+              const date = new Date(`${item.date}T12:00:00`);
+              const isToday = item.date === localDateKey(new Date());
+              return (
+                <div key={item.date} className="rounded-xl border border-border p-3 flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-destructive/10 text-destructive flex flex-col items-center justify-center flex-shrink-0">
+                    <span className="text-[10px] font-bold uppercase">
+                      {date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')}
+                    </span>
+                    <span className="text-lg leading-none font-black">{String(date.getDate()).padStart(2, '0')}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-sm">
+                        {date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </p>
+                      {isToday && (
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">
+                          HOJE
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{item.reason}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeSpecialClosure(item.date)}
+                    className="p-2 rounded-lg text-destructive hover:bg-destructive/10"
+                    aria-label={`Remover fechamento de ${item.date}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <p className="text-[11px] text-muted-foreground">
+          Exemplo: cadastre 25/12 como “Natal”. Nesse dia a loja ficará fechada automaticamente e a próxima abertura ignorará essa data.
+        </p>
       </div>
 
       {/* Mensagem & Agendamento */}

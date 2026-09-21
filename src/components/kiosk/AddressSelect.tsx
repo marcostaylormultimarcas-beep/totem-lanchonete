@@ -11,6 +11,7 @@ export interface AddressSelectionDetails {
   source: 'cep' | 'gps';
   latitude?: number;
   longitude?: number;
+  accuracyM?: number;
 }
 
 interface Props {
@@ -32,7 +33,7 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
   const [locating, setLocating] = useState(false);
   const [resolved, setResolved] = useState(false);
   const [source, setSource] = useState<'cep' | 'gps'>('cep');
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number; accuracyM?: number } | null>(null);
 
   const buscar = async () => {
     const n = normalizeCep(cep);
@@ -91,11 +92,10 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
       setCidade(reverse.cidade || '');
       setUf(reverse.uf || '');
       setNumero(reverse.numero || '');
-      setSource('gps');
-      setCoords({ lat, lng });
-      setResolved(true);
-
       const accuracy = Math.round(Number(position.coords.accuracy || 0));
+      setSource('gps');
+      setCoords({ lat, lng, accuracyM: accuracy > 0 ? accuracy : undefined });
+      setResolved(true);
       toast.success('Localização encontrada. Confira o endereço e o número antes de continuar.', {
         description: accuracy > 0 ? `Precisão aproximada do GPS: ${accuracy} m.` : undefined,
       });
@@ -124,6 +124,7 @@ const AddressSelect = ({ onConfirm, onBack, allowCurrentLocation = true }: Props
       source,
       latitude: coords?.lat,
       longitude: coords?.lng,
+      accuracyM: coords?.accuracyM,
     });
   };
 

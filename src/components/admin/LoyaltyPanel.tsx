@@ -714,7 +714,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
                   {reward.description && <p className="text-[11px] text-muted-foreground truncate">{reward.description}</p>}
                   <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[11px]">
                     <b className="text-primary">{reward.points_cost} pts</b>
-                    {reward.estimated_cost != null && <span className="text-muted-foreground">custo estimado {formatCurrency(reward.estimated_cost)}</span>}
+                    {(() => { const liveCost = products.find(product => product.id === reward.product_id)?.cost_price ?? reward.estimated_cost; return liveCost != null ? <span className="text-muted-foreground">custo estimado {formatCurrency(liveCost)}</span> : null; })()}
                     {config.earning_mode === 'spend' && config.points_per_real > 0 && (
                       <span className="text-muted-foreground">≈ {formatCurrency(reward.points_cost / config.points_per_real)} em compras</span>
                     )}

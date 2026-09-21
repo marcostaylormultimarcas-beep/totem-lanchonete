@@ -109,14 +109,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
   const hasDeliveryGps = orderType === 'viagem'
-    && Number.isFinite(Number(deliveryLat))
-    && Number.isFinite(Number(deliveryLng));
+    && typeof deliveryLat === 'number'
+    && Number.isFinite(deliveryLat)
+    && typeof deliveryLng === 'number'
+    && Number.isFinite(deliveryLng);
   const deliveryContext = {
     cep: deliveryCep || '',
     ...(hasDeliveryGps ? {
       lat: Number(deliveryLat),
       lng: Number(deliveryLng),
-      accuracy_m: Number.isFinite(Number(deliveryAccuracyM)) ? Math.max(0, Number(deliveryAccuracyM)) : null,
+      accuracy_m: typeof deliveryAccuracyM === 'number' && Number.isFinite(deliveryAccuracyM)
+        ? Math.max(0, deliveryAccuracyM)
+        : null,
     } : {}),
   };
 
@@ -243,9 +247,11 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     bairroTaxa: rawFee,
     bairroTempo: Number(bairroTempo || 0),
     deliveryCep: deliveryCep || '',
-    deliveryLat: hasDeliveryGps ? Number(deliveryLat) : null,
-    deliveryLng: hasDeliveryGps ? Number(deliveryLng) : null,
-    deliveryAccuracyM: hasDeliveryGps && Number.isFinite(Number(deliveryAccuracyM)) ? Math.max(0, Number(deliveryAccuracyM)) : null,
+    deliveryLat: hasDeliveryGps ? deliveryLat : null,
+    deliveryLng: hasDeliveryGps ? deliveryLng : null,
+    deliveryAccuracyM: hasDeliveryGps && typeof deliveryAccuracyM === 'number' && Number.isFinite(deliveryAccuracyM)
+      ? Math.max(0, deliveryAccuracyM)
+      : null,
     appliedCoupon: appliedCoupon || null,
     scheduledFor: scheduledFor || null,
     tableToken,

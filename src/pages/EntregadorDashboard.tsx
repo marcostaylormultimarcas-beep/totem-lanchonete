@@ -53,6 +53,7 @@ const EntregadorDashboard = () => {
   const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
+  const ordersInitializedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
   const [, forceRender] = useState(0);
@@ -330,7 +331,7 @@ const EntregadorDashboard = () => {
       if (!activeIds.has(id)) knownIds.current.delete(id);
     }
     const novos = ativos.filter(o => !knownIds.current.has(o.id));
-    if (!silent && novos.length > 0 && knownIds.current.size > 0) {
+    if (!silent && ordersInitializedRef.current && novos.length > 0) {
       playAlert();
       toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
       // Destaque visual (pulse) por 8s nos novos pedidos
@@ -349,6 +350,7 @@ const EntregadorDashboard = () => {
       }, 8000);
     }
     ativos.forEach(o => knownIds.current.add(o.id));
+    ordersInitializedRef.current = true;
     if (mapOpenId && !ativos.some(o => o.id === mapOpenId)) {
       setMapOpenId(null);
       setRiderPos(null);

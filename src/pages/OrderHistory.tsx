@@ -181,14 +181,15 @@ const OrderHistory = () => {
       );
       if (error) throw error;
     } catch (error) {
-      console.warn('[OrderHistory] local sign-out stalled/failed; clearing this project auth storage before reload:', error);
-      try {
-        Object.keys(localStorage)
-          .filter((key) => key === SUPABASE_AUTH_STORAGE_KEY || key.startsWith(`${SUPABASE_AUTH_STORAGE_KEY}-`))
-          .forEach((key) => localStorage.removeItem(key));
-      } catch {
-        // Full reload below still prevents this screen from keeping stale auth state in memory.
-      }
+      console.warn('[OrderHistory] local sign-out stalled/failed; forcing removal of this project auth storage before reload:', error);
+    }
+
+    try {
+      Object.keys(localStorage)
+        .filter((key) => key === SUPABASE_AUTH_STORAGE_KEY || key.startsWith(`${SUPABASE_AUTH_STORAGE_KEY}-`))
+        .forEach((key) => localStorage.removeItem(key));
+    } catch (error) {
+      console.warn('[OrderHistory] could not clear persisted auth storage before reload:', error);
     }
 
     toast.success('Você saiu da sua conta.');

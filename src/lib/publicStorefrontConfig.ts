@@ -15,6 +15,7 @@ export interface PublicStorefrontConfig {
   category_icons?: unknown;
   delivery_enabled?: boolean;
   business_hours?: unknown;
+  special_closures?: unknown;
   emergency_closed?: boolean;
   closed_message?: string;
   scheduling_enabled?: boolean;

@@ -821,7 +821,10 @@ export type Database = {
           client_request_id: string | null
           data_reembolso: string | null
           delivery_address: string | null
+          delivery_accuracy_m: number | null
           delivery_cep: string
+          delivery_lat: number | null
+          delivery_lng: number | null
           delivery_code: string
           delivery_distance_km: number | null
           delivery_fee: number
@@ -862,7 +865,10 @@ export type Database = {
           client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_accuracy_m?: number | null
           delivery_cep?: string
+          delivery_lat?: number | null
+          delivery_lng?: number | null
           delivery_code?: string
           delivery_distance_km?: number | null
           delivery_fee?: number
@@ -903,7 +909,10 @@ export type Database = {
           client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_accuracy_m?: number | null
           delivery_cep?: string
+          delivery_lat?: number | null
+          delivery_lng?: number | null
           delivery_code?: string
           delivery_distance_km?: number | null
           delivery_fee?: number

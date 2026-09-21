@@ -6,6 +6,7 @@ import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useOrgId } from '@/contexts/OrgContext';
 import ProductModal from './ProductModal';
+import LoyaltyCard from './LoyaltyCard';
 
 interface StartScreenProps {
   onStart: () => void;
@@ -226,6 +227,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           <SlidersHorizontal className="w-[18px] h-[18px] text-zinc-400" />
         </button>
       </div>
+
+      {!deviceOwnedKiosk && orgId && (
+        <div className="px-5 mt-4 vf-fade-in">
+          <LoyaltyCard organizationId={orgId} compact />
+        </div>
+      )}
 
       {/* Categories */}
       {!showFavorites && (

@@ -119,7 +119,10 @@ const AdminPage = () => {
       const { data } = await supabase.from('products').select('*').eq('organization_id', activeOrgId);
       if (data) {
         setProducts(data.map((p: any) => ({
-          id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
+          id: p.id, name: p.name, price: Number(p.price),
+          costPrice: p.cost_price == null ? null : Number(p.cost_price),
+          markupPercent: p.markup_percent == null ? null : Number(p.markup_percent),
+          category: p.category as Product['category'],
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
@@ -510,7 +513,7 @@ const AdminPage = () => {
   };
 
   const [form, setForm] = useState({
-    name: '', price: '', category: 'hamburgueres' as string,
+    name: '', price: '', costPrice: '', markupPercent: '', category: 'hamburgueres' as string,
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
@@ -665,7 +668,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false, prepTimeMin: '0' });
+    setForm({ name: '', price: '', costPrice: '', markupPercent: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false, prepTimeMin: '0' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -676,7 +679,10 @@ const AdminPage = () => {
       setProductPreviewUrl(null);
     }
     setForm({
-      name: p.name, price: p.price.toString(), category: p.category,
+      name: p.name, price: p.price.toString(),
+      costPrice: p.costPrice == null ? '' : String(p.costPrice),
+      markupPercent: p.markupPercent == null ? '' : String(p.markupPercent),
+      category: p.category,
       image: p.image, removableIngredients: p.removableIngredients.join(', '),
       extras: p.extras.map(e => `${e.name}:${e.price}`).join(', '),
       ingredients: (p.ingredients || []).join('\n'),
@@ -693,6 +699,48 @@ const AdminPage = () => {
     });
     setEditingProduct(p);
     setShowForm(true);
+  };
+
+  const parsePricingNumber = (value: string) => {
+    if (value.trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatPricingInput = (value: number) =>
+    String(Math.round((value + Number.EPSILON) * 100) / 100);
+
+  const handleCostPriceChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(value);
+      const markup = parsePricingNumber(prev.markupPercent);
+      const suggestedPrice = cost !== null && cost >= 0 && markup !== null && markup >= -100
+        ? formatPricingInput(cost * (1 + markup / 100))
+        : prev.price;
+      return { ...prev, costPrice: value, price: suggestedPrice };
+    });
+  };
+
+  const handleMarkupPercentChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(prev.costPrice);
+      const markup = parsePricingNumber(value);
+      const suggestedPrice = cost !== null && cost >= 0 && markup !== null && markup >= -100
+        ? formatPricingInput(cost * (1 + markup / 100))
+        : prev.price;
+      return { ...prev, markupPercent: value, price: suggestedPrice };
+    });
+  };
+
+  const handleSellingPriceChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(prev.costPrice);
+      const price = parsePricingNumber(value);
+      const markup = cost !== null && cost > 0 && price !== null && price >= 0
+        ? formatPricingInput(((price / cost) - 1) * 100)
+        : prev.markupPercent;
+      return { ...prev, price: value, markupPercent: markup };
+    });
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -724,6 +772,17 @@ const AdminPage = () => {
     }
     if (!activeOrgId) { toast.error('Selecione uma loja primeiro.'); return; }
 
+    const costPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice);
+    const markupPercent = form.markupPercent.trim() === '' ? null : Number(form.markupPercent);
+    if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) {
+      toast.error('Informe um custo válido, maior ou igual a zero.');
+      return;
+    }
+    if (markupPercent !== null && (!Number.isFinite(markupPercent) || markupPercent < -100)) {
+      toast.error('Informe um percentual válido, maior ou igual a -100%.');
+      return;
+    }
+
     // Garante que a requisição carrega o token do usuário logado (RLS)
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -743,6 +802,8 @@ const AdminPage = () => {
       organization_id: activeOrgId,
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
+      cost_price: costPrice,
+      markup_percent: markupPercent,
       category: form.category || 'outros',
       image: form.image.trim() || '🍔',
       removable_ingredients: removable,
@@ -800,6 +861,7 @@ const AdminPage = () => {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
+        costPrice: dbPayload.cost_price, markupPercent: dbPayload.markup_percent,
         soldByWeight: dbPayload.sold_by_weight,
         codigoBarras: dbPayload.codigo_barras || '',
         dataVencimento: dbPayload.data_vencimento,
@@ -809,6 +871,8 @@ const AdminPage = () => {
     } else if (data) {
       setProducts(prev => [...prev, {
         id: data.id, name: data.name, price: Number(data.price),
+        costPrice: (data as any).cost_price == null ? null : Number((data as any).cost_price),
+        markupPercent: (data as any).markup_percent == null ? null : Number((data as any).markup_percent),
         category: data.category as Product['category'], image: data.image,
         removableIngredients: (data.removable_ingredients as string[]) || [],
         extras: (data.extras as { name: string; price: number }[]) || [],
@@ -1297,9 +1361,72 @@ const AdminPage = () => {
                 </div>
                 <p className="text-[11px] text-zinc-500">Foque neste campo e bipe o produto. O leitor envia o código e pressiona Enter automaticamente.</p>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço (R$)'}</label>
-                <input placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'} type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              <div className="rounded-xl p-3 bg-muted/30 border border-border space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold">Precificação</h4>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Informe o custo e o acréscimo desejado para calcular o preço automaticamente. O preço final continua editável.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Custo por Kg (R$)' : 'Custo do produto (R$)'}</label>
+                    <input
+                      placeholder={form.soldByWeight ? 'Ex: 32.00' : 'Ex: 12.00'}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.costPrice}
+                      onChange={e => handleCostPriceChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Acréscimo sobre o custo (%)</label>
+                    <input
+                      placeholder="Ex: 50"
+                      type="number"
+                      min="-100"
+                      step="0.01"
+                      value={form.markupPercent}
+                      onChange={e => handleMarkupPercentChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço de venda (R$)'}</label>
+                    <input
+                      placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.price}
+                      onChange={e => handleSellingPriceChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+                {form.costPrice !== '' && form.price !== '' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <span className="text-muted-foreground">{form.soldByWeight ? 'Resultado bruto estimado por Kg' : 'Resultado bruto estimado por unidade'}</span>
+                      <strong className="block mt-1">
+                        {formatCurrency((parsePricingNumber(form.price) || 0) - (parsePricingNumber(form.costPrice) || 0))}
+                      </strong>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <span className="text-muted-foreground">Margem bruta estimada</span>
+                      <strong className="block mt-1">
+                        {(parsePricingNumber(form.price) || 0) > 0
+                          ? `${((((parsePricingNumber(form.price) || 0) - (parsePricingNumber(form.costPrice) || 0)) / (parsePricingNumber(form.price) || 1)) * 100).toFixed(1)}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  No Financeiro, uma ficha técnica completa tem prioridade. Este custo direto será usado apenas como fallback do CMV quando a ficha técnica não estiver completa.
+                </p>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>

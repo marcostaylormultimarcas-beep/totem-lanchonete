@@ -1,7 +1,7 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Package, Clock, FileText, LogOut } from 'lucide-react';
+import { ArrowLeft, Package, Clock, FileText, LogOut, Coins, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { SUPABASE_AUTH_STORAGE_KEY } from '@/config/supabaseConfig';
 import { formatCurrency } from '@/data/store';
@@ -87,6 +87,8 @@ interface Order {
   customer_cpf?: string;
   nfe_url?: string;
   delivery_code?: string;
+  loyalty_points_awarded?: number;
+  loyalty_points_reversed?: boolean;
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -289,6 +291,20 @@ const OrderHistory = () => {
                   <span className="mx-1">•</span>
                   <span>{order.order_type === 'local' ? 'No Local' : 'Entrega'}</span>
                 </div>
+                {Number(order.loyalty_points_awarded || 0) > 0 && (
+                  <div className={`inline-flex items-center gap-1.5 self-start text-xs font-bold px-3 py-2 rounded-xl border ${
+                    order.loyalty_points_reversed
+                      ? 'bg-destructive/10 border-destructive/30 text-destructive'
+                      : 'bg-success/10 border-success/30 text-success'
+                  }`}>
+                    {order.loyalty_points_reversed
+                      ? <RotateCcw className="w-3.5 h-3.5" />
+                      : <Coins className="w-3.5 h-3.5" />}
+                    {order.loyalty_points_reversed
+                      ? `${order.loyalty_points_awarded} pontos estornados`
+                      : `+${order.loyalty_points_awarded} pontos de fidelidade`}
+                  </div>
+                )}
                 {Array.isArray(order.items) && order.items.length > 0 && (
                   <div className="text-sm text-muted-foreground space-y-0.5">
                     {order.items.slice(0, 3).map((item: any, i: number) => (

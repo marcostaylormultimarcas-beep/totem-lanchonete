@@ -14,6 +14,7 @@ import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
 import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
+import OneSignalPanel from '@/components/admin/OneSignalPanel';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
@@ -45,7 +46,6 @@ const FinanceiroPanel = lazy(() => import('@/components/admin/FinanceiroPanel'))
 const EstoqueInteligentePanel = lazy(() => import('@/components/admin/EstoqueInteligentePanel'));
 const EstoquePreditivPanel = lazy(() => import('@/components/admin/EstoquePreditivPanel'));
 const RoteirizacaoIAPanel = lazy(() => import('@/components/admin/RoteirizacaoIAPanel'));
-const OneSignalPanel = lazy(() => import('@/components/admin/OneSignalPanel'));
 const AreaAtendimentoPanel = lazy(() => import('@/components/admin/AreaAtendimentoPanel'));
 const DeliveryPanel = lazy(() => import('@/components/admin/DeliveryPanel'));
 const AssinaturaPanel = lazy(() => import('@/components/admin/AssinaturaPanel'));

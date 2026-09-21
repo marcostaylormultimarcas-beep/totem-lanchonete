@@ -416,6 +416,16 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         ? 'Sua sessão expirou. Entre novamente para sincronizar este pedido com segurança.'
         : specialClosureError
           ? 'A loja está fechada na data escolhida.'
+        : rawMessage.includes('schedule_slot_full')
+          ? 'Esse horário atingiu o limite de pedidos. Volte e escolha outro horário.'
+        : rawMessage.includes('schedule_slot_alignment')
+          ? 'O horário escolhido não corresponde aos intervalos de agendamento da loja.'
+        : rawMessage.includes('schedule_outside_business_hours')
+          ? 'A loja não funciona no horário agendado. Volte e escolha outro horário.'
+        : rawMessage.includes('scheduling_disabled')
+          ? 'A loja desativou os agendamentos neste momento.'
+        : rawMessage.includes('schedule_must_be_future')
+          ? 'O horário agendado precisa ser futuro.'
         : rawMessage.includes('checkout_phone_rate_limited')
         ? 'Muitos pedidos foram enviados em pouco tempo com este telefone. Aguarde alguns minutos e tente novamente.'
         : rawMessage.includes('checkout_rate_limited')

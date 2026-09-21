@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2, Save, MapPin, Plus, Trash2, Search, Radius, List, Building } from 'lucide-react';
+import { Loader2, Save, MapPin, Plus, Trash2, Search, Radius, List, Building, LocateFixed } from 'lucide-react';
 import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
 
 type DeliveryMode = 'bairros' | 'raio_km' | 'lista_ceps';
@@ -18,6 +18,12 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<DeliveryMode>('bairros');
   const [cepLoja, setCepLoja] = useState('');
+  const [street, setStreet] = useState('');
+  const [number, setNumber] = useState('');
+  const [complement, setComplement] = useState('');
+  const [neighborhood, setNeighborhood] = useState('');
+  const [city, setCity] = useState('');
+  const [stateUf, setStateUf] = useState('');
   const [endereco, setEndereco] = useState('');
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
@@ -39,13 +45,32 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
     (async () => {
       setLoading(true);
       const [{ data: s }, { data: cs }] = await Promise.all([
-        supabase.from('settings').select('cep_loja, cep_lat, cep_lng, delivery_mode, delivery_raio_km, delivery_taxa_base, delivery_taxa_por_km, delivery_tempo_base_min, delivery_tempo_por_km_min').eq('organization_id', organizationId).maybeSingle(),
+        supabase.from('settings').select('cep_loja, cep_lat, cep_lng, delivery_origin_cep, delivery_origin_street, delivery_origin_number, delivery_origin_complement, delivery_origin_neighborhood, delivery_origin_city, delivery_origin_state, delivery_origin_lat, delivery_origin_lng, delivery_mode, delivery_raio_km, delivery_taxa_base, delivery_taxa_por_km, delivery_tempo_base_min, delivery_tempo_por_km_min').eq('organization_id', organizationId).maybeSingle(),
         supabase.from('cep_atendidos' as any).select('id, cep, taxa, tempo_min').eq('organization_id', organizationId).order('cep'),
       ]);
       if (s) {
-        setCepLoja(maskCep((s as any).cep_loja || ''));
-        setLat((s as any).cep_lat ?? null);
-        setLng((s as any).cep_lng ?? null);
+        const originCep = (s as any).delivery_origin_cep || (s as any).cep_loja || '';
+        const originStreet = (s as any).delivery_origin_street || '';
+        const originNumber = (s as any).delivery_origin_number || '';
+        const originComplement = (s as any).delivery_origin_complement || '';
+        const originNeighborhood = (s as any).delivery_origin_neighborhood || '';
+        const originCity = (s as any).delivery_origin_city || '';
+        const originState = (s as any).delivery_origin_state || '';
+
+        setCepLoja(maskCep(originCep));
+        setStreet(originStreet);
+        setNumber(originNumber);
+        setComplement(originComplement);
+        setNeighborhood(originNeighborhood);
+        setCity(originCity);
+        setStateUf(originState);
+        setEndereco([
+          [originStreet, originNumber].filter(Boolean).join(', '),
+          originNeighborhood,
+          [originCity, originState].filter(Boolean).join(' - '),
+        ].filter(Boolean).join(' · '));
+        setLat((s as any).delivery_origin_lat ?? (s as any).cep_lat ?? null);
+        setLng((s as any).delivery_origin_lng ?? (s as any).cep_lng ?? null);
         setMode(((s as any).delivery_mode || 'bairros') as DeliveryMode);
         setRaioKm(Number((s as any).delivery_raio_km ?? 5));
         setTaxaBase(Number((s as any).delivery_taxa_base ?? 5));
@@ -58,45 +83,121 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
     })();
   }, [organizationId]);
 
+  const invalidateOriginCoords = () => {
+    setLat(null);
+    setLng(null);
+  };
+
+  const buildOriginAddress = () => [
+    [street.trim(), number.trim()].filter(Boolean).join(', '),
+    complement.trim(),
+    neighborhood.trim(),
+    [city.trim(), stateUf.trim().toUpperCase()].filter(Boolean).join(' - '),
+    normalizeCep(cepLoja) ? `CEP ${maskCep(cepLoja)}` : '',
+    'Brasil',
+  ].filter(Boolean).join(', ');
+
   const buscarCepLoja = async () => {
     const n = normalizeCep(cepLoja);
     if (n.length !== 8) return toast.error('CEP inválido');
     setBuscandoCep(true);
     const via = await fetchViaCep(n);
-    if (!via) { setBuscandoCep(false); return toast.error('CEP não encontrado'); }
-    const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
-    setEndereco(enderecoStr);
-    const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
-    if (coords) {
-      setLat(coords.lat); setLng(coords.lng);
-      console.log('[CEP] Loja geocodificada:', coords);
-      toast.success('Endereço e coordenadas resolvidos');
-    } else {
-      toast.warning('Endereço resolvido, mas não foi possível obter coordenadas (tente novamente em alguns segundos)');
+    if (!via) {
+      setBuscandoCep(false);
+      return toast.error('CEP não encontrado');
     }
+
+    setCepLoja(maskCep(n));
+    setStreet(via.logradouro || '');
+    setNeighborhood(via.bairro || '');
+    setCity(via.cidade || '');
+    setStateUf(via.uf || '');
+    setEndereco([
+      via.logradouro,
+      via.bairro,
+      [via.cidade, via.uf].filter(Boolean).join(' - '),
+    ].filter(Boolean).join(' · '));
+    invalidateOriginCoords();
     setBuscandoCep(false);
+    toast.success('CEP encontrado. Informe o número e confirme a localização.');
+  };
+
+  const confirmarLocalizacao = async () => {
+    const n = normalizeCep(cepLoja);
+    if (n.length !== 8) return toast.error('Informe um CEP válido.');
+    if (!street.trim()) return toast.error('Informe a rua da loja.');
+    if (!number.trim()) return toast.error('Informe o número da loja.');
+    if (!city.trim() || stateUf.trim().length !== 2) return toast.error('Confira cidade e UF.');
+
+    setBuscandoCep(true);
+    const fullAddress = buildOriginAddress();
+    const coords = await geocodeAddress(fullAddress);
+    if (!coords) {
+      setBuscandoCep(false);
+      return toast.error('Não foi possível confirmar essa localização. Confira rua, número, cidade e CEP.');
+    }
+
+    setLat(coords.lat);
+    setLng(coords.lng);
+    setEndereco(fullAddress.replace(', Brasil', ''));
+    setBuscandoCep(false);
+    toast.success('Localização da loja confirmada.');
   };
 
   const salvar = async () => {
     if (!organizationId) return;
+
+    const originTouched = Boolean(
+      normalizeCep(cepLoja) || street.trim() || number.trim() || neighborhood.trim() || city.trim() || stateUf.trim()
+    );
+
+    if (originTouched) {
+      if (normalizeCep(cepLoja).length !== 8) return toast.error('Confira o CEP da loja.');
+      if (!street.trim()) return toast.error('Informe a rua da loja.');
+      if (!number.trim()) return toast.error('Informe o número da loja.');
+      if (!neighborhood.trim()) return toast.error('Informe o bairro da loja.');
+      if (!city.trim() || stateUf.trim().length !== 2) return toast.error('Confira cidade e UF.');
+      if (lat == null || lng == null) {
+        return toast.error('Confirme a localização da loja antes de salvar.');
+      }
+    }
+
     if (mode === 'raio_km') {
-      toast.error('O modo por raio está temporariamente bloqueado até a validação de distância ocorrer no servidor.');
+      toast.error('O modo por raio continua bloqueado até a validação autoritativa do destino no servidor.');
       return;
     }
+
     setSaving(true);
-    const { error } = await supabase.from('settings').update({
+    const payload: any = {
       cep_loja: normalizeCep(cepLoja),
-      cep_lat: lat, cep_lng: lng,
+      cep_lat: lat,
+      cep_lng: lng,
+      delivery_origin_cep: normalizeCep(cepLoja),
+      delivery_origin_street: street.trim(),
+      delivery_origin_number: number.trim(),
+      delivery_origin_complement: complement.trim(),
+      delivery_origin_neighborhood: neighborhood.trim(),
+      delivery_origin_city: city.trim(),
+      delivery_origin_state: stateUf.trim().toUpperCase(),
+      delivery_origin_lat: lat,
+      delivery_origin_lng: lng,
+      delivery_origin_confirmed_at: lat != null && lng != null ? new Date().toISOString() : null,
       delivery_mode: mode,
       delivery_raio_km: raioKm,
       delivery_taxa_base: taxaBase,
       delivery_taxa_por_km: taxaPorKm,
       delivery_tempo_base_min: Math.round(tempoBase),
       delivery_tempo_por_km_min: tempoPorKm,
-    }).eq('organization_id', organizationId);
+    };
+
+    const { error } = await supabase
+      .from('settings')
+      .update(payload)
+      .eq('organization_id', organizationId);
+
     setSaving(false);
     if (error) return toast.error('Erro: ' + error.message);
-    toast.success('Área de atendimento atualizada!');
+    toast.success('Endereço de origem e área de atendimento atualizados!');
   };
 
   const addCep = async () => {
@@ -121,26 +222,117 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
 
   return (
     <div className="px-4 space-y-5 max-w-3xl pb-10">
-      {/* CEP da loja */}
-      <div className="kiosk-card p-4 space-y-3">
+      {/* Origem do delivery */}
+      <div className="kiosk-card p-4 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center"><MapPin className="w-5 h-5 text-primary" /></div>
+          <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center">
+            <MapPin className="w-5 h-5 text-primary" />
+          </div>
           <div>
-            <h2 className="font-black text-lg">CEP central da Loja</h2>
-            <p className="text-xs text-muted-foreground">Usado como referência para calcular distâncias.</p>
+            <h2 className="font-black text-lg">Endereço de saída da Loja</h2>
+            <p className="text-xs text-muted-foreground">
+              Esta é a origem oficial usada pelo delivery, roteirização e cálculos de distância.
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <input value={cepLoja} onChange={e => setCepLoja(maskCep(e.target.value))} placeholder="00000-000" maxLength={9}
-            className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none" />
-          <button onClick={buscarCepLoja} disabled={buscandoCep}
-            className="touch-btn px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold flex items-center gap-2 disabled:opacity-50">
-            {buscandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Buscar
+
+        <div className="grid sm:grid-cols-[1fr_auto] gap-2">
+          <input
+            value={cepLoja}
+            onChange={e => {
+              setCepLoja(maskCep(e.target.value));
+              invalidateOriginCoords();
+            }}
+            placeholder="CEP 00000-000"
+            maxLength={9}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+          <button
+            type="button"
+            onClick={buscarCepLoja}
+            disabled={buscandoCep}
+            className="touch-btn px-4 py-2 bg-primary text-primary-foreground rounded-lg font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {buscandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Buscar CEP
           </button>
         </div>
-        {endereco && <p className="text-xs text-muted-foreground">📍 {endereco}</p>}
-        {lat != null && lng != null && (
-          <p className="text-xs text-success">✓ Coordenadas: {lat.toFixed(5)}, {lng.toFixed(5)}</p>
+
+        <div className="grid sm:grid-cols-[2fr_0.7fr] gap-2">
+          <input
+            value={street}
+            onChange={e => { setStreet(e.target.value); invalidateOriginCoords(); }}
+            placeholder="Rua / Avenida"
+            maxLength={160}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+          <input
+            value={number}
+            onChange={e => { setNumber(e.target.value); invalidateOriginCoords(); }}
+            placeholder="Número"
+            maxLength={20}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+        </div>
+
+        <input
+          value={complement}
+          onChange={e => { setComplement(e.target.value); invalidateOriginCoords(); }}
+          placeholder="Complemento (opcional)"
+          maxLength={100}
+          className="w-full px-3 py-2 bg-muted rounded-lg outline-none"
+        />
+
+        <div className="grid sm:grid-cols-2 gap-2">
+          <input
+            value={neighborhood}
+            onChange={e => { setNeighborhood(e.target.value); invalidateOriginCoords(); }}
+            placeholder="Bairro"
+            maxLength={100}
+            className="px-3 py-2 bg-muted rounded-lg outline-none"
+          />
+          <div className="grid grid-cols-[1fr_74px] gap-2">
+            <input
+              value={city}
+              onChange={e => { setCity(e.target.value); invalidateOriginCoords(); }}
+              placeholder="Cidade"
+              maxLength={100}
+              className="px-3 py-2 bg-muted rounded-lg outline-none"
+            />
+            <input
+              value={stateUf}
+              onChange={e => { setStateUf(e.target.value.toUpperCase().slice(0, 2)); invalidateOriginCoords(); }}
+              placeholder="UF"
+              maxLength={2}
+              className="px-3 py-2 bg-muted rounded-lg outline-none uppercase"
+            />
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={confirmarLocalizacao}
+          disabled={buscandoCep}
+          className="touch-btn w-full px-4 py-3 rounded-xl border border-primary/30 bg-primary/10 text-primary font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+        >
+          {buscandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <LocateFixed className="w-4 h-4" />}
+          Confirmar localização da loja
+        </button>
+
+        {endereco && (
+          <p className="text-xs text-muted-foreground">📍 {endereco}</p>
+        )}
+        {lat != null && lng != null ? (
+          <div className="rounded-xl border border-success/30 bg-success/10 px-3 py-2">
+            <p className="text-xs text-success font-bold">✓ Origem confirmada</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Coordenadas: {lat.toFixed(5)}, {lng.toFixed(5)}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-amber-400">
+            Depois de preencher rua e número, confirme a localização para evitar cálculo saindo do centro do CEP.
+          </p>
         )}
       </div>
 
@@ -154,14 +346,14 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
             { v: 'lista_ceps' as const, l: 'Por lista de CEPs', icon: List, disabled: false },
           ].map(opt => (
             <button key={opt.v} disabled={opt.disabled} onClick={() => !opt.disabled && setMode(opt.v)}
-              title={opt.disabled ? 'Aguardando geocodificação server-side para impedir fraude de distância/frete.' : undefined}
+              title={opt.disabled ? 'A origem exata já pode ser cadastrada. O modo por raio segue bloqueado até o destino também ser validado de forma autoritativa no servidor.' : undefined}
               className={`p-3 rounded-xl border-2 flex items-center gap-2 font-bold text-sm ${mode === opt.v ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'} ${opt.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <opt.icon className="w-4 h-4" /> {opt.l}{opt.disabled ? ' — indisponível' : ''}
             </button>
           ))}
         </div>
         <p className="text-xs text-muted-foreground">
-          O modo por raio está preservado, mas bloqueado até a distância ser validada no servidor. Use bairros ou lista de CEPs.
+          A origem exata da loja agora fica salva. O modo por raio continua bloqueado até o destino do cliente ser validado no servidor, evitando fraude no frete. Bairros e lista de CEPs continuam funcionando normalmente.
         </p>
 
         {mode === 'raio_km' && (
@@ -190,7 +382,7 @@ const AreaAtendimentoPanel = ({ organizationId }: { organizationId: string | nul
               </label>
             </div>
             {(lat == null || lng == null) && (
-              <p className="text-xs text-destructive">⚠️ Defina o CEP da loja acima e clique em "Buscar" para que o modo "raio" funcione.</p>
+              <p className="text-xs text-destructive">⚠️ Cadastre e confirme o endereço completo da loja acima.</p>
             )}
           </div>
         )}

@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Clock, FileText, LogOut } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { SUPABASE_AUTH_STORAGE_KEY } from '@/config/supabaseConfig';
 import { formatCurrency } from '@/data/store';
 import { toast } from 'sonner';
 
@@ -43,6 +44,7 @@ const OrderHistory = () => {
   const [loadError, setLoadError] = useState('');
   const [retryKey, setRetryKey] = useState(0);
   const [user, setUser] = useState<any>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -137,9 +139,29 @@ const OrderHistory = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signOut({ scope: 'local' }),
+        5000,
+        'auth_signout_timeout',
+      );
+      if (error) throw error;
+    } catch (error) {
+      console.warn('[OrderHistory] local sign-out stalled/failed; clearing this project auth storage before reload:', error);
+      try {
+        Object.keys(localStorage)
+          .filter((key) => key === SUPABASE_AUTH_STORAGE_KEY || key.startsWith(`${SUPABASE_AUTH_STORAGE_KEY}-`))
+          .forEach((key) => localStorage.removeItem(key));
+      } catch {
+        // Full reload below still prevents this screen from keeping stale auth state in memory.
+      }
+    }
+
     toast.success('Você saiu da sua conta.');
-    navigate(getKioskHomePath());
+    window.location.replace(getKioskHomePath());
   };
 
   return (
@@ -153,9 +175,10 @@ const OrderHistory = () => {
         </div>
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground hover:text-foreground text-sm font-semibold transition"
+          disabled={loggingOut}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted text-muted-foreground hover:text-foreground text-sm font-semibold transition disabled:opacity-60 disabled:cursor-wait"
         >
-          <LogOut className="w-4 h-4" /> Sair
+          <LogOut className="w-4 h-4" /> {loggingOut ? 'Saindo…' : 'Sair'}
         </button>
       </div>
 

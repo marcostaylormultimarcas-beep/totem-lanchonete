@@ -22,14 +22,30 @@ createRoot(document.getElementById("root")!).render(<App />);
   const isPreviewHost =
     host.includes("id-preview--") ||
     host.includes("lovableproject.com") ||
-    host.includes("lovable.app") && host.includes("preview");
+    host.includes("lovable.app") && host.includes("preview") ||
+    /^deploy-preview-\d+--.+\.netlify\.app$/i.test(host);
   const isLocalhost = host === "localhost" || host === "127.0.0.1";
 
   if (isInIframe || isPreviewHost || isLocalhost) {
-    // Limpa qualquer SW antigo registrado em ambientes de preview
-    navigator.serviceWorker.getRegistrations().then((regs) => {
-      regs.forEach((r) => r.unregister());
-    }).catch(() => {});
+    // Preview precisa refletir cada commit imediatamente. Service Worker e caches
+    // offline ficam restritos ao host de produção para não mascarar o HEAD atual.
+    void Promise.all([
+      navigator.serviceWorker.getRegistrations().then((regs) =>
+        Promise.all(regs.map((registration) => registration.unregister()))
+      ),
+      "caches" in window
+        ? caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        : Promise.resolve([]),
+    ]).finally(() => {
+      if (!isPreviewHost || !navigator.serviceWorker.controller) return;
+      const reloadKey = "vf-preview-sw-reset";
+      if (sessionStorage.getItem(reloadKey) === "1") {
+        sessionStorage.removeItem(reloadKey);
+        return;
+      }
+      sessionStorage.setItem(reloadKey, "1");
+      window.location.reload();
+    });
     return;
   }
 

@@ -96,9 +96,10 @@ const EntregadorDashboard = () => {
     ) return null;
 
     if (
-      typeof order.delivery_accuracy_m === 'number'
-      && Number.isFinite(order.delivery_accuracy_m)
-      && order.delivery_accuracy_m > MAX_EXACT_DESTINATION_ACCURACY_M
+      typeof order.delivery_accuracy_m !== 'number'
+      || !Number.isFinite(order.delivery_accuracy_m)
+      || order.delivery_accuracy_m <= 0
+      || order.delivery_accuracy_m > MAX_EXACT_DESTINATION_ACCURACY_M
     ) {
       return null;
     }
@@ -660,6 +661,9 @@ const EntregadorDashboard = () => {
   };
 
   const handleLogout = async () => {
+    stopTracking();
+    setMapOpenId(null);
+    setRiderPos(null);
     try {
       await supabase.rpc('entregador_logout_session' as any, { _session_token: session?.session_token });
     } finally {

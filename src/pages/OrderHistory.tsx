@@ -100,6 +100,13 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   out_for_delivery: { label: 'Saiu p/ Entrega', color: 'bg-purple-500/20 text-purple-400' },
 };
 
+const getOrderTypeLabel = (orderType: string) => {
+  if (orderType === 'local') return 'No Local';
+  if (orderType === 'viagem' || orderType === 'delivery') return 'Entrega';
+  if (orderType === 'pdv') return 'PDV';
+  return 'Pedido';
+};
+
 const OrderHistory = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,8 +121,10 @@ const OrderHistory = () => {
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
     let pollTimer: number | undefined;
+    let requestVersion = 0;
 
     const loadOrders = async (initial = false) => {
+      const requestId = ++requestVersion;
       if (initial) {
         setLoading(true);
         setLoadError('');
@@ -128,17 +137,21 @@ const OrderHistory = () => {
           'order_history_timeout',
         );
 
-        if (cancelled) return;
+        if (cancelled || requestId !== requestVersion) return;
         if (error) throw error;
         setOrders((Array.isArray(data) ? data : []) as Order[]);
         setLoadError('');
       } catch (error) {
-        if (cancelled) return;
+        if (cancelled || requestId !== requestVersion) return;
         console.error('[OrderHistory] load failed', error);
-        if (initial) setOrders([]);
-        setLoadError('Não foi possível carregar seus pedidos agora. Tente novamente.');
+        if (initial) {
+          setOrders([]);
+          setLoadError('Não foi possível carregar seus pedidos agora. Tente novamente.');
+        } else {
+          console.warn('[OrderHistory] background refresh failed; keeping the last successful order list visible.');
+        }
       } finally {
-        if (initial && !cancelled) setLoading(false);
+        if (initial && !cancelled && requestId === requestVersion) setLoading(false);
       }
     };
 
@@ -187,6 +200,7 @@ const OrderHistory = () => {
     void checkAuth();
     return () => {
       cancelled = true;
+      requestVersion += 1;
       if (pollTimer) window.clearInterval(pollTimer);
       if (channel) void supabase.removeChannel(channel);
     };
@@ -276,6 +290,7 @@ const OrderHistory = () => {
         ) : (
           orders.map(order => {
             const status = STATUS_MAP[order.status] || STATUS_MAP.pending;
+            const fiscalUrl = order.nfe_url?.trim();
             return (
               <div key={order.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -289,7 +304,7 @@ const OrderHistory = () => {
                   <Clock className="w-3 h-3" />
                   <span>{formatDate(order.created_at)}</span>
                   <span className="mx-1">•</span>
-                  <span>{order.order_type === 'local' ? 'No Local' : 'Entrega'}</span>
+                  <span>{getOrderTypeLabel(order.order_type)}</span>
                 </div>
                 {Number(order.loyalty_points_awarded || 0) > 0 && (
                   <div className={`inline-flex items-center gap-1.5 self-start text-xs font-bold px-3 py-2 rounded-xl border ${
@@ -320,16 +335,15 @@ const OrderHistory = () => {
                     <p className="text-[11px] text-muted-foreground text-center mt-1">Informe ao entregador apenas ao receber o pedido</p>
                   </div>
                 )}
-                {order.customer_cpf && (
-                  <a
-                    href={order.nfe_url || `/fiscal/${order.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-orange-600/10 border border-orange-600/40 text-orange-400 hover:bg-orange-600/20 transition-colors"
-                  >
-                    <FileText className="w-4 h-4" /> Baixar Nota Fiscal
-                  </a>
-                )}
+                <a
+                  href={fiscalUrl || `/fiscal/${order.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-orange-600/10 border border-orange-600/40 text-orange-400 hover:bg-orange-600/20 transition-colors"
+                >
+                  <FileText className="w-4 h-4" />
+                  {fiscalUrl ? 'Abrir documento fiscal' : 'Ver comprovante do pedido'}
+                </a>
               </div>
             );
           })

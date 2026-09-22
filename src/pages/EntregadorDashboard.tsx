@@ -67,6 +67,9 @@ const EntregadorDashboard = () => {
   const availableRequestVersionRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
+  const audioAlertBusyRef = useRef(false);
+  const audioAlertGenerationRef = useRef(0);
+  const activeAlertNodesRef = useRef<Set<{ oscillator: OscillatorNode; gain: GainNode }>>(new Set());
   const [, forceRender] = useState(0);
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
@@ -449,7 +452,10 @@ const EntregadorDashboard = () => {
   }, [session, navigate]);
 
   const playAlert = useCallback(async () => {
-    if (!unlocked.current) return;
+    if (!unlocked.current || audioAlertBusyRef.current) return;
+
+    const generation = audioAlertGenerationRef.current;
+    audioAlertBusyRef.current = true;
 
     try {
       let ctx = audioCtxRef.current;
@@ -458,17 +464,34 @@ const EntregadorDashboard = () => {
         audioCtxRef.current = ctx;
       }
 
-      if (ctx.state === 'suspended') {
+      const state = ctx.state as string;
+      if (state === 'suspended' || state === 'interrupted') {
         await ctx.resume();
       }
 
-      if (ctx.state !== 'running') {
+      if (generation !== audioAlertGenerationRef.current) return;
+      if ((ctx.state as string) !== 'running') {
         throw new Error(`audio_context_${ctx.state}`);
       }
 
       [0, 0.18, 0.36].forEach(delay => {
         const o = ctx.createOscillator();
         const g = ctx.createGain();
+        const nodes = { oscillator: o, gain: g };
+        activeAlertNodesRef.current.add(nodes);
+
+        o.onended = () => {
+          try { o.disconnect(); } catch {}
+          try { g.disconnect(); } catch {}
+          activeAlertNodesRef.current.delete(nodes);
+          if (
+            generation === audioAlertGenerationRef.current
+            && activeAlertNodesRef.current.size === 0
+          ) {
+            audioAlertBusyRef.current = false;
+          }
+        };
+
         o.connect(g); g.connect(ctx.destination);
         o.frequency.value = 880;
         g.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
@@ -478,10 +501,52 @@ const EntregadorDashboard = () => {
         o.stop(ctx.currentTime + delay + 0.16);
       });
     } catch (error) {
+      if (generation !== audioAlertGenerationRef.current) return;
+
+      for (const { oscillator, gain } of activeAlertNodesRef.current) {
+        try { oscillator.stop(); } catch {}
+        try { oscillator.disconnect(); } catch {}
+        try { gain.disconnect(); } catch {}
+      }
+      activeAlertNodesRef.current.clear();
+      audioAlertBusyRef.current = false;
       console.warn('[EntregadorDashboard] sound alert failed:', error);
       unlocked.current = false;
       forceRender(x => x + 1);
       toast.error('Os alertas sonoros foram pausados pelo navegador. Toque para ativá-los novamente.');
+    } finally {
+      if (
+        generation === audioAlertGenerationRef.current
+        && activeAlertNodesRef.current.size === 0
+      ) {
+        audioAlertBusyRef.current = false;
+      }
+    }
+  }, []);
+
+  useEffect(() => () => {
+    audioAlertGenerationRef.current += 1;
+    audioAlertBusyRef.current = false;
+
+    for (const { oscillator, gain } of activeAlertNodesRef.current) {
+      try { oscillator.stop(); } catch {}
+      try { oscillator.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    }
+    activeAlertNodesRef.current.clear();
+
+    const ctx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    unlocked.current = false;
+
+    if (ctx && (ctx.state as string) !== 'closed' && typeof (ctx as any).close === 'function') {
+      try {
+        void Promise.resolve((ctx as any).close()).catch((error) => {
+          console.warn('[EntregadorDashboard] audio context close failed:', error);
+        });
+      } catch (error) {
+        console.warn('[EntregadorDashboard] audio context close failed:', error);
+      }
     }
   }, []);
 

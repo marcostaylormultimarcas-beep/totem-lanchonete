@@ -13,6 +13,7 @@ import { enqueueOfflineOrderOnCompanion, getKioskCompanionQueue, syncKioskCompan
 import { fetchPublicCheckoutPaymentConfig } from '@/lib/publicCheckoutPaymentConfig';
 import { isCheckoutQuoteReady } from '@/lib/checkoutQuoteReadiness';
 import { computeStatus, getSpecialClosure, localDateKey, useStoreStatus } from '@/hooks/useStoreStatus';
+import { MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 
 interface PaymentScreenProps {
   cart: CartItem[];
@@ -108,17 +109,18 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     : 'Visitante';
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
+  const normalizedDeliveryAccuracyM = typeof deliveryAccuracyM === 'number'
+    && Number.isFinite(deliveryAccuracyM)
+    && deliveryAccuracyM > 0
+    && deliveryAccuracyM <= MAX_EXACT_DESTINATION_ACCURACY_M
+      ? deliveryAccuracyM
+      : null;
   const hasDeliveryGps = orderType === 'viagem'
     && typeof deliveryLat === 'number'
     && Number.isFinite(deliveryLat)
     && typeof deliveryLng === 'number'
-    && Number.isFinite(deliveryLng);
-  const normalizedDeliveryAccuracyM = typeof deliveryAccuracyM === 'number'
-    && Number.isFinite(deliveryAccuracyM)
-    && deliveryAccuracyM >= 0
-    && deliveryAccuracyM <= 100000
-      ? deliveryAccuracyM
-      : null;
+    && Number.isFinite(deliveryLng)
+    && normalizedDeliveryAccuracyM != null;
   const deliveryContext = {
     cep: deliveryCep || '',
     ...(hasDeliveryGps ? {

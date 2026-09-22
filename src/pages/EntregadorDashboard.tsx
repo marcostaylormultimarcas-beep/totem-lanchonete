@@ -1176,9 +1176,7 @@ const EntregadorDashboard = () => {
   if (!session) return null;
 
   const pendentes = orders.filter(o => o.status !== 'delivered');
-  const entregues = orders
-    .filter(o => o.status === 'delivered')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const entregues = orders.filter(o => o.status === 'delivered');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">

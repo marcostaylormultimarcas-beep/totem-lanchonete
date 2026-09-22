@@ -322,6 +322,64 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('describes the pending empty state without denying hidden scheduled assignments', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Nenhum pedido pendente liberado no momento.');
+    expect(container.textContent).toContain('pedidos agendados aparecem aqui quando entram na janela operacional');
+    expect(container.textContent).not.toContain('Nenhum pedido atribuído no momento.');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('hides map and navigation actions when an assigned pending order has no usable destination', async () => {
+    const order = {
+      ...makeOrder('preparing'),
+      delivery_address: null,
+      delivery_lat: null,
+      delivery_lng: null,
+      delivery_accuracy_m: null,
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('#42');
+    expect(container.textContent).toContain('Destino indisponível para mapa/navegação neste pedido.');
+    expect(container.textContent).not.toContain('Ver localização no mapa');
+    expect(container.textContent).not.toContain('Iniciar navegação');
+    expect(watchPositionMock).not.toHaveBeenCalled();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('handles concurrent invalid-session responses only once', async () => {
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session' || name === 'entregador_available_orders_session') {

@@ -954,6 +954,83 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('rejects malformed browser GPS samples before sending delivery-confirmation location', async () => {
+    let gpsCalls = 0;
+    getCurrentPositionMock.mockImplementation((success: PositionCallback) => {
+      gpsCalls += 1;
+      if (gpsCalls === 1) {
+        success(makePosition(Number.NaN, -48.953, 12));
+        return;
+      }
+      success(makePosition(-16.328, -48.953, Number.NaN));
+    });
+
+    const order = {
+      ...makeOrder('out_for_delivery'),
+      delivery_lat: -16.328,
+      delivery_lng: -48.953,
+      delivery_accuracy_m: 12,
+    };
+    let locationSyncCalls = 0;
+    let confirmCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_update_location_session') {
+        locationSyncCalls += 1;
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      if (name === 'confirm_delivery_with_code_session') {
+        confirmCalls += 1;
+        return Promise.resolve({ data: { ok: true, status: 'delivered' }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const codeInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]');
+    await act(async () => {
+      if (codeInput) setInputValue(codeInput, '1234');
+      await flushAsync();
+    });
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim().endsWith('OK'));
+    expect(confirm).toBeTruthy();
+
+    await act(async () => {
+      confirm?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Não foi possível obter sua localização. Verifique o GPS');
+    expect(container.textContent).not.toContain('NaN m');
+    expect(locationSyncCalls).toBe(0);
+    expect(confirmCalls).toBe(0);
+
+    await act(async () => {
+      confirm?.click();
+      await flushAsync();
+    });
+
+    expect(gpsCalls).toBe(2);
+    expect(locationSyncCalls).toBe(0);
+    expect(confirmCalls).toBe(0);
+    expect(container.textContent).not.toContain('NaN m');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('prevents duplicate delivery-confirmation RPCs while the first confirmation is still in flight', async () => {
     const confirmDeferred = deferred<any>();
     let confirmCalls = 0;

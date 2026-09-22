@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, CalendarClock, CheckCircle2, Clock, Loader2, PackageCheck, Truck, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CheckCircle2, Clock, Loader2, PackageCheck, RefreshCw, Truck, UtensilsCrossed, X } from 'lucide-react';
 
 interface OrderTrackingProps {
   orderId: string;
   onClose: () => void;
 }
+
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
 
 const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
   pending: { title: '🧾 Pedido recebido', body: 'Recebemos seu pedido! Em breve começaremos o preparo.' },
@@ -50,55 +59,90 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
   const [scheduledFor, setScheduledFor] = useState('');
   const [showDeliveryAlert, setShowDeliveryAlert] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [notFound, setNotFound] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
     let lastStatus = '';
     let pollTimer: number | undefined;
+    let requestVersion = 0;
     const channel = supabase
       .channel(`customer-order-track-${orderId}-${Math.random().toString(36).slice(2, 8)}`);
 
     const fetchOrder = async (initial = false) => {
-      const { data, error } = await supabase.rpc('visionfood_public_order_tracking', {
-        _order_id: orderId,
-      });
-      if (!active) return;
-
-      const result: any = data;
-      if (error || !result?.ok) {
-        if (initial) setNotFound(true);
-        setLoading(false);
-        return;
+      const requestId = ++requestVersion;
+      if (initial) {
+        setLoading(true);
+        setLoadError('');
+        setNotFound(false);
       }
 
-      const newStatus = String(result.status || 'pending');
-      const newNumber = String(result.order_number || '');
-      const changed = Boolean(lastStatus && newStatus !== lastStatus);
+      try {
+        const { data, error } = await withTimeout(
+          supabase.rpc('visionfood_public_order_tracking', {
+            _order_id: orderId,
+          }),
+          10000,
+          'order_tracking_timeout',
+        );
+        if (!active || requestId !== requestVersion) return;
 
-      setStatus(newStatus);
-      setOrderNumber(newNumber);
-      setOrderType(String(result.order_type || ''));
-      setScheduledFor(String(result.scheduled_for || ''));
-
-      if (changed) notifyStatus(newStatus, newNumber);
-
-      if (changed && newStatus === 'out_for_delivery') {
-        setShowDeliveryAlert(true);
-        window.setTimeout(() => {
-          if (active) setShowDeliveryAlert(false);
-        }, 5000);
-      }
-
-      lastStatus = newStatus;
-      setLoading(false);
-      setNotFound(false);
-
-      if (newStatus === 'delivered' || newStatus === 'cancelled') {
-        if (pollTimer) {
-          window.clearInterval(pollTimer);
-          pollTimer = undefined;
+        const result: any = data;
+        if (error) throw error;
+        if (!result?.ok) {
+          const reason = String(result?.reason || '');
+          if (reason === 'not_found' || reason === 'invalid_order') {
+            setNotFound(true);
+            setLoadError('');
+          } else if (initial) {
+            setLoadError('Não foi possível consultar o andamento do pedido agora. Tente novamente.');
+          }
+          return;
         }
+
+        const newStatus = String(result.status || 'pending');
+        const newNumber = String(result.order_number || '');
+        const changed = Boolean(lastStatus && newStatus !== lastStatus);
+
+        setStatus(newStatus);
+        setOrderNumber(newNumber);
+        setOrderType(String(result.order_type || ''));
+        setScheduledFor(String(result.scheduled_for || ''));
+        setNowTick(Date.now());
+        setLoadError('');
+        setNotFound(false);
+
+        if (changed) notifyStatus(newStatus, newNumber);
+
+        if (changed && newStatus === 'out_for_delivery') {
+          setShowDeliveryAlert(true);
+          window.setTimeout(() => {
+            if (active) setShowDeliveryAlert(false);
+          }, 5000);
+        }
+
+        lastStatus = newStatus;
+
+        if (newStatus === 'delivered' || newStatus === 'cancelled') {
+          if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = undefined;
+          }
+        }
+      } catch (error) {
+        if (!active || requestId !== requestVersion) return;
+        console.error('[OrderTracking] load failed:', error);
+        if (initial) {
+          setLoadError('Não foi possível consultar o andamento do pedido agora. Verifique a conexão e tente novamente.');
+          setNotFound(false);
+        } else {
+          console.warn('[OrderTracking] background refresh failed; keeping the last known status visible.');
+        }
+      } finally {
+        if (initial && active && requestId === requestVersion) setLoading(false);
       }
     };
 
@@ -121,16 +165,17 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
 
     return () => {
       active = false;
+      requestVersion += 1;
       if (pollTimer) window.clearInterval(pollTimer);
       void supabase.removeChannel(channel);
     };
-  }, [orderId]);
+  }, [orderId, retryKey]);
 
   const scheduledDate = scheduledFor ? new Date(scheduledFor) : null;
   const validScheduledDate = scheduledDate && !Number.isNaN(scheduledDate.getTime()) ? scheduledDate : null;
   const waitingForScheduledTime = Boolean(
     validScheduledDate
-      && validScheduledDate.getTime() > Date.now()
+      && validScheduledDate.getTime() > nowTick
       && status === 'pending',
   );
   const scheduledLabel = validScheduledDate
@@ -160,6 +205,27 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
         <div className="kiosk-card p-6 max-w-sm w-full text-center space-y-3">
           <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
           <p className="text-sm text-muted-foreground">Carregando andamento do pedido...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
+        <div className="kiosk-card p-6 max-w-sm w-full text-center space-y-4">
+          <RefreshCw className="w-12 h-12 text-primary mx-auto" />
+          <h2 className="text-xl font-bold">Não foi possível acompanhar o pedido</h2>
+          <p className="text-muted-foreground text-sm">{loadError}</p>
+          <button
+            onClick={() => setRetryKey(key => key + 1)}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl"
+          >
+            Tentar novamente
+          </button>
+          <button onClick={onClose} className="touch-btn w-full bg-muted text-foreground py-3 rounded-xl">
+            Voltar ao Início
+          </button>
         </div>
       </div>
     );

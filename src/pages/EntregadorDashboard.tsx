@@ -1293,13 +1293,14 @@ const EntregadorDashboard = () => {
           pendentes.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
               <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
-              <p>Nenhum pedido atribuído no momento.</p>
-              <p className="text-xs mt-1">Aguarde — você será notificado quando chegar um novo.</p>
+              <p>Nenhum pedido pendente liberado no momento.</p>
+              <p className="text-xs mt-1">Novas atribuições e pedidos agendados aparecem aqui quando entram na janela operacional.</p>
             </div>
           ) : (
             pendentes.map(o => {
               const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
               const exactDestination = getExactDestination(o);
+              const hasDestination = Boolean(exactDestination || o.delivery_address);
               const navigationDestination = exactDestination || destCoords[o.id];
               const navigationUrl = navigationDestination
                 ? googleMapsDirectionsUrl(navigationDestination, riderPos)
@@ -1467,24 +1468,30 @@ const EntregadorDashboard = () => {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <button
-                      onClick={() => toggleMap(o)}
-                      className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
-                    >
-                      <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar mapa' : 'Ver localização no mapa'}
-                    </button>
-                    {navigationUrl && (
-                      <a
-                        href={navigationUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2"
+                  {hasDestination ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={() => toggleMap(o)}
+                        className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
                       >
-                        <Navigation className="w-5 h-5" /> Iniciar navegação
-                      </a>
-                    )}
-                  </div>
+                        <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar mapa' : 'Ver localização no mapa'}
+                      </button>
+                      {navigationUrl && (
+                        <a
+                          href={navigationUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2"
+                        >
+                          <Navigation className="w-5 h-5" /> Iniciar navegação
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
+                      📍 Destino indisponível para mapa/navegação neste pedido.
+                    </div>
+                  )}
 
                   {mapOpenId === o.id && (
                     <div className="space-y-2">

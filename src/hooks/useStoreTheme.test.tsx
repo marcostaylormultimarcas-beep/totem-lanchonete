@@ -1,4 +1,5 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_THEME, useStoreTheme } from '@/hooks/useStoreTheme';
 import { fetchPublicTheme } from '@/lib/publicTheme';
@@ -19,11 +20,20 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+type HookValue = ReturnType<typeof useStoreTheme>;
+
 describe('useStoreTheme', () => {
+  let root: Root | null = null;
+  let container: HTMLDivElement | null = null;
+  let latest: HookValue | null = null;
+
   beforeEach(() => {
     vi.clearAllMocks();
     document.documentElement.removeAttribute('style');
     document.documentElement.classList.remove('theme-light');
+    latest = null;
+    container = document.createElement('div');
+    root = createRoot(container);
   });
 
   it('clears loading and ignores a stale response when the organization is removed', async () => {
@@ -34,19 +44,23 @@ describe('useStoreTheme', () => {
     }>();
     fetchPublicThemeMock.mockReturnValueOnce(pending.promise);
 
-    const { result, rerender } = renderHook(
-      ({ orgId }: { orgId: string | null }) => useStoreTheme(orgId),
-      { initialProps: { orgId: 'org-a' as string | null } },
-    );
+    const Probe = ({ orgId }: { orgId: string | null }) => {
+      latest = useStoreTheme(orgId);
+      return null;
+    };
 
-    await waitFor(() => expect(result.current.loading).toBe(true));
-
-    rerender({ orgId: null });
-
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false);
-      expect(result.current.theme).toEqual(DEFAULT_THEME);
+    await act(async () => {
+      root!.render(<Probe orgId="org-a" />);
     });
+
+    expect(latest?.loading).toBe(true);
+
+    await act(async () => {
+      root!.render(<Probe orgId={null} />);
+    });
+
+    expect(latest?.loading).toBe(false);
+    expect(latest?.theme).toEqual(DEFAULT_THEME);
 
     await act(async () => {
       pending.resolve({
@@ -57,8 +71,12 @@ describe('useStoreTheme', () => {
       await pending.promise;
     });
 
-    expect(result.current.theme).toEqual(DEFAULT_THEME);
+    expect(latest?.theme).toEqual(DEFAULT_THEME);
     expect(document.documentElement.style.getPropertyValue('--primary')).toBe(DEFAULT_THEME.primary_color);
     expect(document.documentElement.classList.contains('theme-light')).toBe(false);
+
+    await act(async () => {
+      root!.unmount();
+    });
   });
 });

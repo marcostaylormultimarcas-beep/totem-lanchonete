@@ -200,6 +200,29 @@ describe('EntregadorDashboard assigned orders polling', () => {
     root = createRoot(container);
   });
 
+  it('handles concurrent invalid-session responses only once', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session' || name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: false, reason: 'invalid_session' }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(
+      toastErrorMock.mock.calls.filter(([message]) => message === 'Sessão expirada. Faça login novamente.'),
+    ).toHaveLength(1);
+    expect(localStorage.getItem('entregador_session')).toBeNull();
+    expect(container.textContent).toContain('LOGIN ENTREGADOR');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('shows a recoverable load error instead of a false empty-order state when the initial request fails', async () => {
     let ordersCalls = 0;
     rpcMock.mockImplementation((name: string) => {

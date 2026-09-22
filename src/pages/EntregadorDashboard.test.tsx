@@ -1485,7 +1485,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
         },
       })),
     };
-    const AudioContextMock = vi.fn(() => context);
+    const AudioContextMock = vi.fn(function AudioContextMock() { return context; });
     vi.stubGlobal('AudioContext', AudioContextMock);
 
     let ordersCalls = 0;
@@ -1581,9 +1581,8 @@ describe('EntregadorDashboard assigned orders polling', () => {
       })),
     };
 
-    const AudioContextMock = vi.fn()
-      .mockImplementationOnce(() => firstContext)
-      .mockImplementationOnce(() => replacementContext);
+    const AudioContextMock = vi.fn(function AudioContextMock() { return replacementContext; })
+      .mockImplementationOnce(function FirstAudioContextMock() { return firstContext; });
     vi.stubGlobal('AudioContext', AudioContextMock);
 
     let ordersCalls = 0;
@@ -1654,7 +1653,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
         },
       })),
     };
-    vi.stubGlobal('AudioContext', vi.fn(() => context));
+    vi.stubGlobal('AudioContext', vi.fn(function AudioContextMock() { return context; }));
 
     let ordersCalls = 0;
     rpcMock.mockImplementation((name: string) => {

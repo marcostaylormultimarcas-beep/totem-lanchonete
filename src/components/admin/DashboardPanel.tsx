@@ -56,6 +56,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
   const [productCount, setProductCount] = useState<number>(0);
   const [customerCount, setCustomerCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const loadPeriod = async () => {
     if (!organizationId) { setPeriodOrders([]); return; }
@@ -74,39 +75,64 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
   const loadOverview = async () => {
     if (!organizationId) {
       setTodayOrders([]); setRecentOrders([]); setLowStock([]); setProductCount(0); setCustomerCount(0);
+      setOverviewError(null);
+      setLoading(false);
       return;
     }
+
     setLoading(true);
-    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    setOverviewError(null);
 
-    const [{ data: today }, { data: recent }, { data: products }, prodCount, custCount] = await Promise.all([
-      supabase.from('orders')
-        .select('id, order_number, customer_name, total, status, created_at, items')
-        .eq('organization_id', organizationId)
-        .gte('created_at', startOfToday.toISOString())
-        .neq('status', 'cancelled')
-        .order('created_at', { ascending: false }),
-      supabase.from('orders')
-        .select('id, order_number, customer_name, total, status, created_at, items')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false })
-        .limit(6),
-      (supabase.from('products') as any)
-        .select('id, name, stock_quantity, low_stock_threshold, manage_stock')
-        .eq('organization_id', organizationId)
-        .eq('manage_stock', true),
-      supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
-      supabase.rpc('visionfood_profile_count', { _org: organizationId }),
-    ]);
+    try {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
 
-    setTodayOrders((today as any) || []);
-    setRecentOrders((recent as any) || []);
-    const low = ((products as any[]) || []).filter(p => Number(p.stock_quantity) <= Number(p.low_stock_threshold));
-    low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
-    setLowStock(low);
-    setProductCount(prodCount.count || 0);
-    setCustomerCount(Number(custCount.data || 0));
-    setLoading(false);
+      const [todayRes, recentRes, productsRes, prodCount, custCount] = await Promise.all([
+        supabase.from('orders')
+          .select('id, order_number, customer_name, total, status, created_at, items')
+          .eq('organization_id', organizationId)
+          .gte('created_at', startOfToday.toISOString())
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false }),
+        supabase.from('orders')
+          .select('id, order_number, customer_name, total, status, created_at, items')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(6),
+        (supabase.from('products') as any)
+          .select('id, name, stock_quantity, low_stock_threshold, manage_stock')
+          .eq('organization_id', organizationId)
+          .eq('manage_stock', true),
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
+        supabase.rpc('visionfood_profile_count', { _org: organizationId }),
+      ]);
+
+      const firstError =
+        todayRes.error ||
+        recentRes.error ||
+        productsRes.error ||
+        prodCount.error ||
+        custCount.error;
+
+      if (firstError) throw firstError;
+
+      const today = todayRes.data;
+      const recent = recentRes.data;
+      const products = productsRes.data;
+
+      setTodayOrders((today as any) || []);
+      setRecentOrders((recent as any) || []);
+      const low = ((products as any[]) || []).filter(p => Number(p.stock_quantity) <= Number(p.low_stock_threshold));
+      low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
+      setLowStock(low);
+      setProductCount(prodCount.count || 0);
+      setCustomerCount(Number(custCount.data || 0));
+    } catch (error) {
+      console.error('[Dashboard] loadOverview failed', error);
+      setOverviewError('Não foi possível carregar a visão geral agora.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadOverview(); }, [organizationId]);
@@ -236,6 +262,18 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
           <div className="flex flex-col items-center justify-center py-10 gap-3">
             <Loader2 className="w-5 h-5 animate-spin text-[#FF7A00]" />
             <p className="text-xs text-zinc-500">Carregando…</p>
+          </div>
+        ) : overviewError ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-amber-400" />
+            <p className="text-sm font-semibold text-white">{overviewError}</p>
+            <button
+              type="button"
+              onClick={() => void loadOverview()}
+              className="px-3 py-2 rounded-xl border border-white/10 text-xs font-bold text-[#FF7A00]"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : recentOrders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">

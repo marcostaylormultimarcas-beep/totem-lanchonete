@@ -64,70 +64,74 @@ export const OrgProvider = ({ children }: { children: ReactNode }) => {
   const resolve = async () => {
     setLoading(true);
 
-    // 0. Slug travado pela URL /loja/:slug sempre vence
-    if (lockedSlugRef.current) {
-      const data = await fetchPublicOrganization({ slug: lockedSlugRef.current });
-      if (data) {
-        localStorage.setItem(STORAGE_KEY, data.id);
-        applyOrg(data);
-        setLoading(false);
-        return;
-      }
-    }
-
-    // O totem físico nunca depende de auth de cliente/dono para descobrir a loja.
-    // Em cold-start offline, usa somente o último snapshot público já sincronizado.
-    const isPhysicalKioskRoute =
-      typeof window !== 'undefined' && window.location.pathname.startsWith('/cardapio/');
-    if (isPhysicalKioskRoute) {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          const data = await fetchPublicOrganization({ id: stored });
-          if (data) applyOrg(data);
-        } catch (error) {
-          console.warn('[OrgContext] cached kiosk organization unavailable:', error);
-        }
-      }
-      setLoading(false);
-      return;
-    }
-
-    // 1. Usuário autenticado: org do dono
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: ownOrg } = await supabase
-        .from('organizations')
-        .select('id')
-        .eq('owner_id', user.id)
-        .maybeSingle();
-      if (ownOrg?.id) {
-        const ownPublicOrg = await fetchPublicOrganization({ id: ownOrg.id });
-        if (ownPublicOrg) {
-          localStorage.setItem(STORAGE_KEY, ownPublicOrg.id);
-          applyOrg(ownPublicOrg);
-          setLoading(false);
+    try {
+      // 0. Slug travado pela URL /loja/:slug sempre vence
+      if (lockedSlugRef.current) {
+        const data = await fetchPublicOrganization({ slug: lockedSlugRef.current });
+        if (data) {
+          localStorage.setItem(STORAGE_KEY, data.id);
+          applyOrg(data);
           return;
         }
       }
-    }
-    // 2. localStorage (totem público)
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const data = await fetchPublicOrganization({ id: stored });
-      if (data) {
-        applyOrg(data);
-        setLoading(false);
+
+      // O totem físico nunca depende de auth de cliente/dono para descobrir a loja.
+      // Em cold-start offline, usa somente o último snapshot público já sincronizado.
+      const isPhysicalKioskRoute =
+        typeof window !== 'undefined' && window.location.pathname.startsWith('/cardapio/');
+      if (isPhysicalKioskRoute) {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          try {
+            const data = await fetchPublicOrganization({ id: stored });
+            if (data) applyOrg(data);
+          } catch (error) {
+            console.warn('[OrgContext] cached kiosk organization unavailable:', error);
+          }
+        }
         return;
       }
+
+      // 1. Usuário autenticado: org do dono
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: ownOrg, error: ownOrgError } = await supabase
+          .from('organizations')
+          .select('id')
+          .eq('owner_id', user.id)
+          .maybeSingle();
+        if (ownOrgError) throw ownOrgError;
+        if (ownOrg?.id) {
+          const ownPublicOrg = await fetchPublicOrganization({ id: ownOrg.id });
+          if (ownPublicOrg) {
+            localStorage.setItem(STORAGE_KEY, ownPublicOrg.id);
+            applyOrg(ownPublicOrg);
+            return;
+          }
+        }
+      }
+
+      // 2. localStorage (totem público)
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const data = await fetchPublicOrganization({ id: stored });
+        if (data) {
+          applyOrg(data);
+          return;
+        }
+      }
+
+      // 3. primeira org disponível (fallback)
+      const data = await fetchPublicOrganization();
+      if (data) {
+        localStorage.setItem(STORAGE_KEY, data.id);
+        applyOrg(data);
+      }
+    } catch (error) {
+      console.error('[OrgContext] organization resolution failed:', error);
+    } finally {
+      setLoading(false);
     }
-    // 3. primeira org disponível (fallback)
-    const data = await fetchPublicOrganization();
-    if (data) {
-      localStorage.setItem(STORAGE_KEY, data.id);
-      applyOrg(data);
-    }
-    setLoading(false);
   };
 
   useEffect(() => {

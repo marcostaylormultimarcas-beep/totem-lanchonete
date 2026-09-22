@@ -956,4 +956,90 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('always clears the local driver session and navigates to login when server logout fails', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_logout_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const logout = container.querySelector<HTMLButtonElement>('button[title="Sair"]');
+    expect(logout).toBeTruthy();
+
+    await act(async () => {
+      logout?.click();
+      await flushAsync();
+    });
+
+    expect(localStorage.getItem('entregador_session')).toBeNull();
+    expect(container.textContent).toContain('LOGIN ENTREGADOR');
+    expect(toastInfoMock).toHaveBeenCalledWith(
+      'Você saiu deste dispositivo, mas não foi possível confirmar a revogação da sessão no servidor.',
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate logout RPCs while revocation is still in flight', async () => {
+    const logoutDeferred = deferred<any>();
+    let logoutCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_logout_session') {
+        logoutCalls += 1;
+        return logoutDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const logout = container.querySelector<HTMLButtonElement>('button[title="Sair"]');
+    expect(logout).toBeTruthy();
+
+    await act(async () => {
+      logout?.click();
+      logout?.click();
+      await Promise.resolve();
+    });
+
+    expect(logoutCalls).toBe(1);
+
+    await act(async () => {
+      logoutDeferred.resolve({ data: { ok: true }, error: null });
+      await flushAsync();
+    });
+
+    expect(localStorage.getItem('entregador_session')).toBeNull();
+    expect(container.textContent).toContain('LOGIN ENTREGADOR');
+    expect(toastInfoMock).not.toHaveBeenCalledWith(
+      'Você saiu deste dispositivo, mas não foi possível confirmar a revogação da sessão no servidor.',
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

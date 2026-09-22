@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { fetchPublicTheme } from '@/lib/publicTheme';
 
 export interface StoreTheme {
@@ -49,16 +49,23 @@ export function applyThemeToRoot(theme: StoreTheme) {
 export function useStoreTheme(orgId: string | null) {
   const [theme, setTheme] = useState<StoreTheme>(DEFAULT_THEME);
   const [loading, setLoading] = useState(false);
+  const loadVersionRef = useRef(0);
 
   const load = useCallback(async () => {
+    const loadVersion = ++loadVersionRef.current;
+
     if (!orgId) {
+      setLoading(false);
       applyThemeToRoot(DEFAULT_THEME);
       setTheme(DEFAULT_THEME);
       return;
     }
+
     setLoading(true);
     try {
       const d = await fetchPublicTheme(orgId);
+      if (loadVersion !== loadVersionRef.current) return;
+
       const hasTheme = Object.keys(d).length > 0;
       const next: StoreTheme = hasTheme
         ? {
@@ -70,15 +77,25 @@ export function useStoreTheme(orgId: string | null) {
       setTheme(next);
       applyThemeToRoot(next);
     } catch (error) {
+      if (loadVersion !== loadVersionRef.current) return;
+
       console.warn('[theme] public theme error:', error);
       setTheme(DEFAULT_THEME);
       applyThemeToRoot(DEFAULT_THEME);
     } finally {
-      setLoading(false);
+      if (loadVersion === loadVersionRef.current) {
+        setLoading(false);
+      }
     }
   }, [orgId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+
+    return () => {
+      loadVersionRef.current += 1;
+    };
+  }, [load]);
 
   return { theme, setTheme, loading, reload: load };
 }

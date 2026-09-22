@@ -471,10 +471,15 @@ describe('EntregadorDashboard assigned orders polling', () => {
   it('prevents duplicate start-delivery RPCs while the first request is still in flight', async () => {
     const startDeferred = deferred<any>();
     let startCalls = 0;
+    let ordersCalls = 0;
 
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session') {
-        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: [makeOrder(ordersCalls === 1 ? 'ready' : 'out_for_delivery')] },
+          error: null,
+        });
       }
       if (name === 'entregador_available_orders_session') {
         return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
@@ -721,10 +726,17 @@ describe('EntregadorDashboard assigned orders polling', () => {
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Cliente não atende');
     const reportDeferred = deferred<any>();
     let reportCalls = 0;
+    let ordersCalls = 0;
 
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session') {
-        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+        ordersCalls += 1;
+        const order = makeOrder('out_for_delivery');
+        if (ordersCalls > 1) {
+          order.delivery_issue_reason = 'Cliente não atende';
+          order.delivery_issue_at = '2026-09-22T16:30:00.000Z';
+        }
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
       }
       if (name === 'entregador_available_orders_session') {
         return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });

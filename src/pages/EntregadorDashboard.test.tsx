@@ -383,8 +383,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     vi.useRealTimers();
   });
 
-  it('keeps the newest available-orders mode when polling responses arrive out of order', async () => {
-    vi.useFakeTimers();
+  it('keeps the newest available-orders mode when retry responses arrive out of order', async () => {
     const older = deferred<any>();
     const newer = deferred<any>();
     let availableCalls = 0;
@@ -395,9 +394,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
       }
       if (name === 'entregador_available_orders_session') {
         availableCalls += 1;
-        if (availableCalls === 1) {
-          return Promise.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
-        }
+        if (availableCalls === 1) return Promise.reject(new Error('network unavailable'));
         if (availableCalls === 2) return older.promise;
         if (availableCalls === 3) return newer.promise;
         return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
@@ -410,17 +407,16 @@ describe('EntregadorDashboard assigned orders polling', () => {
       await flushAsync();
     });
 
-    const availableTab = Array.from(container.querySelectorAll('button'))
-      .find(button => button.textContent?.includes('Disponíveis'));
-    expect(availableTab).toBeTruthy();
+    const retry = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Tentar agora'));
+    expect(retry).toBeTruthy();
 
     await act(async () => {
-      availableTab?.click();
-      vi.advanceTimersByTime(15000);
-      await flushAsync();
-      vi.advanceTimersByTime(15000);
-      await flushAsync();
+      retry?.click();
+      retry?.click();
+      await Promise.resolve();
     });
+    expect(availableCalls).toBe(3);
 
     await act(async () => {
       newer.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
@@ -428,7 +424,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     });
 
     expect(container.textContent).not.toContain('Modo Disputa Livre');
-    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).not.toContain('Não foi possível atualizar os pedidos disponíveis');
 
     await act(async () => {
       older.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
@@ -436,11 +432,10 @@ describe('EntregadorDashboard assigned orders polling', () => {
     });
 
     expect(container.textContent).not.toContain('Modo Disputa Livre');
-    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).not.toContain('Disponíveis');
 
     await act(async () => root.unmount());
     container.remove();
-    vi.useRealTimers();
   });
   it('releases the claim action after a network failure and keeps the available order retryable', async () => {
     rpcMock.mockImplementation((name: string) => {

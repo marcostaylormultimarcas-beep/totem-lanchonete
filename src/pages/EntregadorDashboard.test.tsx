@@ -428,4 +428,97 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('releases the start-delivery action after a network failure and keeps the order retryable', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_start_delivery_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const start = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Retirei · Iniciar entrega'));
+    expect(start).toBeTruthy();
+
+    await act(async () => {
+      start?.click();
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Não foi possível iniciar a entrega agora. Verifique a conexão e tente novamente.',
+    );
+    const retryableStart = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Retirei · Iniciar entrega'));
+    expect(retryableStart?.disabled).toBe(false);
+    expect(container.textContent).toContain('Pronto p/ retirar');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate start-delivery RPCs while the first request is still in flight', async () => {
+    const startDeferred = deferred<any>();
+    let startCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_start_delivery_session') {
+        startCalls += 1;
+        return startDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const start = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Retirei · Iniciar entrega'));
+    expect(start).toBeTruthy();
+
+    await act(async () => {
+      start?.click();
+      start?.click();
+      await Promise.resolve();
+    });
+
+    expect(startCalls).toBe(1);
+    expect(container.textContent).toContain('Iniciando...');
+
+    await act(async () => {
+      startDeferred.resolve({
+        data: { ok: true, status: 'out_for_delivery', idempotent: false },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      '🛵 Entrega iniciada. Agora o pedido está oficialmente a caminho.',
+    );
+    expect(container.textContent).toContain('A caminho');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

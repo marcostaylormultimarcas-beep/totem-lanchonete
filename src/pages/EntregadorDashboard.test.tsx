@@ -535,6 +535,88 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('keeps the free available queue usable when assigned-orders loading fails and hides pre-claim customer data', async () => {
+    const availableOrder = {
+      ...makeOrder('ready'),
+      customer_name: 'Nome Secreto',
+      customer_phone: '62988887777',
+      delivery_address: 'Rua Secreta, 999',
+      items: [{ name: 'Produto Secreto', quantity: 2 }],
+      scheduled_for: '2026-09-22T18:00:00.000Z',
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.reject(new Error('assigned orders unavailable'));
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [availableOrder] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Não foi possível carregar seus pedidos');
+
+    const availableTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Disponíveis'));
+    expect(availableTab).toBeTruthy();
+
+    await act(async () => {
+      availableTab?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('#42');
+    expect(container.textContent).toContain('R$ 25.00');
+    expect(container.textContent).toContain('Bairro: Centro');
+    expect(container.textContent).toContain('Agendado:');
+    expect(container.textContent).toContain('ACEITAR PEDIDO');
+    expect(container.textContent).not.toContain('Não foi possível carregar seus pedidos');
+    expect(container.textContent).not.toContain('Nome Secreto');
+    expect(container.textContent).not.toContain('62988887777');
+    expect(container.textContent).not.toContain('Rua Secreta, 999');
+    expect(container.textContent).not.toContain('Produto Secreto');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('describes the free available empty state using the real automatic refresh behavior', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const availableTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Disponíveis'));
+    await act(async () => {
+      availableTab?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Nenhum pedido disponível para disputa.');
+    expect(container.textContent).toContain('Pedidos prontos e liberados aparecem aqui nas próximas atualizações automáticas.');
+    expect(container.textContent).not.toContain('em tempo real');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('does not start another automatic polling round while the previous one is still pending', async () => {
     vi.useFakeTimers();
     const slowOrders = deferred<any>();

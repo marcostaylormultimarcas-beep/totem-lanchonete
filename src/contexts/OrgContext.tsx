@@ -160,33 +160,70 @@ export const KioskSlugSync = ({ children }: { children: ReactNode }) => {
   const { lockToSlug, orgId } = useOrg();
   const [ready, setReady] = useState(false);
   const [found, setFound] = useState<boolean | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     const sync = async () => {
       setReady(false);
       setFound(null);
       setPaused(false);
-      await lockToSlug(normalizedSlug || null);
-      if (normalizedSlug) {
-        const data = await fetchPublicOrganization({ slug: normalizedSlug });
-        setFound(!!data?.id);
-        setPaused(!!data?.paused);
-      } else {
-        setFound(false);
+      setSyncError(null);
+
+      try {
+        await lockToSlug(normalizedSlug || null);
+        if (cancelled) return;
+
+        if (normalizedSlug) {
+          const data = await fetchPublicOrganization({ slug: normalizedSlug });
+          if (cancelled) return;
+          setFound(!!data?.id);
+          setPaused(!!data?.paused);
+        } else {
+          setFound(false);
+        }
+      } catch (error) {
+        console.error('[KioskSlugSync] store resolution failed:', error);
+        if (!cancelled) {
+          setSyncError('Não foi possível carregar esta loja agora.');
+        }
+      } finally {
+        if (!cancelled) setReady(true);
       }
-      setReady(true);
     };
-    sync();
+
+    void sync();
     return () => {
-      lockToSlug(null);
+      cancelled = true;
+      void lockToSlug(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedSlug]);
+  }, [normalizedSlug, retryKey]);
 
   if (!ready) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Carregando loja...</div>;
+  }
+  if (syncError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 bg-background text-center">
+        <div className="max-w-md space-y-4">
+          <div className="text-5xl">⚠️</div>
+          <h1 className="text-xl font-black">Não foi possível carregar a loja</h1>
+          <p className="text-muted-foreground text-sm">{syncError}</p>
+          <button
+            type="button"
+            onClick={() => setRetryKey(value => value + 1)}
+            className="touch-btn bg-primary text-primary-foreground px-4 py-3 rounded-xl font-semibold"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
   }
   if (found === false && normalizedSlug) {
     return <Navigate to={`/loja/${normalizedSlug}/home`} replace />;

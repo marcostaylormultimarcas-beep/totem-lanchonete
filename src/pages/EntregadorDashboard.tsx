@@ -72,6 +72,7 @@ const EntregadorDashboard = () => {
   const [trackingSyncError, setTrackingSyncError] = useState('');
   const [trackingLastSyncedAt, setTrackingLastSyncedAt] = useState<string | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [mapDestinationError, setMapDestinationError] = useState<Record<string, string | null>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
@@ -403,11 +404,27 @@ const EntregadorDashboard = () => {
       stopTracking();
       return;
     }
+
     setMapOpenId(order.id);
     setRiderPos(null);
+    setMapDestinationError((p) => ({ ...p, [order.id]: null }));
     startTracking(order.id);
-    if (order.delivery_address || getExactDestination(order)) {
-      await resolveDestination(order);
+
+    const exactDestination = getExactDestination(order);
+    if (!order.delivery_address && !exactDestination) {
+      setMapDestinationError((p) => ({
+        ...p,
+        [order.id]: 'Destino do cliente indisponível neste pedido.',
+      }));
+      return;
+    }
+
+    const destination = await resolveDestination(order);
+    if (!destination) {
+      setMapDestinationError((p) => ({
+        ...p,
+        [order.id]: 'Não foi possível localizar o destino do cliente no mapa.',
+      }));
     }
   };
 
@@ -1343,7 +1360,15 @@ const EntregadorDashboard = () => {
                               ? '✅ localização sincronizada com a loja'
                               : 'GPS ativo • aguardando primeiro envio'
                             : 'aguardando GPS...'}
-                        {exactDestination ? ' • 📍 destino GPS do cliente' : ' • 📍 destino aproximado pelo endereço'}
+                        {mapDestinationError[o.id]
+                          ? ` • ⚠️ ${mapDestinationError[o.id]}`
+                          : exactDestination
+                            ? ' • 📍 destino GPS do cliente'
+                            : destCoords[o.id]
+                              ? ' • 📍 destino aproximado pelo endereço'
+                              : o.delivery_address
+                                ? ' • 📍 localizando destino pelo endereço...'
+                                : ' • ⚠️ destino indisponível'}
                       </p>
                     </div>
                   )}

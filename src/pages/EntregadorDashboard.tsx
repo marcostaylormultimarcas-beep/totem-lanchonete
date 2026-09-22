@@ -179,11 +179,22 @@ const EntregadorDashboard = () => {
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracyM: Math.max(0, Number(pos.coords.accuracy || 0)),
-        }),
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const accuracyM = pos.coords.accuracy;
+
+          if (
+            !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracyM)
+            || lat < -90 || lat > 90 || lng < -180 || lng > 180
+            || accuracyM < 0
+          ) {
+            reject(new Error('GPS retornou uma localização inválida.'));
+            return;
+          }
+
+          resolve({ lat, lng, accuracyM });
+        },
         (err) => reject(err),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );

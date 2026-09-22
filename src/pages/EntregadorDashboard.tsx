@@ -48,6 +48,7 @@ const EntregadorDashboard = () => {
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const claimInFlightRef = useRef(false);
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
@@ -446,32 +447,58 @@ const EntregadorDashboard = () => {
   // O polling acima é o canal autoritativo e funciona sem abrir SELECT de orders para anon.
 
   const handleClaim = async (orderId: string) => {
-    if (!session) return;
+    if (!session || claimInFlightRef.current) return;
+
+    claimInFlightRef.current = true;
     setClaiming(orderId);
-    const { data, error } = await supabase.rpc('entregador_claim_order_session' as any, {
-      _session_token: session.session_token,
-      _order_id: orderId,
-    });
-    setClaiming(null);
-    const res: any = data;
-    if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        invalid_credentials: 'Sessão inválida. Faça login novamente.',
-        invalid_session: 'Sessão expirada. Faça login novamente.',
-        order_not_found: 'Pedido não encontrado.',
-        forbidden: 'Pedido não pertence à sua loja.',
-        mode_not_free: 'Modo de disputa livre não está ativo.',
-        already_taken: 'Outro entregador foi mais rápido nesse pedido.',
-      };
-      toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
-      if (isInvalidSession(res)) { expireSession(); return; }
-      fetchAvailable();
-      return;
+    try {
+      const { data, error } = await supabase.rpc('entregador_claim_order_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] claim order RPC failed:', error);
+        toast.error('Não foi possível aceitar o pedido agora. Verifique a conexão e tente novamente.');
+        await fetchAvailable();
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery: 'Este pedido não é uma entrega.',
+          not_ready: 'O pedido ainda não está pronto para retirada.',
+          scheduled_not_released: 'Este pedido agendado ainda não entrou na janela operacional.',
+          mode_not_free: 'Modo de disputa livre não está ativo.',
+          already_taken: 'Outro entregador foi mais rápido nesse pedido.',
+          order_changed: 'O pedido mudou enquanto você tentava aceitar. A lista será atualizada.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        await fetchAvailable();
+        return;
+      }
+
+      toast.success('🛵 Pedido reservado para você. Retire na loja e confirme quando estiver com o pedido.');
+      setAvailable(prev => prev.filter(o => o.id !== orderId));
+      void fetchOrders(true);
+      setTab('pendentes');
+    } catch (error) {
+      console.error('[EntregadorDashboard] claim order request failed:', error);
+      toast.error('Não foi possível aceitar o pedido agora. Verifique a conexão e tente novamente.');
+      await fetchAvailable();
+    } finally {
+      claimInFlightRef.current = false;
+      setClaiming(null);
     }
-    toast.success('🛵 Pedido reservado para você. Retire na loja e confirme quando estiver com o pedido.');
-    setAvailable(prev => prev.filter(o => o.id !== orderId));
-    fetchOrders(true);
-    setTab('pendentes');
   };
 
   const handleStartDelivery = async (orderId: string) => {
@@ -1083,7 +1110,7 @@ const EntregadorDashboard = () => {
                   </p>
                   <button
                     onClick={() => handleClaim(o.id)}
-                    disabled={claiming === o.id}
+                    disabled={claiming !== null}
                     className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     ⚡ {claiming === o.id ? 'Aceitando...' : 'ACEITAR PEDIDO'}

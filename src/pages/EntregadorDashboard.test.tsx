@@ -12,6 +12,9 @@ const {
   toastInfoMock,
   removeChannelMock,
   geocodeAddressMock,
+  watchPositionMock,
+  clearWatchMock,
+  getCurrentPositionMock,
 } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
   toastErrorMock: vi.fn(),
@@ -19,6 +22,9 @@ const {
   toastInfoMock: vi.fn(),
   removeChannelMock: vi.fn(),
   geocodeAddressMock: vi.fn(),
+  watchPositionMock: vi.fn(),
+  clearWatchMock: vi.fn(),
+  getCurrentPositionMock: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -130,6 +136,48 @@ describe('EntregadorDashboard assigned orders polling', () => {
     vi.clearAllMocks();
     vi.useRealTimers();
     geocodeAddressMock.mockResolvedValue(null);
+    watchPositionMock.mockImplementation((success: PositionCallback) => {
+      success({
+        coords: {
+          latitude: -16.328,
+          longitude: -48.953,
+          accuracy: 12,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON: () => ({}),
+        },
+        timestamp: Date.now(),
+        toJSON: () => ({}),
+      } as GeolocationPosition);
+      return 7;
+    });
+    clearWatchMock.mockImplementation(() => {});
+    getCurrentPositionMock.mockImplementation((success: PositionCallback) => {
+      success({
+        coords: {
+          latitude: -16.328,
+          longitude: -48.953,
+          accuracy: 12,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON: () => ({}),
+        },
+        timestamp: Date.now(),
+        toJSON: () => ({}),
+      } as GeolocationPosition);
+    });
+    Object.defineProperty(navigator, 'geolocation', {
+      configurable: true,
+      value: {
+        watchPosition: watchPositionMock,
+        clearWatch: clearWatchMock,
+        getCurrentPosition: getCurrentPositionMock,
+      },
+    });
     localStorage.clear();
     localStorage.setItem('entregador_session', JSON.stringify(session));
     container = document.createElement('div');
@@ -1037,6 +1085,101 @@ describe('EntregadorDashboard assigned orders polling', () => {
     expect(toastInfoMock).not.toHaveBeenCalledWith(
       'Você saiu deste dispositivo, mas não foi possível confirmar a revogação da sessão no servidor.',
     );
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('keeps local GPS tracking alive across a failed sync and reports recovery after the next successful send', async () => {
+    vi.useFakeTimers();
+    let locationSyncCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_update_location_session') {
+        locationSyncCalls += 1;
+        if (locationSyncCalls === 1) return Promise.reject(new Error('network unavailable'));
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Ver localização no mapa'));
+    expect(mapButton).toBeTruthy();
+
+    await act(async () => {
+      mapButton?.click();
+      await flushAsync();
+    });
+
+    expect(watchPositionMock).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('GPS ativo • aguardando primeiro envio');
+
+    await act(async () => {
+      vi.advanceTimersByTime(2500);
+      await flushAsync();
+    });
+
+    expect(locationSyncCalls).toBe(1);
+    expect(container.textContent).toContain('Sem conexão para sincronizar sua localização. Tentaremos novamente.');
+
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+      await flushAsync();
+    });
+
+    expect(locationSyncCalls).toBe(2);
+    expect(container.textContent).toContain('localização sincronizada com a loja');
+    expect(container.textContent).not.toContain('Sem conexão para sincronizar sua localização');
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+  });
+
+  it('does not label GPS timeout as permission denied', async () => {
+    watchPositionMock.mockImplementation((_success: PositionCallback, error: PositionErrorCallback) => {
+      error({ code: 3, message: 'timeout', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 } as GeolocationPositionError);
+      return 9;
+    });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Ver localização no mapa'));
+
+    await act(async () => {
+      mapButton?.click();
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Tempo esgotado ao obter localização do GPS.');
+    expect(toastErrorMock).not.toHaveBeenCalledWith('Permissão de localização negada.');
+    expect(container.textContent).toContain('Tempo esgotado ao obter localização do GPS.');
 
     await act(async () => root.unmount());
     container.remove();

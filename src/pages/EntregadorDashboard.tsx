@@ -55,6 +55,7 @@ const EntregadorDashboard = () => {
   const declineOrderInFlightRef = useRef(false);
   const reportIssueInFlightRef = useRef(false);
   const logoutInFlightRef = useRef(false);
+  const sessionExpiredRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [availableLoadError, setAvailableLoadError] = useState('');
@@ -292,6 +293,9 @@ const EntregadorDashboard = () => {
   }, []);
 
   const expireSession = useCallback(() => {
+    if (sessionExpiredRef.current) return;
+    sessionExpiredRef.current = true;
+
     stopTracking();
     clearEntregadorSession();
     toast.error('Sessão expirada. Faça login novamente.');

@@ -51,11 +51,13 @@ const EntregadorDashboard = () => {
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
+  const [availableLoadError, setAvailableLoadError] = useState('');
   const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const ordersInitializedRef = useRef(false);
   const ordersRequestVersionRef = useRef(0);
+  const availableRequestVersionRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
   const [, forceRender] = useState(0);
@@ -394,16 +396,38 @@ const EntregadorDashboard = () => {
 
   const fetchAvailable = useCallback(async () => {
     if (!session) return;
-    const { data } = await supabase.rpc('entregador_available_orders_session' as any, {
-      _session_token: session.session_token,
-    });
-    const res: any = data;
-    if (!res?.ok) {
-      if (isInvalidSession(res)) expireSession();
-      return;
+
+    const requestId = ++availableRequestVersionRef.current;
+    try {
+      const { data, error } = await supabase.rpc('entregador_available_orders_session' as any, {
+        _session_token: session.session_token,
+      });
+      if (requestId !== availableRequestVersionRef.current) return;
+
+      const res: any = data;
+      if (error) throw error;
+      if (!res?.ok) {
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        setAvailableLoadError('Não foi possível atualizar os pedidos disponíveis.');
+        return;
+      }
+
+      const nextMode: 'manual' | 'free' = res.mode === 'free' ? 'free' : 'manual';
+      setMode(nextMode);
+      setAvailable(Array.isArray(res.orders) ? res.orders : []);
+      setAvailableLoadError('');
+
+      if (nextMode === 'manual') {
+        setTab(current => current === 'disponiveis' ? 'pendentes' : current);
+      }
+    } catch (error) {
+      if (requestId !== availableRequestVersionRef.current) return;
+      console.error('[EntregadorDashboard] available orders load failed:', error);
+      setAvailableLoadError('Não foi possível atualizar os pedidos disponíveis. A atualização automática continuará tentando.');
     }
-    setMode((res.mode === 'free' ? 'free' : 'manual'));
-    setAvailable(res.orders || []);
   }, [session, expireSession]);
 
   // Carga inicial + polling de segurança
@@ -414,6 +438,7 @@ const EntregadorDashboard = () => {
     return () => {
       clearInterval(i);
       ordersRequestVersionRef.current += 1;
+      availableRequestVersionRef.current += 1;
     };
   }, [fetchOrders, fetchAvailable]);
 
@@ -784,6 +809,19 @@ const EntregadorDashboard = () => {
           >
             🔔 Toque aqui para ativar os alertas sonoros
           </button>
+        )}
+
+        {availableLoadError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center gap-2">
+            <span className="flex-1">{availableLoadError}</span>
+            <button
+              type="button"
+              onClick={() => void fetchAvailable()}
+              className="shrink-0 font-black underline underline-offset-2"
+            >
+              Tentar agora
+            </button>
+          </div>
         )}
 
         {loading ? (

@@ -674,4 +674,102 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('releases issue reporting after a network failure and keeps the delivery actionable', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Cliente não atende');
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_report_delivery_issue_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const issue = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Problema na entrega'));
+    expect(issue).toBeTruthy();
+
+    await act(async () => {
+      issue?.click();
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Não foi possível registrar o problema agora. Verifique a conexão e tente novamente.',
+    );
+    const retryableIssue = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Problema na entrega'));
+    expect(retryableIssue?.disabled).toBe(false);
+    expect(container.textContent).toContain('A caminho');
+
+    promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate issue-report RPCs while the first report is still in flight', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Cliente não atende');
+    const reportDeferred = deferred<any>();
+    let reportCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_report_delivery_issue_session') {
+        reportCalls += 1;
+        return reportDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const issue = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Problema na entrega'));
+    expect(issue).toBeTruthy();
+
+    await act(async () => {
+      issue?.click();
+      issue?.click();
+      await Promise.resolve();
+    });
+
+    expect(reportCalls).toBe(1);
+    expect(container.textContent).toContain('Comunicando...');
+
+    await act(async () => {
+      reportDeferred.resolve({
+        data: { ok: true, status: 'out_for_delivery', issue_reported: true },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      '⚠️ Problema comunicado à loja. Aguarde orientação antes de abandonar a entrega.',
+    );
+    expect(container.textContent).toContain('Cliente não atende');
+
+    promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

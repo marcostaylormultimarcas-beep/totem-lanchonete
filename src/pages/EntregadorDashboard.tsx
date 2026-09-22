@@ -54,6 +54,7 @@ const EntregadorDashboard = () => {
   const startDeliveryInFlightRef = useRef(false);
   const declineOrderInFlightRef = useRef(false);
   const reportIssueInFlightRef = useRef(false);
+  const logoutInFlightRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [availableLoadError, setAvailableLoadError] = useState('');
@@ -877,14 +878,33 @@ const EntregadorDashboard = () => {
   };
 
   const handleLogout = async () => {
-    stopTracking();
-    setMapOpenId(null);
-    setRiderPos(null);
+    if (logoutInFlightRef.current) return;
+
+    logoutInFlightRef.current = true;
+    let serverRevocationConfirmed = false;
     try {
-      await supabase.rpc('entregador_logout_session' as any, { _session_token: session?.session_token });
+      stopTracking();
+      setMapOpenId(null);
+      setRiderPos(null);
+
+      const { data, error } = await supabase.rpc('entregador_logout_session' as any, {
+        _session_token: session.session_token,
+      });
+      const res: any = data;
+      if (error) {
+        console.error('[EntregadorDashboard] logout RPC failed:', error);
+      } else {
+        serverRevocationConfirmed = res?.ok === true;
+      }
+    } catch (error) {
+      console.error('[EntregadorDashboard] logout request failed:', error);
     } finally {
       clearEntregadorSession();
-      navigate('/entregador/login');
+      logoutInFlightRef.current = false;
+      navigate('/entregador/login', { replace: true });
+      if (!serverRevocationConfirmed) {
+        toast.info('Você saiu deste dispositivo, mas não foi possível confirmar a revogação da sessão no servidor.');
+      }
     }
   };
 

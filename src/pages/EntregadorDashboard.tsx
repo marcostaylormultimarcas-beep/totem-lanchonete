@@ -1272,11 +1272,11 @@ const EntregadorDashboard = () => {
           </div>
         )}
 
-        {loading ? (
+        {tab !== 'disponiveis' && loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : ordersLoadError ? (
+        ) : tab !== 'disponiveis' && ordersLoadError ? (
           <div className="text-center py-14 px-4 bg-slate-900 border border-red-500/30 rounded-2xl space-y-3">
             <RefreshCw className="w-12 h-12 mx-auto text-orange-500" />
             <p className="font-black text-slate-100">Não foi possível carregar seus pedidos</p>
@@ -1529,7 +1529,7 @@ const EntregadorDashboard = () => {
             <div className="text-center py-16 text-slate-500">
               <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
               <p>Nenhum pedido disponível para disputa.</p>
-              <p className="text-xs mt-1">Aguarde — novos pedidos aparecerão aqui em tempo real.</p>
+              <p className="text-xs mt-1">Pedidos prontos e liberados aparecem aqui nas próximas atualizações automáticas.</p>
             </div>
           ) : (
             <div className="space-y-3">

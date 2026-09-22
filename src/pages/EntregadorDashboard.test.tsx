@@ -200,6 +200,45 @@ describe('EntregadorDashboard assigned orders polling', () => {
     root = createRoot(container);
   });
 
+  it('refreshes assigned and available orders when the driver taps the global refresh button', async () => {
+    let ordersCalls = 0;
+    let availableCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        availableCalls += 1;
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(ordersCalls).toBe(1);
+    expect(availableCalls).toBe(1);
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    expect(refresh).toBeTruthy();
+
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(ordersCalls).toBe(2);
+    expect(availableCalls).toBe(2);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('handles concurrent invalid-session responses only once', async () => {
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session' || name === 'entregador_available_orders_session') {

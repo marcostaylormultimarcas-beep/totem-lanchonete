@@ -1190,7 +1190,14 @@ const EntregadorDashboard = () => {
           <p className="text-xs text-slate-400">{session.org_name}</p>
           <p className="font-bold truncate">{session.name}</p>
         </div>
-        <button onClick={() => fetchOrders(false)} className="p-2 text-slate-400 hover:text-orange-500" title="Atualizar">
+        <button
+          onClick={() => {
+            void fetchOrders(false);
+            void fetchAvailable();
+          }}
+          className="p-2 text-slate-400 hover:text-orange-500"
+          title="Atualizar"
+        >
           <RefreshCw className="w-5 h-5" />
         </button>
         <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-destructive" title="Sair">

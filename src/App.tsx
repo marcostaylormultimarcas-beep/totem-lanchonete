@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
+import RuntimeErrorBoundary from "@/components/RuntimeErrorBoundary";
 import Auth from "./pages/Auth.tsx";
 import OrderHistory from "./pages/OrderHistory.tsx";
 
@@ -49,6 +50,7 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <RuntimeErrorBoundary homeHref="/">
           <OrgProvider>
             <Suspense
               fallback={
@@ -97,6 +99,7 @@ const App = () => {
             </Suspense>
             <SupportChat />
           </OrgProvider>
+          </RuntimeErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

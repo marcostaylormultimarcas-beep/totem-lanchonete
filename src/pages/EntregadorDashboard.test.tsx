@@ -521,4 +521,157 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('releases the decline action after a network failure and keeps the assigned order visible', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Problema com o veículo');
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_decline_order_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const decline = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Não posso realizar'));
+    expect(decline).toBeTruthy();
+
+    await act(async () => {
+      decline?.click();
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Não foi possível devolver a entrega agora. Verifique a conexão e tente novamente.',
+    );
+    const retryableDecline = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Não posso realizar'));
+    expect(retryableDecline?.disabled).toBe(false);
+    expect(container.textContent).toContain('#42');
+
+    promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('uses the backend returned_to_queue flag instead of stale local free-mode state after decline', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Não consigo realizar agora');
+    let availableCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        availableCalls += 1;
+        if (availableCalls === 1) {
+          return Promise.resolve({ data: { ok: true, mode: 'free', orders: [] }, error: null });
+        }
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_decline_order_session') {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            status: 'ready',
+            assignment_mode: 'manual',
+            returned_to_queue: false,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Modo Disputa Livre');
+
+    const decline = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Não posso realizar'));
+
+    await act(async () => {
+      decline?.click();
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      'Entrega devolvida para a loja escolher outro entregador.',
+    );
+    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).not.toContain('Nenhum pedido disponível para disputa.');
+
+    promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate decline RPCs while the first request is still in flight', async () => {
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Problema com o veículo');
+    const declineDeferred = deferred<any>();
+    let declineCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_decline_order_session') {
+        declineCalls += 1;
+        return declineDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const decline = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Não posso realizar'));
+    expect(decline).toBeTruthy();
+
+    await act(async () => {
+      decline?.click();
+      decline?.click();
+      await Promise.resolve();
+    });
+
+    expect(declineCalls).toBe(1);
+    expect(container.textContent).toContain('Devolvendo...');
+
+    await act(async () => {
+      declineDeferred.resolve({
+        data: {
+          ok: true,
+          status: 'ready',
+          assignment_mode: 'manual',
+          returned_to_queue: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

@@ -583,13 +583,30 @@ const EntregadorDashboard = () => {
     }
   }, [session, expireSession]);
 
-  // Carga inicial + polling de segurança
+  // Carga inicial + polling de segurança.
+  // Cada rodada só agenda a próxima depois que ambas as consultas terminarem,
+  // evitando que uma rede lenta invalide continuamente respostas ainda em voo.
   useEffect(() => {
-    fetchOrders(true);
-    fetchAvailable();
-    const i = setInterval(() => { fetchOrders(false); fetchAvailable(); }, 15000);
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const poll = async (silent: boolean) => {
+      await Promise.allSettled([
+        fetchOrders(silent),
+        fetchAvailable(),
+      ]);
+      if (cancelled) return;
+
+      timer = window.setTimeout(() => {
+        void poll(false);
+      }, 15000);
+    };
+
+    void poll(true);
+
     return () => {
-      clearInterval(i);
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
       ordersRequestVersionRef.current += 1;
       availableRequestVersionRef.current += 1;
     };

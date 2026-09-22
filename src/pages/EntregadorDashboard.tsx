@@ -299,11 +299,9 @@ const EntregadorDashboard = () => {
           return;
         }
 
+        if (isInvalidSession(data)) expireSession();
         const result: any = data;
-        if (isInvalidSession(result)) {
-          expireSession();
-          return;
-        }
+        if (isInvalidSession(result)) return;
         if (result?.reason === 'order_not_assigned') {
           stopTracking();
           setMapOpenId(null);

@@ -5,9 +5,26 @@ import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
 import "@fontsource/inter/700.css";
 import App from "./App.tsx";
+import { shouldReloadAfterPreloadError, VITE_PRELOAD_RELOAD_KEY } from "./lib/preloadRecovery";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+// Vite sinaliza quando um módulo lazy aponta para um chunk antigo/removido após novo deploy.
+// Recarrega uma única vez por janela curta; se a falha persistir, deixa o erro subir para
+// a proteção de runtime em vez de entrar em loop de reload.
+window.addEventListener('vite:preloadError', () => {
+  try {
+    const now = Date.now();
+    const lastReloadAt = sessionStorage.getItem(VITE_PRELOAD_RELOAD_KEY);
+    if (!shouldReloadAfterPreloadError(lastReloadAt, now)) return;
+    sessionStorage.setItem(VITE_PRELOAD_RELOAD_KEY, String(now));
+    window.location.reload();
+  } catch {
+    // Storage indisponível: não força reload sem trava anti-loop.
+  }
+});
+
 
 // === PWA Service Worker ===
 // Registra apenas em produção e fora de iframes/preview do Lovable, para

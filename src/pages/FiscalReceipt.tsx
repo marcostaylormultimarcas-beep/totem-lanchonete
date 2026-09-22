@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Printer, Download } from 'lucide-react';
+import { Printer, Download, RefreshCw } from 'lucide-react';
 
 interface OrderRow {
   id: string;
@@ -22,46 +22,96 @@ interface StoreRow {
   fiscal_razao: string;
 }
 
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+
 const FiscalReceipt = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<OrderRow | null>(null);
   const [store, setStore] = useState<StoreRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [reason, setReason] = useState('');
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!orderId) {
       setLoading(false);
+      setLoadError('');
       setReason('not_found');
       return;
     }
 
     let active = true;
-    (async () => {
-      const { data, error } = await supabase.rpc('visionfood_order_receipt', {
-        _order_id: orderId,
-      });
-      if (!active) return;
+    setLoading(true);
+    setLoadError('');
+    setReason('');
 
-      const result: any = data;
-      if (error) {
-        console.error('visionfood_order_receipt', error);
-        setReason('error');
-      } else if (!result?.ok) {
-        setReason(result?.reason || 'not_found');
-      } else {
+    void (async () => {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.rpc('visionfood_order_receipt', {
+            _order_id: orderId,
+          }),
+          10000,
+          'receipt_timeout',
+        );
+        if (!active) return;
+
+        const result: any = data;
+        if (error) throw error;
+
+        if (!result?.ok) {
+          const nextReason = String(result?.reason || 'not_found');
+          if (nextReason === 'unauthenticated' || nextReason === 'forbidden' || nextReason === 'not_found' || nextReason === 'invalid_order') {
+            setReason(nextReason);
+          } else {
+            setLoadError('Não foi possível carregar o comprovante agora. Tente novamente.');
+          }
+          return;
+        }
+
         setOrder(result.order as OrderRow);
         setStore(result.store as StoreRow);
         setReason('');
+        setLoadError('');
+      } catch (error) {
+        if (!active) return;
+        console.error('[FiscalReceipt] load failed:', error);
+        setLoadError('Não foi possível carregar o comprovante agora. Verifique a conexão e tente novamente.');
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
 
     return () => { active = false; };
-  }, [orderId]);
+  }, [orderId, retryKey]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-background text-foreground">Carregando comprovante...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex flex-col gap-4 items-center justify-center bg-background text-foreground p-6 text-center">
+        <RefreshCw className="w-12 h-12 text-primary" />
+        <p className="font-semibold">Não foi possível carregar o comprovante</p>
+        <p className="text-sm text-muted-foreground max-w-sm">{loadError}</p>
+        <button
+          type="button"
+          onClick={() => setRetryKey(key => key + 1)}
+          className="px-4 py-2 rounded-lg bg-primary text-primary-foreground font-semibold"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
   }
 
   if (!order) {

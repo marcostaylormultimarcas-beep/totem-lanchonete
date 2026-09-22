@@ -52,6 +52,7 @@ const EntregadorDashboard = () => {
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
   const startDeliveryInFlightRef = useRef(false);
   const declineOrderInFlightRef = useRef(false);
+  const reportIssueInFlightRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [availableLoadError, setAvailableLoadError] = useState('');
@@ -631,7 +632,8 @@ const EntregadorDashboard = () => {
   };
 
   const handleReportIssue = async (orderId: string) => {
-    if (!session || deliveryAction) return;
+    if (!session || deliveryAction || reportIssueInFlightRef.current) return;
+
     const reason = window.prompt('Descreva o problema na entrega. A loja será avisada e decidirá o próximo passo.');
     if (reason == null) return;
     const cleanReason = reason.trim();
@@ -639,7 +641,12 @@ const EntregadorDashboard = () => {
       toast.error('Descreva o problema com pelo menos 3 caracteres.');
       return;
     }
+    if (cleanReason.length > 500) {
+      toast.error('A descrição do problema deve ter no máximo 500 caracteres.');
+      return;
+    }
 
+    reportIssueInFlightRef.current = true;
     setDeliveryAction(`issue:${orderId}`);
     try {
       const { data, error } = await supabase.rpc('entregador_report_delivery_issue_session' as any, {
@@ -648,20 +655,38 @@ const EntregadorDashboard = () => {
         _reason: cleanReason,
       });
       const res: any = data;
-      if (error || !res?.ok) {
-        toast.error(res?.reason === 'not_out_for_delivery'
-          ? 'A entrega ainda não foi iniciada.'
-          : 'Não foi possível registrar o problema.');
+
+      if (error) {
+        console.error('[EntregadorDashboard] report issue RPC failed:', error);
+        toast.error('Não foi possível registrar o problema agora. Verifique a conexão e tente novamente.');
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          reason_required: 'Descreva o problema entre 3 e 500 caracteres.',
+          not_out_for_delivery: 'A entrega ainda não foi iniciada.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível registrar o problema.');
         if (isInvalidSession(res)) expireSession();
         return;
       }
 
-      const issueAt = new Date().toISOString();
       setOrders(prev => prev.map(o => o.id === orderId
-        ? { ...o, delivery_issue_reason: cleanReason, delivery_issue_at: issueAt }
+        ? { ...o, delivery_issue_reason: cleanReason }
         : o));
       toast.success('⚠️ Problema comunicado à loja. Aguarde orientação antes de abandonar a entrega.');
+      void fetchOrders(true);
+    } catch (error) {
+      console.error('[EntregadorDashboard] report issue request failed:', error);
+      toast.error('Não foi possível registrar o problema agora. Verifique a conexão e tente novamente.');
     } finally {
+      reportIssueInFlightRef.current = false;
       setDeliveryAction(null);
     }
   };

@@ -47,6 +47,7 @@ const EntregadorDashboard = () => {
   const [ordersLoadError, setOrdersLoadError] = useState('');
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmDeliveryInFlightRef = useRef(false);
   const [claiming, setClaiming] = useState<string | null>(null);
   const claimInFlightRef = useRef(false);
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
@@ -702,47 +703,45 @@ const EntregadorDashboard = () => {
   };
 
   const handleConfirm = async (orderId: string) => {
-    if (!session) return;
+    if (!session || confirmDeliveryInFlightRef.current) return;
+
     const code = (codeInputs[orderId] || '').trim();
-    if (code.length !== 4) {
-      toast.error('Digite o código de 4 dígitos.');
+    if (!/^\d{4}$/.test(code)) {
+      toast.error('Digite exatamente os 4 números informados pelo cliente.');
       return;
     }
 
-    // ====== TRAVA DE SEGURANÇA (Geofence 200m) ======
+    confirmDeliveryInFlightRef.current = true;
     const order = orders.find((o) => o.id === orderId);
-    if (order && (order.delivery_address || getExactDestination(order))) {
-      setGeoChecking(orderId);
-      setGeofenceError((p) => ({ ...p, [orderId]: null }));
-      try {
-        const dest = await resolveDestination(order);
-        if (!dest) {
-          setGeoChecking(null);
-          setGeofenceError((p) => ({
-            ...p,
-            [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa. Confirme o endereço com a loja.',
-          }));
-          return;
-        }
+    const exactDestination = order ? getExactDestination(order) : null;
+
+    try {
+      // O hard gate de 200 m só usa coordenadas exatas capturadas no pedido.
+      // Endereço geocodificado por serviço externo continua útil para mapa/navegação,
+      // mas não pode bloquear uma entrega válida por imprecisão ou indisponibilidade.
+      if (exactDestination) {
+        setGeoChecking(orderId);
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+
         const me = await getCurrentPositionAsync();
         if (me.accuracyM > MAX_DRIVER_CONFIRM_ACCURACY_M) {
-          setGeoChecking(null);
           setGeofenceError((p) => ({
             ...p,
             [orderId]: `📍 GPS impreciso (±${Math.round(me.accuracyM)} m). Vá para um local com melhor sinal e tente novamente.`,
           }));
           return;
         }
-        const distM = haversineMeters(me, dest);
+
+        const distM = haversineMeters(me, exactDestination);
         setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
         if (distM > MAX_DELIVERY_RADIUS_M) {
-          setGeoChecking(null);
           setGeofenceError((p) => ({
             ...p,
             [orderId]: `📍 Ação Bloqueada! Você precisa estar próximo ao endereço do cliente para finalizar esta entrega. Vá até o local. (você está a ${Math.round(distM)} m)`,
           }));
           return;
         }
+
         const { data: locationData, error: locationError } = await supabase.rpc('entregador_update_location_session' as any, {
           _session_token: session.session_token,
           _lat: me.lat,
@@ -750,10 +749,27 @@ const EntregadorDashboard = () => {
           _order_id: orderId,
         });
         const locationResult: any = locationData;
-        if (locationError || !locationResult?.ok) {
-          setGeoChecking(null);
+
+        if (locationError) {
+          console.error('[EntregadorDashboard] confirm location RPC failed:', locationError);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível validar sua localização com o servidor. Verifique a conexão e tente novamente.',
+          }));
+          return;
+        }
+
+        if (!locationResult?.ok) {
           if (isInvalidSession(locationResult)) {
             expireSession();
+            return;
+          }
+          if (locationResult?.reason === 'order_not_assigned') {
+            setGeofenceError((p) => ({
+              ...p,
+              [orderId]: '📍 Esta entrega não está mais atribuída a você. Atualizando a lista...',
+            }));
+            await fetchOrders(true);
             return;
           }
           setGeofenceError((p) => ({
@@ -762,63 +778,102 @@ const EntregadorDashboard = () => {
           }));
           return;
         }
+
         setGeofenceError((p) => ({ ...p, [orderId]: null }));
-      } catch (err: any) {
-        setGeoChecking(null);
-        const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      } else {
+        // Sem destino GPS exato, não transforme geocodificação aproximada em hard gate.
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      }
+
+      setGeoChecking(null);
+      setConfirming(orderId);
+
+      const { data, error } = await supabase.rpc('confirm_delivery_with_code_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _code: code,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] confirm delivery RPC failed:', error);
+        toast.error('Não foi possível confirmar a entrega agora. Verifique a conexão e tente novamente.');
+        await fetchOrders(true);
+        return;
+      }
+
+      if (!res?.ok) {
+        if (res?.reason === 'already_delivered') {
+          toast.info('✅ Esta entrega já estava confirmada. Status sincronizado.');
+          setCodeInputs(p => ({ ...p, [orderId]: '' }));
+          stopTracking();
+          if (mapOpenId === orderId) setMapOpenId(null);
+          setRiderPos(null);
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
+          await fetchOrders(true);
+          return;
+        }
+
+        const retryAfterSeconds = Math.max(0, Number(res?.retry_after_seconds || 0));
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          not_found: 'Pedido não encontrado.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery_order: 'Este pedido não é uma entrega.',
+          not_assigned: 'Este pedido não está atribuído a você.',
+          cancelled: 'Pedido cancelado.',
+          not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
+          invalid_code: res?.remaining_attempts != null
+            ? `❌ Código incorreto. Restam ${res.remaining_attempts} tentativa(s).`
+            : '❌ Código incorreto! Confirme com o cliente.',
+          invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
+          too_many_attempts: retryAfterSeconds > 0
+            ? `Muitas tentativas incorretas. Aguarde cerca de ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minuto(s) e confirme o código com o cliente.`
+            : 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
+          driver_location_required: 'Atualize sua localização antes de finalizar a entrega.',
+          driver_location_stale: 'Sua localização está desatualizada. Atualize o GPS e tente novamente.',
+          delivery_geofence_exceeded: res?.distance_m != null
+            ? `Você ainda está a ${Math.round(Number(res.distance_m))} m do destino. Aproxime-se do cliente.`
+            : 'Você ainda está fora do raio permitido para finalizar a entrega.',
+        };
+        toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        if (['order_not_found', 'not_assigned', 'cancelled', 'not_out_for_delivery'].includes(String(res?.reason || ''))) {
+          await fetchOrders(true);
+        }
+        return;
+      }
+
+      toast.success('✅ Entrega confirmada!');
+      setCodeInputs(p => ({ ...p, [orderId]: '' }));
+      stopTracking();
+      if (mapOpenId === orderId) setMapOpenId(null);
+      setRiderPos(null);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
+      void fetchOrders(true);
+    } catch (err: any) {
+      const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      if (exactDestination && (denied || /geolocation|position|gps|timeout/i.test(String(err?.message || '')))) {
         setGeofenceError((p) => ({
           ...p,
           [orderId]: denied
             ? '📍 Ative a permissão de localização do navegador para finalizar a entrega.'
             : '📍 Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
         }));
-        return;
+      } else {
+        console.error('[EntregadorDashboard] confirm delivery request failed:', err);
+        toast.error('Não foi possível confirmar a entrega agora. Verifique a conexão e tente novamente.');
       }
+    } finally {
       setGeoChecking(null);
+      setConfirming(null);
+      confirmDeliveryInFlightRef.current = false;
     }
-
-    setConfirming(orderId);
-    const { data, error } = await supabase.rpc('confirm_delivery_with_code_session' as any, {
-      _session_token: session.session_token,
-      _order_id: orderId,
-      _code: code,
-    });
-    setConfirming(null);
-    const res: any = data;
-    if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        invalid_credentials: 'Sessão inválida. Faça login novamente.',
-        invalid_session: 'Sessão expirada. Faça login novamente.',
-        not_found: 'Pedido não encontrado.',
-        order_not_found: 'Pedido não encontrado.',
-        forbidden: 'Pedido não pertence à sua loja.',
-        not_assigned: 'Este pedido não está atribuído a você.',
-        already_delivered: 'Pedido já foi entregue.',
-        cancelled: 'Pedido cancelado.',
-        not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
-        invalid_code: res?.remaining_attempts != null
-          ? `❌ Código incorreto. Restam ${res.remaining_attempts} tentativa(s).`
-          : '❌ Código incorreto! Confirme com o cliente.',
-        invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
-        too_many_attempts: 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
-        driver_location_required: 'Atualize sua localização antes de finalizar a entrega.',
-        driver_location_stale: 'Sua localização está desatualizada. Atualize o GPS e tente novamente.',
-        delivery_geofence_exceeded: res?.distance_m != null
-          ? `Você ainda está a ${Math.round(Number(res.distance_m))} m do destino. Aproxime-se do cliente.`
-          : 'Você ainda está fora do raio permitido para finalizar a entrega.',
-      };
-      toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
-      if (isInvalidSession(res)) expireSession();
-      return;
-    }
-    toast.success('✅ Entrega confirmada!');
-    setCodeInputs(p => ({ ...p, [orderId]: '' }));
-    stopTracking();
-    if (mapOpenId === orderId) setMapOpenId(null);
-    setRiderPos(null);
-    // Move imediatamente para o Histórico via update otimista
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
-    fetchOrders(true);
   };
 
   const handleLogout = async () => {
@@ -1078,7 +1133,7 @@ const EntregadorDashboard = () => {
                         />
                         <button
                           onClick={() => handleConfirm(o.id)}
-                          disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
+                          disabled={confirming !== null || geoChecking !== null || (codeInputs[o.id] || '').length !== 4}
                           className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
                         >
                           <CheckCircle2 className="w-5 h-5" />

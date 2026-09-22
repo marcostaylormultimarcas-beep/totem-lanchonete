@@ -19,6 +19,7 @@ import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
 import MesasPanel from '@/components/admin/MesasPanel';
 import { AdminTab, normalizeAdminTabForTier, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
+import RuntimeErrorBoundary from '@/components/RuntimeErrorBoundary';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
@@ -1185,6 +1186,7 @@ const AdminPage = () => {
       `}</style>
 
 
+      <RuntimeErrorBoundary resetKey={tab} compact homeHref="/admin?tab=orders">
       <Suspense fallback={
         <div className="mx-4 mt-6 kiosk-card p-6 flex items-center justify-center gap-3 text-sm text-zinc-400">
           <Loader2 className="w-5 h-5 animate-spin text-[#FF7A00]" />
@@ -2143,6 +2145,7 @@ const AdminPage = () => {
       )}
 
       </Suspense>
+      </RuntimeErrorBoundary>
 
       <footer className="mt-8 pb-28 md:pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
 

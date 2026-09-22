@@ -1,27 +1,48 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { createRoot } from 'react-dom/client';
+import { act } from 'react-dom/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import RuntimeErrorBoundary from './RuntimeErrorBoundary';
 
 const Boom = () => {
   throw new Error('boom');
 };
 
+afterEach(() => {
+  document.body.innerHTML = '';
+});
+
 describe('RuntimeErrorBoundary', () => {
-  it('shows a recoverable fallback instead of clearing the UI', () => {
+  it('shows a recoverable fallback instead of clearing the UI', async () => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    render(
-      <RuntimeErrorBoundary homeHref="/admin?tab=orders">
-        <Boom />
-      </RuntimeErrorBoundary>,
-    );
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
 
-    expect(screen.getByRole('alert')).toBeTruthy();
-    expect(screen.getByText('Não foi possível abrir esta tela')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Voltar para uma área segura' }).getAttribute('href'))
-      .toBe('/admin?tab=orders');
+    try {
+      await act(async () => {
+        root.render(
+          <RuntimeErrorBoundary homeHref="/admin?tab=orders">
+            <Boom />
+          </RuntimeErrorBoundary>,
+        );
+      });
 
-    errorSpy.mockRestore();
+      const alert = container.querySelector('[role="alert"]');
+      expect(alert).not.toBeNull();
+      expect(alert?.textContent).toContain('Não foi possível abrir esta tela');
+      expect(
+        container
+          .querySelector<HTMLAnchorElement>('a[href="/admin?tab=orders"]')
+          ?.textContent,
+      ).toContain('Voltar para uma área segura');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      errorSpy.mockRestore();
+    }
   });
 });

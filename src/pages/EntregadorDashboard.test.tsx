@@ -938,7 +938,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith(
       'Entrega devolvida para a loja escolher outro entregador.',
     );
-    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).toContain('Nenhum pedido pendente liberado no momento.');
     expect(container.textContent).not.toContain('Nenhum pedido disponível para disputa.');
 
     promptSpy.mockRestore();
@@ -1346,7 +1346,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     });
 
     expect(toastSuccessMock).toHaveBeenCalledWith('✅ Entrega confirmada!');
-    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).toContain('Nenhum pedido pendente liberado no momento.');
 
     await act(async () => root.unmount());
     container.remove();
@@ -1391,7 +1391,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     });
 
     expect(toastInfoMock).toHaveBeenCalledWith('✅ Esta entrega já estava confirmada. Status sincronizado.');
-    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+    expect(container.textContent).toContain('Nenhum pedido pendente liberado no momento.');
 
     const historyTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.includes('Histórico'));
@@ -1798,14 +1798,11 @@ describe('EntregadorDashboard assigned orders polling', () => {
     const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
       .find(button => button.textContent?.includes('Ver localização no mapa'));
 
-    await act(async () => {
-      mapButton?.click();
-      await flushAsync();
-    });
-
+    expect(mapButton).toBeUndefined();
     expect(geocodeAddressMock).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Destino do cliente indisponível neste pedido.');
+    expect(container.textContent).toContain('Destino indisponível para mapa/navegação neste pedido.');
     expect(container.textContent).not.toContain('destino aproximado pelo endereço');
+    expect(watchPositionMock).not.toHaveBeenCalled();
 
     await act(async () => root.unmount());
     container.remove();

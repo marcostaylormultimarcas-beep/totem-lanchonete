@@ -1516,7 +1516,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
       await flushAsync();
     });
 
-    expect(resumeMock).toHaveBeenCalledTimes(1);
+    expect(resumeMock).not.toHaveBeenCalled();
     audioState = 'suspended';
 
     const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
@@ -1525,7 +1525,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
       await flushAsync();
     });
 
-    expect(resumeMock).toHaveBeenCalledTimes(2);
+    expect(resumeMock).toHaveBeenCalledTimes(1);
     expect(startMock).toHaveBeenCalledTimes(3);
     expect(toastSuccessMock).toHaveBeenCalledWith(
       '🛵 Novo pedido atribuído: #42',

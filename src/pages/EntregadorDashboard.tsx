@@ -432,11 +432,24 @@ const EntregadorDashboard = () => {
     if (!session) navigate('/entregador/login');
   }, [session, navigate]);
 
-  const playAlert = useCallback(() => {
+  const playAlert = useCallback(async () => {
     if (!unlocked.current) return;
+
     try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      const ctx = audioCtxRef.current;
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+      }
+
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      if (ctx.state !== 'running') {
+        throw new Error(`audio_context_${ctx.state}`);
+      }
+
       [0, 0.18, 0.36].forEach(delay => {
         const o = ctx.createOscillator();
         const g = ctx.createGain();
@@ -448,7 +461,12 @@ const EntregadorDashboard = () => {
         o.start(ctx.currentTime + delay);
         o.stop(ctx.currentTime + delay + 0.16);
       });
-    } catch {}
+    } catch (error) {
+      console.warn('[EntregadorDashboard] sound alert failed:', error);
+      unlocked.current = false;
+      forceRender(x => x + 1);
+      toast.error('Os alertas sonoros foram pausados pelo navegador. Toque para ativá-los novamente.');
+    }
   }, []);
 
   const fetchOrders = useCallback(async (silent = false) => {
@@ -489,7 +507,7 @@ const EntregadorDashboard = () => {
       }
       const novos = ativos.filter(o => !knownIds.current.has(o.id));
       if (!silent && ordersInitializedRef.current && novos.length > 0) {
-        playAlert();
+        void playAlert();
         toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
         // Destaque visual (pulse) por 8s nos novos pedidos
         const newIds = new Set(novos.map(o => o.id));

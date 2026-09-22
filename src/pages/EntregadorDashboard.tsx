@@ -50,6 +50,7 @@ const EntregadorDashboard = () => {
   const [claiming, setClaiming] = useState<string | null>(null);
   const claimInFlightRef = useRef(false);
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
+  const startDeliveryInFlightRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [availableLoadError, setAvailableLoadError] = useState('');
@@ -502,7 +503,9 @@ const EntregadorDashboard = () => {
   };
 
   const handleStartDelivery = async (orderId: string) => {
-    if (!session || deliveryAction) return;
+    if (!session || deliveryAction || startDeliveryInFlightRef.current) return;
+
+    startDeliveryInFlightRef.current = true;
     setDeliveryAction(`start:${orderId}`);
     try {
       const { data, error } = await supabase.rpc('entregador_start_delivery_session' as any, {
@@ -510,25 +513,46 @@ const EntregadorDashboard = () => {
         _order_id: orderId,
       });
       const res: any = data;
-      if (error || !res?.ok) {
+
+      if (error) {
+        console.error('[EntregadorDashboard] start delivery RPC failed:', error);
+        toast.error('Não foi possível iniciar a entrega agora. Verifique a conexão e tente novamente.');
+        await fetchOrders(true);
+        return;
+      }
+
+      if (!res?.ok) {
         const msg: Record<string, string> = {
           invalid_session: 'Sessão expirada. Faça login novamente.',
           order_not_found: 'Pedido não encontrado.',
           forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery: 'Este pedido não é uma entrega.',
           not_assigned: 'Este pedido não está mais atribuído a você.',
           not_ready: 'O pedido ainda não está pronto para retirada.',
           scheduled_not_released: 'Este pedido agendado ainda não entrou na janela operacional.',
         };
         toast.error(msg[res?.reason] || 'Não foi possível iniciar a entrega.');
-        if (isInvalidSession(res)) expireSession();
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
         await fetchOrders(true);
         return;
       }
+
       setOrders(prev => prev.map(o => o.id === orderId
-        ? { ...o, status: 'out_for_delivery', delivery_started_at: new Date().toISOString(), delivery_issue_reason: null, delivery_issue_at: null }
+        ? { ...o, status: 'out_for_delivery', delivery_issue_reason: null, delivery_issue_at: null }
         : o));
-      toast.success('🛵 Entrega iniciada. Agora o pedido está oficialmente a caminho.');
+      toast.success(res?.idempotent
+        ? '🛵 Esta entrega já estava iniciada. Status sincronizado.'
+        : '🛵 Entrega iniciada. Agora o pedido está oficialmente a caminho.');
+      void fetchOrders(true);
+    } catch (error) {
+      console.error('[EntregadorDashboard] start delivery request failed:', error);
+      toast.error('Não foi possível iniciar a entrega agora. Verifique a conexão e tente novamente.');
+      await fetchOrders(true);
     } finally {
+      startDeliveryInFlightRef.current = false;
       setDeliveryAction(null);
     }
   };

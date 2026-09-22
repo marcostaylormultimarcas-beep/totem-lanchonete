@@ -1,4 +1,5 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
+import { sanitizeAuthReturnTo } from '@/lib/authReturnTo';
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +16,22 @@ const GOOGLE_OAUTH_ORG_ID_KEY = 'visionfood_google_oauth_org_id';
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const cleanPhone = (value: string) => value.replace(/\D/g, '');
+
+const readLocalStorage = (key: string) => {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeLocalStorage = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // O fluxo online continua mesmo quando o storage do navegador está indisponível.
+  }
+};
 
 const extractStoreSlug = (path: string | null) => {
   if (!path) return '';
@@ -44,25 +61,28 @@ const Auth = () => {
       return '';
     }
   })();
-  const returnTo = searchParams.get('returnTo') || storedGoogleReturnTo || getKioskHomePath();
+  const returnTo = sanitizeAuthReturnTo(
+    searchParams.get('returnTo') || storedGoogleReturnTo,
+    getKioskHomePath(),
+  );
   const { orgId, org } = useOrg();
 
   const resolveSignupOrganizationId = async () => {
     if (orgId) return orgId;
 
     const slugFromReturnTo = extractStoreSlug(returnTo);
-    const slugFromStorage = localStorage.getItem(KIOSK_SLUG_STORAGE_KEY)?.trim().toLowerCase() || '';
+    const slugFromStorage = readLocalStorage(KIOSK_SLUG_STORAGE_KEY).trim().toLowerCase();
     const slug = slugFromReturnTo || slugFromStorage || org?.slug || '';
     if (slug) {
       const data = await fetchPublicOrganization({ slug });
       if (data?.id) {
-        localStorage.setItem(KIOSK_ORG_STORAGE_KEY, data.id);
-        localStorage.setItem(KIOSK_SLUG_STORAGE_KEY, data.slug);
+        writeLocalStorage(KIOSK_ORG_STORAGE_KEY, data.id);
+        writeLocalStorage(KIOSK_SLUG_STORAGE_KEY, data.slug);
         return data.id;
       }
     }
 
-    const storedOrgId = localStorage.getItem(KIOSK_ORG_STORAGE_KEY);
+    const storedOrgId = readLocalStorage(KIOSK_ORG_STORAGE_KEY);
     if (storedOrgId) return storedOrgId;
 
     return '';
@@ -75,7 +95,21 @@ const Auth = () => {
     const completeAuthenticatedReturn = async (knownSession?: any) => {
       if (handled || cancelled) return;
 
-      const session = knownSession || (await supabase.auth.getSession()).data.session;
+      let session = knownSession;
+      if (!session) {
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          if (error) {
+            console.error('[auth] session recovery failed:', error);
+            return;
+          }
+          session = data.session;
+        } catch (error) {
+          console.error('[auth] session recovery request failed:', error);
+          return;
+        }
+      }
+
       if (!session || handled || cancelled) return;
 
       handled = true;
@@ -88,10 +122,12 @@ const Auth = () => {
       }
 
       if (googleOrgId) {
-        const { error: profileLinkError } = await supabase.rpc('visionfood_link_google_profile', {
-          _organization_id: googleOrgId,
-        });
-        if (profileLinkError) {
+        try {
+          const { error: profileLinkError } = await supabase.rpc('visionfood_link_google_profile', {
+            _organization_id: googleOrgId,
+          });
+          if (profileLinkError) throw profileLinkError;
+        } catch (profileLinkError) {
           console.error('[google-oauth] profile organization link failed:', profileLinkError);
           toast.error('Login com Google realizado, mas não foi possível vincular sua conta à loja.');
         }
@@ -122,15 +158,26 @@ const Auth = () => {
   const handleLogin = async () => {
     const cleanEmailValue = normalizeEmail(email);
     if (!cleanEmailValue) { toast.error('Informe seu email'); return; }
+
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email: cleanEmailValue, password });
-    if (error) {
-      toast.error(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
-    } else {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: cleanEmailValue,
+        password,
+      });
+      if (error) {
+        toast.error(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
+        return;
+      }
+
       toast.success('Login realizado!');
       navigate(returnTo);
+    } catch (error) {
+      console.error('[auth] password login request failed:', error);
+      toast.error('Não foi possível entrar agora. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleSignup = async () => {
@@ -138,46 +185,54 @@ const Auth = () => {
     const cleanEmailValue = normalizeEmail(email);
     const cleanPhoneValue = cleanPhone(phone);
     if (!cleanEmailValue) { toast.error('Informe seu email'); return; }
-    setLoading(true);
-    const origemOrgId = await resolveSignupOrganizationId();
-    if (!origemOrgId) {
-      toast.error('Não foi possível identificar a loja deste cadastro. Volte ao cardápio e tente novamente.');
-      setLoading(false);
-      return;
-    }
-    localStorage.setItem(KIOSK_ORG_STORAGE_KEY, origemOrgId);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: cleanEmailValue,
-      password,
-      options: {
-        data: {
-          display_name: name.trim(),
-          phone: cleanPhoneValue || phone.trim(),
-          organization_id: origemOrgId,
-          origem_assinatura_empresa_id: origemOrgId,
+    setLoading(true);
+    try {
+      const origemOrgId = await resolveSignupOrganizationId();
+      if (!origemOrgId) {
+        toast.error('Não foi possível identificar a loja deste cadastro. Volte ao cardápio e tente novamente.');
+        return;
+      }
+      writeLocalStorage(KIOSK_ORG_STORAGE_KEY, origemOrgId);
+
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmailValue,
+        password,
+        options: {
+          data: {
+            display_name: name.trim(),
+            phone: cleanPhoneValue || phone.trim(),
+            organization_id: origemOrgId,
+            origem_assinatura_empresa_id: origemOrgId,
+          },
+          emailRedirectTo: window.location.origin,
         },
-        emailRedirectTo: window.location.origin,
-      },
-    });
-    if (error) {
-      const message = error.message.toLowerCase().includes('already') || error.message.toLowerCase().includes('registered')
-        ? 'Este e-mail já está cadastrado. Faça login para continuar.'
-        : error.message;
-      toast.error(message);
-    } else {
+      });
+      if (error) {
+        const message = error.message.toLowerCase().includes('already') || error.message.toLowerCase().includes('registered')
+          ? 'Este e-mail já está cadastrado. Faça login para continuar.'
+          : error.message;
+        toast.error(message);
+        return;
+      }
+
       if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
         toast.error('Este e-mail já está cadastrado. Faça login para continuar.');
         setMode('login');
-        setLoading(false);
         return;
       }
 
       if (data.session) {
-        await supabase.auth.setSession({
+        const { error: setSessionError } = await supabase.auth.setSession({
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
         });
+        if (setSessionError) {
+          console.error('[auth] signup session activation failed:', setSessionError);
+          toast.error('Conta criada, mas não foi possível iniciar a sessão. Faça login para continuar.');
+          setMode('login');
+          return;
+        }
       }
 
       // O perfil e o vínculo com a loja são criados pelo trigger handle_new_user.
@@ -185,23 +240,36 @@ const Auth = () => {
 
       toast.success('Conta criada com sucesso!');
       navigate(returnTo);
+    } catch (error) {
+      console.error('[auth] signup request failed:', error);
+      toast.error('Não foi possível criar a conta agora. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleForgot = async () => {
-    if (!email.trim()) { toast.error('Informe seu email'); return; }
+    const cleanEmailValue = normalizeEmail(email);
+    if (!cleanEmailValue) { toast.error('Informe seu email'); return; }
+
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    if (error) {
-      toast.error(error.message);
-    } else {
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmailValue, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
       toast.success('Enviamos um link de recuperação para seu email.');
       setMode('login');
+    } catch (error) {
+      console.error('[auth] password reset request failed:', error);
+      toast.error('Não foi possível enviar o link agora. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleGoogleLogin = async () => {
@@ -210,7 +278,7 @@ const Auth = () => {
       const googleOrgId = await resolveSignupOrganizationId();
       sessionStorage.setItem(GOOGLE_OAUTH_RETURN_TO_KEY, returnTo);
       if (googleOrgId) {
-        localStorage.setItem(KIOSK_ORG_STORAGE_KEY, googleOrgId);
+        writeLocalStorage(KIOSK_ORG_STORAGE_KEY, googleOrgId);
         sessionStorage.setItem(GOOGLE_OAUTH_ORG_ID_KEY, googleOrgId);
       } else {
         sessionStorage.removeItem(GOOGLE_OAUTH_ORG_ID_KEY);
@@ -238,9 +306,9 @@ const Auth = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === 'login') handleLogin();
-    else if (mode === 'signup') handleSignup();
-    else handleForgot();
+    if (mode === 'login') void handleLogin();
+    else if (mode === 'signup') void handleSignup();
+    else void handleForgot();
   };
 
   const titleMap = { login: 'Entrar', signup: 'Criar Conta', forgot: 'Recuperar senha' };

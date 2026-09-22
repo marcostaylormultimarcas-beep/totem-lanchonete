@@ -239,6 +239,57 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('preserves the authoritative RPC order in the delivered history', async () => {
+    const scheduledLater = {
+      ...makeOrder('delivered'),
+      id: '44444444-4444-4444-4444-444444444444',
+      order_number: '101',
+      created_at: '2026-09-20T12:00:00.000Z',
+      scheduled_for: '2026-09-22T18:00:00.000Z',
+    };
+    const scheduledEarlier = {
+      ...makeOrder('delivered'),
+      id: '55555555-5555-5555-5555-555555555555',
+      order_number: '202',
+      created_at: '2026-09-21T12:00:00.000Z',
+      scheduled_for: '2026-09-22T17:00:00.000Z',
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({
+          data: { ok: true, orders: [scheduledLater, scheduledEarlier] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const historyTab = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Histórico'));
+
+    await act(async () => {
+      historyTab?.click();
+      await flushAsync();
+    });
+
+    const historyText = container.textContent || '';
+    expect(historyText.indexOf('#101')).toBeGreaterThanOrEqual(0);
+    expect(historyText.indexOf('#202')).toBeGreaterThanOrEqual(0);
+    expect(historyText.indexOf('#101')).toBeLessThan(historyText.indexOf('#202'));
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('handles concurrent invalid-session responses only once', async () => {
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session' || name === 'entregador_available_orders_session') {

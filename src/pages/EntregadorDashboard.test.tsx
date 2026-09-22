@@ -332,6 +332,57 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('does not start another automatic polling round while the previous one is still pending', async () => {
+    vi.useFakeTimers();
+    const slowOrders = deferred<any>();
+    let ordersCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        if (ordersCalls === 1) {
+          return Promise.resolve({ data: { ok: true, orders: [makeOrder('preparing')] }, error: null });
+        }
+        if (ordersCalls === 2) return slowOrders.promise;
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Preparando');
+
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+      await flushAsync();
+    });
+    expect(ordersCalls).toBe(2);
+
+    await act(async () => {
+      vi.advanceTimersByTime(15000);
+      await flushAsync();
+    });
+    expect(ordersCalls).toBe(2);
+
+    await act(async () => {
+      slowOrders.resolve({ data: { ok: true, orders: [makeOrder('ready')] }, error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Pronto p/ retirar');
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
+  });
+
   it('keeps the newest available-orders mode when polling responses arrive out of order', async () => {
     vi.useFakeTimers();
     const older = deferred<any>();

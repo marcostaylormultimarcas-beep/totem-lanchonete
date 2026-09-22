@@ -69,6 +69,8 @@ const EntregadorDashboard = () => {
   const [, forceRender] = useState(0);
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [trackingSyncError, setTrackingSyncError] = useState('');
+  const [trackingLastSyncedAt, setTrackingLastSyncedAt] = useState<string | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
@@ -80,6 +82,7 @@ const EntregadorDashboard = () => {
   const locationRequestInFlightRef = useRef(false);
   const trackingGenerationRef = useRef(0);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTrackingErrorRef = useRef('');
 
   // Raio máximo permitido para confirmar a entrega (metros)
   const MAX_DELIVERY_RADIUS_M = 200;
@@ -203,6 +206,9 @@ const EntregadorDashboard = () => {
     trackingGenerationRef.current += 1;
     locationRequestInFlightRef.current = false;
     lastSampleRef.current = null;
+    lastTrackingErrorRef.current = '';
+    setTrackingSyncError('');
+    setTrackingLastSyncedAt(null);
     if (initialSendTimerRef.current !== null) {
       clearTimeout(initialSendTimerRef.current);
       initialSendTimerRef.current = null;
@@ -232,50 +238,103 @@ const EntregadorDashboard = () => {
       toast.error('Seu dispositivo não suporta geolocalização.');
       return;
     }
+
     stopTracking();
+    setTrackingSyncError('');
+    setTrackingLastSyncedAt(null);
     const trackingGeneration = trackingGenerationRef.current;
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (
+          !Number.isFinite(lat) || !Number.isFinite(lng)
+          || lat < -90 || lat > 90 || lng < -180 || lng > 180
+        ) {
+          setTrackingSyncError('O GPS retornou uma localização inválida.');
+          return;
+        }
+
+        lastTrackingErrorRef.current = '';
         lastSampleRef.current = { lat, lng };
         setRiderPos({ lat, lng, updatedAt: new Date().toISOString() });
       },
       (err) => {
-        toast.error('Permissão de localização negada.');
-        console.warn('geolocation error', err);
+        const nextMessage = err?.code === 1
+          ? 'Permissão de localização negada.'
+          : err?.code === 3
+            ? 'Tempo esgotado ao obter localização do GPS.'
+            : 'Localização do GPS indisponível no momento.';
+        setTrackingSyncError(nextMessage);
+        if (lastTrackingErrorRef.current !== nextMessage) {
+          lastTrackingErrorRef.current = nextMessage;
+          toast.error(nextMessage);
+        }
+        console.warn('[EntregadorDashboard] geolocation watch error', err);
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
     );
-    // envia a cada 15s
+
+    // Envia ao servidor a cada 15 s. Falha de transporte não encerra o watch local:
+    // a próxima janela tenta novamente sem criar requisições sobrepostas.
     const send = async () => {
       if (trackingGeneration !== trackingGenerationRef.current || locationRequestInFlightRef.current) return;
       const p = lastSampleRef.current;
       if (!p) return;
+
       locationRequestInFlightRef.current = true;
       try {
-        const { data } = await supabase.rpc('entregador_update_location_session' as any, {
+        const { data, error } = await supabase.rpc('entregador_update_location_session' as any, {
           _session_token: session.session_token,
           _lat: p.lat,
           _lng: p.lng,
           _order_id: orderId,
         });
         if (trackingGeneration !== trackingGenerationRef.current) return;
-        if (isInvalidSession(data)) expireSession();
+
+        if (error) {
+          console.warn('[EntregadorDashboard] location sync RPC failed:', error);
+          setTrackingSyncError('Sem conexão para sincronizar sua localização. Tentaremos novamente.');
+          return;
+        }
+
         const result: any = data;
-        if (isInvalidSession(data)) return;
+        if (isInvalidSession(result)) {
+          expireSession();
+          return;
+        }
         if (result?.reason === 'order_not_assigned') {
           stopTracking();
           setMapOpenId(null);
           setRiderPos(null);
           toast.info('Esta entrega não está mais atribuída a você. O rastreamento foi encerrado.');
+          return;
         }
+        if (!result?.ok) {
+          setTrackingSyncError('Não foi possível sincronizar sua localização com o servidor.');
+          return;
+        }
+
+        lastTrackingErrorRef.current = '';
+        setTrackingSyncError('');
+        setTrackingLastSyncedAt(new Date().toISOString());
+      } catch (error) {
+        if (trackingGeneration !== trackingGenerationRef.current) return;
+        console.warn('[EntregadorDashboard] location sync request failed:', error);
+        setTrackingSyncError('Sem conexão para sincronizar sua localização. Tentaremos novamente.');
       } finally {
-        if (trackingGeneration === trackingGenerationRef.current) locationRequestInFlightRef.current = false;
+        if (trackingGeneration === trackingGenerationRef.current) {
+          locationRequestInFlightRef.current = false;
+        }
       }
     };
-    sendTimerRef.current = window.setInterval(send, 15000);
-    // primeiro envio rápido; cancelável ao fechar mapa/logout/expirar sessão
+
+    sendTimerRef.current = window.setInterval(() => {
+      void send();
+    }, 15000);
+
+    // Primeiro envio rápido; cancelável ao fechar mapa/logout/expirar sessão.
     initialSendTimerRef.current = window.setTimeout(() => {
       initialSendTimerRef.current = null;
       void send();
@@ -1224,7 +1283,13 @@ const EntregadorDashboard = () => {
                         height={300}
                       />
                       <p className="text-[11px] text-amber-400/90 text-center">
-                        📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
+                        📡 {trackingSyncError
+                          ? `⚠️ ${trackingSyncError}`
+                          : riderPos
+                            ? trackingLastSyncedAt
+                              ? '✅ localização sincronizada com a loja'
+                              : 'GPS ativo • aguardando primeiro envio'
+                            : 'aguardando GPS...'}
                         {exactDestination ? ' • 📍 destino GPS do cliente' : ' • 📍 destino aproximado pelo endereço'}
                       </p>
                     </div>

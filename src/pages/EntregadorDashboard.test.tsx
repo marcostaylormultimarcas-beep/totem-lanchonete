@@ -11,12 +11,14 @@ const {
   toastSuccessMock,
   toastInfoMock,
   removeChannelMock,
+  geocodeAddressMock,
 } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
   removeChannelMock: vi.fn(),
+  geocodeAddressMock: vi.fn(),
 }));
 
 vi.mock('@/integrations/supabase/client', () => ({
@@ -43,7 +45,7 @@ vi.mock('@/components/LiveDeliveryMap', () => ({
 }));
 
 vi.mock('@/lib/cep', () => ({
-  geocodeAddress: vi.fn().mockResolvedValue(null),
+  geocodeAddress: geocodeAddressMock,
 }));
 
 vi.mock('@/lib/deliveryRouting', () => ({
@@ -101,6 +103,13 @@ async function flushAsync() {
   await Promise.resolve();
 }
 
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 function renderDashboard(root: Root) {
   root.render(
     <MemoryRouter initialEntries={['/entregador']}>
@@ -120,6 +129,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
     vi.useRealTimers();
+    geocodeAddressMock.mockResolvedValue(null);
     localStorage.clear();
     localStorage.setItem('entregador_session', JSON.stringify(session));
     container = document.createElement('div');
@@ -780,6 +790,168 @@ describe('EntregadorDashboard assigned orders polling', () => {
     expect(container.textContent).toContain('Cliente não atende');
 
     promptSpy.mockRestore();
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('does not make approximate address geocoding a hard gate and releases confirmation after a network failure', async () => {
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'confirm_delivery_with_code_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const codeInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]');
+    expect(codeInput).toBeTruthy();
+
+    await act(async () => {
+      if (codeInput) setInputValue(codeInput, '1234');
+      await flushAsync();
+    });
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim().endsWith('OK'));
+    expect(confirm).toBeTruthy();
+
+    await act(async () => {
+      confirm?.click();
+      await flushAsync();
+    });
+
+    expect(geocodeAddressMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Não foi possível confirmar a entrega agora. Verifique a conexão e tente novamente.',
+    );
+    const retryableConfirm = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim().endsWith('OK'));
+    expect(retryableConfirm?.disabled).toBe(false);
+    expect(container.textContent).toContain('A caminho');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate delivery-confirmation RPCs while the first confirmation is still in flight', async () => {
+    const confirmDeferred = deferred<any>();
+    let confirmCalls = 0;
+    let ordersCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: [makeOrder(ordersCalls === 1 ? 'out_for_delivery' : 'delivered')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'confirm_delivery_with_code_session') {
+        confirmCalls += 1;
+        return confirmDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const codeInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]');
+    await act(async () => {
+      if (codeInput) setInputValue(codeInput, '1234');
+      await flushAsync();
+    });
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim().endsWith('OK'));
+    expect(confirm).toBeTruthy();
+
+    await act(async () => {
+      confirm?.click();
+      confirm?.click();
+      await Promise.resolve();
+    });
+
+    expect(confirmCalls).toBe(1);
+
+    await act(async () => {
+      confirmDeferred.resolve({ data: { ok: true, status: 'delivered' }, error: null });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith('✅ Entrega confirmada!');
+    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('treats already_delivered as authoritative recovery after a lost success response', async () => {
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: [makeOrder(ordersCalls === 1 ? 'out_for_delivery' : 'delivered')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'confirm_delivery_with_code_session') {
+        return Promise.resolve({ data: { ok: false, reason: 'already_delivered' }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const codeInput = container.querySelector<HTMLInputElement>('input[inputmode="numeric"]');
+    await act(async () => {
+      if (codeInput) setInputValue(codeInput, '1234');
+      await flushAsync();
+    });
+
+    const confirm = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.trim().endsWith('OK'));
+
+    await act(async () => {
+      confirm?.click();
+      await flushAsync();
+    });
+
+    expect(toastInfoMock).toHaveBeenCalledWith('✅ Esta entrega já estava confirmada. Status sincronizado.');
+    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+
+    const historyTab = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Histórico'));
+    await act(async () => {
+      historyTab?.click();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('✓ Entregue');
+
     await act(async () => root.unmount());
     container.remove();
   });

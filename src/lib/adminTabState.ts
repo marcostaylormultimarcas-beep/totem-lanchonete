@@ -39,6 +39,27 @@ export const ADMIN_TAB_KEYS = [
 
 export type AdminTab = (typeof ADMIN_TAB_KEYS)[number];
 
+export type AdminTier = 'super' | 'master' | 'admin';
+
+const MASTER_ONLY_TABS = new Set<AdminTab>(['admins', 'multilojas']);
+const SUPER_ONLY_TABS = new Set<AdminTab>([
+  'plans',
+  'onesignal',
+  'billing',
+  'parcerias_map',
+  'super',
+]);
+
+export const isAdminTabAllowedForTier = (tab: AdminTab, tier: AdminTier): boolean => {
+  if (tier === 'super') return true;
+  if (SUPER_ONLY_TABS.has(tab)) return false;
+  if (tier === 'master') return true;
+  return !MASTER_ONLY_TABS.has(tab);
+};
+
+export const normalizeAdminTabForTier = (tab: AdminTab, tier: AdminTier): AdminTab =>
+  isAdminTabAllowedForTier(tab, tier) ? tab : 'orders';
+
 const ADMIN_TAB_SET = new Set<string>(ADMIN_TAB_KEYS);
 
 export const parseAdminTab = (value: string | null | undefined): AdminTab =>

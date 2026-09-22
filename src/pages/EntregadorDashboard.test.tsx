@@ -318,4 +318,114 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
     vi.useRealTimers();
   });
+  it('releases the claim action after a network failure and keeps the available order retryable', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_claim_order_session') {
+        return Promise.reject(new Error('network unavailable'));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const availableTab = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Disponíveis'));
+    await act(async () => {
+      availableTab?.click();
+      await flushAsync();
+    });
+
+    const claim = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ACEITAR PEDIDO'));
+    expect(claim).toBeTruthy();
+
+    await act(async () => {
+      claim?.click();
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Não foi possível aceitar o pedido agora. Verifique a conexão e tente novamente.',
+    );
+    const retryableClaim = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ACEITAR PEDIDO'));
+    expect(retryableClaim?.disabled).toBe(false);
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('prevents duplicate claim RPCs while one free-order claim is still in flight', async () => {
+    const claimDeferred = deferred<any>();
+    let claimCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
+      }
+      if (name === 'entregador_claim_order_session') {
+        claimCalls += 1;
+        return claimDeferred.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const availableTab = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Disponíveis'));
+    await act(async () => {
+      availableTab?.click();
+      await flushAsync();
+    });
+
+    const claim = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ACEITAR PEDIDO'));
+    expect(claim).toBeTruthy();
+
+    await act(async () => {
+      claim?.click();
+      claim?.click();
+      await Promise.resolve();
+    });
+
+    expect(claimCalls).toBe(1);
+    expect(container.textContent).toContain('Aceitando...');
+
+    await act(async () => {
+      claimDeferred.resolve({
+        data: {
+          ok: true,
+          status: 'ready',
+          reserved: true,
+          entregador_id: session.id,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      '🛵 Pedido reservado para você. Retire na loja e confirme quando estiver com o pedido.',
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

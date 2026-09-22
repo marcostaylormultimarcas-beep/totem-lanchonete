@@ -18,7 +18,7 @@ import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
 import MesasPanel from '@/components/admin/MesasPanel';
-import { AdminTab, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
+import { AdminTab, normalizeAdminTabForTier, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
@@ -111,6 +111,16 @@ const AdminPage = () => {
     const urlTab = parseAdminTab(searchParams.get('tab'));
     setTabState(current => current === urlTab ? current : urlTab);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!authenticated || !currentAdmin) return;
+    const allowedTab = normalizeAdminTabForTier(tab, currentAdmin.tier);
+    if (allowedTab === tab) return;
+
+    setTabState(allowedTab);
+    setSearchParams(withAdminTabSearchParams(searchParams, allowedTab), { replace: true });
+  }, [authenticated, currentAdmin, tab, searchParams, setSearchParams]);
+
 
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);

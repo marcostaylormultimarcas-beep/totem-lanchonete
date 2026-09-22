@@ -119,6 +119,7 @@ describe('EntregadorDashboard assigned orders polling', () => {
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
+    vi.useRealTimers();
     localStorage.clear();
     localStorage.setItem('entregador_session', JSON.stringify(session));
     container = document.createElement('div');
@@ -219,5 +220,102 @@ describe('EntregadorDashboard assigned orders polling', () => {
 
     await act(async () => root.unmount());
     container.remove();
+  });
+
+  it('surfaces an available-orders refresh failure and recovers without hiding it as manual mode', async () => {
+    let availableCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        availableCalls += 1;
+        if (availableCalls === 1) return Promise.reject(new Error('network unavailable'));
+        return Promise.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Não foi possível atualizar os pedidos disponíveis');
+    expect(container.textContent).toContain('Tentar agora');
+
+    const retry = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Tentar agora'));
+
+    await act(async () => {
+      retry?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Disponíveis');
+    expect(container.textContent).not.toContain('Não foi possível atualizar os pedidos disponíveis');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('keeps the newest available-orders mode when polling responses arrive out of order', async () => {
+    vi.useFakeTimers();
+    const older = deferred<any>();
+    const newer = deferred<any>();
+    let availableCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        availableCalls += 1;
+        if (availableCalls === 1) {
+          return Promise.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
+        }
+        if (availableCalls === 2) return older.promise;
+        if (availableCalls === 3) return newer.promise;
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const availableTab = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Disponíveis'));
+    expect(availableTab).toBeTruthy();
+
+    await act(async () => {
+      availableTab?.click();
+      vi.advanceTimersByTime(15000);
+      await flushAsync();
+      vi.advanceTimersByTime(15000);
+      await flushAsync();
+    });
+
+    await act(async () => {
+      newer.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain('Modo Disputa Livre');
+    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+
+    await act(async () => {
+      older.resolve({ data: { ok: true, mode: 'free', orders: [makeOrder('ready')] }, error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain('Modo Disputa Livre');
+    expect(container.textContent).toContain('Nenhum pedido atribuído no momento.');
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.useRealTimers();
   });
 });

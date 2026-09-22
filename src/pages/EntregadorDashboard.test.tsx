@@ -1459,4 +1459,247 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+
+  it('resumes a suspended audio context before sounding a newly assigned order alert', async () => {
+    let audioState = 'running';
+    const startMock = vi.fn();
+    const resumeMock = vi.fn(async () => {
+      audioState = 'running';
+    });
+    const context = {
+      get state() { return audioState; },
+      currentTime: 0,
+      destination: {},
+      resume: resumeMock,
+      createOscillator: vi.fn(() => ({
+        connect: vi.fn(),
+        frequency: { value: 0 },
+        start: startMock,
+        stop: vi.fn(),
+      })),
+      createGain: vi.fn(() => ({
+        connect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      })),
+    };
+    const AudioContextMock = vi.fn(() => context);
+    vi.stubGlobal('AudioContext', AudioContextMock);
+
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: ordersCalls === 1 ? [] : [makeOrder('ready')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    expect(resumeMock).toHaveBeenCalledTimes(1);
+    audioState = 'suspended';
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(resumeMock).toHaveBeenCalledTimes(2);
+    expect(startMock).toHaveBeenCalledTimes(3);
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      '🛵 Novo pedido atribuído: #42',
+      { duration: 6000 },
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it('recreates a closed audio context before playing the next assigned-order alert', async () => {
+    let firstState = 'running';
+    const firstResumeMock = vi.fn(async () => {});
+    const firstContext = {
+      get state() { return firstState; },
+      currentTime: 0,
+      destination: {},
+      resume: firstResumeMock,
+      createOscillator: vi.fn(() => ({
+        connect: vi.fn(),
+        frequency: { value: 0 },
+        start: vi.fn(),
+        stop: vi.fn(),
+      })),
+      createGain: vi.fn(() => ({
+        connect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      })),
+    };
+
+    const replacementStartMock = vi.fn();
+    const replacementContext = {
+      state: 'running',
+      currentTime: 0,
+      destination: {},
+      resume: vi.fn(async () => {}),
+      createOscillator: vi.fn(() => ({
+        connect: vi.fn(),
+        frequency: { value: 0 },
+        start: replacementStartMock,
+        stop: vi.fn(),
+      })),
+      createGain: vi.fn(() => ({
+        connect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      })),
+    };
+
+    const AudioContextMock = vi.fn()
+      .mockImplementationOnce(() => firstContext)
+      .mockImplementationOnce(() => replacementContext);
+    vi.stubGlobal('AudioContext', AudioContextMock);
+
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: ordersCalls === 1 ? [] : [makeOrder('ready')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    firstState = 'closed';
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(AudioContextMock).toHaveBeenCalledTimes(2);
+    expect(replacementStartMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it('makes sound activation retryable when a suspended audio context cannot resume', async () => {
+    let audioState = 'running';
+    const resumeMock = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('audio unavailable'));
+    const startMock = vi.fn();
+    const context = {
+      get state() { return audioState; },
+      currentTime: 0,
+      destination: {},
+      resume: resumeMock,
+      createOscillator: vi.fn(() => ({
+        connect: vi.fn(),
+        frequency: { value: 0 },
+        start: startMock,
+        stop: vi.fn(),
+      })),
+      createGain: vi.fn(() => ({
+        connect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      })),
+    };
+    vi.stubGlobal('AudioContext', vi.fn(() => context));
+
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: ordersCalls === 1 ? [] : [makeOrder('ready')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    audioState = 'suspended';
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(startMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Os alertas sonoros foram pausados pelo navegador. Toque para ativá-los novamente.',
+    );
+    expect(container.textContent).toContain('ativar os alertas sonoros');
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
 });

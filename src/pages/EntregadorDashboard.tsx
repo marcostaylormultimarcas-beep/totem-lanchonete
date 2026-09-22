@@ -44,6 +44,7 @@ const EntregadorDashboard = () => {
   const [session] = useState(() => getEntregadorSession());
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState('');
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
   const [claiming, setClaiming] = useState<string | null>(null);
@@ -54,6 +55,7 @@ const EntregadorDashboard = () => {
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
   const ordersInitializedRef = useRef(false);
+  const ordersRequestVersionRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
   const [, forceRender] = useState(0);
@@ -314,52 +316,80 @@ const EntregadorDashboard = () => {
 
   const fetchOrders = useCallback(async (silent = false) => {
     if (!session) return;
-    const { data, error } = await supabase.rpc('entregador_orders_session' as any, {
-      _session_token: session.session_token,
-    });
-    const res: any = data;
-    if (error || !res?.ok) {
-      if (isInvalidSession(res)) expireSession();
-      setLoading(false);
-      return;
+
+    const requestId = ++ordersRequestVersionRef.current;
+    if (!ordersInitializedRef.current) {
+      setLoading(true);
     }
-    const list: DeliveryOrder[] = res.orders || [];
-    // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro.
-    // Remove IDs que deixaram a atribuição para que uma futura reatribuição ao
-    // mesmo entregador seja notificada novamente.
-    const ativos = list.filter(o => o.status !== 'delivered');
-    const activeIds = new Set(ativos.map(o => o.id));
-    for (const id of Array.from(knownIds.current)) {
-      if (!activeIds.has(id)) knownIds.current.delete(id);
-    }
-    const novos = ativos.filter(o => !knownIds.current.has(o.id));
-    if (!silent && ordersInitializedRef.current && novos.length > 0) {
-      playAlert();
-      toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
-      // Destaque visual (pulse) por 8s nos novos pedidos
-      const newIds = new Set(novos.map(o => o.id));
-      setHighlightIds(prev => {
-        const next = new Set(prev);
-        newIds.forEach(id => next.add(id));
-        return next;
+
+    try {
+      const { data, error } = await supabase.rpc('entregador_orders_session' as any, {
+        _session_token: session.session_token,
       });
-      setTimeout(() => {
+      if (requestId !== ordersRequestVersionRef.current) return;
+
+      const res: any = data;
+      if (error) throw error;
+      if (!res?.ok) {
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        if (!ordersInitializedRef.current) {
+          setOrdersLoadError('Não foi possível carregar seus pedidos agora. Tente novamente.');
+        }
+        return;
+      }
+
+      const list: DeliveryOrder[] = Array.isArray(res.orders) ? res.orders : [];
+      // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro.
+      // Remove IDs que deixaram a atribuição para que uma futura reatribuição ao
+      // mesmo entregador seja notificada novamente.
+      const ativos = list.filter(o => o.status !== 'delivered');
+      const activeIds = new Set(ativos.map(o => o.id));
+      for (const id of Array.from(knownIds.current)) {
+        if (!activeIds.has(id)) knownIds.current.delete(id);
+      }
+      const novos = ativos.filter(o => !knownIds.current.has(o.id));
+      if (!silent && ordersInitializedRef.current && novos.length > 0) {
+        playAlert();
+        toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
+        // Destaque visual (pulse) por 8s nos novos pedidos
+        const newIds = new Set(novos.map(o => o.id));
         setHighlightIds(prev => {
           const next = new Set(prev);
-          newIds.forEach(id => next.delete(id));
+          newIds.forEach(id => next.add(id));
           return next;
         });
-      }, 8000);
+        setTimeout(() => {
+          setHighlightIds(prev => {
+            const next = new Set(prev);
+            newIds.forEach(id => next.delete(id));
+            return next;
+          });
+        }, 8000);
+      }
+      ativos.forEach(o => knownIds.current.add(o.id));
+      ordersInitializedRef.current = true;
+      setOrdersLoadError('');
+
+      if (mapOpenId && !ativos.some(o => o.id === mapOpenId)) {
+        setMapOpenId(null);
+        setRiderPos(null);
+        stopTracking();
+      }
+      setOrders(list);
+    } catch (error) {
+      if (requestId !== ordersRequestVersionRef.current) return;
+      console.error('[EntregadorDashboard] orders load failed:', error);
+      if (!ordersInitializedRef.current) {
+        setOrdersLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
+      } else {
+        console.warn('[EntregadorDashboard] background orders refresh failed; keeping the last valid list visible.');
+      }
+    } finally {
+      if (requestId === ordersRequestVersionRef.current) setLoading(false);
     }
-    ativos.forEach(o => knownIds.current.add(o.id));
-    ordersInitializedRef.current = true;
-    if (mapOpenId && !ativos.some(o => o.id === mapOpenId)) {
-      setMapOpenId(null);
-      setRiderPos(null);
-      stopTracking();
-    }
-    setOrders(list);
-    setLoading(false);
   }, [session, playAlert, expireSession, mapOpenId, stopTracking]);
 
   const fetchAvailable = useCallback(async () => {
@@ -381,7 +411,10 @@ const EntregadorDashboard = () => {
     fetchOrders(true);
     fetchAvailable();
     const i = setInterval(() => { fetchOrders(false); fetchAvailable(); }, 15000);
-    return () => clearInterval(i);
+    return () => {
+      clearInterval(i);
+      ordersRequestVersionRef.current += 1;
+    };
   }, [fetchOrders, fetchAvailable]);
 
   // Sessões de entregador usam token próprio, não Supabase Auth.
@@ -756,6 +789,19 @@ const EntregadorDashboard = () => {
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : ordersLoadError ? (
+          <div className="text-center py-14 px-4 bg-slate-900 border border-red-500/30 rounded-2xl space-y-3">
+            <RefreshCw className="w-12 h-12 mx-auto text-orange-500" />
+            <p className="font-black text-slate-100">Não foi possível carregar seus pedidos</p>
+            <p className="text-sm text-slate-400">{ordersLoadError}</p>
+            <button
+              type="button"
+              onClick={() => void fetchOrders(true)}
+              className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-4 py-2.5 rounded-xl"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : tab === 'pendentes' ? (
           pendentes.length === 0 ? (

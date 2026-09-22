@@ -842,12 +842,32 @@ const EntregadorDashboard = () => {
 
   const handleUnlockSound = async () => {
     try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      await audioCtxRef.current.resume();
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+      }
+
+      if (ctx.state !== 'running') {
+        await ctx.resume();
+      }
+
+      if (ctx.state !== 'running') {
+        throw new Error(`audio_context_${ctx.state}`);
+      }
+
       unlocked.current = true;
       forceRender(x => x + 1);
       toast.success('Alertas sonoros ativados.');
-    } catch { toast.error('Não foi possível ativar o som.'); }
+    } catch (error) {
+      console.warn('[EntregadorDashboard] sound activation failed:', error);
+      if (audioCtxRef.current?.state === 'closed') {
+        audioCtxRef.current = null;
+      }
+      unlocked.current = false;
+      forceRender(x => x + 1);
+      toast.error('Não foi possível ativar o som.');
+    }
   };
 
   const handleConfirm = async (orderId: string) => {

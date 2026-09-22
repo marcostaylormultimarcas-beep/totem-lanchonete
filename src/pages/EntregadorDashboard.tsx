@@ -76,6 +76,8 @@ const EntregadorDashboard = () => {
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
   const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
+  const refreshDistanceInFlightRef = useRef(false);
+  const destinationLookupInFlightRef = useRef<Map<string, Promise<{ lat: number; lng: number } | null>>>(new Map());
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
   const initialSendTimerRef = useRef<number | null>(null);
@@ -135,9 +137,38 @@ const EntregadorDashboard = () => {
     if (cached) return cached;
     if (!order.delivery_address) return null;
 
-    const geocoded = await geocodeAddress(order.delivery_address);
-    if (geocoded) setDestCoords(prev => ({ ...prev, [order.id]: geocoded }));
-    return geocoded;
+    const lookupKey = `${order.id}\u0000${order.delivery_address}`;
+    const existingLookup = destinationLookupInFlightRef.current.get(lookupKey);
+    if (existingLookup) return existingLookup;
+
+    const lookup = (async () => {
+      try {
+        const geocoded = await geocodeAddress(order.delivery_address!);
+        if (
+          !geocoded
+          || !Number.isFinite(geocoded.lat)
+          || !Number.isFinite(geocoded.lng)
+          || geocoded.lat < -90 || geocoded.lat > 90
+          || geocoded.lng < -180 || geocoded.lng > 180
+        ) {
+          return null;
+        }
+        setDestCoords(prev => ({ ...prev, [order.id]: geocoded }));
+        return geocoded;
+      } catch (error) {
+        console.warn('[EntregadorDashboard] destination geocoding failed:', error);
+        return null;
+      }
+    })();
+
+    destinationLookupInFlightRef.current.set(lookupKey, lookup);
+    try {
+      return await lookup;
+    } finally {
+      if (destinationLookupInFlightRef.current.get(lookupKey) === lookup) {
+        destinationLookupInFlightRef.current.delete(lookupKey);
+      }
+    }
   };
 
   const getCurrentPositionAsync = () =>
@@ -158,9 +189,32 @@ const EntregadorDashboard = () => {
     });
 
   const refreshDistance = async (orderId: string) => {
+    if (refreshDistanceInFlightRef.current) return;
+
     const order = orders.find((o) => o.id === orderId);
-    if (!order || (!order.delivery_address && !getExactDestination(order))) return;
+    if (!order) return;
+
+    if (!order.delivery_address && !getExactDestination(order)) {
+      setCurrentDistance((p) => {
+        if (!(orderId in p)) return p;
+        const next = { ...p };
+        delete next[orderId];
+        return next;
+      });
+      setGeofenceError((p) => ({ ...p, [orderId]: '📍 Este pedido não possui um destino válido para calcular a distância.' }));
+      return;
+    }
+
+    refreshDistanceInFlightRef.current = true;
     setRefreshingLoc(orderId);
+    setCurrentDistance((p) => {
+      if (!(orderId in p)) return p;
+      const next = { ...p };
+      delete next[orderId];
+      return next;
+    });
+    setGeofenceError((p) => ({ ...p, [orderId]: null }));
+
     try {
       const dest = await resolveDestination(order);
       if (!dest) {
@@ -195,6 +249,7 @@ const EntregadorDashboard = () => {
           : '📍 Não foi possível obter sua localização. Verifique o GPS.',
       }));
     } finally {
+      refreshDistanceInFlightRef.current = false;
       setRefreshingLoc(null);
     }
   };
@@ -1232,7 +1287,7 @@ const EntregadorDashboard = () => {
                         <button
                           type="button"
                           onClick={() => refreshDistance(o.id)}
-                          disabled={refreshingLoc === o.id}
+                          disabled={refreshingLoc !== null}
                           className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
                         >
                           {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}

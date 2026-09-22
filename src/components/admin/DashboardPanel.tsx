@@ -50,6 +50,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
   const [from, setFrom] = useState(daysAgoISO(30));
   const [to, setTo] = useState(todayISO());
   const [periodOrders, setPeriodOrders] = useState<OrderRow[]>([]);
+  const [periodError, setPeriodError] = useState<string | null>(null);
   const [todayOrders, setTodayOrders] = useState<OrderRow[]>([]);
   const [recentOrders, setRecentOrders] = useState<OrderRow[]>([]);
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
@@ -59,17 +60,31 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
   const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const loadPeriod = async () => {
-    if (!organizationId) { setPeriodOrders([]); return; }
-    const fromDate = new Date(from + 'T00:00:00').toISOString();
-    const toDate = new Date(to + 'T23:59:59').toISOString();
-    const { data } = await supabase
-      .from('orders')
-      .select('id, order_number, customer_name, total, status, created_at, items')
-      .eq('organization_id', organizationId)
-      .gte('created_at', fromDate)
-      .lte('created_at', toDate)
-      .order('created_at', { ascending: false });
-    setPeriodOrders((data as any) || []);
+    if (!organizationId) {
+      setPeriodOrders([]);
+      setPeriodError(null);
+      return;
+    }
+
+    try {
+      setPeriodError(null);
+      const fromDate = new Date(from + 'T00:00:00').toISOString();
+      const toDate = new Date(to + 'T23:59:59').toISOString();
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, customer_name, total, status, created_at, items')
+        .eq('organization_id', organizationId)
+        .gte('created_at', fromDate)
+        .lte('created_at', toDate)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPeriodOrders((data as any) || []);
+    } catch (error) {
+      console.error('[Dashboard] loadPeriod failed', error);
+      setPeriodOrders([]);
+      setPeriodError('Não foi possível carregar o relatório deste período.');
+    }
   };
 
   const loadOverview = async () => {
@@ -385,6 +400,12 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
               className="w-full px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-[#FF7A00]/60 focus:ring-2 focus:ring-[#FF7A00]/20 text-sm text-white" />
           </div>
         </div>
+        {periodError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-200 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{periodError}</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#FF7A00]/15 flex items-center justify-center"><ShoppingBag className="w-4 h-4 text-[#FF7A00]" /></div>

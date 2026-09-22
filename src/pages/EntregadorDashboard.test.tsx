@@ -290,6 +290,38 @@ describe('EntregadorDashboard assigned orders polling', () => {
     container.remove();
   });
 
+  it('describes the delivered-history seven-day window accurately when empty', async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const historyTab = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Histórico'));
+
+    await act(async () => {
+      historyTab?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Nenhuma entrega concluída no histórico recente.');
+    expect(container.textContent).toContain('criados ou agendados nos últimos 7 dias');
+    expect(container.textContent).not.toContain('Nenhuma entrega concluída ainda.');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('handles concurrent invalid-session responses only once', async () => {
     rpcMock.mockImplementation((name: string) => {
       if (name === 'entregador_orders_session' || name === 'entregador_available_orders_session') {

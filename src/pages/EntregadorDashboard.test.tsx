@@ -1666,6 +1666,299 @@ describe('EntregadorDashboard assigned orders polling', () => {
   });
 
 
+  it('resumes an interrupted audio context before sounding a newly assigned order alert', async () => {
+    let audioState = 'running';
+    const startMock = vi.fn();
+    const resumeMock = vi.fn(async () => {
+      audioState = 'running';
+    });
+    const context = {
+      get state() { return audioState; },
+      currentTime: 0,
+      destination: {},
+      resume: resumeMock,
+      createOscillator: vi.fn(() => ({
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        frequency: { value: 0 },
+        start: startMock,
+        stop: vi.fn(),
+        onended: null as (() => void) | null,
+      })),
+      createGain: vi.fn(() => ({
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        gain: {
+          setValueAtTime: vi.fn(),
+          exponentialRampToValueAtTime: vi.fn(),
+        },
+      })),
+    };
+    vi.stubGlobal('AudioContext', vi.fn(function AudioContextMock() { return context; }));
+
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: ordersCalls === 1 ? [] : [makeOrder('ready')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    audioState = 'interrupted';
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(resumeMock).toHaveBeenCalledTimes(1);
+    expect(startMock).toHaveBeenCalledTimes(3);
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      'Os alertas sonoros foram pausados pelo navegador. Toque para ativá-los novamente.',
+    );
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it('prevents overlapping sound alerts and releases the guard after oscillator cleanup', async () => {
+    const oscillators: Array<{
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+      frequency: { value: number };
+      start: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+      onended: (() => void) | null;
+    }> = [];
+    const gains: Array<{
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+      gain: {
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      };
+    }> = [];
+    const startMock = vi.fn();
+    const context = {
+      state: 'running',
+      currentTime: 0,
+      destination: {},
+      resume: vi.fn(async () => {}),
+      createOscillator: vi.fn(() => {
+        const oscillator = {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          frequency: { value: 0 },
+          start: startMock,
+          stop: vi.fn(),
+          onended: null as (() => void) | null,
+        };
+        oscillators.push(oscillator);
+        return oscillator;
+      }),
+      createGain: vi.fn(() => {
+        const gain = {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+        gains.push(gain);
+        return gain;
+      }),
+    };
+    vi.stubGlobal('AudioContext', vi.fn(function AudioContextMock() { return context; }));
+
+    const order42 = makeOrder('ready');
+    const order43 = { ...makeOrder('ready'), id: '44444444-4444-4444-4444-444444444444', order_number: '43' };
+    const order44 = { ...makeOrder('ready'), id: '55555555-5555-5555-5555-555555555555', order_number: '44' };
+    let ordersCalls = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        const snapshots = [
+          [],
+          [order42],
+          [order42, order43],
+          [order42, order43, order44],
+        ];
+        return Promise.resolve({
+          data: { ok: true, orders: snapshots[Math.min(ordersCalls - 1, snapshots.length - 1)] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+    expect(startMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+    expect(startMock).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      oscillators.slice(0, 3).forEach(oscillator => oscillator.onended?.());
+      await flushAsync();
+    });
+    oscillators.slice(0, 3).forEach(oscillator => expect(oscillator.disconnect).toHaveBeenCalledTimes(1));
+    gains.slice(0, 3).forEach(gain => expect(gain.disconnect).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+    expect(startMock).toHaveBeenCalledTimes(6);
+
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it('stops active alert nodes and closes the audio context on unmount', async () => {
+    const oscillators: Array<{
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+      frequency: { value: number };
+      start: ReturnType<typeof vi.fn>;
+      stop: ReturnType<typeof vi.fn>;
+      onended: (() => void) | null;
+    }> = [];
+    const gains: Array<{
+      connect: ReturnType<typeof vi.fn>;
+      disconnect: ReturnType<typeof vi.fn>;
+      gain: {
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      };
+    }> = [];
+    const closeMock = vi.fn(async () => {});
+    const context = {
+      state: 'running',
+      currentTime: 0,
+      destination: {},
+      resume: vi.fn(async () => {}),
+      close: closeMock,
+      createOscillator: vi.fn(() => {
+        const oscillator = {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          frequency: { value: 0 },
+          start: vi.fn(),
+          stop: vi.fn(),
+          onended: null as (() => void) | null,
+        };
+        oscillators.push(oscillator);
+        return oscillator;
+      }),
+      createGain: vi.fn(() => {
+        const gain = {
+          connect: vi.fn(),
+          disconnect: vi.fn(),
+          gain: {
+            setValueAtTime: vi.fn(),
+            exponentialRampToValueAtTime: vi.fn(),
+          },
+        };
+        gains.push(gain);
+        return gain;
+      }),
+    };
+    vi.stubGlobal('AudioContext', vi.fn(function AudioContextMock() { return context; }));
+
+    let ordersCalls = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        ordersCalls += 1;
+        return Promise.resolve({
+          data: { ok: true, orders: ordersCalls === 1 ? [] : [makeOrder('ready')] },
+          error: null,
+        });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const unlock = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('ativar os alertas sonoros'));
+    await act(async () => {
+      unlock?.click();
+      await flushAsync();
+    });
+
+    const refresh = container.querySelector<HTMLButtonElement>('button[title="Atualizar"]');
+    await act(async () => {
+      refresh?.click();
+      await flushAsync();
+    });
+
+    expect(oscillators).toHaveLength(3);
+    await act(async () => root.unmount());
+
+    expect(closeMock).toHaveBeenCalledTimes(1);
+    oscillators.forEach(oscillator => {
+      expect(oscillator.stop).toHaveBeenCalledTimes(2);
+      expect(oscillator.disconnect).toHaveBeenCalledTimes(1);
+    });
+    gains.forEach(gain => expect(gain.disconnect).toHaveBeenCalledTimes(1));
+
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+
   it('resumes a suspended audio context before sounding a newly assigned order alert', async () => {
     let audioState = 'running';
     const startMock = vi.fn();

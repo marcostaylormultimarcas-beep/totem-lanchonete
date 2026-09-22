@@ -1559,8 +1559,8 @@ const EntregadorDashboard = () => {
           entregues.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
               <History className="w-14 h-14 mx-auto mb-3 opacity-40" />
-              <p>Nenhuma entrega concluída ainda.</p>
-              <p className="text-xs mt-1">Suas entregas finalizadas aparecerão aqui.</p>
+              <p>Nenhuma entrega concluída no histórico recente.</p>
+              <p className="text-xs mt-1">Aqui aparecem entregas de pedidos criados ou agendados nos últimos 7 dias.</p>
             </div>
           ) : (
             <div className="space-y-2">

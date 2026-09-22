@@ -92,6 +92,21 @@ const makeOrder = (status: string) => ({
   delivery_accuracy_m: null,
 });
 
+const makePosition = (lat: number, lng: number, accuracy: number) => ({
+  coords: {
+    latitude: lat,
+    longitude: lng,
+    accuracy,
+    altitude: null,
+    altitudeAccuracy: null,
+    heading: null,
+    speed: null,
+    toJSON: () => ({}),
+  },
+  timestamp: Date.now(),
+  toJSON: () => ({}),
+} as GeolocationPosition);
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -1180,6 +1195,192 @@ describe('EntregadorDashboard assigned orders polling', () => {
     expect(toastErrorMock).toHaveBeenCalledWith('Tempo esgotado ao obter localização do GPS.');
     expect(toastErrorMock).not.toHaveBeenCalledWith('Permissão de localização negada.');
     expect(container.textContent).toContain('Tempo esgotado ao obter localização do GPS.');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+
+  it('prevents duplicate distance refresh work while the first GPS read is still in flight', async () => {
+    let positionSuccess: PositionCallback | null = null;
+    getCurrentPositionMock.mockImplementation((success: PositionCallback) => {
+      positionSuccess = success;
+    });
+
+    const order = {
+      ...makeOrder('out_for_delivery'),
+      delivery_lat: -16.328,
+      delivery_lng: -48.953,
+      delivery_accuracy_m: 12,
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const refreshDistance = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Atualizar Localização'));
+    expect(refreshDistance).toBeTruthy();
+
+    await act(async () => {
+      refreshDistance?.click();
+      refreshDistance?.click();
+      await Promise.resolve();
+    });
+
+    expect(getCurrentPositionMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      positionSuccess?.(makePosition(-16.328, -48.953, 12));
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('0 m');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('clears a previous distance when a later GPS refresh is too imprecise', async () => {
+    let gpsCalls = 0;
+    getCurrentPositionMock.mockImplementation((success: PositionCallback) => {
+      gpsCalls += 1;
+      success(makePosition(-16.328, -48.953, gpsCalls === 1 ? 12 : 250));
+    });
+
+    const order = {
+      ...makeOrder('out_for_delivery'),
+      delivery_lat: -16.328,
+      delivery_lng: -48.953,
+      delivery_accuracy_m: 12,
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const refreshDistance = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Atualizar Localização'));
+
+    await act(async () => {
+      refreshDistance?.click();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('0 m');
+
+    await act(async () => {
+      refreshDistance?.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('não verificada');
+    expect(container.textContent).toContain('GPS impreciso (±250 m)');
+    expect(container.textContent).not.toContain('Distância até o cliente: 0 m');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('rejects invalid geocoder coordinates instead of displaying a NaN distance as successful', async () => {
+    geocodeAddressMock.mockResolvedValue({ lat: Number.NaN, lng: -48.953 });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const refreshDistance = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Atualizar Localização'));
+
+    await act(async () => {
+      refreshDistance?.click();
+      await flushAsync();
+    });
+
+    expect(geocodeAddressMock).toHaveBeenCalledTimes(1);
+    expect(getCurrentPositionMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Não foi possível localizar o endereço do cliente no mapa.');
+    expect(container.textContent).not.toContain('NaN m');
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(expect.stringContaining('Localização OK'));
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('shares one in-flight address geocode between map opening and distance refresh', async () => {
+    const geocodeDeferred = deferred<{ lat: number; lng: number } | null>();
+    geocodeAddressMock.mockReturnValue(geocodeDeferred.promise);
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      if (name === 'entregador_update_location_session') {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Ver localização no mapa'));
+    const refreshDistance = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Atualizar Localização'));
+
+    await act(async () => {
+      mapButton?.click();
+      refreshDistance?.click();
+      await Promise.resolve();
+    });
+
+    expect(geocodeAddressMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      geocodeDeferred.resolve({ lat: -16.328, lng: -48.953 });
+      await flushAsync();
+    });
+
+    expect(getCurrentPositionMock).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('0 m');
 
     await act(async () => root.unmount());
     container.remove();

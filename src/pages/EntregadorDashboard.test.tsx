@@ -1381,6 +1381,79 @@ describe('EntregadorDashboard assigned orders polling', () => {
 
     expect(getCurrentPositionMock).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('0 m');
+    expect(container.textContent).toContain('destino aproximado pelo endereço');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+
+  it('does not claim an approximate map destination when the order has no usable destination', async () => {
+    const order = {
+      ...makeOrder('out_for_delivery'),
+      delivery_address: null,
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [order] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Ver localização no mapa'));
+
+    await act(async () => {
+      mapButton?.click();
+      await flushAsync();
+    });
+
+    expect(geocodeAddressMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Destino do cliente indisponível neste pedido.');
+    expect(container.textContent).not.toContain('destino aproximado pelo endereço');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('shows a destination lookup failure on the map instead of claiming an approximate destination', async () => {
+    geocodeAddressMock.mockResolvedValue(null);
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [makeOrder('out_for_delivery')] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    const mapButton = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Ver localização no mapa'));
+
+    await act(async () => {
+      mapButton?.click();
+      await flushAsync();
+    });
+
+    expect(geocodeAddressMock).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Não foi possível localizar o destino do cliente no mapa.');
+    expect(container.textContent).not.toContain('destino aproximado pelo endereço');
 
     await act(async () => root.unmount());
     container.remove();

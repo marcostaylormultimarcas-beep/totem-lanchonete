@@ -51,6 +51,7 @@ const EntregadorDashboard = () => {
   const claimInFlightRef = useRef(false);
   const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
   const startDeliveryInFlightRef = useRef(false);
+  const declineOrderInFlightRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
   const [availableLoadError, setAvailableLoadError] = useState('');
@@ -558,7 +559,8 @@ const EntregadorDashboard = () => {
   };
 
   const handleDeclineOrder = async (orderId: string) => {
-    if (!session || deliveryAction) return;
+    if (!session || deliveryAction || declineOrderInFlightRef.current) return;
+
     const reason = window.prompt('Por que você não poderá realizar esta entrega? Informe um motivo para a loja.');
     if (reason == null) return;
     const cleanReason = reason.trim();
@@ -566,7 +568,12 @@ const EntregadorDashboard = () => {
       toast.error('Informe um motivo com pelo menos 3 caracteres.');
       return;
     }
+    if (cleanReason.length > 300) {
+      toast.error('O motivo deve ter no máximo 300 caracteres.');
+      return;
+    }
 
+    declineOrderInFlightRef.current = true;
     setDeliveryAction(`decline:${orderId}`);
     try {
       const { data, error } = await supabase.rpc('entregador_decline_order_session' as any, {
@@ -575,30 +582,50 @@ const EntregadorDashboard = () => {
         _reason: cleanReason,
       });
       const res: any = data;
-      if (error || !res?.ok) {
-        const msg: Record<string, string> = {
-          invalid_session: 'Sessão expirada. Faça login novamente.',
-          not_assigned: 'Este pedido não está mais atribuído a você.',
-          already_picked_up: 'A entrega já foi iniciada. Use “Problema na entrega” para avisar a loja.',
-          reason_required: 'Informe o motivo da recusa.',
-          status_locked: 'Este pedido não pode mais ser recusado nesta etapa.',
-        };
-        toast.error(msg[res?.reason] || 'Não foi possível devolver a entrega.');
-        if (isInvalidSession(res)) expireSession();
+
+      if (error) {
+        console.error('[EntregadorDashboard] decline order RPC failed:', error);
+        toast.error('Não foi possível devolver a entrega agora. Verifique a conexão e tente novamente.');
         await fetchOrders(true);
         return;
       }
 
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          already_picked_up: 'A entrega já foi iniciada. Use “Problema na entrega” para avisar a loja.',
+          reason_required: 'Informe um motivo entre 3 e 300 caracteres.',
+          status_locked: 'Este pedido não pode mais ser recusado nesta etapa.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível devolver a entrega.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        await fetchOrders(true);
+        return;
+      }
+
+      const returnedToQueue = res?.returned_to_queue === true;
       setOrders(prev => prev.filter(o => o.id !== orderId));
       stopTracking();
       if (mapOpenId === orderId) setMapOpenId(null);
       setRiderPos(null);
       await fetchAvailable();
-      toast.success(res?.returned_to_queue
+      toast.success(returnedToQueue
         ? 'Entrega devolvida à disputa. Outro entregador poderá aceitar.'
         : 'Entrega devolvida para a loja escolher outro entregador.');
-      if (mode === 'free') setTab('disponiveis');
+      setTab(returnedToQueue ? 'disponiveis' : 'pendentes');
+    } catch (error) {
+      console.error('[EntregadorDashboard] decline order request failed:', error);
+      toast.error('Não foi possível devolver a entrega agora. Verifique a conexão e tente novamente.');
+      await fetchOrders(true);
     } finally {
+      declineOrderInFlightRef.current = false;
       setDeliveryAction(null);
     }
   };

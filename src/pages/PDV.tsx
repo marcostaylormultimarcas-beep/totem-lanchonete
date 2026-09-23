@@ -149,6 +149,85 @@ function parsePdvCreatePixSuccess(
   };
 }
 
+type PdvPixStatusSuccess = {
+  status:
+    | "pending"
+    | "payment_created"
+    | "paid"
+    | "failed"
+    | "consumed"
+    | "cancelled"
+    | "expired";
+  paid: boolean;
+};
+
+const PDV_PIX_STATUS_VALUES = new Set<PdvPixStatusSuccess["status"]>([
+  "pending",
+  "payment_created",
+  "paid",
+  "failed",
+  "consumed",
+  "cancelled",
+  "expired",
+]);
+
+function parsePdvPixStatusSuccess(
+  value: unknown,
+  expectedIntentId: string,
+  expectedAmount: number,
+): PdvPixStatusSuccess | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  if (
+    typeof payload.intent_id !== "string" ||
+    payload.intent_id !== expectedIntentId
+  ) {
+    return null;
+  }
+
+  if (
+    typeof payload.status !== "string" ||
+    !PDV_PIX_STATUS_VALUES.has(payload.status as PdvPixStatusSuccess["status"])
+  ) {
+    return null;
+  }
+
+  if (typeof payload.paid !== "boolean") return null;
+  if (payload.paid !== (payload.status === "paid")) return null;
+
+  const amount =
+    typeof payload.amount === "number" ? payload.amount : Number.NaN;
+  const amountCents = Math.round(amount * 100);
+  const expectedAmountCents = Math.round(expectedAmount * 100);
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isSafeInteger(amountCents) ||
+    !Number.isSafeInteger(expectedAmountCents) ||
+    amountCents !== expectedAmountCents
+  ) {
+    return null;
+  }
+
+  if (
+    payload.payment_status !== null &&
+    typeof payload.payment_status !== "string"
+  ) {
+    return null;
+  }
+
+  if (payload.paid_at !== null && typeof payload.paid_at !== "string") {
+    return null;
+  }
+
+  return {
+    status: payload.status as PdvPixStatusSuccess["status"],
+    paid: payload.paid,
+  };
+}
 function pdvPixIntentReasonMessage(reason: unknown) {
   const messages: Record<string, string> = {
     invalid_cash_register: "Caixa inválido ou fechado. Reabra o caixa.",
@@ -1660,29 +1739,141 @@ function PDVMain({
   ]);
 
   const [pixConfirmed, setPixConfirmed] = useState(false);
+  const pixPollingKey = `${forma}|${sessionToken}|${pixData?.intentId || ""}|${pixData?.amount ?? ""}`;
+  const pixPollingKeyRef = useRef(pixPollingKey);
+  pixPollingKeyRef.current = pixPollingKey;
+
   useEffect(() => {
     setPixConfirmed(false);
     if (forma !== "pix" || !pixData?.intentId || !sessionToken) return;
+
     let active = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const expectedIntentId = pixData.intentId;
+    const expectedAmount = pixData.amount;
+    const requestKey = pixPollingKey;
+
+    const isCurrentPolling = () =>
+      active && pixPollingKeyRef.current === requestKey;
+
+    const scheduleNext = (delay: number) => {
+      if (!isCurrentPolling()) return;
+      timer = setTimeout(() => {
+        void check();
+      }, delay);
+    };
+
+    const stopForTerminalStatus = (
+      status: PdvPixStatusSuccess["status"],
+    ) => {
+      active = false;
+      const messages: Partial<
+        Record<PdvPixStatusSuccess["status"], string>
+      > = {
+        failed: "Pagamento PIX recusado ou cancelado.",
+        cancelled: "Pagamento PIX cancelado.",
+        expired: "PIX expirado.",
+        consumed: "PIX já foi utilizado.",
+      };
+      const message = messages[status];
+      if (message) toast.error(message);
+    };
+
     const check = async () => {
-      const { data, error } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
-      if (!active) return;
-      const status = data as any;
-      const paid = !error && status?.ok && (status?.paid === true || ["paid", "approved"].includes(String(status?.status || "").toLowerCase()) || String(status?.payment_status || "").toLowerCase() === "approved");
-      if (paid) {
+      if (!isCurrentPolling()) return;
+
+      let data: unknown;
+      let error: unknown;
+
+      try {
+        const result = await pdvRpc.pixStatus(sessionToken, expectedIntentId);
+        data = result.data;
+        error = result.error;
+      } catch (pollError: any) {
+        if (!isCurrentPolling()) return;
+        console.error("[PDV] pdv_pix_status_v2 rejected", {
+          code: pollError?.code,
+          status: pollError?.status,
+        });
+        scheduleNext(2500);
+        return;
+      }
+
+      if (!isCurrentPolling()) return;
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_pix_status_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        scheduleNext(2500);
+        return;
+      }
+
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        const response = data as Record<string, unknown>;
+        if (response.ok === false) {
+          if (response.reason === "invalid_session") {
+            active = false;
+            toast.error("Sessão expirada. Entre novamente.");
+            onLogout();
+            return;
+          }
+
+          if (response.reason === "intent_not_found") {
+            active = false;
+            toast.error("PIX não encontrado. Gere um novo PIX.");
+            return;
+          }
+        }
+      }
+
+      const status = parsePdvPixStatusSuccess(
+        data,
+        expectedIntentId,
+        expectedAmount,
+      );
+      if (!status) {
+        console.error("[PDV] invalid pdv_pix_status_v2 response");
+        scheduleNext(2500);
+        return;
+      }
+
+      if (status.status === "paid" && status.paid) {
+        active = false;
         setPixConfirmed(true);
         toast.success("PIX confirmado");
         return;
       }
-      timer = setTimeout(check, 2500);
+
+      if (
+        status.status === "failed" ||
+        status.status === "cancelled" ||
+        status.status === "expired" ||
+        status.status === "consumed"
+      ) {
+        stopForTerminalStatus(status.status);
+        return;
+      }
+
+      scheduleNext(2500);
     };
-    timer = setTimeout(check, 1200);
+
+    scheduleNext(1200);
+
     return () => {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [forma, pixData?.intentId, sessionToken]);
+  }, [
+    forma,
+    pixData?.intentId,
+    pixData?.amount,
+    sessionToken,
+    pixPollingKey,
+    onLogout,
+  ]);
 
   useEffect(() => {
     const payload = {

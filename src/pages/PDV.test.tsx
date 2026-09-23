@@ -24,7 +24,11 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import PDV, { calculatePdvSubtotal, shouldInvalidatePdvCoupon } from "@/pages/PDV";
+import PDV, {
+  calculatePdvDiscount,
+  calculatePdvSubtotal,
+  shouldInvalidatePdvCoupon,
+} from "@/pages/PDV";
 import { PDV_SESSION_KEY } from "@/lib/pdvSession";
 
 const operador = {
@@ -1421,6 +1425,140 @@ describe("PDV automatic coupon invalidation", () => {
     for (const minimum of malformedMinimums) {
       expect(shouldInvalidatePdvCoupon(50, minimum)).toBe(true);
     }
+  });
+});
+
+
+describe("PDV discount calculation", () => {
+  it("rounds percentage discounts to cents like the authoritative backend", () => {
+    expect(
+      calculatePdvDiscount(0.99, {
+        tipo: "percent",
+        valor: 33,
+        minimo_pedido: 0,
+      }),
+    ).toBe(0.33);
+
+    expect(
+      calculatePdvDiscount(10.01, {
+        tipo: "percentual",
+        valor: 12.5,
+        minimo_pedido: 0,
+      }),
+    ).toBe(1.25);
+  });
+
+  it("caps percentage discounts at 100 percent and never exceeds the subtotal", () => {
+    expect(
+      calculatePdvDiscount(50, {
+        tipo: "percentage",
+        valor: 150,
+        minimo_pedido: 0,
+      }),
+    ).toBe(50);
+  });
+
+  it("supports fixed discount aliases and caps a valid fixed value at the subtotal", () => {
+    expect(
+      calculatePdvDiscount(50, {
+        tipo: "fixed",
+        valor: 12.34,
+        minimo_pedido: 0,
+      }),
+    ).toBe(12.34);
+
+    expect(
+      calculatePdvDiscount(10, {
+        tipo: "valor_fixo",
+        valor: 99,
+        minimo_pedido: 0,
+      }),
+    ).toBe(10);
+  });
+
+  it("fails closed for malformed minimums instead of calculating during the clearing render", () => {
+    const malformedMinimums = [
+      "",
+      "not-a-number",
+      "NaN",
+      Number.NaN,
+      "Infinity",
+      Number.POSITIVE_INFINITY,
+      -1,
+      Number.MAX_VALUE,
+      {},
+    ];
+
+    for (const minimum of malformedMinimums) {
+      expect(
+        calculatePdvDiscount(50, {
+          tipo: "fixed",
+          valor: 5,
+          minimo_pedido: minimum,
+        }),
+      ).toBe(0);
+    }
+  });
+
+  it("fails closed for negative, non-finite, malformed, or unsafe discount values", () => {
+    const invalidValues = [
+      -10,
+      "-10",
+      Number.NaN,
+      "NaN",
+      Number.POSITIVE_INFINITY,
+      "Infinity",
+      "",
+      "not-a-number",
+      Number.MAX_VALUE,
+      {},
+    ];
+
+    for (const value of invalidValues) {
+      expect(
+        calculatePdvDiscount(50, {
+          tipo: "fixed",
+          valor: value,
+          minimo_pedido: 0,
+        }),
+      ).toBe(0);
+
+      expect(
+        calculatePdvDiscount(50, {
+          tipo: "percent",
+          valor: value,
+          minimo_pedido: 0,
+        }),
+      ).toBe(0);
+    }
+  });
+
+  it("returns zero for an unknown discount type or an invalid subtotal", () => {
+    expect(
+      calculatePdvDiscount(50, {
+        tipo: "mystery",
+        valor: 10,
+        minimo_pedido: 0,
+      }),
+    ).toBe(0);
+
+    expect(
+      calculatePdvDiscount(Number.NaN, {
+        tipo: "fixed",
+        valor: 10,
+        minimo_pedido: 0,
+      }),
+    ).toBe(0);
+
+    expect(
+      calculatePdvDiscount(Number.POSITIVE_INFINITY, {
+        tipo: "fixed",
+        valor: 10,
+        minimo_pedido: 0,
+      }),
+    ).toBe(0);
+
+    expect(calculatePdvDiscount(50, null)).toBe(0);
   });
 });
 

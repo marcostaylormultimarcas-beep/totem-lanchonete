@@ -2384,6 +2384,17 @@ function PDVMain({
       forma: snapForma,
       cupom: snapCupom,
     });
+    // Cross the post-sale boundary atomically: invalidate async work owned by
+    // the completed comanda before publishing the empty/default state.
+    couponRequestIdRef.current += 1;
+    pixReqId.current += 1;
+    pixDataRef.current = null;
+    pixInputKeyRef.current = "";
+    pixPollingKeyRef.current = "";
+    setPixData(null);
+    setPixLoading(false);
+    setPixConfirmed(false);
+
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");

@@ -5755,7 +5755,11 @@ describe("PDV Sangria / Suprimento audit", () => {
     await prepareMovement("1.234,56", "  Reforço de troco  ");
 
     await act(async () => {
-      buttonWithText("Suprimento").dispatchEvent(
+      const suprimentoButton = Array.from(modal().querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === "Suprimento",
+      );
+      if (!suprimentoButton) throw new Error("Suprimento button not rendered");
+      suprimentoButton.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
       await flushAsync();

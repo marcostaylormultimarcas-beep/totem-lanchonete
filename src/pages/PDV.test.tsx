@@ -1788,7 +1788,7 @@ describe("PDV addToCart", () => {
     );
   });
 
-  it("refuses malformed or duplicated local row ids instead of deleting an ambiguous cart", async () => {
+  it("refuses duplicated local row ids instead of deleting an ambiguous cart", async () => {
     const secondProduct = {
       ...product,
       id: "77777777-7777-7777-7777-777777777777",
@@ -1836,14 +1836,59 @@ describe("PDV addToCart", () => {
     expect(cartText).toContain(product.name);
     expect(cartText).toContain(secondProduct.name);
 
+  });
+
+
+  it("refuses a malformed local row id without deleting the row or crashing the PDV", async () => {
     vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "not-a-valid-row-id") });
+    await renderMain();
+
     await act(async () => {
-      const originalProductButton = productButton(product.name);
-      originalProductButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
     });
 
-    expect(cartRows()).toHaveLength(2);
+    expect(cartRows()).toHaveLength(1);
+    const trash = cartRows()[0]?.querySelectorAll("button")[2];
+    if (!trash) throw new Error("Cart remove button not rendered");
+
+    await act(async () => {
+      trash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartRows()).toHaveLength(1);
+    expect(cartText).toContain(product.name);
+    expect(container.textContent).toContain("Comanda atual");
   });
 
+  it("does not resurrect an item when quantity changes and removal happen in the same tick", async () => {
+    vi.stubGlobal("crypto", {
+      randomUUID: vi.fn(() => "22222222-2222-4222-8222-222222222222"),
+    });
+    await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const buttons = cartRows()[0]?.querySelectorAll("button");
+    const plus = buttons?.[1];
+    const trash = buttons?.[2];
+    if (!plus || !trash) throw new Error("Cart controls not rendered");
+
+    await act(async () => {
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      trash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(cartRows()).toHaveLength(0);
+    expect(container.querySelector("aside")?.textContent).toContain(
+      "Nenhum item. Adicione um produto ou bipe o código.",
+    );
+  });
 });

@@ -5029,7 +5029,7 @@ describe("PDV PIX request invalidation", () => {
     await clickProduct();
 
     const phoneInput = container.querySelector<HTMLInputElement>(
-      'input[placeholder="WhatsApp do cliente (DDD + número)"]',
+      'input[inputmode="tel"]',
     );
     if (!phoneInput) throw new Error("Customer phone input not rendered");
     const setter = Object.getOwnPropertyDescriptor(

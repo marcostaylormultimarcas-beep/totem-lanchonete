@@ -1500,7 +1500,7 @@ describe("PDV discount calculation", () => {
     }
   });
 
-  it("fails closed for negative, non-finite, malformed, or unsafe discount values", () => {
+  it("fails closed for negative, non-finite, or malformed discount values", () => {
     const invalidValues = [
       -10,
       "-10",
@@ -1510,7 +1510,6 @@ describe("PDV discount calculation", () => {
       "Infinity",
       "",
       "not-a-number",
-      Number.MAX_VALUE,
       {},
     ];
 
@@ -1531,6 +1530,24 @@ describe("PDV discount calculation", () => {
         }),
       ).toBe(0);
     }
+  });
+
+  it("rejects an unsafe fixed amount but clamps a huge finite percentage to 100 percent", () => {
+    expect(
+      calculatePdvDiscount(50, {
+        tipo: "fixed",
+        valor: Number.MAX_VALUE,
+        minimo_pedido: 0,
+      }),
+    ).toBe(0);
+
+    expect(
+      calculatePdvDiscount(50, {
+        tipo: "percent",
+        valor: Number.MAX_VALUE,
+        minimo_pedido: 0,
+      }),
+    ).toBe(50);
   });
 
   it("returns zero for an unknown discount type or an invalid subtotal", () => {

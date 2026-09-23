@@ -2848,6 +2848,29 @@ describe("PDV PIX request invalidation", () => {
     });
   }
 
+  async function applyPixCoupon(code: string) {
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Código do cupom"]',
+    );
+    if (!input) throw new Error("Coupon input not rendered");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(input, code);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+
+    await act(async () => {
+      button("Aplicar").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
   it("invalidates an in-flight PIX intent when the operator leaves PIX mode", async () => {
     const pendingIntent = deferred<{ data: unknown; error: null }>();
     rpcMock.mockImplementation((name: string) => {
@@ -3140,6 +3163,145 @@ describe("PDV PIX request invalidation", () => {
     expect(
       rpcMock.mock.calls.filter(([name]) => name === "pdv_create_pix_intent_v2"),
     ).toHaveLength(1);
+  });
+
+
+  it("invalidates an in-flight PIX intent when quantity changes and starts the replacement with the latest quantity", async () => {
+    const firstIntent = deferred<{ data: unknown; error: null }>();
+    let pixIntentCall = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        pixIntentCall += 1;
+        if (pixIntentCall === 1) return firstIntent.promise;
+        return Promise.resolve({ data: { ok: false }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await clickProduct();
+
+    firstIntent.resolve({
+      data: {
+        ok: true,
+        intent_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        amount: 10,
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+
+    await advancePixTimers(350);
+
+    const pixCalls = rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_create_pix_intent_v2",
+    );
+    expect(pixCalls).toHaveLength(2);
+    expect(pixCalls[1]).toEqual([
+      "pdv_create_pix_intent_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+        _items: [{ product_id: product.id, quantity: 2 }],
+        _cupom_code: "",
+      },
+    ]);
+  });
+
+  it("invalidates an in-flight PIX intent when the validated coupon changes and sends the coupon in the replacement request", async () => {
+    const firstIntent = deferred<{ data: unknown; error: null }>();
+    let pixIntentCall = 0;
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "SAVE10",
+              tipo: "percent",
+              valor: 10,
+              minimo_pedido: 0,
+            },
+          },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        pixIntentCall += 1;
+        if (pixIntentCall === 1) return firstIntent.promise;
+        return Promise.resolve({ data: { ok: false }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await applyPixCoupon("save10");
+
+    firstIntent.resolve({
+      data: {
+        ok: true,
+        intent_id: "abababab-abab-4bab-8bab-abababababab",
+        amount: 10,
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+
+    await advancePixTimers(350);
+
+    const pixCalls = rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_create_pix_intent_v2",
+    );
+    expect(pixCalls).toHaveLength(2);
+    expect(pixCalls[1]).toEqual([
+      "pdv_create_pix_intent_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+        _items: [{ product_id: product.id, quantity: 1 }],
+        _cupom_code: "SAVE10",
+      },
+    ]);
   });
 
 });

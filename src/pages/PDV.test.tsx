@@ -5025,7 +5025,8 @@ describe("PDV PIX request invalidation", () => {
       return baseImplementation!(name, ...args);
     });
 
-    await generateReadyPix();
+    await renderMain();
+    await clickProduct();
 
     const phoneInput = container.querySelector<HTMLInputElement>(
       'input[placeholder="WhatsApp do cliente (DDD + número)"]',
@@ -5043,6 +5044,8 @@ describe("PDV PIX request invalidation", () => {
       await flushAsync();
     });
 
+    await choosePayment("Pix");
+    await advancePixTimers(350);
     await clickManualFinalize();
 
     expect(

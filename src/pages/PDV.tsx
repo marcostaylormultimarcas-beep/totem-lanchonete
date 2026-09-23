@@ -2317,38 +2317,34 @@ function PDVMain({
     toast.success(`Venda registrada — ${fmt(canonicalTotal)}`);
     beep();
 
-    // 📱 Persiste telefone do cliente + dispara WhatsApp sem bloquear o
-    // commit local de uma venda que já foi concluída no servidor.
+    // 📱 Persiste telefone do cliente no pedido + dispara WhatsApp automático
     const phoneDigits = customerPhone.replace(/\D/g, "");
     if (phoneDigits.length >= 10 && res.order_id) {
-      const orderId = res.order_id;
-      void (async () => {
-        try {
-          // garante DDI 55 (Brasil) quando o operador digita só DDD+número
-          const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
+      try {
+        // garante DDI 55 (Brasil) quando o operador digita só DDD+número
+        const waNumber = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
 
-          const { data: phoneData, error: phoneError } = await pdvRpc.setOrderCustomerPhone(
-            sessionToken,
-            orderId,
-            phoneDigits,
-          );
-          const phoneRes = phoneData as any;
-          if (phoneError || !phoneRes?.ok) {
-            console.error("[PDV] secure customer phone update failed", phoneError || phoneRes?.reason);
-            toast.error("Venda concluída, mas não foi possível salvar o telefone do cliente");
-          }
-
-          const trackUrl = `${window.location.origin}/acompanhar/${orderId}`;
-          const msg =
-            `Olá! Seu pedido na ${BRAND_NAME} já foi recebido e já está em preparo na cozinha! 🍳 ` +
-            `Confira seu cupom fiscal digital e acompanhe o status em tempo real por este link: ${trackUrl}`;
-          const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(msg)}`;
-          window.open(waUrl, "_blank", "noopener,noreferrer");
-          toast.success("WhatsApp aberto para envio ao cliente 📲");
-        } catch (e) {
-          console.error("[PDV] whatsapp dispatch", e);
+        const { data: phoneData, error: phoneError } = await pdvRpc.setOrderCustomerPhone(
+          sessionToken,
+          res.order_id,
+          phoneDigits,
+        );
+        const phoneRes = phoneData as any;
+        if (phoneError || !phoneRes?.ok) {
+          console.error("[PDV] secure customer phone update failed", phoneError || phoneRes?.reason);
+          toast.error("Venda concluída, mas não foi possível salvar o telefone do cliente");
         }
-      })();
+
+        const trackUrl = `${window.location.origin}/acompanhar/${res.order_id}`;
+        const msg =
+          `Olá! Seu pedido na ${BRAND_NAME} já foi recebido e já está em preparo na cozinha! 🍳 ` +
+          `Confira seu cupom fiscal digital e acompanhe o status em tempo real por este link: ${trackUrl}`;
+        const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(msg)}`;
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+        toast.success("WhatsApp aberto para envio ao cliente 📲");
+      } catch (e) {
+        console.error("[PDV] whatsapp dispatch", e);
+      }
     }
 
     setLastReceipt({

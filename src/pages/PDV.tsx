@@ -45,7 +45,7 @@ type Product = {
 const PDV_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type PdvPixIntentSuccess = {
-  intentId: string;
+  intent_id: string;
   amount: number;
 };
 
@@ -70,8 +70,8 @@ function parsePdvPixIntentSuccess(value: unknown): PdvPixIntentSuccess | null {
   }
 
   return {
-    intentId,
-    amount: Math.round(amount * 100) / 100,
+    intent_id: intentId,
+    amount,
   };
 }
 
@@ -1493,7 +1493,7 @@ function PDVMain({
         // trust boundary into the Mercado Pago Edge Function.
         if (!isCurrentRequest()) return;
         const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
-          body: { intent_id: intent.intentId, session_token: sessionToken },
+          body: { intent_id: intent.intent_id, session_token: sessionToken },
         });
         if (!isCurrentRequest()) return;
         if (error || !(data as any)?.ok) {

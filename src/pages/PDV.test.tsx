@@ -1629,4 +1629,221 @@ describe("PDV addToCart", () => {
     expect(cartText.match(/Produto Carrinho/g)).toHaveLength(1);
     expect(toastSuccessMock).toHaveBeenCalledWith("🛒 Produto Carrinho adicionado");
   });
+
+  it("removes only the selected row when multiple products are in the cart", async () => {
+    const secondProduct = {
+      ...product,
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Produto Remoção B",
+      codigo_barras: "REMOVE54321",
+    };
+    const ids = [
+      "66666666-6666-4666-8666-666666666661",
+      "66666666-6666-4666-8666-666666666662",
+    ];
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => ids.shift()!) });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product, secondProduct] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton(secondProduct.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const firstTrash = cartRows()[0]?.querySelectorAll("button")[2];
+    if (!firstTrash) throw new Error("First cart remove button not rendered");
+
+    await act(async () => {
+      firstTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartRows()).toHaveLength(1);
+    expect(cartText).not.toContain(product.name);
+    expect(cartText).toContain(secondProduct.name);
+    expect(cartText).toContain("× 1 =");
+  });
+
+  it("handles a rapid double remove without resurrecting or corrupting another row", async () => {
+    const secondProduct = {
+      ...product,
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Produto Preservado",
+      codigo_barras: "KEEP54321",
+    };
+    const ids = [
+      "55555555-5555-4555-8555-555555555551",
+      "55555555-5555-4555-8555-555555555552",
+    ];
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => ids.shift()!) });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product, secondProduct] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton(secondProduct.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const firstTrash = cartRows()[0]?.querySelectorAll("button")[2];
+    if (!firstTrash) throw new Error("First cart remove button not rendered");
+
+    await act(async () => {
+      firstTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      firstTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartRows()).toHaveLength(1);
+    expect(cartText).not.toContain(product.name);
+    expect(cartText).toContain(secondProduct.name);
+  });
+
+  it("applies several removals in the same tick without a lost update", async () => {
+    const secondProduct = {
+      ...product,
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Produto Remoção Simultânea",
+      codigo_barras: "SAME54321",
+    };
+    const ids = [
+      "44444444-4444-4444-8444-444444444441",
+      "44444444-4444-4444-8444-444444444442",
+    ];
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => ids.shift()!) });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product, secondProduct] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton(secondProduct.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const rows = cartRows();
+    const firstTrash = rows[0]?.querySelectorAll("button")[2];
+    const secondTrash = rows[1]?.querySelectorAll("button")[2];
+    if (!firstTrash || !secondTrash) throw new Error("Cart remove buttons not rendered");
+
+    await act(async () => {
+      firstTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      secondTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(cartRows()).toHaveLength(0);
+    expect(container.querySelector("aside")?.textContent).toContain(
+      "Nenhum item. Adicione um produto ou bipe o código.",
+    );
+  });
+
+  it("refuses malformed or duplicated local row ids instead of deleting an ambiguous cart", async () => {
+    const secondProduct = {
+      ...product,
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Produto ID Duplicado",
+      codigo_barras: "DUPREMOVE",
+    };
+    const duplicatedId = "33333333-3333-4333-8333-333333333333";
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => duplicatedId) });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product, secondProduct] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton(secondProduct.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(cartRows()).toHaveLength(2);
+    const ambiguousTrash = cartRows()[0]?.querySelectorAll("button")[2];
+    if (!ambiguousTrash) throw new Error("Ambiguous cart remove button not rendered");
+
+    await act(async () => {
+      ambiguousTrash.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartRows()).toHaveLength(2);
+    expect(cartText).toContain(product.name);
+    expect(cartText).toContain(secondProduct.name);
+
+    vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "not-a-valid-row-id") });
+    await act(async () => {
+      const originalProductButton = productButton(product.name);
+      originalProductButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(cartRows()).toHaveLength(2);
+  });
+
 });

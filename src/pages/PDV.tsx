@@ -306,6 +306,55 @@ export function calculatePdvTotal(subtotal: number, discount: number) {
   return pdvDecimalUnitsToNumber(subtotalUnits - discountUnits, scale);
 }
 
+type PdvValidatedCoupon = {
+  codigo: string;
+  tipo: "percent" | "fixed";
+  valor: number;
+  minimo_pedido: number;
+};
+
+function parsePdvValidatedCoupon(
+  value: unknown,
+  requestedCode: string,
+): PdvValidatedCoupon | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const raw = value as Record<string, unknown>;
+  const codigo = typeof raw.codigo === "string" ? raw.codigo.trim() : "";
+  const tipo =
+    typeof raw.tipo === "string" ? raw.tipo.trim().toLowerCase() : "";
+  const valor = typeof raw.valor === "number" ? raw.valor : Number.NaN;
+  const minimoPedido =
+    typeof raw.minimo_pedido === "number"
+      ? raw.minimo_pedido
+      : Number.NaN;
+
+  const valorCents = Math.round(valor * 100);
+  const minimoPedidoCents = Math.round(minimoPedido * 100);
+
+  if (
+    !codigo ||
+    codigo.toUpperCase() !== requestedCode ||
+    (tipo !== "percent" && tipo !== "fixed") ||
+    !Number.isFinite(valor) ||
+    valor < 0 ||
+    (tipo === "percent" && valor > 100) ||
+    !Number.isSafeInteger(valorCents) ||
+    !Number.isFinite(minimoPedido) ||
+    minimoPedido < 0 ||
+    !Number.isSafeInteger(minimoPedidoCents)
+  ) {
+    return null;
+  }
+
+  return {
+    codigo,
+    tipo,
+    valor,
+    minimo_pedido: minimoPedido,
+  };
+}
+
 function createPdvCartItemId(productId: string) {
   try {
     const id = globalThis.crypto?.randomUUID?.();
@@ -808,8 +857,18 @@ function PDVMain({
   const [forma, setForma] = useState<Forma>("dinheiro");
 
   const [cupomCode, setCupomCode] = useState("");
-  const [cupomDesc, setCupomDesc] = useState<{ codigo: string; tipo: string; valor: number; minimo_pedido: number } | null>(null);
+  const [cupomDesc, setCupomDesc] = useState<PdvValidatedCoupon | null>(null);
+  const couponRequestIdRef = useRef(0);
+  const couponMountedRef = useRef(true);
   const [customerPhone, setCustomerPhone] = useState("");
+
+  useEffect(() => {
+    couponMountedRef.current = true;
+    return () => {
+      couponMountedRef.current = false;
+      couponRequestIdRef.current += 1;
+    };
+  }, []);
 
   const [showSangria, setShowSangria] = useState(false);
   const [showFechar, setShowFechar] = useState(false);
@@ -1095,6 +1154,8 @@ function PDVMain({
   }, [products, query]);
 
   const subtotal = calculatePdvSubtotal(cart);
+  const subtotalRef = useRef(subtotal);
+  subtotalRef.current = subtotal;
 
   useEffect(() => {
     if (
@@ -1114,31 +1175,91 @@ function PDVMain({
   const aplicarCupom = async () => {
     const c = cupomCode.trim().toUpperCase();
     if (!c) return;
-    const { data, error } = await pdvRpc.validateCoupon(sessionToken, c);
-    const res = data as any;
-    if (error) return toast.error(error.message);
-    if (!res?.ok) {
-      const messages: Record<string, string> = {
-        not_found: "Cupom não encontrado",
-        inactive: "Cupom inativo",
-        not_started: "Cupom ainda não iniciou",
-        expired: "Cupom expirado",
-        invalid_session: "Sessão do PDV expirada",
-      };
-      return toast.error(messages[res?.reason] || "Cupom inválido");
+
+    const requestId = ++couponRequestIdRef.current;
+
+    try {
+      const { data, error } = await pdvRpc.validateCoupon(sessionToken, c);
+      if (!couponMountedRef.current) return;
+
+      if (error) {
+        if (requestId !== couponRequestIdRef.current) return;
+        const transportError = error as any;
+        console.error("[PDV] pdv_validar_cupom_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível validar o cupom. Tente novamente.");
+        return;
+      }
+
+      const res = data as any;
+      if (!res || typeof res !== "object" || typeof res.ok !== "boolean") {
+        if (requestId !== couponRequestIdRef.current) return;
+        console.error("[PDV] invalid pdv_validar_cupom_v2 response");
+        toast.error("Não foi possível validar o cupom. Tente novamente.");
+        return;
+      }
+
+      if (res.ok === false) {
+        if (res.reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          onLogout();
+          return;
+        }
+
+        if (requestId !== couponRequestIdRef.current) return;
+
+        const messages: Record<string, string> = {
+          not_found: "Cupom não encontrado",
+          inactive: "Cupom inativo",
+          not_started: "Cupom ainda não iniciou",
+          expired: "Cupom expirado",
+          invalid_code: "Cupom inválido",
+          invalid_discount_type: "Cupom inválido",
+        };
+        toast.error(messages[res.reason] || "Cupom inválido");
+        return;
+      }
+
+      if (requestId !== couponRequestIdRef.current) return;
+
+      const cupom = parsePdvValidatedCoupon(res.cupom, c);
+      if (!cupom) {
+        console.error("[PDV] invalid pdv_validar_cupom_v2 success payload");
+        toast.error("Não foi possível validar o cupom. Tente novamente.");
+        return;
+      }
+
+      const currentSubtotal = subtotalRef.current;
+      if (
+        shouldInvalidatePdvCoupon(
+          currentSubtotal,
+          cupom.minimo_pedido,
+        )
+      ) {
+        toast.error(
+          `Pedido mínimo para este cupom: ${fmt(cupom.minimo_pedido)}`,
+        );
+        return;
+      }
+
+      setCupomDesc(cupom);
+      toast.success(`Cupom ${cupom.codigo} aplicado`);
+    } catch (error: any) {
+      if (
+        !couponMountedRef.current ||
+        requestId !== couponRequestIdRef.current
+      ) {
+        return;
+      }
+
+      console.error("[PDV] pdv_validar_cupom_v2 rejected", {
+        code: error?.code,
+        status: error?.status,
+      });
+      toast.error("Não foi possível validar o cupom. Tente novamente.");
     }
-    const cupom = res.cupom as any;
-    const minimoPedido = Math.max(0, Number(cupom.minimo_pedido) || 0);
-    if (subtotal < minimoPedido) {
-      return toast.error(`Pedido mínimo para este cupom: ${fmt(minimoPedido)}`);
-    }
-    setCupomDesc({
-      codigo: cupom.codigo,
-      tipo: cupom.tipo,
-      valor: Number(cupom.valor) || 0,
-      minimo_pedido: minimoPedido,
-    });
-    toast.success(`Cupom ${cupom.codigo} aplicado`);
   };
 
   // ---- Espelhamento p/ tela do cliente ----
@@ -1582,7 +1703,10 @@ function PDVMain({
               <Ticket className="w-4 h-4 text-amber-500" />
               <input
                 value={cupomCode}
-                onChange={(e) => setCupomCode(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  couponRequestIdRef.current += 1;
+                  setCupomCode(e.target.value.toUpperCase());
+                }}
                 placeholder="Código do cupom"
                 className="flex-1 bg-transparent outline-none text-sm"
               />

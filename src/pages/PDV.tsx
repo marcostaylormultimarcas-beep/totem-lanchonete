@@ -44,6 +44,57 @@ type Product = {
 
 const PDV_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+type PdvPixIntentSuccess = {
+  intentId: string;
+  amount: number;
+};
+
+function parsePdvPixIntentSuccess(value: unknown): PdvPixIntentSuccess | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  const intentId =
+    typeof payload.intent_id === "string" ? payload.intent_id.trim() : "";
+  const amount =
+    typeof payload.amount === "number" ? payload.amount : Number.NaN;
+
+  if (
+    !PDV_UUID_PATTERN.test(intentId) ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isSafeInteger(Math.round(amount * 100))
+  ) {
+    return null;
+  }
+
+  return {
+    intentId,
+    amount: Math.round(amount * 100) / 100,
+  };
+}
+
+function pdvPixIntentReasonMessage(reason: unknown) {
+  const messages: Record<string, string> = {
+    invalid_cash_register: "Caixa inválido ou fechado. Reabra o caixa.",
+    invalid_sale: "Carrinho inválido para gerar o PIX. Revise os itens.",
+    invalid_quantity: "Carrinho inválido para gerar o PIX. Revise os itens.",
+    invalid_product_id: "Carrinho inválido para gerar o PIX. Revise os itens.",
+    product_not_found: "Produto indisponível para gerar o PIX. Atualize o carrinho.",
+    insufficient_stock: "Estoque insuficiente para gerar o PIX.",
+    insufficient_ingredient_stock:
+      "Estoque de ingredientes insuficiente para gerar o PIX.",
+    invalid_coupon: "Cupom inválido para este pedido.",
+    coupon_minimum_not_met: "O pedido não atende ao mínimo do cupom.",
+    invalid_total: "Total inválido para gerar o PIX. Revise o carrinho.",
+  };
+
+  return typeof reason === "string" && messages[reason]
+    ? messages[reason]
+    : "Não foi possível iniciar o PIX. Tente novamente.";
+}
+
 function parsePdvCatalogProducts(value: unknown): Product[] | null {
   if (!Array.isArray(value)) return null;
 
@@ -1368,21 +1419,81 @@ function PDVMain({
       if (!isCurrentRequest()) return;
 
       try {
-        const { data: intentData, error: intentError } = await pdvRpc.createPixIntent(
-          sessionToken,
-          caixaId,
-          pixItems,
-          pixCouponCode,
-        );
-        const intent = intentData as any;
-        if (!isCurrentRequest()) return;
-        if (intentError || !intent?.ok || !intent?.intent_id) {
+        let intentData: unknown;
+        let intentError: unknown;
+
+        try {
+          const intentResult = await pdvRpc.createPixIntent(
+            sessionToken,
+            caixaId,
+            pixItems,
+            pixCouponCode,
+          );
+          intentData = intentResult.data;
+          intentError = intentResult.error;
+        } catch (error: any) {
+          if (!isCurrentRequest()) return;
+
+          console.error("[PDV] pdv_create_pix_intent_v2 rejected", {
+            code: error?.code,
+            status: error?.status,
+          });
           clearPixData();
+          toast.error("Não foi possível iniciar o PIX. Tente novamente.");
           return;
         }
 
+        if (!isCurrentRequest()) return;
+
+        if (intentError) {
+          const transportError = intentError as any;
+          console.error("[PDV] pdv_create_pix_intent_v2 transport error", {
+            code: transportError?.code,
+            status: transportError?.status,
+          });
+          clearPixData();
+          toast.error("Não foi possível iniciar o PIX. Tente novamente.");
+          return;
+        }
+
+        if (
+          !intentData ||
+          typeof intentData !== "object" ||
+          Array.isArray(intentData)
+        ) {
+          console.error("[PDV] invalid pdv_create_pix_intent_v2 response");
+          clearPixData();
+          toast.error("Não foi possível iniciar o PIX. Tente novamente.");
+          return;
+        }
+
+        const intentResponse = intentData as Record<string, unknown>;
+        if (intentResponse.ok === false) {
+          clearPixData();
+
+          if (intentResponse.reason === "invalid_session") {
+            toast.error("Sessão expirada. Entre novamente.");
+            onLogout();
+            return;
+          }
+
+          toast.error(pdvPixIntentReasonMessage(intentResponse.reason));
+          return;
+        }
+
+        const intent = parsePdvPixIntentSuccess(intentData);
+        if (!intent) {
+          console.error("[PDV] invalid pdv_create_pix_intent_v2 success payload");
+          clearPixData();
+          toast.error("Não foi possível iniciar o PIX. Tente novamente.");
+          return;
+        }
+
+        // Only a strictly validated, still-current server intent may cross the
+        // trust boundary into the Mercado Pago Edge Function.
+        if (!isCurrentRequest()) return;
         const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
-          body: { intent_id: intent.intent_id, session_token: sessionToken },
+          body: { intent_id: intent.intentId, session_token: sessionToken },
         });
         if (!isCurrentRequest()) return;
         if (error || !(data as any)?.ok) {

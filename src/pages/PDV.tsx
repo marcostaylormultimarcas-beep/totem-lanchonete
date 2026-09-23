@@ -1265,8 +1265,18 @@ function PDVMain({
   // ---- Espelhamento p/ tela do cliente ----
   const bcRef = useRef<BroadcastChannel | null>(null);
   useEffect(() => {
-    try { bcRef.current = new BroadcastChannel("pdv-cliente"); } catch {}
-    return () => { bcRef.current?.close(); };
+    let channel: BroadcastChannel | null = null;
+    try {
+      channel = new BroadcastChannel("pdv-cliente");
+      bcRef.current = channel;
+    } catch {
+      bcRef.current = null;
+    }
+
+    return () => {
+      if (bcRef.current === channel) bcRef.current = null;
+      try { channel?.close(); } catch {}
+    };
   }, []);
 
   // 🟢 Gera Pix real (Mercado Pago) quando o operador escolhe PIX no PDV.
@@ -1372,6 +1382,8 @@ function PDVMain({
     };
     try {
       localStorage.setItem("pdv_cliente_mirror_v1", JSON.stringify(payload));
+    } catch {}
+    try {
       bcRef.current?.postMessage({ type: "update", payload });
     } catch {}
   }, [cart, subtotal, desconto, total, forma, operador.org_name, pixData, pixLoading]);

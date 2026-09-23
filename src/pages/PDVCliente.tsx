@@ -36,10 +36,6 @@ export default function PDVCliente() {
       if (raw) setData(JSON.parse(raw));
     } catch {}
 
-    const bc = new BroadcastChannel("pdv-cliente");
-    bc.onmessage = (ev) => {
-      if (ev.data?.type === "update") setData(ev.data.payload);
-    };
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
@@ -48,9 +44,18 @@ export default function PDVCliente() {
       }
     };
     window.addEventListener("storage", onStorage);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel("pdv-cliente");
+      bc.onmessage = (ev) => {
+        if (ev.data?.type === "update") setData(ev.data.payload);
+      };
+    } catch {}
+
     return () => {
-      bc.close();
       window.removeEventListener("storage", onStorage);
+      try { bc?.close(); } catch {}
     };
   }, []);
 

@@ -4953,4 +4953,456 @@ describe("PDV PIX request invalidation", () => {
     expect(manualPixSaleCalls()).toHaveLength(0);
   });
 
+
+  function pixSaleSuccess(overrides: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      idempotent: false,
+      order_id: "30303030-3030-4030-8030-303030303030",
+      order_number: "PDV-PIX-1",
+      created_at: "2026-09-23T12:30:00.000Z",
+      total: 10,
+      items: [
+        {
+          product_id: product.id,
+          name: product.name,
+          price: 10,
+          quantity: 1,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  function mockPixSaleFinalization(
+    response: () => Promise<{ data: unknown; error: unknown }>,
+  ) {
+    mockSinglePixIntent();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_pix_status_v2") {
+        return Promise.resolve({
+          data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_pix_v2") return response();
+      return baseImplementation!(name, ...args);
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+  }
+
+  it("accepts the canonical idempotent PIX sale response without issuing a second sale call", async () => {
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess({ idempotent: true }),
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixSaleCalls()).toHaveLength(1);
+    expect(toastSuccessMock).toHaveBeenCalledWith("Venda registrada — R$ 10,00");
+  });
+
+  it("contains a rejected pixSale Promise, releases loading and shows only a safe message", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockPixSaleFinalization(() =>
+      Promise.reject(
+        Object.assign(new Error("temporary database detail"), {
+          code: "PGRST000",
+          status: 503,
+        }),
+      ),
+    );
+
+    await generateReadyPix();
+    await expect(clickManualFinalize()).resolves.toBeUndefined();
+
+    expect(button("Finalizar venda").hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível registrar a venda PIX. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith("temporary database detail");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] pdv_registrar_venda_pix_v2 rejected",
+      { code: "PGRST000", status: 503 },
+    );
+  });
+
+  it("fails closed on a pixSale PostgREST error without leaking its technical message", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: null,
+        error: {
+          code: "PGRST000",
+          status: 503,
+          message: "database connection detail",
+        },
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível registrar a venda PIX. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith("database connection detail");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] pdv_registrar_venda_pix_v2 transport error",
+      { code: "PGRST000", status: 503 },
+    );
+  });
+
+  it("expires the local session when pixSale returns invalid_session", async () => {
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: { ok: false, reason: "invalid_session" },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Sessão expirada. Entre novamente.",
+    );
+  });
+
+  it.each([
+    ["invalid_pix_intent", "PIX inválido para esta sessão. Gere um novo PIX."],
+    ["pix_not_paid", "Pagamento PIX ainda não confirmado"],
+    ["invalid_cash_register", "Caixa inválido ou fechado. Reabra o caixa."],
+  ] as const)(
+    "handles pixSale functional error %s without treating it as a sale",
+    async (reason, message) => {
+      mockPixSaleFinalization(() =>
+        Promise.resolve({
+          data: { ok: false, reason },
+          error: null,
+        }),
+      );
+
+      await generateReadyPix();
+      await clickManualFinalize();
+
+      expect(toastErrorMock).toHaveBeenCalledWith(message);
+      expect(toastSuccessMock).not.toHaveBeenCalledWith(
+        expect.stringContaining("Venda registrada"),
+      );
+      expect(readCustomerMirror().items).toHaveLength(1);
+    },
+  );
+
+  it.each([
+    ["non-boolean ok", { ...pixSaleSuccess(), ok: "true" }],
+    ["missing idempotent", { ...pixSaleSuccess(), idempotent: undefined }],
+    ["non-boolean idempotent", { ...pixSaleSuccess(), idempotent: "false" }],
+    ["missing order_id", { ...pixSaleSuccess(), order_id: undefined }],
+    ["invalid order_id", { ...pixSaleSuccess(), order_id: "not-a-uuid" }],
+    ["missing order_number", { ...pixSaleSuccess(), order_number: undefined }],
+    ["empty order_number", { ...pixSaleSuccess(), order_number: "" }],
+    ["missing created_at", { ...pixSaleSuccess(), created_at: undefined }],
+    ["missing total", { ...pixSaleSuccess(), total: undefined }],
+    ["string total", { ...pixSaleSuccess(), total: "10" }],
+    ["non-finite total", { ...pixSaleSuccess(), total: Number.POSITIVE_INFINITY }],
+    ["mismatched total", { ...pixSaleSuccess(), total: 11 }],
+    ["missing items", { ...pixSaleSuccess(), items: undefined }],
+    ["non-array items", { ...pixSaleSuccess(), items: {} }],
+    [
+      "invalid item product_id",
+      {
+        ...pixSaleSuccess(),
+        items: [
+          {
+            product_id: "bad-id",
+            name: product.name,
+            price: 10,
+            quantity: 1,
+          },
+        ],
+      },
+    ],
+    [
+      "invalid item quantity",
+      {
+        ...pixSaleSuccess(),
+        items: [
+          {
+            product_id: product.id,
+            name: product.name,
+            price: 10,
+            quantity: 0,
+          },
+        ],
+      },
+    ],
+    [
+      "invalid item price",
+      {
+        ...pixSaleSuccess(),
+        items: [
+          {
+            product_id: product.id,
+            name: product.name,
+            price: Number.NaN,
+            quantity: 1,
+          },
+        ],
+      },
+    ],
+  ])("fails closed on malformed pixSale success payload: %s", async (_label, payload) => {
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: payload,
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao registrar a venda PIX. Tente novamente.",
+    );
+    expect(readCustomerMirror().items).toHaveLength(1);
+  });
+
+  it("ignores an obsolete pixSale response after cart and total change", async () => {
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() => pendingSale.promise);
+
+    await generateReadyPix();
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    expect(manualPixSaleCalls()).toHaveLength(1);
+
+    await clickProduct();
+    expect(readCustomerMirror().items?.[0]?.quantity).toBe(2);
+
+    pendingSale.resolve({ data: pixSaleSuccess(), error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(readCustomerMirror().items?.[0]?.quantity).toBe(2);
+    expect(readCustomerMirror().forma).toBe("pix");
+  });
+
+  it("does not let an old pixSale response clear a replacement QR/intent", async () => {
+    const oldIntentId = "31313131-3131-4131-8131-313131313131";
+    const newIntentId = "32323232-3232-4232-8232-323232323232";
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    let intentCalls = 0;
+    let edgeCalls = 0;
+
+    rpcMock.mockImplementation((name: string, args?: Record<string, unknown>) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        intentCalls += 1;
+        return Promise.resolve({
+          data:
+            intentCalls === 1
+              ? { ok: true, intent_id: oldIntentId, amount: 10 }
+              : { ok: true, intent_id: newIntentId, amount: 20 },
+          error: null,
+        });
+      }
+      if (name === "pdv_pix_status_v2") {
+        return Promise.resolve({
+          data: pixStatusSuccess(
+            String(args?._intent_id),
+            "paid",
+            { amount: args?._intent_id === oldIntentId ? 10 : 20 },
+          ),
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_pix_v2") return pendingSale.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    functionsInvokeMock.mockImplementation(() => {
+      edgeCalls += 1;
+      return Promise.resolve({
+        data:
+          edgeCalls === 1
+            ? edgeSuccessPayload(oldIntentId, 10)
+            : {
+                ...edgeSuccessPayload(newIntentId, 20),
+                qr_code_base64: "qr-base64-replacement",
+                qr_code: "pix-code-replacement",
+              },
+        error: null,
+      });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_registrar_venda_pix_v2", {
+      _session_token: savedSession.sessionToken,
+      _intent_id: oldIntentId,
+    });
+
+    await clickProduct();
+    await advancePixTimers(350);
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-replacement",
+      pixCopiaECola: "pix-code-replacement",
+    });
+
+    pendingSale.resolve({
+      data: pixSaleSuccess({
+        order_id: "33333333-3333-4333-8333-333333333333",
+        total: 10,
+      }),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-replacement",
+      pixCopiaECola: "pix-code-replacement",
+    });
+    expect(readCustomerMirror().items?.[0]?.quantity).toBe(2);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+  });
+
+  it("ignores an obsolete pixSale response after leaving PIX mode", async () => {
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() => pendingSale.promise);
+
+    await generateReadyPix();
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await choosePayment("Dinheiro");
+    pendingSale.resolve({ data: pixSaleSuccess(), error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(readCustomerMirror().forma).toBe("dinheiro");
+    expect(readCustomerMirror().items).toHaveLength(1);
+  });
+
+  it("ignores an in-flight pixSale response after unmount/session end", async () => {
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() => pendingSale.promise);
+
+    await generateReadyPix();
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pendingSale.resolve({ data: pixSaleSuccess(), error: null });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+  });
+
+  it("ignores an obsolete pixSale response after a coupon changes the PIX input", async () => {
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() => pendingSale.promise);
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "SAVE10",
+              tipo: "percent",
+              valor: 10,
+              minimo_pedido: 0,
+            },
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await generateReadyPix();
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await applyPixCoupon("save10");
+    pendingSale.resolve({ data: pixSaleSuccess(), error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(readCustomerMirror().items).toHaveLength(1);
+    expect(readCustomerMirror().forma).toBe("pix");
+  });
+
 });

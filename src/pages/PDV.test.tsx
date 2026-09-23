@@ -5073,6 +5073,34 @@ describe("PDV PIX request invalidation", () => {
     }
   });
 
+  it("cancels a scheduled receipt print when the PDV unmounts after a completed sale", async () => {
+    const printMock = vi.spyOn(window, "print").mockImplementation(() => {});
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess(),
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(container.querySelector("#print-receipt-area")?.textContent).toContain(
+      "PEDIDO #PDV-PIX-1",
+    );
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(printMock).not.toHaveBeenCalled();
+    expect(document.body.classList.contains("printing-cupom")).toBe(false);
+  });
+
+
   it("contains a rejected pixSale Promise, releases loading and shows only a safe message", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mockPixSaleFinalization(() =>

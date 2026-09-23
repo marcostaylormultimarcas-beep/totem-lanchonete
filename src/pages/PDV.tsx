@@ -2039,10 +2039,15 @@ function PDVMain({
     const renderTimer = setTimeout(() => {
       document.body.classList.add("printing-cupom");
       printTimer = setTimeout(() => {
-        window.print();
-        cleanupTimer = setTimeout(() => {
-          document.body.classList.remove("printing-cupom");
-        }, 300);
+        try {
+          window.print();
+        } catch (error) {
+          console.error("[PDV] receipt print failed", error);
+        } finally {
+          cleanupTimer = setTimeout(() => {
+            document.body.classList.remove("printing-cupom");
+          }, 300);
+        }
       }, 80);
     }, 60);
 

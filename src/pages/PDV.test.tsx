@@ -1704,6 +1704,36 @@ describe("PDV addToCart", () => {
     return input;
   }
 
+  function couponInput() {
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Código do cupom"]',
+    );
+    if (!input) throw new Error("Coupon input not rendered");
+    return input;
+  }
+
+  function applyCouponButton() {
+    const button = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.trim() === "Aplicar",
+    );
+    if (!button) throw new Error("Coupon apply button not rendered");
+    return button;
+  }
+
+  async function enterCouponCode(code: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(couponInput(), code);
+      couponInput().dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
   it("uses functional cart updates so two rapid clicks increment one row without losing quantity", async () => {
     await renderMain();
     const button = productButton();
@@ -1907,6 +1937,305 @@ describe("PDV addToCart", () => {
     cartText = container.querySelector("aside")?.textContent || "";
     expect(cartText).toContain("× 3 =");
     expect(cartText).not.toContain("Desconto (MIN20)");
+  });
+
+  it("expires the local PDV session when coupon validation reports invalid_session", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await enterCouponCode("EXPIRED");
+
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+  });
+
+  it("does not expose transport details when coupon validation returns a PostgREST error", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "42501",
+            status: 401,
+            message: "permission denied for function pdv_validar_cupom_v2",
+          },
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await enterCouponCode("SAFE");
+
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível validar o cupom. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "permission denied for function pdv_validar_cupom_v2",
+    );
+  });
+
+  it("rejects a malformed successful coupon payload instead of applying fail-open defaults", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "BROKEN",
+              tipo: "fixed",
+              valor: "not-a-number",
+              minimo_pedido: "not-a-number",
+            },
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await enterCouponCode("BROKEN");
+
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(container.querySelector("aside")?.textContent || "").not.toContain(
+      "Desconto (BROKEN)",
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Cupom BROKEN aplicado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível validar o cupom. Tente novamente.",
+    );
+  });
+
+  it("keeps the latest coupon when an older validation response arrives last", async () => {
+    const oldRequest = deferred<{ data: unknown; error: null }>();
+    const newRequest = deferred<{ data: unknown; error: null }>();
+
+    rpcMock.mockImplementation((name: string, args?: Record<string, unknown>) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        if (args?._codigo === "OLD") return oldRequest.promise;
+        if (args?._codigo === "NEW") return newRequest.promise;
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await enterCouponCode("OLD");
+
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await enterCouponCode("NEW");
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    newRequest.resolve({
+      data: {
+        ok: true,
+        cupom: { codigo: "NEW", tipo: "fixed", valor: 1, minimo_pedido: 0 },
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+    expect(container.querySelector("aside")?.textContent || "").toContain(
+      "Desconto (NEW)",
+    );
+
+    oldRequest.resolve({
+      data: {
+        ok: true,
+        cupom: { codigo: "OLD", tipo: "fixed", valor: 1, minimo_pedido: 0 },
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("Desconto (NEW)");
+    expect(cartText).not.toContain("Desconto (OLD)");
+  });
+
+  it("checks the current subtotal when coupon validation resolves instead of the click-time subtotal", async () => {
+    const request = deferred<{ data: unknown; error: null }>();
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") return request.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    expect(container.querySelector("aside")?.textContent || "").toContain("R$ 12,50");
+
+    await enterCouponCode("MIN25");
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    expect(container.querySelector("aside")?.textContent || "").toContain("R$ 25,00");
+
+    request.resolve({
+      data: {
+        ok: true,
+        cupom: { codigo: "MIN25", tipo: "fixed", valor: 1, minimo_pedido: 25 },
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.querySelector("aside")?.textContent || "").toContain(
+      "Desconto (MIN25)",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "Pedido mínimo para este cupom: R$ 25,00",
+    );
+  });
+
+  it("ignores a coupon success response that arrives after PDVMain unmounts", async () => {
+    const request = deferred<{ data: unknown; error: null }>();
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") return request.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await enterCouponCode("LATE");
+
+    await act(async () => {
+      applyCouponButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    request.resolve({
+      data: {
+        ok: true,
+        cupom: { codigo: "LATE", tipo: "fixed", valor: 1, minimo_pedido: 0 },
+      },
+      error: null,
+    });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Cupom LATE aplicado");
   });
 
   it("changes only the targeted cart row when multiple products are present", async () => {

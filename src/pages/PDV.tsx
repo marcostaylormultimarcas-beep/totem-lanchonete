@@ -113,6 +113,41 @@ type CartItem = {
 
 const PDV_MAX_ITEM_QUANTITY = 999;
 
+export function calculatePdvSubtotal(
+  items: readonly { price: unknown; quantity: unknown }[],
+) {
+  let subtotalCents = 0;
+
+  for (const item of items) {
+    if (
+      typeof item.price !== "number" ||
+      !Number.isFinite(item.price) ||
+      item.price < 0 ||
+      typeof item.quantity !== "number" ||
+      !Number.isSafeInteger(item.quantity) ||
+      item.quantity < 1 ||
+      item.quantity > PDV_MAX_ITEM_QUANTITY
+    ) {
+      continue;
+    }
+
+    // Accumulate in integer cents so floating-point drift cannot reach the subtotal.
+    // Invalid or unsafe local rows are isolated instead of poisoning the whole sum.
+    const priceCents = Math.round(item.price * 100);
+    if (!Number.isSafeInteger(priceCents) || priceCents < 0) continue;
+
+    const lineCents = priceCents * item.quantity;
+    if (!Number.isSafeInteger(lineCents)) continue;
+
+    const nextSubtotalCents = subtotalCents + lineCents;
+    if (!Number.isSafeInteger(nextSubtotalCents)) continue;
+
+    subtotalCents = nextSubtotalCents;
+  }
+
+  return subtotalCents / 100;
+}
+
 function createPdvCartItemId(productId: string) {
   try {
     const id = globalThis.crypto?.randomUUID?.();
@@ -901,7 +936,7 @@ function PDVMain({
       .slice(0, 48);
   }, [products, query]);
 
-  const subtotal = cart.reduce((s, x) => s + x.price * x.quantity, 0);
+  const subtotal = calculatePdvSubtotal(cart);
 
   useEffect(() => {
     if (cupomDesc && subtotal < Number(cupomDesc.minimo_pedido || 0)) {

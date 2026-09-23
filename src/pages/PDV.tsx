@@ -111,6 +111,18 @@ type CartItem = {
   quantity: number;
 };
 
+const PDV_MAX_ITEM_QUANTITY = 999;
+
+function createPdvCartItemId(productId: string) {
+  try {
+    const id = globalThis.crypto?.randomUUID?.();
+    if (typeof id === "string" && id) return id;
+  } catch {
+    // The cart row id is local-only; product ids are unique in the validated catalog.
+  }
+  return productId;
+}
+
 type Forma = "dinheiro" | "pix" | "cartao";
 
 const fmt = (n: number) =>
@@ -761,20 +773,33 @@ function PDVMain({
   };
 
   const addToCart = (p: Product) => {
+    const visibleItem = cart.find((item) => item.product_id === p.id);
+    if (visibleItem && visibleItem.quantity >= PDV_MAX_ITEM_QUANTITY) {
+      toast.error(`Quantidade máxima por produto: ${PDV_MAX_ITEM_QUANTITY}.`);
+      return;
+    }
+
     setCart((prev) => {
       const i = prev.findIndex((x) => x.product_id === p.id);
       if (i >= 0) {
+        const current = prev[i];
+        if (current.quantity >= PDV_MAX_ITEM_QUANTITY) return prev;
+
         const c = [...prev];
-        c[i] = { ...c[i], quantity: c[i].quantity + 1 };
+        c[i] = {
+          ...current,
+          quantity: Math.min(PDV_MAX_ITEM_QUANTITY, current.quantity + 1),
+        };
         return c;
       }
+
       return [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: createPdvCartItemId(p.id),
           product_id: p.id,
           name: p.name,
-          price: Number(p.price),
+          price: p.price,
           quantity: 1,
         },
       ];

@@ -24,7 +24,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import PDV, { calculatePdvSubtotal } from "@/pages/PDV";
+import PDV, { calculatePdvSubtotal, shouldInvalidatePdvCoupon } from "@/pages/PDV";
 import { PDV_SESSION_KEY } from "@/lib/pdvSession";
 
 const operador = {
@@ -1390,6 +1390,37 @@ describe("PDV subtotal calculation", () => {
         { price: Number.POSITIVE_INFINITY, quantity: 1 },
       ]),
     ).toBe(0);
+  });
+});
+
+
+describe("PDV automatic coupon invalidation", () => {
+  it("invalidates only when a valid minimum is above the current subtotal", () => {
+    expect(shouldInvalidatePdvCoupon(19.99, 20)).toBe(true);
+    expect(shouldInvalidatePdvCoupon(20, 20)).toBe(false);
+    expect(shouldInvalidatePdvCoupon(25.5, "25.50")).toBe(false);
+    expect(shouldInvalidatePdvCoupon(25.49, "25.50")).toBe(true);
+    expect(shouldInvalidatePdvCoupon(0, null)).toBe(false);
+    expect(shouldInvalidatePdvCoupon(0, undefined)).toBe(false);
+  });
+
+  it("fails closed for malformed, negative, non-finite, or unsafe minimum values", () => {
+    const malformedMinimums = [
+      "",
+      "not-a-number",
+      "NaN",
+      Number.NaN,
+      "Infinity",
+      Number.POSITIVE_INFINITY,
+      -1,
+      "-1",
+      Number.MAX_VALUE,
+      {},
+    ];
+
+    for (const minimum of malformedMinimums) {
+      expect(shouldInvalidatePdvCoupon(50, minimum)).toBe(true);
+    }
   });
 });
 

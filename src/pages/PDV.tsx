@@ -148,6 +148,44 @@ export function calculatePdvSubtotal(
   return subtotalCents / 100;
 }
 
+export function shouldInvalidatePdvCoupon(
+  subtotal: number,
+  minimumValue: unknown,
+) {
+  const subtotalCents = Math.round(subtotal * 100);
+  if (
+    !Number.isFinite(subtotal) ||
+    subtotal < 0 ||
+    !Number.isSafeInteger(subtotalCents)
+  ) {
+    return true;
+  }
+
+  if (minimumValue == null) return false;
+
+  const normalizedMinimum =
+    typeof minimumValue === "string" ? minimumValue.trim() : minimumValue;
+  if (normalizedMinimum === "") return true;
+  if (
+    typeof normalizedMinimum !== "number" &&
+    typeof normalizedMinimum !== "string"
+  ) {
+    return true;
+  }
+
+  const minimum = Number(normalizedMinimum);
+  const minimumCents = Math.round(minimum * 100);
+  if (
+    !Number.isFinite(minimum) ||
+    minimum < 0 ||
+    !Number.isSafeInteger(minimumCents)
+  ) {
+    return true;
+  }
+
+  return subtotalCents < minimumCents;
+}
+
 function createPdvCartItemId(productId: string) {
   try {
     const id = globalThis.crypto?.randomUUID?.();
@@ -939,7 +977,10 @@ function PDVMain({
   const subtotal = calculatePdvSubtotal(cart);
 
   useEffect(() => {
-    if (cupomDesc && subtotal < Number(cupomDesc.minimo_pedido || 0)) {
+    if (
+      cupomDesc &&
+      shouldInvalidatePdvCoupon(subtotal, cupomDesc.minimo_pedido)
+    ) {
       setCupomDesc(null);
     }
   }, [subtotal, cupomDesc]);

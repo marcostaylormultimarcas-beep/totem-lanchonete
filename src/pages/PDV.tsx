@@ -2028,13 +2028,31 @@ function PDVMain({
     cupom: string;
   }>(null);
 
-  const triggerPrint = () => {
-    document.body.classList.add("printing-cupom");
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => document.body.classList.remove("printing-cupom"), 300);
-    }, 80);
-  };
+  useEffect(() => {
+    if (!lastReceipt) return;
+
+    let printTimer: ReturnType<typeof setTimeout> | undefined;
+    let cleanupTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // Wait for React to commit the receipt DOM, but keep every delayed print
+    // owned by this receipt lifecycle so unmount/replacement cannot print stale UI.
+    const renderTimer = setTimeout(() => {
+      document.body.classList.add("printing-cupom");
+      printTimer = setTimeout(() => {
+        window.print();
+        cleanupTimer = setTimeout(() => {
+          document.body.classList.remove("printing-cupom");
+        }, 300);
+      }, 80);
+    }, 60);
+
+    return () => {
+      clearTimeout(renderTimer);
+      if (printTimer) clearTimeout(printTimer);
+      if (cleanupTimer) clearTimeout(cleanupTimer);
+      document.body.classList.remove("printing-cupom");
+    };
+  }, [lastReceipt]);
 
   const finalizar = async () => {
     // State updates are asynchronous. Keep a synchronous lock around the
@@ -2361,9 +2379,6 @@ function PDVMain({
       forma: snapForma,
       cupom: snapCupom,
     });
-    // dispara impressão após render do recibo
-    setTimeout(triggerPrint, 60);
-
     setCart([]);
     setCupomDesc(null);
     setCupomCode("");

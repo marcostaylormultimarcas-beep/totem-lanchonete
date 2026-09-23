@@ -24,7 +24,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import PDV from "@/pages/PDV";
+import PDV, { calculatePdvSubtotal } from "@/pages/PDV";
 import { PDV_SESSION_KEY } from "@/lib/pdvSession";
 
 const operador = {
@@ -1355,6 +1355,41 @@ describe("PDV catalog search and filter", () => {
     await act(async () => {
       await flushAsync();
     });
+  });
+});
+
+
+describe("PDV subtotal calculation", () => {
+  it("sums in integer cents and isolates malformed or unsafe cart rows", () => {
+    const subtotal = calculatePdvSubtotal([
+      { price: 0.1, quantity: 1 },
+      { price: 0.2, quantity: 1 },
+      { price: 12.34, quantity: 2 },
+      { price: Number.NaN, quantity: 1 },
+      { price: Number.POSITIVE_INFINITY, quantity: 1 },
+      { price: -1, quantity: 1 },
+      { price: "9.99", quantity: 1 },
+      { price: 10, quantity: Number.NaN },
+      { price: 10, quantity: 1.5 },
+      { price: 10, quantity: -1 },
+      { price: 10, quantity: 1000 },
+      { price: Number.MAX_SAFE_INTEGER / 100, quantity: 999 },
+    ]);
+
+    expect(subtotal).toBe(24.98);
+    expect(Number.isFinite(subtotal)).toBe(true);
+    expect(Number.isSafeInteger(Math.round(subtotal * 100))).toBe(true);
+  });
+
+  it("returns a finite zero for an empty or wholly invalid cart", () => {
+    expect(calculatePdvSubtotal([])).toBe(0);
+    expect(
+      calculatePdvSubtotal([
+        { price: Number.NaN, quantity: 1 },
+        { price: 10, quantity: 0 },
+        { price: Number.POSITIVE_INFINITY, quantity: 1 },
+      ]),
+    ).toBe(0);
   });
 });
 

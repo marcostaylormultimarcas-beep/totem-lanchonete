@@ -75,6 +75,80 @@ function parsePdvPixIntentSuccess(value: unknown): PdvPixIntentSuccess | null {
   };
 }
 
+type PdvCreatePixSuccess = {
+  intent_id: string;
+  payment_id: string;
+  status: string;
+  amount: number;
+  qr_code_base64: string;
+  qr_code: string;
+  ticket_url: string;
+};
+
+function parsePdvCreatePixSuccess(
+  value: unknown,
+  expectedIntent: PdvPixIntentSuccess,
+): PdvCreatePixSuccess | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  const intentId =
+    typeof payload.intent_id === "string" ? payload.intent_id.trim() : "";
+  if (intentId !== expectedIntent.intent_id) return null;
+
+  let paymentId = "";
+  if (typeof payload.payment_id === "string") {
+    paymentId = payload.payment_id.trim();
+  } else if (
+    typeof payload.payment_id === "number" &&
+    Number.isFinite(payload.payment_id) &&
+    payload.payment_id > 0 &&
+    Number.isSafeInteger(payload.payment_id)
+  ) {
+    paymentId = String(payload.payment_id);
+  }
+  if (!paymentId) return null;
+
+  const status =
+    typeof payload.status === "string" ? payload.status.trim() : "";
+  if (!status) return null;
+
+  const amount =
+    typeof payload.amount === "number" ? payload.amount : Number.NaN;
+  const amountCents = Math.round(amount * 100);
+  const expectedAmountCents = Math.round(expectedIntent.amount * 100);
+  if (
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    !Number.isSafeInteger(amountCents) ||
+    amountCents !== expectedAmountCents
+  ) {
+    return null;
+  }
+
+  const qrBase64 =
+    typeof payload.qr_code_base64 === "string"
+      ? payload.qr_code_base64.trim()
+      : "";
+  const qrCode =
+    typeof payload.qr_code === "string" ? payload.qr_code.trim() : "";
+  if (!qrBase64 || !qrCode) return null;
+
+  if (typeof payload.ticket_url !== "string") return null;
+
+  return {
+    intent_id: intentId,
+    payment_id: paymentId,
+    status,
+    amount,
+    qr_code_base64: qrBase64,
+    qr_code: qrCode,
+    ticket_url: payload.ticket_url.trim(),
+  };
+}
+
 function pdvPixIntentReasonMessage(reason: unknown) {
   const messages: Record<string, string> = {
     invalid_cash_register: "Caixa inválido ou fechado. Reabra o caixa.",
@@ -1492,21 +1566,75 @@ function PDVMain({
         // Only a strictly validated, still-current server intent may cross the
         // trust boundary into the Mercado Pago Edge Function.
         if (!isCurrentRequest()) return;
-        const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
-          body: { intent_id: intent.intent_id, session_token: sessionToken },
-        });
-        if (!isCurrentRequest()) return;
-        if (error || !(data as any)?.ok) {
+
+        let edgeData: unknown;
+        let edgeError: unknown;
+
+        try {
+          const edgeResult = await supabase.functions.invoke(
+            "mercadopago-create-pix",
+            {
+              body: {
+                intent_id: intent.intent_id,
+                session_token: sessionToken,
+              },
+            },
+          );
+          edgeData = edgeResult.data;
+          edgeError = edgeResult.error;
+        } catch (error: any) {
+          if (!isCurrentRequest()) return;
+
+          console.error("[PDV] mercadopago-create-pix rejected", {
+            name: typeof error?.name === "string" ? error.name : undefined,
+            status:
+              typeof error?.status === "number"
+                ? error.status
+                : typeof error?.context?.status === "number"
+                  ? error.context.status
+                  : undefined,
+          });
           clearPixData();
+          toast.error("Não foi possível gerar o PIX. Tente novamente.");
           return;
         }
 
-        const d = data as any;
+        if (!isCurrentRequest()) return;
+
+        if (edgeError) {
+          const functionError = edgeError as any;
+          console.error("[PDV] mercadopago-create-pix error", {
+            name:
+              typeof functionError?.name === "string"
+                ? functionError.name
+                : undefined,
+            status:
+              typeof functionError?.status === "number"
+                ? functionError.status
+                : typeof functionError?.context?.status === "number"
+                  ? functionError.context.status
+                  : undefined,
+          });
+          clearPixData();
+          toast.error("Não foi possível gerar o PIX. Tente novamente.");
+          return;
+        }
+
+        const edge = parsePdvCreatePixSuccess(edgeData, intent);
+        if (!edge) {
+          console.error("[PDV] invalid mercadopago-create-pix success payload");
+          clearPixData();
+          toast.error("Não foi possível gerar o PIX. Tente novamente.");
+          return;
+        }
+
+        if (!isCurrentRequest()) return;
+
         const nextPixData = {
-          qrBase64: d.qr_code_base64 || "",
-          copiaECola: d.qr_code || "",
-          amount: Number(d.amount ?? intent.amount) || 0,
-          intentId: String(d.intent_id || intent.intent_id),
+          qrBase64: edge.qr_code_base64,
+          copiaECola: edge.qr_code,
+          amount: edge.amount,
+          intentId: edge.intent_id,
           cartSignature: requestSignature,
         };
         pixDataRef.current = nextPixData;

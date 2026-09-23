@@ -1284,64 +1284,141 @@ function PDVMain({
   const [pixData, setPixData] = useState<{ qrBase64: string; copiaECola: string; amount: number; intentId: string; cartSignature: string } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const pixReqId = useRef(0);
+  const pixDataRef = useRef<typeof pixData>(null);
+
+  const pixItems = useMemo(
+    () => cart.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
+    [cart],
+  );
+  const pixCartSignature = useMemo(
+    () =>
+      JSON.stringify(
+        [...pixItems].sort((a, b) => a.product_id.localeCompare(b.product_id)),
+      ),
+    [pixItems],
+  );
+  const pixCouponCode = cupomDesc?.codigo || "";
+  const pixInputKey = useMemo(
+    () =>
+      JSON.stringify({
+        forma,
+        total,
+        cartSignature: pixCartSignature,
+        couponCode: pixCouponCode,
+        sessionToken,
+        caixaId,
+      }),
+    [forma, total, pixCartSignature, pixCouponCode, sessionToken, caixaId],
+  );
+  const pixInputKeyRef = useRef(pixInputKey);
+  pixInputKeyRef.current = pixInputKey;
+  pixDataRef.current = pixData;
+
   useEffect(() => {
-    // Limpa Pix quando o operador troca de forma ou zera carrinho
-    if (forma !== "pix" || total <= 0) {
+    let active = true;
+
+    const requestSignature = `${pixCartSignature}|${pixCouponCode}`;
+    const clearPixData = () => {
+      pixDataRef.current = null;
       setPixData(null);
+    };
+
+    // Leaving PIX mode or losing a payable total invalidates both the visible
+    // QR and any request that may already be in flight.
+    if (forma !== "pix" || !Number.isFinite(total) || total <= 0) {
+      pixReqId.current += 1;
+      clearPixData();
       setPixLoading(false);
-      return;
+      return () => {
+        active = false;
+      };
     }
-    const cartSignature = JSON.stringify(
-      cart
-        .map((x) => ({ product_id: x.product_id, quantity: x.quantity }))
-        .sort((a, b) => a.product_id.localeCompare(b.product_id)),
-    );
-    // Reutiliza o QR somente se valor, itens/quantidades e cupom continuarem iguais.
+
+    // Reuse a QR only while the amount, semantic cart contents and coupon are
+    // still the same. A new state object alone must never regenerate PIX.
+    const currentPix = pixDataRef.current;
     if (
-      pixData &&
-      Math.abs(pixData.amount - total) < 0.005 &&
-      pixData.cartSignature === `${cartSignature}|${cupomDesc?.codigo || ""}`
-    ) return;
+      currentPix &&
+      Number.isFinite(currentPix.amount) &&
+      Math.abs(currentPix.amount - total) < 0.005 &&
+      currentPix.cartSignature === requestSignature
+    ) {
+      setPixLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     const myReq = ++pixReqId.current;
+    const requestKey = pixInputKey;
+
+    // Do not keep an old payable QR visible while a different cart/coupon is
+    // being debounced or quoted.
+    clearPixData();
     setPixLoading(true);
+
+    const isCurrentRequest = () =>
+      active &&
+      myReq === pixReqId.current &&
+      pixInputKeyRef.current === requestKey;
+
     const t = setTimeout(async () => {
+      // A render can change PIX inputs before this passive effect's cleanup
+      // runs. Check the render-time key before creating any server intent.
+      if (!isCurrentRequest()) return;
+
       try {
-        const pixItems = cart.map((x) => ({ product_id: x.product_id, quantity: x.quantity }));
         const { data: intentData, error: intentError } = await pdvRpc.createPixIntent(
           sessionToken,
           caixaId,
           pixItems,
-          cupomDesc?.codigo || "",
+          pixCouponCode,
         );
         const intent = intentData as any;
-        if (myReq !== pixReqId.current) return;
+        if (!isCurrentRequest()) return;
         if (intentError || !intent?.ok || !intent?.intent_id) {
-          setPixData(null);
+          clearPixData();
           return;
         }
+
         const { data, error } = await supabase.functions.invoke("mercadopago-create-pix", {
           body: { intent_id: intent.intent_id, session_token: sessionToken },
         });
-        if (myReq !== pixReqId.current) return; // resposta atrasada — ignora
+        if (!isCurrentRequest()) return;
         if (error || !(data as any)?.ok) {
-          setPixData(null);
+          clearPixData();
           return;
         }
+
         const d = data as any;
-        setPixData({
+        const nextPixData = {
           qrBase64: d.qr_code_base64 || "",
           copiaECola: d.qr_code || "",
           amount: Number(d.amount ?? intent.amount) || 0,
           intentId: String(d.intent_id || intent.intent_id),
-          cartSignature: `${cartSignature}|${cupomDesc?.codigo || ""}`,
-        });
+          cartSignature: requestSignature,
+        };
+        pixDataRef.current = nextPixData;
+        setPixData(nextPixData);
       } finally {
-        if (myReq === pixReqId.current) setPixLoading(false);
+        if (isCurrentRequest()) setPixLoading(false);
       }
     }, 350); // pequeno debounce p/ não disparar a cada centavo
-    return () => clearTimeout(t);
-  }, [forma, total, cart, cupomDesc?.codigo, sessionToken, caixaId, pixData]);
+
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
+  }, [
+    forma,
+    total,
+    pixItems,
+    pixCartSignature,
+    pixCouponCode,
+    sessionToken,
+    caixaId,
+    pixInputKey,
+  ]);
 
   const [pixConfirmed, setPixConfirmed] = useState(false);
   useEffect(() => {

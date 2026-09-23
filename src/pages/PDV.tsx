@@ -859,7 +859,25 @@ function PDVMain({
     });
   };
 
-  const removeItem = (id: string) => setCart((prev) => prev.filter((x) => x.id !== id));
+  const removeItem = (id: string) => {
+    // Cart row ids are generated from crypto.randomUUID() or fall back to the
+    // validated product UUID. Reject malformed ids before touching state.
+    if (typeof id !== "string" || !PDV_UUID_PATTERN.test(id)) return;
+
+    setCart((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index < 0) return prev;
+
+      // A duplicated local row id makes the target ambiguous. Never let one
+      // remove action delete more than the single row the operator selected.
+      const duplicateIndex = prev.findIndex(
+        (item, candidateIndex) => candidateIndex !== index && item.id === id,
+      );
+      if (duplicateIndex >= 0) return prev;
+
+      return [...prev.slice(0, index), ...prev.slice(index + 1)];
+    });
+  };
 
   const filtered = useMemo(() => {
     const nameQuery = normalizePdvSearchText(query);

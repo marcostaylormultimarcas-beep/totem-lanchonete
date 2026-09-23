@@ -1089,3 +1089,271 @@ describe("PDV catalog loading", () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 });
+
+
+describe("PDV catalog search and filter", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+
+  const product = (
+    index: number,
+    overrides: Partial<{
+      id: string;
+      name: string;
+      price: number;
+      codigo_barras: string | null;
+      available: null;
+      image: string;
+    }> = {},
+  ) => ({
+    id: `99999999-9999-9999-9999-${String(index).padStart(12, "0")}`,
+    name: `Produto ${index}`,
+    price: 10 + index / 100,
+    codigo_barras: `789000${String(index).padStart(7, "0")}`,
+    available: null as null,
+    image: "",
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderSearch(products: unknown) {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Buscar produto ou bipar código de barras…"]',
+    );
+    expect(input).not.toBeNull();
+    return input!;
+  }
+
+  async function setSearch(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("input value setter unavailable");
+
+    await act(async () => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function pressEnter(input: HTMLInputElement) {
+    await act(async () => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await flushAsync();
+    });
+  }
+
+  it("matches product names case-insensitively while ignoring Portuguese accents and repeated spaces", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Café   com Leite", codigo_barras: "CAF001" }),
+      product(2, { name: "Chá Gelado", codigo_barras: "CHA002" }),
+    ]);
+
+    await setSearch(input, "  CAFE com   leite  ");
+
+    expect(container.textContent).toContain("Café   com Leite");
+    expect(container.textContent).not.toContain("Chá Gelado");
+  });
+
+  it("keeps the default catalog grid capped at 24 products", async () => {
+    await renderSearch(Array.from({ length: 30 }, (_, index) => product(index + 1)));
+
+    expect(container.textContent).toContain("Produto 24");
+    expect(container.textContent).not.toContain("Produto 25");
+  });
+
+  it("keeps a non-empty search capped at 48 products", async () => {
+    const input = await renderSearch(
+      Array.from({ length: 60 }, (_, index) =>
+        product(index + 1, { name: `Busca Produto ${index + 1}` }),
+      ),
+    );
+
+    await setSearch(input, "busca");
+
+    expect(container.textContent).toContain("Busca Produto 48");
+    expect(container.textContent).not.toContain("Busca Produto 49");
+  });
+
+  it("gives an exact alphanumeric barcode priority over an earlier partial name match on Enter", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Promo ABC12345", codigo_barras: "OTHER001" }),
+      product(2, { name: "Produto Correto", codigo_barras: "ABC12345" }),
+    ]);
+
+    await setSearch(input, "ABC12345");
+    await pressEnter(input);
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("Produto Correto");
+    expect(cartText).not.toContain("Promo ABC12345");
+    expect(input.value).toBe("");
+  });
+
+  it("does not auto-add the first product when Enter only has a partial barcode match", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Produto A", codigo_barras: "ABC12345" }),
+      product(2, { name: "Produto B", codigo_barras: "ABC12399" }),
+    ]);
+
+    await setSearch(input, "ABC123");
+    await pressEnter(input);
+
+    expect(container.querySelector("aside")?.textContent).toContain(
+      "Nenhum item. Adicione um produto ou bipe o código.",
+    );
+    expect(input.value).toBe("ABC123");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Código de barras incompleto ou não encontrado. Refine a busca ou selecione o produto.",
+    );
+  });
+
+  it("refuses ambiguous auto-add when two catalog products share the same barcode", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Produto Duplicado A", codigo_barras: "DUPL1234" }),
+      product(2, { name: "Produto Duplicado B", codigo_barras: "DUPL1234" }),
+    ]);
+
+    await setSearch(input, "DUPL1234");
+    await pressEnter(input);
+
+    expect(container.querySelector("aside")?.textContent).toContain(
+      "Nenhum item. Adicione um produto ou bipe o código.",
+    );
+    expect(input.value).toBe("DUPL1234");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Código de barras duplicado no catálogo. Selecione o produto manualmente.",
+    );
+  });
+
+  it("keeps a long nonexistent code visible and gives explicit feedback instead of adding anything", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Produto Existente", codigo_barras: "1234567890123" }),
+    ]);
+    const missingCode = "9".repeat(128);
+
+    await setSearch(input, missingCode);
+    await pressEnter(input);
+
+    expect(container.querySelector("aside")?.textContent).toContain(
+      "Nenhum item. Adicione um produto ou bipe o código.",
+    );
+    expect(input.value).toBe(missingCode);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Nenhum produto encontrado para essa busca.",
+    );
+  });
+
+  it("uses the input's current value on Enter so a rapid scanner event cannot act on stale React query state", async () => {
+    const input = await renderSearch([
+      product(1, { name: "Primeiro Produto", codigo_barras: "FIRST001" }),
+      product(2, { name: "Produto Bipado", codigo_barras: "FAST1234" }),
+    ]);
+
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("input value setter unavailable");
+
+    setter.call(input, "FAST1234");
+    await pressEnter(input);
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("Produto Bipado");
+    expect(cartText).not.toContain("Primeiro Produto");
+  });
+
+  it("does not treat Enter during catalog loading as an empty/not-found catalog", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Buscar produto ou bipar código de barras…"]',
+    )!;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    setter?.call(input, "7891234567890");
+
+    await pressEnter(input);
+
+    expect(container.textContent).toContain("Carregando produtos");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Aguarde os produtos terminarem de carregar.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "Nenhum produto encontrado para essa busca.",
+    );
+
+    pending.resolve({
+      data: { ok: true, products: [product(1)] },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+});

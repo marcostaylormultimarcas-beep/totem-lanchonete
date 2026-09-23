@@ -251,6 +251,61 @@ export function calculatePdvDiscount(
   return 0;
 }
 
+function pdvDecimalParts(value: number) {
+  const [coefficient, exponentText] = value.toString().toLowerCase().split("e");
+  const exponent = exponentText ? Number(exponentText) : 0;
+  const [whole, fraction = ""] = coefficient.split(".");
+  let units = BigInt(`${whole}${fraction}`);
+  let scale = fraction.length - exponent;
+
+  if (scale < 0) {
+    units *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+
+  return { units, scale };
+}
+
+function pdvDecimalUnitsToNumber(units: bigint, scale: number) {
+  if (scale === 0) return Number(units);
+
+  const digits = units.toString().padStart(scale + 1, "0");
+  const splitAt = digits.length - scale;
+  return Number(`${digits.slice(0, splitAt)}.${digits.slice(splitAt)}`);
+}
+
+export function calculatePdvTotal(subtotal: number, discount: number) {
+  const subtotalCents = Math.round(subtotal * 100);
+  const discountCents = Math.round(discount * 100);
+
+  if (
+    !Number.isFinite(subtotal) ||
+    subtotal < 0 ||
+    !Number.isSafeInteger(subtotalCents) ||
+    !Number.isFinite(discount) ||
+    discount < 0 ||
+    !Number.isSafeInteger(discountCents)
+  ) {
+    return 0;
+  }
+
+  // PostgreSQL numeric subtracts decimal values exactly. Align the decimal
+  // serialization of both finite JS numbers into integer units first so
+  // 0.30 - 0.10 cannot leak binary floating-point drift into the PDV total.
+  // This also preserves valid fixed discounts with sub-cent precision.
+  const subtotalParts = pdvDecimalParts(subtotal);
+  const discountParts = pdvDecimalParts(discount);
+  const scale = Math.max(subtotalParts.scale, discountParts.scale);
+  const subtotalUnits =
+    subtotalParts.units * 10n ** BigInt(scale - subtotalParts.scale);
+  const discountUnits =
+    discountParts.units * 10n ** BigInt(scale - discountParts.scale);
+
+  if (discountUnits >= subtotalUnits) return 0;
+
+  return pdvDecimalUnitsToNumber(subtotalUnits - discountUnits, scale);
+}
+
 function createPdvCartItemId(productId: string) {
   try {
     const id = globalThis.crypto?.randomUUID?.();
@@ -1054,7 +1109,7 @@ function PDVMain({
     () => calculatePdvDiscount(subtotal, cupomDesc),
     [cupomDesc, subtotal],
   );
-  const total = Math.max(0, subtotal - desconto);
+  const total = calculatePdvTotal(subtotal, desconto);
 
   const aplicarCupom = async () => {
     const c = cupomCode.trim().toUpperCase();

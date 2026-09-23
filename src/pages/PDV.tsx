@@ -90,6 +90,19 @@ function parsePdvCatalogProducts(value: unknown): Product[] | null {
   return parsed;
 }
 
+function normalizePdvSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function normalizePdvBarcode(value: string) {
+  return value.trim();
+}
+
 type CartItem = {
   id: string;
   product_id: string;
@@ -671,7 +684,7 @@ function PDVMain({
   // Global barcode listener
   useEffect(() => {
     let buffer = "";
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const tag = target?.tagName;
@@ -685,22 +698,52 @@ function PDVMain({
       }
       if (/^[a-zA-Z0-9]$/.test(e.key)) {
         buffer += e.key;
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         timer = setTimeout(() => (buffer = ""), 300);
       }
     };
     window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+      if (timer) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products]);
+  }, [products, catalogState]);
+
+  const barcodeMatches = (code: string) => {
+    const needle = normalizePdvBarcode(code);
+    if (!needle) return [];
+    return products.filter(
+      (product) => normalizePdvBarcode(product.codigo_barras || "") === needle,
+    );
+  };
 
   const tryAddByCode = (code: string) => {
-    const p = products.find((x) => (x.codigo_barras || "").trim() === code.trim());
-    if (p) {
-      addToCart(p);
-      beep();
-      toast.success(`🛒 ${p.name} adicionado`);
+    if (catalogState !== "ready") {
+      toast.error(
+        catalogState === "loading"
+          ? "Aguarde os produtos terminarem de carregar."
+          : "Catálogo indisponível. Recarregue o PDV.",
+      );
+      return false;
     }
+
+    const matches = barcodeMatches(code);
+    if (matches.length === 0) {
+      toast.error("Produto não encontrado para este código.");
+      return false;
+    }
+
+    if (matches.length > 1) {
+      toast.error("Código de barras duplicado no catálogo. Selecione o produto manualmente.");
+      return false;
+    }
+
+    const [product] = matches;
+    addToCart(product);
+    beep();
+    toast.success(`🛒 ${product.name} adicionado`);
+    return true;
   };
 
   const beep = () => {
@@ -749,14 +792,24 @@ function PDVMain({
   const removeItem = (id: string) => setCart((prev) => prev.filter((x) => x.id !== id));
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return products.slice(0, 24);
+    const nameQuery = normalizePdvSearchText(query);
+    const barcodeQuery = query.trim().toLocaleLowerCase("pt-BR");
+    if (!nameQuery && !barcodeQuery) return products.slice(0, 24);
+
     return products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.codigo_barras || "").toLowerCase().includes(q),
-      )
+      .filter((product) => {
+        const nameMatches =
+          Boolean(nameQuery) &&
+          normalizePdvSearchText(product.name).includes(nameQuery);
+        const barcodeMatchesQuery =
+          Boolean(barcodeQuery) &&
+          (product.codigo_barras || "")
+            .trim()
+            .toLocaleLowerCase("pt-BR")
+            .includes(barcodeQuery);
+
+        return nameMatches || barcodeMatchesQuery;
+      })
       .slice(0, 48);
   }, [products, query]);
 
@@ -1100,19 +1153,48 @@ function PDVMain({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  if (/^\d{6,}$/.test(query.trim())) {
-                    tryAddByCode(query.trim());
-                    setQuery("");
-                    return;
-                  }
-                  const first = filtered[0];
-                  if (first) {
-                    addToCart(first);
-                    setQuery("");
-                  }
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+
+                const rawQuery = e.currentTarget.value.trim();
+                if (!rawQuery) return;
+
+                if (catalogState !== "ready") {
+                  toast.error(
+                    catalogState === "loading"
+                      ? "Aguarde os produtos terminarem de carregar."
+                      : "Catálogo indisponível. Recarregue o PDV.",
+                  );
+                  return;
                 }
+
+                const exactBarcodeMatches = barcodeMatches(rawQuery);
+                if (exactBarcodeMatches.length > 0) {
+                  if (tryAddByCode(rawQuery)) setQuery("");
+                  return;
+                }
+
+                const normalizedNameQuery = normalizePdvSearchText(rawQuery);
+                const firstNameMatch = filtered.find(
+                  (product) =>
+                    Boolean(normalizedNameQuery) &&
+                    normalizePdvSearchText(product.name).includes(normalizedNameQuery),
+                );
+
+                if (firstNameMatch) {
+                  addToCart(firstNameMatch);
+                  setQuery("");
+                  return;
+                }
+
+                if (filtered.length > 0) {
+                  toast.error(
+                    "Código de barras incompleto ou não encontrado. Refine a busca ou selecione o produto.",
+                  );
+                  return;
+                }
+
+                toast.error("Nenhum produto encontrado para essa busca.");
               }}
               placeholder="Buscar produto ou bipar código de barras…"
               className="flex-1 bg-transparent outline-none text-sm text-white placeholder:text-zinc-500"

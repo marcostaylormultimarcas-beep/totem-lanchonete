@@ -4459,4 +4459,498 @@ describe("PDV PIX request invalidation", () => {
     ).toHaveLength(1);
   });
 
+
+  function manualPixSaleCalls() {
+    return rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_registrar_venda_pix_v2",
+    );
+  }
+
+  function manualPixStatusCalls() {
+    return rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_pix_status_v2",
+    );
+  }
+
+  function mockManualPixFinalization(
+    response: () => Promise<{ data: unknown; error: unknown }>,
+  ) {
+    mockSinglePixIntent();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_pix_status_v2") return response();
+      if (name === "pdv_registrar_venda_pix_v2") {
+        return Promise.resolve({ data: { ok: false }, error: null });
+      }
+      return baseImplementation!(name, ...args);
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+  }
+
+  async function clickManualFinalize() {
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  it("authorizes manual PIX finalization only from the canonical paid status", async () => {
+    mockManualPixFinalization(() =>
+      Promise.resolve({
+        data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixStatusCalls()).toHaveLength(1);
+    expect(rpcMock).toHaveBeenCalledWith("pdv_pix_status_v2", {
+      _session_token: savedSession.sessionToken,
+      _intent_id: EDGE_INTENT_ID,
+    });
+    expect(manualPixSaleCalls()).toHaveLength(1);
+    expect(rpcMock).toHaveBeenCalledWith("pdv_registrar_venda_pix_v2", {
+      _session_token: savedSession.sessionToken,
+      _intent_id: EDGE_INTENT_ID,
+    });
+  });
+
+  it.each([
+    [
+      "non-boolean ok",
+      { ...pixStatusSuccess(EDGE_INTENT_ID, "paid"), ok: "true" },
+    ],
+    [
+      "wrong intent_id",
+      pixStatusSuccess(EDGE_OTHER_INTENT_ID, "paid"),
+    ],
+    [
+      "missing amount",
+      { ...pixStatusSuccess(EDGE_INTENT_ID, "paid"), amount: undefined },
+    ],
+    [
+      "mismatched amount",
+      { ...pixStatusSuccess(EDGE_INTENT_ID, "paid"), amount: 10.01 },
+    ],
+    [
+      "paid=true with pending status",
+      pixStatusSuccess(EDGE_INTENT_ID, "pending", { paid: true }),
+    ],
+    [
+      "paid=false with paid status",
+      pixStatusSuccess(EDGE_INTENT_ID, "paid", { paid: false }),
+    ],
+    [
+      "payment_status approved without canonical paid status",
+      pixStatusSuccess(EDGE_INTENT_ID, "payment_created", {
+        payment_status: "approved",
+      }),
+    ],
+    [
+      "unsupported approved status",
+      pixStatusSuccess(EDGE_INTENT_ID, "pending", {
+        status: "approved",
+        paid: false,
+      }),
+    ],
+    [
+      "string paid",
+      pixStatusSuccess(EDGE_INTENT_ID, "paid", { paid: "true" }),
+    ],
+  ])("never calls pixSale for malformed/non-canonical manual PIX status: %s", async (_label, payload) => {
+    mockManualPixFinalization(() =>
+      Promise.resolve({ data: payload, error: null }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Pagamento PIX ainda não confirmado",
+    );
+  });
+
+  it.each(["pending", "payment_created"] as const)(
+    "does not sell while manual PIX confirmation is still %s",
+    async (status) => {
+      mockManualPixFinalization(() =>
+        Promise.resolve({
+          data: pixStatusSuccess(EDGE_INTENT_ID, status),
+          error: null,
+        }),
+      );
+
+      await generateReadyPix();
+      await clickManualFinalize();
+
+      expect(manualPixSaleCalls()).toHaveLength(0);
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "Pagamento PIX ainda não confirmado",
+      );
+    },
+  );
+
+  it.each([
+    ["failed", "Pagamento PIX recusado ou cancelado."],
+    ["cancelled", "Pagamento PIX cancelado."],
+    ["expired", "PIX expirado."],
+    ["consumed", "PIX já foi utilizado."],
+  ] as const)(
+    "blocks manual finalization for terminal PIX status %s",
+    async (status, message) => {
+      mockManualPixFinalization(() =>
+        Promise.resolve({
+          data: pixStatusSuccess(EDGE_INTENT_ID, status, {
+            payment_status: status === "failed" ? "rejected" : "cancelled",
+          }),
+          error: null,
+        }),
+      );
+
+      await generateReadyPix();
+      await clickManualFinalize();
+
+      expect(manualPixSaleCalls()).toHaveLength(0);
+      expect(toastErrorMock).toHaveBeenCalledWith(message);
+    },
+  );
+
+  it("contains a rejected manual PIX status Promise and never calls pixSale", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockManualPixFinalization(() =>
+      Promise.reject(
+        Object.assign(new Error("temporary network detail"), {
+          code: "NETWORK",
+          status: 0,
+        }),
+      ),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+    await flushAsync();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível confirmar o PIX. Tente novamente.",
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] manual pdv_pix_status_v2 rejected",
+      { code: "NETWORK", status: 0 },
+    );
+  });
+
+  it("fails closed on a manual PIX status transport error", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockManualPixFinalization(() =>
+      Promise.resolve({
+        data: null,
+        error: {
+          code: "PGRST000",
+          status: 503,
+          message: "temporary transport detail",
+        },
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível confirmar o PIX. Tente novamente.",
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] manual pdv_pix_status_v2 transport error",
+      { code: "PGRST000", status: 503 },
+    );
+  });
+
+  it("expires the session on invalid_session during manual PIX confirmation", async () => {
+    mockManualPixFinalization(() =>
+      Promise.resolve({
+        data: { ok: false, reason: "invalid_session" },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Sessão expirada. Entre novamente.",
+    );
+  });
+
+  it("stops manual finalization when the PIX intent no longer exists", async () => {
+    mockManualPixFinalization(() =>
+      Promise.resolve({
+        data: { ok: false, reason: "intent_not_found" },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "PIX não encontrado. Gere um novo PIX.",
+    );
+  });
+
+  it("does not authorize an old manual PIX response after cart/total changes", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    mockManualPixFinalization(() => pending.promise);
+
+    await generateReadyPix();
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    expect(manualPixStatusCalls()).toHaveLength(1);
+
+    await clickProduct();
+
+    pending.resolve({
+      data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+  });
+
+  it("does not authorize an old manual PIX response after leaving PIX mode", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    mockManualPixFinalization(() => pending.promise);
+
+    await generateReadyPix();
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    await choosePayment("Dinheiro");
+
+    pending.resolve({
+      data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+  });
+
+  it("does not authorize an in-flight manual PIX response after unmount/session end", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    mockManualPixFinalization(() => pending.promise);
+
+    await generateReadyPix();
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({
+      data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+      error: null,
+    });
+    await flushAsync();
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+  });
+
+  it("serializes concurrent Finalizar clicks before manual PIX confirmation", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    mockManualPixFinalization(() => pending.promise);
+
+    await generateReadyPix();
+
+    await act(async () => {
+      const finalize = button("Finalizar venda");
+      finalize.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      finalize.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(manualPixStatusCalls()).toHaveLength(1);
+    expect(manualPixSaleCalls()).toHaveLength(0);
+
+    pending.resolve({
+      data: pixStatusSuccess(EDGE_INTENT_ID, "pending"),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+
+  it("never authorizes the old intent after a replacement QR becomes current during manual confirmation", async () => {
+    const oldIntentId = "26262626-2626-4626-8626-262626262626";
+    const newIntentId = "27272727-2727-4727-8727-272727272727";
+    const pendingOldStatus = deferred<{ data: unknown; error: null }>();
+    let intentCalls = 0;
+    let edgeCalls = 0;
+
+    rpcMock.mockImplementation((name: string, args?: Record<string, unknown>) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        intentCalls += 1;
+        return Promise.resolve({
+          data:
+            intentCalls === 1
+              ? { ok: true, intent_id: oldIntentId, amount: 10 }
+              : { ok: true, intent_id: newIntentId, amount: 20 },
+          error: null,
+        });
+      }
+      if (name === "pdv_pix_status_v2") {
+        if (args?._intent_id === oldIntentId) return pendingOldStatus.promise;
+        return Promise.resolve({
+          data: pixStatusSuccess(newIntentId, "pending", { amount: 20 }),
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_pix_v2") {
+        return Promise.resolve({ data: { ok: false }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    functionsInvokeMock.mockImplementation(() => {
+      edgeCalls += 1;
+      return Promise.resolve({
+        data:
+          edgeCalls === 1
+            ? edgeSuccessPayload(oldIntentId, 10)
+            : edgeSuccessPayload(newIntentId, 20),
+        error: null,
+      });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await clickProduct();
+    await advancePixTimers(350);
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-valid",
+      pixCopiaECola: "pix-code-valid",
+    });
+
+    pendingOldStatus.resolve({
+      data: pixStatusSuccess(oldIntentId, "paid"),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+    expect(rpcMock).not.toHaveBeenCalledWith("pdv_registrar_venda_pix_v2", {
+      _session_token: savedSession.sessionToken,
+      _intent_id: oldIntentId,
+    });
+  });
+
+  it("does not authorize a pre-coupon PIX after the coupon changes while manual confirmation is in flight", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    mockSinglePixIntent();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_pix_status_v2") return pending.promise;
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "SAVE10",
+              tipo: "percent",
+              valor: 10,
+              minimo_pedido: 0,
+            },
+          },
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_pix_v2") {
+        return Promise.resolve({ data: { ok: false }, error: null });
+      }
+      return baseImplementation!(name, ...args);
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+
+    await generateReadyPix();
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    await applyPixCoupon("save10");
+
+    pending.resolve({
+      data: pixStatusSuccess(EDGE_INTENT_ID, "paid"),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(manualPixSaleCalls()).toHaveLength(0);
+  });
+
 });

@@ -810,11 +810,53 @@ function PDVMain({
   };
 
   const changeQty = (id: string, delta: number) => {
-    setCart((prev) =>
-      prev
-        .map((x) => (x.id === id ? { ...x, quantity: x.quantity + delta } : x))
-        .filter((x) => x.quantity > 0),
-    );
+    // The UI only emits +/-1, but keep the state transition defensive because
+    // malformed quantities would otherwise poison subtotal/payment payloads.
+    if (
+      typeof id !== "string" ||
+      !id ||
+      !Number.isSafeInteger(delta) ||
+      (delta !== 1 && delta !== -1)
+    ) {
+      return;
+    }
+
+    const visibleItem = cart.find((item) => item.id === id);
+    if (delta > 0 && visibleItem?.quantity >= PDV_MAX_ITEM_QUANTITY) {
+      toast.error(`Quantidade máxima por produto: ${PDV_MAX_ITEM_QUANTITY}.`);
+      return;
+    }
+
+    setCart((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index < 0) return prev;
+
+      // Duplicate local row ids are not valid. Refuse an ambiguous mutation
+      // instead of changing more than one product at once.
+      const duplicateIndex = prev.findIndex(
+        (item, candidateIndex) => candidateIndex !== index && item.id === id,
+      );
+      if (duplicateIndex >= 0) return prev;
+
+      const current = prev[index];
+      if (
+        !Number.isSafeInteger(current.quantity) ||
+        current.quantity < 1 ||
+        current.quantity > PDV_MAX_ITEM_QUANTITY
+      ) {
+        return prev;
+      }
+
+      const nextQuantity = current.quantity + delta;
+      if (nextQuantity <= 0) {
+        return prev.filter((_, candidateIndex) => candidateIndex !== index);
+      }
+      if (nextQuantity > PDV_MAX_ITEM_QUANTITY) return prev;
+
+      const next = [...prev];
+      next[index] = { ...current, quantity: nextQuantity };
+      return next;
+    });
   };
 
   const removeItem = (id: string) => setCart((prev) => prev.filter((x) => x.id !== id));

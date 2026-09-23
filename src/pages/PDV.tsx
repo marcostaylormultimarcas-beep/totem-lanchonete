@@ -68,21 +68,54 @@ export default function PDV() {
   // Restore only an opaque server-issued session token; discard legacy password persistence.
   useEffect(() => {
     let active = true;
+    setBooting(true);
+    setOperador(null);
+    setSessionToken("");
+    setCaixaId(null);
+
     (async () => {
-      localStorage.removeItem("pdv_session_v1");
-      const saved = readPdvSession();
-      if (saved) {
+      try {
+        try { localStorage.removeItem("pdv_session_v1"); } catch {}
+
+        const saved = readPdvSession();
+        if (!saved) return;
+
+        const routeSlug = (slug || "").trim().toLowerCase();
+        const savedSlug = saved.operador.org_slug.trim().toLowerCase();
+        if (routeSlug && routeSlug !== savedSlug) {
+          clearPdvSession();
+          return;
+        }
+
         const ctx = await validatePdvSession(saved.sessionToken);
-        if (active && ctx) {
-          setOperador(saved.operador as Operador);
-          setSessionToken(saved.sessionToken);
-          setCaixaId(saved.caixaId || ctx.caixa_aberto_id || null);
-        } else if (!ctx) clearPdvSession();
+        if (!active) return;
+
+        if (!ctx) {
+          clearPdvSession();
+          return;
+        }
+
+        const sameOperator = String(ctx.operador_id || "") === saved.operador.id;
+        const sameOrganization = String(ctx.organization_id || "") === saved.operador.organization_id;
+        if (!sameOperator || !sameOrganization) {
+          clearPdvSession();
+          return;
+        }
+
+        setOperador(saved.operador as Operador);
+        setSessionToken(saved.sessionToken);
+        // The resumed server context is authoritative; never reuse a stale local cash register id.
+        setCaixaId(ctx.caixa_aberto_id || null);
+      } catch (error) {
+        console.error("[PDV] session restore failed", error);
+        if (active) toast.error("Não foi possível validar a sessão do PDV. Tente novamente.");
+      } finally {
+        if (active) setBooting(false);
       }
-      if (active) setBooting(false);
     })();
+
     return () => { active = false; };
-  }, []);
+  }, [slug]);
 
   useEffect(() => {
     if (operador && sessionToken) savePdvSession({ operador, sessionToken, caixaId });

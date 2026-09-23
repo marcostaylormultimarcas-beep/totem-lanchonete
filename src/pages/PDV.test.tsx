@@ -5101,6 +5101,31 @@ describe("PDV PIX request invalidation", () => {
   });
 
 
+  it("cleans receipt print mode when window.print throws", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(window, "print").mockImplementation(() => {
+      throw new Error("print dialog unavailable");
+    });
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess(),
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await clickManualFinalize();
+
+    await expect(advancePixTimers(500)).resolves.toBeUndefined();
+
+    expect(document.body.classList.contains("printing-cupom")).toBe(false);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] receipt print failed",
+      expect.any(Error),
+    );
+  });
+
+
   it("contains a rejected pixSale Promise, releases loading and shows only a safe message", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mockPixSaleFinalization(() =>

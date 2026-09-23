@@ -1078,6 +1078,16 @@ function PDVMain({
   const [showFechar, setShowFechar] = useState(false);
   const [showDevolucao, setShowDevolucao] = useState(false);
   const [saleLoading, setSaleLoading] = useState(false);
+  const finalizeInFlightRef = useRef(false);
+  const finalizeMountedRef = useRef(true);
+
+  useEffect(() => {
+    finalizeMountedRef.current = true;
+    return () => {
+      finalizeMountedRef.current = false;
+      finalizeInFlightRef.current = false;
+    };
+  }, []);
 
   // Load products
   useEffect(() => {
@@ -1916,18 +1926,145 @@ function PDVMain({
   };
 
   const finalizar = async () => {
-    if (forma === "pix") {
-      if (!pixData?.intentId) return toast.error("Gere o PIX antes de finalizar");
-      if (!pixConfirmed) {
-        const { data: pixStatusData, error: pixStatusError } = await pdvRpc.pixStatus(sessionToken, pixData.intentId);
-        const pixStatus = pixStatusData as any;
-        if (pixStatusError || !pixStatus?.ok || !(pixStatus?.paid === true || ["paid", "approved"].includes(String(pixStatus.status || "").toLowerCase()) || String(pixStatus.payment_status || "").toLowerCase() === "approved")) {
-          return toast.error("Pagamento PIX ainda não confirmado");
+    // State updates are asynchronous. Keep a synchronous lock around the
+    // complete finalize flow so two clicks cannot run competing PIX checks.
+    if (finalizeInFlightRef.current) return;
+    finalizeInFlightRef.current = true;
+
+    try {
+      if (forma === "pix") {
+        if (!pixData?.intentId) {
+          toast.error("Gere o PIX antes de finalizar");
+          return;
         }
-        setPixConfirmed(true);
+
+        if (!pixConfirmed) {
+          const expectedIntentId = pixData.intentId;
+          const expectedAmount = pixData.amount;
+          const requestKey = pixInputKeyRef.current;
+
+          const isCurrentManualPix = () => {
+            const currentPix = pixDataRef.current;
+            if (
+              !finalizeMountedRef.current ||
+              pixInputKeyRef.current !== requestKey ||
+              currentPix?.intentId !== expectedIntentId
+            ) {
+              return false;
+            }
+
+            const currentAmountCents = Math.round(
+              (currentPix?.amount ?? Number.NaN) * 100,
+            );
+            const expectedAmountCents = Math.round(expectedAmount * 100);
+            return (
+              Number.isFinite(currentPix?.amount) &&
+              Number.isSafeInteger(currentAmountCents) &&
+              Number.isSafeInteger(expectedAmountCents) &&
+              currentAmountCents === expectedAmountCents
+            );
+          };
+
+          let pixStatusData: unknown;
+          let pixStatusError: unknown;
+
+          try {
+            const result = await pdvRpc.pixStatus(
+              sessionToken,
+              expectedIntentId,
+            );
+            pixStatusData = result.data;
+            pixStatusError = result.error;
+          } catch (statusError: any) {
+            if (!isCurrentManualPix()) return;
+
+            console.error("[PDV] manual pdv_pix_status_v2 rejected", {
+              code: statusError?.code,
+              status: statusError?.status,
+            });
+            toast.error("Não foi possível confirmar o PIX. Tente novamente.");
+            return;
+          }
+
+          // A response for an old QR/cart/coupon/payment mode/session must never
+          // authorize the state that is current after the await.
+          if (!isCurrentManualPix()) return;
+
+          if (pixStatusError) {
+            const transportError = pixStatusError as any;
+            console.error("[PDV] manual pdv_pix_status_v2 transport error", {
+              code: transportError?.code,
+              status: transportError?.status,
+            });
+            toast.error("Não foi possível confirmar o PIX. Tente novamente.");
+            return;
+          }
+
+          if (
+            pixStatusData &&
+            typeof pixStatusData === "object" &&
+            !Array.isArray(pixStatusData)
+          ) {
+            const response = pixStatusData as Record<string, unknown>;
+
+            if (response.ok === false) {
+              if (response.reason === "invalid_session") {
+                toast.error("Sessão expirada. Entre novamente.");
+                onLogout();
+                return;
+              }
+
+              if (response.reason === "intent_not_found") {
+                toast.error("PIX não encontrado. Gere um novo PIX.");
+                return;
+              }
+
+              toast.error("Pagamento PIX ainda não confirmado");
+              return;
+            }
+          }
+
+          const pixStatus = parsePdvPixStatusSuccess(
+            pixStatusData,
+            expectedIntentId,
+            expectedAmount,
+          );
+          if (!pixStatus) {
+            console.error("[PDV] invalid manual pdv_pix_status_v2 response");
+            toast.error("Pagamento PIX ainda não confirmado");
+            return;
+          }
+
+          if (
+            pixStatus.status === "failed" ||
+            pixStatus.status === "cancelled" ||
+            pixStatus.status === "expired" ||
+            pixStatus.status === "consumed"
+          ) {
+            const messages: Record<
+              "failed" | "cancelled" | "expired" | "consumed",
+              string
+            > = {
+              failed: "Pagamento PIX recusado ou cancelado.",
+              cancelled: "Pagamento PIX cancelado.",
+              expired: "PIX expirado.",
+              consumed: "PIX já foi utilizado.",
+            };
+            toast.error(messages[pixStatus.status]);
+            return;
+          }
+
+          if (pixStatus.status !== "paid" || !pixStatus.paid) {
+            toast.error("Pagamento PIX ainda não confirmado");
+            return;
+          }
+
+          if (!isCurrentManualPix()) return;
+          setPixConfirmed(true);
+        }
       }
-    }
-    if (cart.length === 0) return toast.error("Carrinho vazio");
+
+      if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
     const items = cart.map((x) => ({
       id: x.product_id,
@@ -2014,6 +2151,9 @@ function PDVMain({
     setCustomerPhone("");
     setForma("dinheiro");
     searchRef.current?.focus();
+    } finally {
+      finalizeInFlightRef.current = false;
+    }
   };
 
   return (

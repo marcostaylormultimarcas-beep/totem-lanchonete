@@ -531,3 +531,314 @@ describe("PDV LoginScreen.submit", () => {
     );
   });
 });
+
+
+describe("PDV AberturaScreen.submit", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openedCaixaId = "77777777-7777-7777-7777-777777777777";
+
+  function setInput(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  async function renderOpening() {
+    sessionStorage.clear();
+    localStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Abertura de Caixa");
+  }
+
+  function openingFields() {
+    const input = container.querySelector<HTMLInputElement>('input[inputmode="decimal"]');
+    const form = container.querySelector("form");
+    if (!input || !form) throw new Error("Cash opening form not rendered");
+    return { input, form };
+  }
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.resolve({ data: { ok: true, caixa_id: openedCaixaId }, error: null });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it("parses a pt-BR opening balance exactly before calling pdv_abrir_caixa_v2", async () => {
+    await renderOpening();
+    const { input, form } = openingFields();
+
+    await act(async () => {
+      setInput(input, "1.234,56");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_abrir_caixa_v2", {
+      _session_token: savedSession.sessionToken,
+      _saldo_inicial: 1234.56,
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith("Caixa aberto");
+    expect(rpcMock).toHaveBeenCalledWith("pdv_catalog_v2", {
+      _session_token: savedSession.sessionToken,
+    });
+  });
+
+  it("rejects empty, negative, non-numeric and unsafe extreme values before the RPC", async () => {
+    await renderOpening();
+    const { input, form } = openingFields();
+
+    for (const value of ["", "-1,00", "NaN", "999999999999999999999999999999999,99"]) {
+      await act(async () => {
+        setInput(input, value);
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        await flushAsync();
+      });
+    }
+
+    expect(rpcMock.mock.calls.filter(([name]) => name === "pdv_abrir_caixa_v2")).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledTimes(4);
+    expect(toastErrorMock).toHaveBeenLastCalledWith("Informe um saldo inicial válido.");
+    expect(container.textContent).toContain("Abertura de Caixa");
+  });
+
+  it("prevents two cash-opening RPCs when two submits happen in the same tick", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { input, form } = openingFields();
+
+    await act(async () => {
+      setInput(input, "25,00");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(rpcMock.mock.calls.filter(([name]) => name === "pdv_abrir_caixa_v2")).toHaveLength(1);
+
+    pending.resolve({ data: { ok: false, reason: "open_failed" }, error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Abrir Caixa"));
+    expect(submitButton?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("handles a returned transport/PostgREST error without exposing its message and releases loading", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST500", status: 500, message: "session_token=secret-transport-detail" },
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Abrir Caixa"));
+    expect(submitButton?.hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível abrir o caixa. Tente novamente.");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret-transport-detail");
+  });
+
+  it("handles a rejected openCash promise without getting stuck or exposing details", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.reject(new Error("session_token=secret-rejection-detail"));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Abrir Caixa"));
+    expect(submitButton?.hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível abrir o caixa. Tente novamente.");
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret-rejection-detail");
+  });
+
+  it("rejects an ok=true response without a valid caixa_id", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.resolve({ data: { ok: true, caixa_id: "not-a-uuid" }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Abertura de Caixa");
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa aberto");
+    expect(toastErrorMock).toHaveBeenCalledWith("Resposta inválida ao abrir o caixa. Tente novamente.");
+    expect(consoleError).toHaveBeenCalledWith("[PDV] invalid pdv_abrir_caixa_v2 success payload");
+    expect(rpcMock).not.toHaveBeenCalledWith("pdv_catalog_v2", expect.anything());
+  });
+
+  it("recovers an already_open response only when it carries a valid caixa_id", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "already_open", caixa_id: openedCaixaId },
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith("Caixa já estava aberto");
+    expect(rpcMock).toHaveBeenCalledWith("pdv_catalog_v2", {
+      _session_token: savedSession.sessionToken,
+    });
+  });
+
+  it("expires the local PDV session when pdv_abrir_caixa_v2 reports invalid_session", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") {
+        return Promise.resolve({ data: { ok: false, reason: "invalid_session" }, error: null });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+  });
+
+  it("ignores a successful response that arrives after AberturaScreen unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({ data: resumed({ caixa_aberto_id: null }), error: null });
+      }
+      if (name === "pdv_abrir_caixa_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderOpening();
+    const { form } = openingFields();
+
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({ data: { ok: true, caixa_id: openedCaixaId }, error: null });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalledWith("pdv_catalog_v2", expect.anything());
+  });
+});

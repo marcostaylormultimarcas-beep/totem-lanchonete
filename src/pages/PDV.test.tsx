@@ -5607,3 +5607,400 @@ describe("PDV PIX request invalidation", () => {
   });
 
 });
+
+describe("PDV Sangria / Suprimento audit", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [] },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function buttonWithText(text: string) {
+    const button = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.includes(text),
+    );
+    if (!button) throw new Error(`Button not rendered: ${text}`);
+    return button;
+  }
+
+  function movementCalls() {
+    return rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_registrar_movimento_v2",
+    );
+  }
+
+  function modal() {
+    const heading = Array.from(container.querySelectorAll("h3")).find(
+      (candidate) => candidate.textContent?.trim() === "Sangria / Suprimento",
+    );
+    const shell = heading?.closest(".fixed");
+    if (!shell) throw new Error("Sangria modal not rendered");
+    return shell;
+  }
+
+  function valueInput() {
+    const input = modal().querySelector<HTMLInputElement>('input[inputmode="decimal"]');
+    if (!input) throw new Error("Movement value input not rendered");
+    return input;
+  }
+
+  function reasonInput() {
+    const textarea = modal().querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("Movement reason input not rendered");
+    return textarea;
+  }
+
+  async function setInputValue(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function setReason(value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML textarea setter unavailable");
+
+    await act(async () => {
+      setter.call(reasonInput(), value);
+      reasonInput().dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function openMovementModal() {
+    await act(async () => {
+      buttonWithText("Sangria / Suprimento").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  async function prepareMovement(value = "10,50", reason = "Troco retirado") {
+    await openMovementModal();
+    await setInputValue(valueInput(), value);
+    await setReason(reason);
+  }
+
+  async function submitMovement() {
+    await act(async () => {
+      buttonWithText("Confirmar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  it("sends a canonical Brazilian amount, trimmed reason and selected suprimento type", async () => {
+    await renderMain();
+    await prepareMovement("1.234,56", "  Reforço de troco  ");
+
+    await act(async () => {
+      buttonWithText("Suprimento").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    await submitMovement();
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_registrar_movimento_v2", {
+      _session_token: savedSession.sessionToken,
+      _caixa_id: openCaixaId,
+      _tipo: "suprimento",
+      _forma: "dinheiro",
+      _valor: 1234.56,
+      _motivo: "Reforço de troco",
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith("Suprimento registrado");
+  });
+
+  it.each([
+    ["trailing garbage", "12abc"],
+    ["multiple decimal separators", "1,2,3"],
+    ["Infinity", "Infinity"],
+    ["unsafe cents", "90.071.992.547.409,91"],
+    ["negative", "-1,00"],
+    ["zero", "0,00"],
+  ])("rejects invalid movement amount: %s", async (_label, rawValue) => {
+    await renderMain();
+    await prepareMovement(rawValue, "Motivo válido");
+    await submitMovement();
+
+    expect(movementCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith("Informe um valor válido");
+  });
+
+  it("rejects a trimmed reason shorter than three characters", async () => {
+    await renderMain();
+    await prepareMovement("10,00", "  ab  ");
+    await submitMovement();
+
+    expect(movementCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith("Informe um motivo");
+  });
+
+  it("allows only one movement RPC when Confirmar is clicked twice in the same tick", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+
+    const confirm = buttonWithText("Confirmar");
+    await act(async () => {
+      confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(movementCalls()).toHaveLength(1);
+
+    pending.resolve({ data: { ok: true }, error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+
+  it("handles invalid_session authoritatively instead of leaving the stale PDV active", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+    await submitMovement();
+
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+  });
+
+  it("does not accept a truthy but non-boolean ok as a valid success payload", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") {
+        return Promise.resolve({
+          data: { ok: "true" },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+    await submitMovement();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Sangria registrada");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao registrar a movimentação. Tente novamente.",
+    );
+  });
+
+  it("handles a rejected movement Promise without leaking its technical message", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") {
+        return Promise.reject(new Error("secret transport detail"));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+    await submitMovement();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível registrar a movimentação. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret transport detail"),
+    );
+  });
+
+  it("does not let an old movement response close or toast over a newly reopened modal", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+    await act(async () => {
+      buttonWithText("Confirmar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    await openMovementModal();
+    await setInputValue(valueInput(), "20,00");
+    await setReason("Novo movimento");
+
+    pending.resolve({ data: { ok: true }, error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Sangria / Suprimento");
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Sangria registrada");
+    expect(valueInput().value).toBe("20,00");
+    expect(reasonInput().value).toBe("Novo movimento");
+  });
+
+  it("does not emit a late success after the PDV unmounts with a movement pending", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_registrar_movimento_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await prepareMovement();
+    await act(async () => {
+      buttonWithText("Confirmar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({ data: { ok: true }, error: null });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Sangria registrada");
+  });
+});
+

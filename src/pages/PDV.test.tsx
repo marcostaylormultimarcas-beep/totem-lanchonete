@@ -2813,9 +2813,17 @@ describe("PDV PIX request invalidation", () => {
 
   function button(label: string) {
     const candidate = Array.from(container.querySelectorAll("button")).find(
-      (item) => item.textContent?.includes(label),
+      (item) => item.textContent?.trim() === label,
     );
     if (!candidate) throw new Error(`${label} button not rendered`);
+    return candidate;
+  }
+
+  function productButton() {
+    const candidate = Array.from(container.querySelectorAll("button")).find(
+      (item) => item.textContent?.includes(product.name),
+    );
+    if (!candidate) throw new Error(`${product.name} button not rendered`);
     return candidate;
   }
 
@@ -2841,7 +2849,7 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
@@ -2898,7 +2906,7 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
@@ -2951,7 +2959,7 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
@@ -3017,7 +3025,7 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
@@ -3030,7 +3038,7 @@ describe("PDV PIX request invalidation", () => {
     ).toBe("pix-code-1");
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
     });
 
@@ -3079,7 +3087,7 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
@@ -3115,15 +3123,15 @@ describe("PDV PIX request invalidation", () => {
     await renderMain();
 
     await act(async () => {
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       await vi.advanceTimersByTimeAsync(200);
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       await vi.advanceTimersByTimeAsync(200);
-      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
       await vi.advanceTimersByTimeAsync(349);
       await flushAsync();

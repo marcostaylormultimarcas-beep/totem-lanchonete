@@ -5,8 +5,9 @@ import { act } from "react-dom/test-utils";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rpcMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({
+const { rpcMock, functionsInvokeMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
+  functionsInvokeMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
 }));
@@ -14,6 +15,9 @@ const { rpcMock, toastErrorMock, toastSuccessMock } = vi.hoisted(() => ({
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     rpc: rpcMock,
+    functions: {
+      invoke: functionsInvokeMock,
+    },
   },
 }));
 
@@ -2741,5 +2745,134 @@ describe("PDV customer mirror BroadcastChannel lifecycle", () => {
         }),
       }),
     );
+  });
+});
+
+
+describe("PDV PIX request invalidation", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+  const product = {
+    id: "99999999-9999-4999-8999-999999999999",
+    name: "Produto PIX",
+    price: 10,
+    codigo_barras: "PIX1000",
+    available: null,
+    image: "",
+  };
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+    functionsInvokeMock.mockResolvedValue({ data: { ok: true }, error: null });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function button(label: string) {
+    const candidate = Array.from(container.querySelectorAll("button")).find(
+      (item) => item.textContent?.trim() === label,
+    );
+    if (!candidate) throw new Error(`${label} button not rendered`);
+    return candidate;
+  }
+
+  it("invalidates an in-flight PIX intent when the operator leaves PIX mode", async () => {
+    const pendingIntent = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") return pendingIntent.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      button(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+      await vi.advanceTimersByTimeAsync(350);
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_create_pix_intent_v2", {
+      _session_token: savedSession.sessionToken,
+      _caixa_id: openCaixaId,
+      _items: [{ product_id: product.id, quantity: 1 }],
+      _cupom_code: "",
+    });
+
+    await act(async () => {
+      button("Dinheiro").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    pendingIntent.resolve({
+      data: {
+        ok: true,
+        intent_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        amount: 10,
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
   });
 });

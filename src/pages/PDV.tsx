@@ -42,6 +42,54 @@ type Product = {
   image?: string | null;
 };
 
+const PDV_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parsePdvCatalogProducts(value: unknown): Product[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const parsed: Product[] = [];
+  const seenIds = new Set<string>();
+
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+    const item = raw as Record<string, unknown>;
+    const id = typeof item.id === "string" ? item.id.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const price = typeof item.price === "number" ? item.price : Number.NaN;
+    const priceCents = Math.round(price * 100);
+    const validBarcode = item.codigo_barras === null || typeof item.codigo_barras === "string";
+    const validImage = typeof item.image === "string";
+    const validAvailability = item.available === true || item.available === null;
+
+    if (
+      !PDV_UUID_PATTERN.test(id) ||
+      seenIds.has(id) ||
+      !name ||
+      !Number.isFinite(price) ||
+      price < 0 ||
+      !Number.isSafeInteger(priceCents) ||
+      !validBarcode ||
+      !validImage ||
+      !validAvailability
+    ) {
+      return null;
+    }
+
+    seenIds.add(id);
+    parsed.push({
+      id,
+      name,
+      price: priceCents / 100,
+      codigo_barras: item.codigo_barras as string | null,
+      available: true,
+      image: item.image as string,
+    });
+  }
+
+  return parsed;
+}
+
 type CartItem = {
   id: string;
   product_id: string;
@@ -535,6 +583,7 @@ function PDVMain({
   onLogout: () => void;
 }) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalogState, setCatalogState] = useState<"loading" | "ready" | "error">("loading");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
@@ -551,18 +600,68 @@ function PDVMain({
 
   // Load products
   useEffect(() => {
-    (async () => {
-      const { data, error } = await pdvRpc.catalog(sessionToken);
-      const res = data as any;
-      if (error || !res?.ok) {
-        console.error("[PDV] secure catalog load failed", error || res?.reason);
-        setProducts([]);
-        toast.error("Não foi possível carregar os produtos do PDV");
-        return;
+    let active = true;
+
+    // Never keep a previous session's catalog visible while a new token is being validated.
+    setProducts([]);
+    setCatalogState("loading");
+
+    void (async () => {
+      try {
+        const { data, error } = await pdvRpc.catalog(sessionToken);
+        if (!active) return;
+
+        if (error) {
+          const transportError = error as any;
+          console.error("[PDV] pdv_catalog_v2 transport error", {
+            code: transportError?.code,
+            status: transportError?.status,
+          });
+          setCatalogState("error");
+          toast.error("Não foi possível carregar os produtos do PDV. Tente novamente.");
+          return;
+        }
+
+        const res = data as any;
+        if (!res?.ok) {
+          setCatalogState("error");
+
+          if (res?.reason === "invalid_session") {
+            toast.error("Sessão expirada. Entre novamente.");
+            onLogout();
+            return;
+          }
+
+          console.error("[PDV] pdv_catalog_v2 returned a non-success response");
+          toast.error("Não foi possível carregar os produtos do PDV. Tente novamente.");
+          return;
+        }
+
+        const parsedProducts = parsePdvCatalogProducts(res.products);
+        if (!parsedProducts) {
+          console.error("[PDV] invalid pdv_catalog_v2 success payload");
+          setCatalogState("error");
+          toast.error("Não foi possível carregar os produtos do PDV. Tente novamente.");
+          return;
+        }
+
+        setProducts(parsedProducts);
+        setCatalogState("ready");
+      } catch (error: any) {
+        if (!active) return;
+        console.error("[PDV] pdv_catalog_v2 rejected", {
+          code: error?.code,
+          status: error?.status,
+        });
+        setCatalogState("error");
+        toast.error("Não foi possível carregar os produtos do PDV. Tente novamente.");
       }
-      setProducts((res.products as Product[]) || []);
     })();
-  }, [sessionToken]);
+
+    return () => {
+      active = false;
+    };
+  }, [sessionToken, onLogout]);
 
   // Focus search
   useEffect(() => {
@@ -1022,7 +1121,18 @@ function PDVMain({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5">
-            {filtered.map((p) => (
+            {catalogState === "loading" && (
+              <div className="col-span-full text-center text-zinc-500 text-sm py-8 inline-flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Carregando produtos…
+              </div>
+            )}
+            {catalogState === "error" && (
+              <div className="col-span-full text-center text-red-300 text-sm py-8">
+                Não foi possível carregar os produtos do PDV.
+              </div>
+            )}
+            {catalogState === "ready" && filtered.map((p) => (
               <button
                 key={p.id}
                 onClick={() => addToCart(p)}
@@ -1031,7 +1141,7 @@ function PDVMain({
                 <div className="text-sm font-semibold text-white line-clamp-2 min-h-[2.5rem]">
                   {p.name}
                 </div>
-                <div className="text-amber-400 font-bold mt-1">{fmt(Number(p.price))}</div>
+                <div className="text-amber-400 font-bold mt-1">{fmt(p.price)}</div>
                 {p.codigo_barras && (
                   <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
                     {p.codigo_barras}
@@ -1039,7 +1149,7 @@ function PDVMain({
                 )}
               </button>
             ))}
-            {filtered.length === 0 && (
+            {catalogState === "ready" && filtered.length === 0 && (
               <div className="col-span-full text-center text-zinc-500 text-sm py-8">
                 Nenhum produto encontrado.
               </div>

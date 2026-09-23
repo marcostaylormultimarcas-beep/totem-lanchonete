@@ -1862,7 +1862,7 @@ describe("PDV addToCart", () => {
             ok: true,
             cupom: {
               codigo: "MIN20",
-              tipo: "valor_fixo",
+              tipo: "fixed",
               valor: 1,
               minimo_pedido: 20,
             },

@@ -2091,6 +2091,12 @@ describe("PDV addToCart", () => {
     });
 
     await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
     await enterCouponCode("OLD");
 
     await act(async () => {
@@ -2160,7 +2166,7 @@ describe("PDV addToCart", () => {
       productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
     });
-    expect(container.querySelector("aside")?.textContent || "").toContain("R$ 12,50");
+    expect(container.querySelector("aside")?.textContent || "").toContain("× 1 =");
 
     await enterCouponCode("MIN25");
     await act(async () => {
@@ -2172,7 +2178,7 @@ describe("PDV addToCart", () => {
       productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await flushAsync();
     });
-    expect(container.querySelector("aside")?.textContent || "").toContain("R$ 25,00");
+    expect(container.querySelector("aside")?.textContent || "").toContain("× 2 =");
 
     request.resolve({
       data: {

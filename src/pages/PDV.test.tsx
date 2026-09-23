@@ -2827,6 +2827,27 @@ describe("PDV PIX request invalidation", () => {
     return candidate;
   }
 
+  async function clickProduct() {
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function choosePayment(label: string) {
+    await act(async () => {
+      button(label).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function advancePixTimers(ms: number) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+      await flushAsync();
+    });
+  }
+
   it("invalidates an in-flight PIX intent when the operator leaves PIX mode", async () => {
     const pendingIntent = deferred<{ data: unknown; error: null }>();
     rpcMock.mockImplementation((name: string) => {
@@ -2848,14 +2869,9 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
 
     expect(rpcMock).toHaveBeenCalledWith("pdv_create_pix_intent_v2", {
       _session_token: savedSession.sessionToken,
@@ -2905,14 +2921,9 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
 
     const minusButton = container.querySelector("svg.lucide-minus")?.closest("button");
     expect(minusButton).toBeTruthy();
@@ -2958,14 +2969,9 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
 
     await act(async () => {
       root.unmount();
@@ -3024,14 +3030,9 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
 
     expect(
       JSON.parse(localStorage.getItem("pdv_cliente_mirror_v1") || "{}").pixCopiaECola,
@@ -3122,29 +3123,19 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(200);
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(200);
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(349);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(200);
+    await clickProduct();
+    await advancePixTimers(200);
+    await clickProduct();
+    await advancePixTimers(349);
 
     expect(
       rpcMock.mock.calls.filter(([name]) => name === "pdv_create_pix_intent_v2"),
     ).toHaveLength(0);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-      await flushAsync();
-    });
+    await advancePixTimers(1);
 
     expect(rpcMock).toHaveBeenCalledWith("pdv_create_pix_intent_v2", {
       _session_token: savedSession.sessionToken,

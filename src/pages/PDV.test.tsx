@@ -1612,6 +1612,104 @@ describe("PDV addToCart", () => {
     expect(cartText).not.toContain(product.name);
   });
 
+
+  it("invalidates an applied coupon after rapid quantity changes cross below the minimum without auto-restoring it", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "MIN20",
+              tipo: "valor_fixo",
+              valor: 1,
+              minimo_pedido: 20,
+            },
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      const button = productButton();
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const couponInput = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Código do cupom"]',
+    );
+    const inputSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!couponInput || !inputSetter) throw new Error("Coupon input not rendered");
+
+    await act(async () => {
+      inputSetter.call(couponInput, "MIN20");
+      couponInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const applyButton = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.trim() === "Aplicar",
+    );
+    if (!applyButton) throw new Error("Coupon apply button not rendered");
+
+    await act(async () => {
+      applyButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    let cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("Desconto (MIN20)");
+
+    const rowButtons = cartRows()[0]?.querySelectorAll("button");
+    const minus = rowButtons?.[0];
+    if (!minus) throw new Error("Cart minus button not rendered");
+
+    await act(async () => {
+      minus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      minus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 1 =");
+    expect(cartText).not.toContain("Desconto (MIN20)");
+
+    const plus = cartRows()[0]?.querySelectorAll("button")[1];
+    if (!plus) throw new Error("Cart plus button not rendered");
+
+    await act(async () => {
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 3 =");
+    expect(cartText).not.toContain("Desconto (MIN20)");
+  });
+
   it("changes only the targeted cart row when multiple products are present", async () => {
     const secondProduct = {
       ...product,

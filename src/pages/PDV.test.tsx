@@ -2591,3 +2591,155 @@ describe("PDV addToCart", () => {
     );
   });
 });
+
+
+describe("PDV customer mirror BroadcastChannel lifecycle", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function installBroadcastChannel() {
+    const constructorMock = vi.fn();
+    const closeMock = vi.fn();
+    const postMessageMock = vi.fn();
+
+    class FakeBroadcastChannel {
+      constructor(name: string) {
+        constructorMock(name);
+      }
+
+      postMessage = postMessageMock;
+      close = closeMock;
+    }
+
+    vi.stubGlobal("BroadcastChannel", FakeBroadcastChannel);
+    return { constructorMock, closeMock, postMessageMock };
+  }
+
+  it("creates one pdv-cliente channel per mount and closes each channel on unmount", async () => {
+    const { constructorMock, closeMock } = installBroadcastChannel();
+
+    await renderMain();
+    expect(constructorMock).toHaveBeenCalledTimes(1);
+    expect(constructorMock).toHaveBeenLastCalledWith("pdv-cliente");
+
+    await act(async () => root.unmount());
+    expect(closeMock).toHaveBeenCalledTimes(1);
+
+    root = createRoot(container);
+    await renderMain();
+    expect(constructorMock).toHaveBeenCalledTimes(2);
+    expect(constructorMock).toHaveBeenLastCalledWith("pdv-cliente");
+
+    await act(async () => root.unmount());
+    expect(closeMock).toHaveBeenCalledTimes(2);
+    container.remove();
+  });
+
+  it("keeps the PDV mounted and persists the localStorage fallback when BroadcastChannel is unavailable", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Comanda atual");
+    const snapshot = JSON.parse(
+      localStorage.getItem("pdv_cliente_mirror_v1") || "null",
+    );
+    expect(snapshot).toMatchObject({
+      storeName: operador.org_name,
+      items: [],
+      subtotal: 0,
+      desconto: 0,
+      total: 0,
+      forma: "dinheiro",
+    });
+  });
+
+  it("keeps the localStorage fallback when BroadcastChannel construction throws", async () => {
+    class ThrowingBroadcastChannel {
+      constructor() {
+        throw new DOMException("BroadcastChannel unavailable", "SecurityError");
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel);
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Comanda atual");
+    expect(localStorage.getItem("pdv_cliente_mirror_v1")).not.toBeNull();
+  });
+
+  it("still broadcasts when localStorage persistence throws", async () => {
+    const { postMessageMock } = installBroadcastChannel();
+    const nativeSetItem = Storage.prototype.setItem;
+
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (this === window.localStorage && key === "pdv_cliente_mirror_v1") {
+        throw new DOMException("Storage unavailable", "SecurityError");
+      }
+      return nativeSetItem.call(this, key, value);
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Comanda atual");
+    expect(postMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "update",
+        payload: expect.objectContaining({
+          storeName: operador.org_name,
+          forma: "dinheiro",
+        }),
+      }),
+    );
+  });
+});

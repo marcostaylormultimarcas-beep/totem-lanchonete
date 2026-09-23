@@ -1357,3 +1357,170 @@ describe("PDV catalog search and filter", () => {
     });
   });
 });
+
+
+describe("PDV addToCart", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+  const product = {
+    id: "88888888-8888-8888-8888-888888888888",
+    name: "Produto Carrinho",
+    price: 12.5,
+    codigo_barras: "ADD12345",
+    available: null,
+    image: "",
+  };
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function productButton() {
+    const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
+      candidate.textContent?.includes(product.name),
+    );
+    if (!button) throw new Error("Product button not rendered");
+    return button;
+  }
+
+  function searchInput() {
+    const input = container.querySelector<HTMLInputElement>(
+      'input[placeholder="Buscar produto ou bipar código de barras…"]',
+    );
+    if (!input) throw new Error("Search input not rendered");
+    return input;
+  }
+
+  it("uses functional cart updates so two rapid clicks increment one row without losing quantity", async () => {
+    await renderMain();
+    const button = productButton();
+
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain(product.name);
+    expect(cartText).toContain("× 2 =");
+    expect(cartText.match(/Produto Carrinho/g)).toHaveLength(1);
+  });
+
+  it("falls back to the validated product id when crypto.randomUUID is unavailable", async () => {
+    vi.stubGlobal("crypto", {});
+    await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain(product.name);
+    expect(cartText).toContain("× 1 =");
+    expect(container.textContent).toContain("Comanda atual");
+  });
+
+  it("caps one product at the backend-supported maximum of 999 and refuses overflow", async () => {
+    await renderMain();
+    const button = productButton();
+
+    await act(async () => {
+      for (let index = 0; index < 999; index += 1) {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+      await flushAsync();
+    });
+
+    let cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 999 =");
+    expect(cartText).not.toContain("× 1000 =");
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 999 =");
+    expect(cartText).not.toContain("× 1000 =");
+    expect(toastErrorMock).toHaveBeenCalledWith("Quantidade máxima por produto: 999.");
+  });
+
+  it("manual selection and exact barcode Enter converge on the same cart item", async () => {
+    await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const input = searchInput();
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("input value setter unavailable");
+
+    await act(async () => {
+      setter.call(input, product.codigo_barras);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      await flushAsync();
+    });
+
+    const cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 2 =");
+    expect(cartText.match(/Produto Carrinho/g)).toHaveLength(1);
+    expect(toastSuccessMock).toHaveBeenCalledWith("🛒 Produto Carrinho adicionado");
+  });
+});

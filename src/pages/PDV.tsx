@@ -752,7 +752,8 @@ function PDVMain({
     }
 
     const [product] = matches;
-    addToCart(product);
+    if (!addToCart(product)) return false;
+
     beep();
     toast.success(`🛒 ${product.name} adicionado`);
     return true;
@@ -776,7 +777,7 @@ function PDVMain({
     const visibleItem = cart.find((item) => item.product_id === p.id);
     if (visibleItem && visibleItem.quantity >= PDV_MAX_ITEM_QUANTITY) {
       toast.error(`Quantidade máxima por produto: ${PDV_MAX_ITEM_QUANTITY}.`);
-      return;
+      return false;
     }
 
     setCart((prev) => {
@@ -804,6 +805,8 @@ function PDVMain({
         },
       ];
     });
+
+    return true;
   };
 
   const changeQty = (id: string, delta: number) => {

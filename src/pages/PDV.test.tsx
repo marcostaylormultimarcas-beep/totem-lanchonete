@@ -3087,16 +3087,10 @@ describe("PDV PIX request invalidation", () => {
 
     await renderMain();
 
-    await act(async () => {
-      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      button("Pix").dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-      await vi.advanceTimersByTimeAsync(350);
-      await flushAsync();
-    });
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+    await advancePixTimers(350);
 
     const pixIntentCalls = rpcMock.mock.calls.filter(
       ([name]) => name === "pdv_create_pix_intent_v2",

@@ -1417,12 +1417,18 @@ describe("PDV addToCart", () => {
     });
   }
 
-  function productButton() {
+  function productButton(name = product.name) {
     const button = Array.from(container.querySelectorAll("button")).find((candidate) =>
-      candidate.textContent?.includes(product.name),
+      candidate.textContent?.includes(name),
     );
     if (!button) throw new Error("Product button not rendered");
     return button;
+  }
+
+  function cartRows() {
+    return Array.from(
+      container.querySelectorAll<HTMLDivElement>("aside > .flex-1 > div"),
+    ).filter((row) => row.querySelector("button"));
   }
 
   function searchInput() {
@@ -1488,6 +1494,106 @@ describe("PDV addToCart", () => {
     expect(cartText).toContain("× 999 =");
     expect(cartText).not.toContain("× 1000 =");
     expect(toastErrorMock).toHaveBeenCalledWith("Quantidade máxima por produto: 999.");
+
+    toastErrorMock.mockClear();
+    const maxRowButtons = cartRows()[0]?.querySelectorAll("button");
+    const plusAtMaximum = maxRowButtons?.[1];
+    if (!plusAtMaximum) throw new Error("Cart plus button not rendered");
+
+    await act(async () => {
+      plusAtMaximum.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      plusAtMaximum.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 999 =");
+    expect(cartText).not.toContain("× 1000 =");
+    expect(toastErrorMock).toHaveBeenCalledWith("Quantidade máxima por produto: 999.");
+  });
+
+  it("handles rapid quantity button updates without lost increments and removes at zero", async () => {
+    await renderMain();
+
+    await act(async () => {
+      productButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    const buttons = cartRows()[0]?.querySelectorAll("button");
+    const minus = buttons?.[0];
+    const plus = buttons?.[1];
+    if (!minus || !plus) throw new Error("Cart quantity buttons not rendered");
+
+    await act(async () => {
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      plus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    let cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("× 3 =");
+
+    await act(async () => {
+      minus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      minus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      minus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    cartText = container.querySelector("aside")?.textContent || "";
+    expect(cartText).toContain("Nenhum item. Adicione um produto ou bipe o código.");
+    expect(cartText).not.toContain(product.name);
+  });
+
+  it("changes only the targeted cart row when multiple products are present", async () => {
+    const secondProduct = {
+      ...product,
+      id: "77777777-7777-7777-7777-777777777777",
+      name: "Produto Carrinho B",
+      codigo_barras: "ADD54321",
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product, secondProduct] },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    await act(async () => {
+      productButton(product.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      productButton(secondProduct.name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    let rows = cartRows();
+    expect(rows).toHaveLength(2);
+    const firstButtons = rows[0].querySelectorAll("button");
+    const firstPlus = firstButtons[1];
+    if (!firstPlus) throw new Error("First cart plus button not rendered");
+
+    await act(async () => {
+      firstPlus.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    rows = cartRows();
+    expect(rows[0].textContent).toContain(product.name);
+    expect(rows[0].textContent).toContain("× 2 =");
+    expect(rows[1].textContent).toContain(secondProduct.name);
+    expect(rows[1].textContent).toContain("× 1 =");
   });
 
   it("manual selection and exact barcode Enter converge on the same cart item", async () => {

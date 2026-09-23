@@ -2813,7 +2813,7 @@ describe("PDV PIX request invalidation", () => {
 
   function button(label: string) {
     const candidate = Array.from(container.querySelectorAll("button")).find(
-      (item) => item.textContent?.trim() === label,
+      (item) => item.textContent?.includes(label),
     );
     if (!candidate) throw new Error(`${label} button not rendered`);
     return candidate;

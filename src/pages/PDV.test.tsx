@@ -1839,7 +1839,7 @@ describe("PDV addToCart", () => {
   });
 
 
-  it("refuses a malformed local row id without deleting the row or crashing the PDV", async () => {
+  it("removes a uniquely targeted malformed local row id without crashing the PDV", async () => {
     vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "not-a-valid-row-id") });
     await renderMain();
 
@@ -1858,8 +1858,9 @@ describe("PDV addToCart", () => {
     });
 
     const cartText = container.querySelector("aside")?.textContent || "";
-    expect(cartRows()).toHaveLength(1);
-    expect(cartText).toContain(product.name);
+    expect(cartRows()).toHaveLength(0);
+    expect(cartText).not.toContain(product.name);
+    expect(cartText).toContain("Nenhum item. Adicione um produto ou bipe o código.");
     expect(container.textContent).toContain("Comanda atual");
   });
 

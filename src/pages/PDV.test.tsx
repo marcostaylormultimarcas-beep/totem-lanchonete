@@ -27,6 +27,7 @@ vi.mock("sonner", () => ({
 import PDV, {
   calculatePdvDiscount,
   calculatePdvSubtotal,
+  calculatePdvTotal,
   shouldInvalidatePdvCoupon,
 } from "@/pages/PDV";
 import { PDV_SESSION_KEY } from "@/lib/pdvSession";
@@ -1576,6 +1577,49 @@ describe("PDV discount calculation", () => {
     ).toBe(0);
 
     expect(calculatePdvDiscount(50, null)).toBe(0);
+  });
+});
+
+describe("PDV total calculation", () => {
+  it("subtracts decimal amounts without binary floating-point drift", () => {
+    expect(0.3 - 0.1).not.toBe(0.2);
+    expect(calculatePdvTotal(0.3, 0.1)).toBe(0.2);
+  });
+
+  it("preserves valid fixed-discount precision instead of forcing cents", () => {
+    expect(calculatePdvTotal(1, 0.005)).toBe(0.995);
+    expect(calculatePdvTotal(10.01, 1.25)).toBe(8.76);
+  });
+
+  it("matches the backend clamp when the discount reaches or exceeds subtotal", () => {
+    expect(calculatePdvTotal(50, 50)).toBe(0);
+    expect(calculatePdvTotal(50, 75)).toBe(0);
+  });
+
+  it("fails closed for invalid, negative, non-finite, or unsafe subtotals", () => {
+    for (const subtotal of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      Number.MAX_VALUE,
+    ]) {
+      expect(calculatePdvTotal(subtotal, 1)).toBe(0);
+    }
+  });
+
+  it("fails closed for invalid, negative, non-finite, or unsafe discounts", () => {
+    for (const discount of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      Number.MAX_VALUE,
+    ]) {
+      expect(calculatePdvTotal(50, discount)).toBe(0);
+    }
+  });
+
+  it("preserves an exact valid subtotal when there is no discount", () => {
+    expect(calculatePdvTotal(10.01, 0)).toBe(10.01);
   });
 });
 

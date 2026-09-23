@@ -5010,6 +5010,66 @@ describe("PDV PIX request invalidation", () => {
     expect(toastSuccessMock).toHaveBeenCalledWith("Venda registrada — R$ 10,00");
   });
 
+
+  it("commits the completed sale UI state before optional customer-phone persistence finishes", async () => {
+    const pendingPhone = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess(),
+        error: null,
+      }),
+    );
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_set_order_customer_phone_v2") return pendingPhone.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await generateReadyPix();
+
+    const phoneInput = container.querySelector<HTMLInputElement>(
+      'input[placeholder="WhatsApp do cliente (DDD + número)"]',
+    );
+    if (!phoneInput) throw new Error("Customer phone input not rendered");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(phoneInput, "62999999999");
+      phoneInput.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+
+    await clickManualFinalize();
+
+    expect(
+      rpcMock.mock.calls.filter(
+        ([name]) => name === "pdv_set_order_customer_phone_v2",
+      ),
+    ).toHaveLength(1);
+    expect(toastSuccessMock).toHaveBeenCalledWith("Venda registrada — R$ 10,00");
+
+    try {
+      expect(readCustomerMirror().items).toHaveLength(0);
+      expect(readCustomerMirror().forma).toBe("dinheiro");
+    } finally {
+      pendingPhone.resolve({
+        data: {
+          ok: true,
+          order_id: "30303030-3030-4030-8030-303030303030",
+          customer_phone: "62999999999",
+        },
+        error: null,
+      });
+      await act(async () => {
+        await flushAsync();
+      });
+    }
+  });
+
   it("contains a rejected pixSale Promise, releases loading and shows only a safe message", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     mockPixSaleFinalization(() =>

@@ -5073,6 +5073,91 @@ describe("PDV PIX request invalidation", () => {
     }
   });
 
+  it("does not let a coupon validation from the completed sale leak into the next comanda", async () => {
+    const pendingCoupon = deferred<{ data: unknown; error: null }>();
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess(),
+        error: null,
+      }),
+    );
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_validar_cupom_v2") return pendingCoupon.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await generateReadyPix();
+    await applyPixCoupon("save10");
+    await clickManualFinalize();
+
+    expect(readCustomerMirror().items).toHaveLength(0);
+    expect(readCustomerMirror().forma).toBe("dinheiro");
+
+    await clickProduct();
+    expect(readCustomerMirror().desconto).toBe(0);
+
+    pendingCoupon.resolve({
+      data: {
+        ok: true,
+        cupom: {
+          codigo: "SAVE10",
+          tipo: "percent",
+          valor: 10,
+          minimo_pedido: 0,
+        },
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror().desconto).toBe(0);
+    expect(container.textContent).not.toContain("Desconto (SAVE10)");
+  });
+
+  it("never mirrors a completed PIX reset with the previous sale QR still attached", async () => {
+    mockPixSaleFinalization(() =>
+      Promise.resolve({
+        data: pixSaleSuccess(),
+        error: null,
+      }),
+    );
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+
+    await generateReadyPix();
+    expect(readCustomerMirror()).toMatchObject({
+      forma: "pix",
+      pixQrBase64: "qr-base64-valid",
+      pixCopiaECola: "pix-code-valid",
+    });
+
+    setItemSpy.mockClear();
+    await clickManualFinalize();
+
+    const resetPayloads = setItemSpy.mock.calls
+      .filter(([key]) => key === "pdv_cliente_mirror_v1")
+      .map(([, value]) => JSON.parse(String(value)))
+      .filter(
+        (payload) =>
+          Array.isArray(payload.items) &&
+          payload.items.length === 0 &&
+          payload.forma === "dinheiro",
+      );
+
+    expect(resetPayloads.length).toBeGreaterThan(0);
+    expect(
+      resetPayloads.every(
+        (payload) =>
+          payload.pixQrBase64 === "" &&
+          payload.pixCopiaECola === "" &&
+          payload.pixLoading === false,
+      ),
+    ).toBe(true);
+  });
+
+
   it("cancels a scheduled receipt print when the PDV unmounts after a completed sale", async () => {
     const printMock = vi.spyOn(window, "print").mockImplementation(() => {});
     mockPixSaleFinalization(() =>

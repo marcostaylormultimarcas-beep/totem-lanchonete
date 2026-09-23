@@ -186,6 +186,71 @@ export function shouldInvalidatePdvCoupon(
   return subtotalCents < minimumCents;
 }
 
+export function calculatePdvDiscount(
+  subtotal: number,
+  coupon: {
+    tipo: unknown;
+    valor: unknown;
+    minimo_pedido: unknown;
+  } | null,
+) {
+  if (!coupon) return 0;
+
+  const subtotalCents = Math.round(subtotal * 100);
+  if (
+    !Number.isFinite(subtotal) ||
+    subtotal < 0 ||
+    !Number.isSafeInteger(subtotalCents)
+  ) {
+    return 0;
+  }
+
+  // The minimum check must fail closed in the same render. The effect that
+  // clears an invalid coupon only runs after render and cannot protect this
+  // calculation from malformed local/API state.
+  if (shouldInvalidatePdvCoupon(subtotal, coupon.minimo_pedido)) return 0;
+
+  const tipo =
+    typeof coupon.tipo === "string" ? coupon.tipo.trim().toLowerCase() : "";
+  const normalizedValue =
+    typeof coupon.valor === "string" ? coupon.valor.trim() : coupon.valor;
+
+  if (
+    normalizedValue === "" ||
+    (typeof normalizedValue !== "number" &&
+      typeof normalizedValue !== "string")
+  ) {
+    return 0;
+  }
+
+  const value = Number(normalizedValue);
+  if (!Number.isFinite(value) || value < 0) return 0;
+
+  if (["percentual", "porcentagem", "percent", "percentage"].includes(tipo)) {
+    const percent = Math.min(value, 100);
+    // Backend pdv_* sale/PIX functions round percentage discounts to 2 decimals.
+    // subtotal * percent is the discount in cents, avoiding a larger
+    // intermediate subtotalCents * percent value near JS's safe-integer limit.
+    const discountCents = Math.round(subtotal * percent);
+    if (
+      !Number.isSafeInteger(discountCents) ||
+      discountCents < 0 ||
+      discountCents > subtotalCents
+    ) {
+      return 0;
+    }
+    return discountCents / 100;
+  }
+
+  if (["valor_fixo", "fixed", "fixo"].includes(tipo)) {
+    const valueCents = Math.round(value * 100);
+    if (!Number.isSafeInteger(valueCents) || valueCents < 0) return 0;
+    return Math.min(subtotal, value);
+  }
+
+  return 0;
+}
+
 function createPdvCartItemId(productId: string) {
   try {
     const id = globalThis.crypto?.randomUUID?.();
@@ -985,16 +1050,10 @@ function PDVMain({
     }
   }, [subtotal, cupomDesc]);
 
-  const desconto = useMemo(() => {
-    if (!cupomDesc) return 0;
-    if (subtotal < Number(cupomDesc.minimo_pedido || 0)) return 0;
-    const tipo = String(cupomDesc.tipo || "").toLowerCase();
-    if (["percentual", "porcentagem", "percent", "percentage"].includes(tipo))
-      return Math.min(subtotal, (subtotal * Number(cupomDesc.valor)) / 100);
-    if (["valor_fixo", "fixed", "fixo"].includes(tipo))
-      return Math.min(subtotal, Number(cupomDesc.valor));
-    return 0;
-  }, [cupomDesc, subtotal]);
+  const desconto = useMemo(
+    () => calculatePdvDiscount(subtotal, cupomDesc),
+    [cupomDesc, subtotal],
+  );
   const total = Math.max(0, subtotal - desconto);
 
   const aplicarCupom = async () => {

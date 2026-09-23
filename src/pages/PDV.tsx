@@ -371,21 +371,105 @@ function AberturaScreen({
 }) {
   const [valor, setValor] = useState<string>("0,00");
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const v = parseFloat(valor.replace(/\./g, "").replace(",", ".")) || 0;
-    setLoading(true);
-    const { data, error } = await pdvRpc.openCash(sessionToken, v);
-    setLoading(false);
-    if (error) return toast.error(error.message);
-    const res = data as any;
-    if (!res?.ok) {
-      toast.error(res?.reason === "already_open" ? "Já existe um caixa aberto" : "Erro ao abrir caixa");
+
+    const rawValue = valor.trim();
+    const validMoneyFormat = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(rawValue);
+    const parsedValue = validMoneyFormat
+      ? Number(rawValue.replace(/\./g, "").replace(",", "."))
+      : Number.NaN;
+    const cents = Math.round(parsedValue * 100);
+
+    if (
+      !Number.isFinite(parsedValue) ||
+      parsedValue < 0 ||
+      !Number.isSafeInteger(cents)
+    ) {
+      toast.error("Informe um saldo inicial válido.");
       return;
     }
-    toast.success("Caixa aberto");
-    onOpen(res.caixa_id);
+
+    const v = cents / 100;
+
+    // State updates are asynchronous; use a synchronous lock so two submit
+    // events in the same tick can never open competing cash registers.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setLoading(true);
+
+    try {
+      const { data, error } = await pdvRpc.openCash(sessionToken, v);
+      if (!mountedRef.current) return;
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_abrir_caixa_v2 failed", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível abrir o caixa. Tente novamente.");
+        return;
+      }
+
+      const res = data as any;
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      if (!res?.ok) {
+        if (res?.reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          onLogout();
+          return;
+        }
+
+        if (res?.reason === "already_open") {
+          const existingCaixaId =
+            typeof res?.caixa_id === "string" ? res.caixa_id.trim() : "";
+          if (!uuidPattern.test(existingCaixaId)) {
+            console.error("[PDV] invalid pdv_abrir_caixa_v2 already_open payload");
+            toast.error("Resposta inválida ao recuperar o caixa aberto. Tente novamente.");
+            return;
+          }
+
+          toast.success("Caixa já estava aberto");
+          onOpen(existingCaixaId);
+          return;
+        }
+
+        toast.error("Erro ao abrir caixa");
+        return;
+      }
+
+      const openedCaixaId =
+        typeof res?.caixa_id === "string" ? res.caixa_id.trim() : "";
+      if (!uuidPattern.test(openedCaixaId)) {
+        console.error("[PDV] invalid pdv_abrir_caixa_v2 success payload");
+        toast.error("Resposta inválida ao abrir o caixa. Tente novamente.");
+        return;
+      }
+
+      toast.success("Caixa aberto");
+      onOpen(openedCaixaId);
+    } catch (error: any) {
+      if (!mountedRef.current) return;
+      console.error("[PDV] pdv_abrir_caixa_v2 rejected", {
+        code: error?.code,
+        status: error?.status,
+      });
+      toast.error("Não foi possível abrir o caixa. Tente novamente.");
+    } finally {
+      submittingRef.current = false;
+      if (mountedRef.current) setLoading(false);
+    }
   };
 
   return (

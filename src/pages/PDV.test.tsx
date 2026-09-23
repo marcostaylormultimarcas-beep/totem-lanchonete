@@ -291,3 +291,243 @@ describe("PDV session bootstrap", () => {
     expect(container.textContent).toContain("PDV — Balcão");
   });
 });
+
+
+describe("PDV LoginScreen.submit", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const validToken = "a".repeat(64);
+
+  function loginResponse(overrides: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      session_token: validToken,
+      operador,
+      caixa_aberto_id: null,
+      ...overrides,
+    };
+  }
+
+  function setInput(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  async function renderLogin(path = "/pdv/Loja-A") {
+    sessionStorage.clear();
+    localStorage.clear();
+    await act(async () => {
+      renderPdv(root, path);
+      await flushAsync();
+    });
+    expect(container.textContent).toContain("PDV — Balcão");
+  }
+
+  function loginFields() {
+    const slugInput = container.querySelector<HTMLInputElement>('input[placeholder="Identificador da loja (slug)"]');
+    const usernameInput = container.querySelector<HTMLInputElement>('input[placeholder="Usuário"]');
+    const passwordInput = container.querySelector<HTMLInputElement>('input[placeholder="Senha"]');
+    const form = container.querySelector("form");
+    if (!slugInput || !usernameInput || !passwordInput || !form) throw new Error("Login form not rendered");
+    return { slugInput, usernameInput, passwordInput, form };
+  }
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") {
+        return Promise.resolve({ data: loginResponse(), error: null });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it("uses the route slug as authoritative and normalizes username before creating the session", async () => {
+    await renderLogin();
+    const { slugInput, usernameInput, passwordInput, form } = loginFields();
+
+    expect(slugInput.value).toBe("loja-a");
+    expect(slugInput.readOnly).toBe(true);
+
+    await act(async () => {
+      setInput(slugInput, "loja-b");
+      setInput(usernameInput, "  OPERADOR  ");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_create_session", {
+      _org_slug: "loja-a",
+      _username: "operador",
+      _password: "secret",
+    });
+    expect(container.textContent).toContain("Abertura de Caixa");
+
+    const persisted = JSON.parse(sessionStorage.getItem(PDV_SESSION_KEY) || "null");
+    expect(persisted?.sessionToken).toBe(validToken);
+    expect(persisted?.operador?.org_slug).toBe("loja-a");
+  });
+
+  it("prevents two login RPCs when two submits happen in the same tick", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderLogin();
+    const { usernameInput, passwordInput, form } = loginFields();
+
+    await act(async () => {
+      setInput(usernameInput, "operador");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(rpcMock.mock.calls.filter(([name]) => name === "pdv_create_session")).toHaveLength(1);
+
+    pending.resolve({
+      data: { ok: false, reason: "invalid_credentials", remaining_attempts: 4 },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Entrar"));
+    expect(submitButton?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("rejects malformed or cross-store success payloads instead of entering a broken PDV state", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") {
+        return Promise.resolve({
+          data: loginResponse({
+            operador: { ...operador, org_slug: "loja-b" },
+            session_token: "invalid-token",
+          }),
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderLogin();
+    const { usernameInput, passwordInput, form } = loginFields();
+
+    await act(async () => {
+      setInput(usernameInput, "operador");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith("Resposta inválida ao iniciar a sessão do PDV. Tente novamente.");
+  });
+
+  it("releases loading and shows a safe message when the login RPC rejects", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") return Promise.reject(new Error("network unavailable"));
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderLogin();
+    const { usernameInput, passwordInput, form } = loginFields();
+
+    await act(async () => {
+      setInput(usernameInput, "operador");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    const submitButton = Array.from(container.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Entrar"));
+    expect(submitButton?.hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível conectar ao PDV. Tente novamente.");
+    expect(container.textContent).toContain("PDV — Balcão");
+  });
+
+  it("ignores a successful response that arrives after the login screen unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderLogin();
+    const { usernameInput, passwordInput, form } = loginFields();
+
+    await act(async () => {
+      setInput(usernameInput, "operador");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({ data: loginResponse(), error: null });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+  });
+
+  it("falls back to a finite retry message when retry_after_seconds is malformed", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_create_session") {
+        return Promise.resolve({
+          data: { ok: false, reason: "too_many_attempts", retry_after_seconds: "invalid" },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderLogin();
+    const { usernameInput, passwordInput, form } = loginFields();
+
+    await act(async () => {
+      setInput(usernameInput, "operador");
+      setInput(passwordInput, "secret");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Muitas tentativas incorretas. Aguarde cerca de 10 minuto(s) e tente novamente.",
+    );
+  });
+});

@@ -183,38 +183,116 @@ function LoginScreen({
   slug?: string;
   onLogin: (op: Operador, sessionToken: string, caixaAbertoId: string | null) => void;
 }) {
-  const [orgSlug, setOrgSlug] = useState(slug || "");
+  const routeSlug = (slug || "").trim().toLowerCase();
+  const [orgSlug, setOrgSlug] = useState(routeSlug);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    if (routeSlug) setOrgSlug(routeSlug);
+  }, [routeSlug]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orgSlug || !username || !password) return;
-    setLoading(true);
-    let res: any;
-    try { res = await createPdvSession(orgSlug, username, password); }
-    catch (error: any) { setLoading(false); return toast.error(error?.message || "Falha ao entrar"); }
-    setLoading(false);
-    if (!res?.ok) {
-      if (res?.reason === "too_many_attempts") {
-        const minutes = Math.max(1, Math.ceil(Number(res?.retry_after_seconds || 600) / 60));
-        toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
-        return;
-      }
-      if (res?.reason === "organization_unavailable") {
-        toast.error("Esta loja está temporariamente indisponível para operar o PDV.");
-        return;
-      }
-      if (res?.reason === "invalid_credentials" && res?.remaining_attempts != null) {
-        toast.error(`Usuário ou senha inválidos. Restam ${res.remaining_attempts} tentativa(s).`);
-        return;
-      }
-      toast.error("Usuário ou senha inválidos");
+
+    const normalizedSlug = (routeSlug || orgSlug).trim().toLowerCase();
+    const normalizedUsername = username.trim().toLowerCase();
+    if (!normalizedSlug || !normalizedUsername || !password) {
+      toast.error("Preencha loja, usuário e senha.");
       return;
     }
-    toast.success(`Bem-vindo, ${res.operador.name}`);
-    onLogin(res.operador, res.session_token, res.caixa_aberto_id || null);
+
+    // React state is asynchronous, so loading alone does not prevent two submit
+    // events in the same tick. Keep a synchronous lock around the whole request.
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setLoading(true);
+
+    try {
+      const res = await createPdvSession(normalizedSlug, normalizedUsername, password);
+      if (!mountedRef.current) return;
+
+      if (!res?.ok) {
+        if (res?.reason === "too_many_attempts") {
+          const rawRetrySeconds = Number(res?.retry_after_seconds);
+          const retrySeconds =
+            Number.isFinite(rawRetrySeconds) && rawRetrySeconds > 0
+              ? Math.min(86400, Math.ceil(rawRetrySeconds))
+              : 600;
+          const minutes = Math.max(1, Math.ceil(retrySeconds / 60));
+          toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
+          return;
+        }
+        if (res?.reason === "organization_unavailable") {
+          toast.error("Esta loja está temporariamente indisponível para operar o PDV.");
+          return;
+        }
+        if (res?.reason === "invalid_credentials") {
+          const remaining = Number(res?.remaining_attempts);
+          if (Number.isInteger(remaining) && remaining >= 0 && remaining <= 5) {
+            toast.error(`Usuário ou senha inválidos. Restam ${remaining} tentativa(s).`);
+          } else {
+            toast.error("Usuário ou senha inválidos");
+          }
+          return;
+        }
+        toast.error("Usuário ou senha inválidos");
+        return;
+      }
+
+      const op = res?.operador;
+      const token = typeof res?.session_token === "string" ? res.session_token.trim() : "";
+      const caixaAbertoId = res?.caixa_aberto_id;
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const validOperator =
+        op &&
+        typeof op.name === "string" &&
+        op.name.trim().length > 0 &&
+        typeof op.username === "string" &&
+        op.username.trim().length > 0 &&
+        typeof op.org_slug === "string" &&
+        op.org_slug.trim().length > 0 &&
+        typeof op.org_name === "string" &&
+        op.org_name.trim().length > 0 &&
+        typeof op.id === "string" &&
+        uuidPattern.test(op.id) &&
+        typeof op.organization_id === "string" &&
+        uuidPattern.test(op.organization_id);
+      const validToken = /^[0-9a-f]{64}$/i.test(token);
+      const validCaixa =
+        caixaAbertoId == null ||
+        (typeof caixaAbertoId === "string" && uuidPattern.test(caixaAbertoId));
+      const responseSlug =
+        typeof op?.org_slug === "string" ? op.org_slug.trim().toLowerCase() : "";
+
+      if (!validOperator || !validToken || !validCaixa || responseSlug !== normalizedSlug) {
+        console.error("[PDV] invalid pdv_create_session success payload");
+        toast.error("Resposta inválida ao iniciar a sessão do PDV. Tente novamente.");
+        return;
+      }
+
+      toast.success(`Bem-vindo, ${op.name}`);
+      onLogin(op as Operador, token, caixaAbertoId || null);
+    } catch (error: any) {
+      if (!mountedRef.current) return;
+      console.error("[PDV] pdv_create_session failed", {
+        code: error?.code,
+        message: error?.message,
+      });
+      toast.error("Não foi possível conectar ao PDV. Tente novamente.");
+    } finally {
+      submittingRef.current = false;
+      if (mountedRef.current) setLoading(false);
+    }
   };
 
   return (
@@ -241,10 +319,13 @@ function LoginScreen({
 
 
         <input
-          value={orgSlug}
-          onChange={(e) => setOrgSlug(e.target.value)}
+          value={routeSlug || orgSlug}
+          onChange={(e) => {
+            if (!routeSlug) setOrgSlug(e.target.value);
+          }}
+          readOnly={Boolean(routeSlug)}
           placeholder="Identificador da loja (slug)"
-          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:border-amber-500 outline-none"
+          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:border-amber-500 outline-none read-only:text-zinc-400"
           autoCapitalize="none"
         />
         <input

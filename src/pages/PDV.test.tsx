@@ -3521,4 +3521,68 @@ describe("PDV PIX request invalidation", () => {
     });
   });
 
+
+  it("never sends an older intent_id when a replacement PIX intent wins the race", async () => {
+    const firstIntent = deferred<{ data: unknown; error: null }>();
+    let pixIntentCall = 0;
+    const staleIntentId = "18181818-1818-1818-1818-181818181818";
+    const currentIntentId = "19191919-1919-1919-1919-191919191919";
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        pixIntentCall += 1;
+        if (pixIntentCall === 1) return firstIntent.promise;
+        return Promise.resolve({
+          data: { ok: true, intent_id: currentIntentId, amount: 20 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await clickProduct();
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).toHaveBeenCalledTimes(1);
+    expect(functionsInvokeMock).toHaveBeenLastCalledWith("mercadopago-create-pix", {
+      body: {
+        intent_id: currentIntentId,
+        session_token: savedSession.sessionToken,
+      },
+    });
+
+    firstIntent.resolve({
+      data: { ok: true, intent_id: staleIntentId, amount: 10 },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(functionsInvokeMock).toHaveBeenCalledTimes(1);
+    expect(functionsInvokeMock).not.toHaveBeenCalledWith(
+      "mercadopago-create-pix",
+      expect.objectContaining({
+        body: expect.objectContaining({ intent_id: staleIntentId }),
+      }),
+    );
+  });
+
 });

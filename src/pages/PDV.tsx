@@ -860,9 +860,9 @@ function PDVMain({
   };
 
   const removeItem = (id: string) => {
-    // Cart row ids are generated from crypto.randomUUID() or fall back to the
-    // validated product UUID. Reject malformed ids before touching state.
-    if (typeof id !== "string" || !PDV_UUID_PATTERN.test(id)) return;
+    // Keep removal recoverable even if a legacy/local row id is malformed.
+    // The only unsafe case is ambiguity: one action must never delete two rows.
+    if (typeof id !== "string") return;
 
     setCart((prev) => {
       const index = prev.findIndex((item) => item.id === id);

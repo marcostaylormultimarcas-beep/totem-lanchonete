@@ -3304,4 +3304,221 @@ describe("PDV PIX request invalidation", () => {
     ]);
   });
 
+
+  it.each([
+    ["non-boolean ok", { ok: "true", intent_id: "12121212-1212-1212-1212-121212121212", amount: 10 }],
+    ["numeric intent_id", { ok: true, intent_id: 12345, amount: 10 }],
+    ["blank intent_id", { ok: true, intent_id: "   ", amount: 10 }],
+    ["malformed intent_id", { ok: true, intent_id: "not-a-uuid", amount: 10 }],
+    ["missing amount", { ok: true, intent_id: "13131313-1313-1313-1313-131313131313" }],
+    ["string amount", { ok: true, intent_id: "14141414-1414-1414-1414-141414141414", amount: "10" }],
+    ["zero amount", { ok: true, intent_id: "15151515-1515-1515-1515-151515151515", amount: 0 }],
+    ["non-finite amount", { ok: true, intent_id: "16161616-1616-1616-1616-161616161616", amount: Number.POSITIVE_INFINITY }],
+  ])("fails closed before Mercado Pago for malformed PIX intent success payload: %s", async (_label, payload) => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({ data: payload, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed and reports a generic error when PIX intent RPC returns a transport error", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST000", status: 503, message: "internal transport detail" },
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível iniciar o PIX. Tente novamente.",
+    );
+  });
+
+  it("contains a rejected PIX intent RPC promise and never reaches Mercado Pago", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.reject({ code: "NETWORK", status: 0, message: "offline detail" });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+
+    await expect(advancePixTimers(350)).resolves.toBeUndefined();
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível iniciar o PIX. Tente novamente.",
+    );
+  });
+
+  it("ends the local PDV session when PIX intent returns invalid_session", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+  });
+
+  it.each([
+    ["invalid_cash_register", "Caixa inválido ou fechado. Reabra o caixa."],
+    ["invalid_sale", "Carrinho inválido para gerar o PIX. Revise os itens."],
+    ["invalid_quantity", "Carrinho inválido para gerar o PIX. Revise os itens."],
+    ["invalid_product_id", "Carrinho inválido para gerar o PIX. Revise os itens."],
+    ["product_not_found", "Produto indisponível para gerar o PIX. Atualize o carrinho."],
+    ["insufficient_stock", "Estoque insuficiente para gerar o PIX."],
+    ["insufficient_ingredient_stock", "Estoque de ingredientes insuficiente para gerar o PIX."],
+    ["invalid_coupon", "Cupom inválido para este pedido."],
+    ["coupon_minimum_not_met", "O pedido não atende ao mínimo do cupom."],
+    ["invalid_total", "Total inválido para gerar o PIX. Revise o carrinho."],
+  ])("fails closed for PIX intent functional reason %s", async (reason, expectedMessage) => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({ data: { ok: false, reason }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(expectedMessage);
+  });
+
+  it("invokes mercadopago-create-pix exactly once with the validated current intent and session", async () => {
+    const intentId = "17171717-1717-1717-1717-171717171717";
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: { ok: true, intent_id: intentId, amount: 10.01 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(functionsInvokeMock).toHaveBeenCalledTimes(1);
+    expect(functionsInvokeMock).toHaveBeenCalledWith("mercadopago-create-pix", {
+      body: {
+        intent_id: intentId,
+        session_token: savedSession.sessionToken,
+      },
+    });
+  });
+
 });

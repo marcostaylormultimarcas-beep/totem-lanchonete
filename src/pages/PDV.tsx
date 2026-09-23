@@ -2822,7 +2822,8 @@ function SangriaModal({
     if (
       !Number.isFinite(parsedValue) ||
       parsedValue <= 0 ||
-      !Number.isSafeInteger(cents)
+      !Number.isSafeInteger(cents) ||
+      cents >= Number.MAX_SAFE_INTEGER
     ) {
       toast.error("Informe um valor válido");
       return;

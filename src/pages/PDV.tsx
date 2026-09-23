@@ -286,7 +286,7 @@ function LoginScreen({
       if (!mountedRef.current) return;
       console.error("[PDV] pdv_create_session failed", {
         code: error?.code,
-        message: error?.message,
+        status: error?.status,
       });
       toast.error("Não foi possível conectar ao PDV. Tente novamente.");
     } finally {

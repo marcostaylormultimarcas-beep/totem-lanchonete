@@ -2688,6 +2688,8 @@ function PDVMain({
           sessionToken={sessionToken}
           caixaId={caixaId}
           onClose={() => setShowSangria(false)}
+          onInvalidCash={onClose}
+          onLogout={onLogout}
         />
       )}
       {showDevolucao && (
@@ -2785,27 +2787,128 @@ function SangriaModal({
   sessionToken,
   caixaId,
   onClose,
+  onInvalidCash,
+  onLogout,
 }: {
   operador: Operador;
   sessionToken: string;
   caixaId: string;
   onClose: () => void;
+  onInvalidCash: () => void;
+  onLogout: () => void;
 }) {
   const [tipo, setTipo] = useState<"sangria" | "suprimento">("sangria");
   const [valor, setValor] = useState("0,00");
   const [motivo, setMotivo] = useState("");
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const submittingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      submittingRef.current = false;
+    };
+  }, []);
 
   const submit = async () => {
-    const v = parseFloat(valor.replace(/\./g, "").replace(",", ".")) || 0;
-    if (v <= 0) return toast.error("Informe um valor válido");
-    if (motivo.trim().length < 3) return toast.error("Informe um motivo");
+    const rawValue = valor.trim();
+    const validMoneyFormat = /^(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d{1,2})?$/.test(rawValue);
+    const parsedValue = validMoneyFormat
+      ? Number(rawValue.replace(/\./g, "").replace(",", "."))
+      : Number.NaN;
+    const cents = Math.round(parsedValue * 100);
+
+    if (
+      !Number.isFinite(parsedValue) ||
+      parsedValue <= 0 ||
+      !Number.isSafeInteger(cents)
+    ) {
+      toast.error("Informe um valor válido");
+      return;
+    }
+
+    const v = cents / 100;
+    const trimmedReason = motivo.trim();
+    if (trimmedReason.length < 3) {
+      toast.error("Informe um motivo");
+      return;
+    }
+
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
-    const { data, error } = await pdvRpc.movement(sessionToken, caixaId, tipo, "dinheiro", v, motivo.trim());
-    setLoading(false);
-    if (error || !(data as any)?.ok) return toast.error("Falha ao registrar");
-    toast.success(tipo === "sangria" ? "Sangria registrada" : "Suprimento registrado");
-    onClose();
+
+    try {
+      const { data, error } = await pdvRpc.movement(
+        sessionToken,
+        caixaId,
+        tipo,
+        "dinheiro",
+        v,
+        trimmedReason,
+      );
+      if (!mountedRef.current) return;
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_registrar_movimento_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível registrar a movimentação. Tente novamente.");
+        return;
+      }
+
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        console.error("[PDV] invalid pdv_registrar_movimento_v2 payload");
+        toast.error("Resposta inválida ao registrar a movimentação. Tente novamente.");
+        return;
+      }
+
+      const res = data as Record<string, unknown>;
+      if (res.ok !== true) {
+        if (res.ok !== false) {
+          console.error("[PDV] invalid pdv_registrar_movimento_v2 success payload");
+          toast.error("Resposta inválida ao registrar a movimentação. Tente novamente.");
+          return;
+        }
+
+        if (res.reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          onLogout();
+          return;
+        }
+
+        if (res.reason === "invalid_cash") {
+          toast.error("Caixa não está mais aberto. Reabra o caixa.");
+          onInvalidCash();
+          return;
+        }
+
+        if (res.reason === "invalid_movement") {
+          toast.error("Movimentação rejeitada. Confira valor e motivo.");
+          return;
+        }
+
+        console.error("[PDV] pdv_registrar_movimento_v2 returned a non-success response");
+        toast.error("Não foi possível registrar a movimentação. Tente novamente.");
+        return;
+      }
+
+      toast.success(tipo === "sangria" ? "Sangria registrada" : "Suprimento registrado");
+      onClose();
+    } catch (error: any) {
+      if (!mountedRef.current) return;
+      console.error("[PDV] pdv_registrar_movimento_v2 rejected", {
+        code: error?.code,
+        status: error?.status,
+      });
+      toast.error("Não foi possível registrar a movimentação. Tente novamente.");
+    } finally {
+      submittingRef.current = false;
+      if (mountedRef.current) setLoading(false);
+    }
   };
 
   return (

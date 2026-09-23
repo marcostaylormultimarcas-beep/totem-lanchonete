@@ -3957,4 +3957,130 @@ describe("PDV PIX request invalidation", () => {
     });
   });
 
+
+  function mockPixPollingResponse(response: () => Promise<{ data: unknown; error: unknown }>) {
+    mockSinglePixIntent();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_pix_status_v2") return response();
+      return baseImplementation!(name, ...args);
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+  }
+
+  async function generateReadyPix() {
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+  }
+
+  it("fails closed when PIX status ok is not a boolean", async () => {
+    mockPixPollingResponse(() =>
+      Promise.resolve({
+        data: {
+          ok: "true",
+          intent_id: EDGE_INTENT_ID,
+          status: "paid",
+          payment_status: "approved",
+          paid: true,
+          amount: 10,
+        },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await advancePixTimers(1200);
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("PIX confirmado");
+  });
+
+  it("never confirms the current PIX from a status payload for another intent", async () => {
+    mockPixPollingResponse(() =>
+      Promise.resolve({
+        data: {
+          ok: true,
+          intent_id: EDGE_OTHER_INTENT_ID,
+          status: "paid",
+          payment_status: "approved",
+          paid: true,
+          amount: 10,
+        },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await advancePixTimers(1200);
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("PIX confirmado");
+  });
+
+  it("does not accept payment_status approved when the canonical PIX status is not paid", async () => {
+    mockPixPollingResponse(() =>
+      Promise.resolve({
+        data: {
+          ok: true,
+          intent_id: EDGE_INTENT_ID,
+          status: "payment_created",
+          payment_status: "approved",
+          paid: false,
+          amount: 10,
+        },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await advancePixTimers(1200);
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("PIX confirmado");
+  });
+
+  it("contains a rejected PIX status promise instead of leaking an unhandled rejection", async () => {
+    mockPixPollingResponse(() =>
+      Promise.reject(
+        Object.assign(new Error("temporary network detail"), {
+          code: "NETWORK",
+          status: 0,
+        }),
+      ),
+    );
+
+    await generateReadyPix();
+
+    await expect(advancePixTimers(1200)).resolves.toBeUndefined();
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("PIX confirmado");
+  });
+
+  it("stops polling when the current PIX reaches the terminal expired status", async () => {
+    mockPixPollingResponse(() =>
+      Promise.resolve({
+        data: {
+          ok: true,
+          intent_id: EDGE_INTENT_ID,
+          status: "expired",
+          payment_status: "cancelled",
+          paid: false,
+          amount: 10,
+        },
+        error: null,
+      }),
+    );
+
+    await generateReadyPix();
+    await advancePixTimers(1200);
+    await advancePixTimers(5000);
+
+    const statusCalls = rpcMock.mock.calls.filter(
+      ([name]) => name === "pdv_pix_status_v2",
+    );
+    expect(statusCalls).toHaveLength(1);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("PIX confirmado");
+  });
+
 });

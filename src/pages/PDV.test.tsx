@@ -842,3 +842,250 @@ describe("PDV AberturaScreen.submit", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("pdv_catalog_v2", expect.anything());
   });
 });
+
+
+describe("PDV catalog loading", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+  const productId = "77777777-7777-7777-7777-777777777777";
+  const validProduct = {
+    id: productId,
+    name: "Café",
+    price: 12.5,
+    codigo_barras: "7891234567890",
+    available: null,
+    image: "",
+  };
+
+  function catalogResponse(products: unknown = [validProduct]) {
+    return { ok: true, products };
+  }
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: catalogResponse(), error: null });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  it("shows an explicit loading state and only shows a valid empty/result state after the catalog resolves", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Carregando produtos");
+    expect(container.textContent).not.toContain("Nenhum produto encontrado");
+
+    pending.resolve({ data: catalogResponse(), error: null });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Café");
+    expect(container.textContent).toContain("R$");
+    expect(container.textContent).not.toContain("Carregando produtos");
+  });
+
+  it("keeps transport/PostgREST failures distinct from a valid empty catalog and does not expose backend details", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "PGRST500",
+            status: 503,
+            message: "sensitive backend detail",
+          },
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Não foi possível carregar os produtos do PDV");
+    expect(container.textContent).not.toContain("Nenhum produto encontrado");
+    expect(container.textContent).not.toContain("sensitive backend detail");
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível carregar os produtos do PDV. Tente novamente.");
+    expect(consoleError).toHaveBeenCalledWith("[PDV] pdv_catalog_v2 transport error", {
+      code: "PGRST500",
+      status: 503,
+    });
+  });
+
+  it("handles a rejected catalog Promise without an unhandled flow or technical message leak", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.reject(Object.assign(new Error("private network detail"), {
+          code: "FETCH_ERROR",
+          status: 503,
+        }));
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Não foi possível carregar os produtos do PDV");
+    expect(container.textContent).not.toContain("private network detail");
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível carregar os produtos do PDV. Tente novamente.");
+    expect(consoleError).toHaveBeenCalledWith("[PDV] pdv_catalog_v2 rejected", {
+      code: "FETCH_ERROR",
+      status: 503,
+    });
+  });
+
+  it("expires the local PDV session when pdv_catalog_v2 reports invalid_session", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+  });
+
+  it.each([
+    ["missing products", { ok: true }],
+    ["null products", { ok: true, products: null }],
+    ["non-array products", { ok: true, products: {} }],
+    ["invalid product id", catalogResponse([{ ...validProduct, id: "not-a-uuid" }])],
+    ["empty product name", catalogResponse([{ ...validProduct, name: "   " }])],
+    ["negative price", catalogResponse([{ ...validProduct, price: -0.01 }])],
+    ["unsafe extreme price", catalogResponse([{ ...validProduct, price: Number.MAX_VALUE }])],
+    ["unavailable product", catalogResponse([{ ...validProduct, available: false }])],
+    ["invalid barcode type", catalogResponse([{ ...validProduct, codigo_barras: 123 }])],
+    ["invalid image type", catalogResponse([{ ...validProduct, image: null }])],
+    ["duplicate product ids", catalogResponse([validProduct, { ...validProduct, name: "Outro" }])],
+  ])("rejects malformed catalog payload: %s", async (_label, payload) => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: payload, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Não foi possível carregar os produtos do PDV");
+    expect(container.textContent).not.toContain("Nenhum produto encontrado");
+    expect(toastErrorMock).toHaveBeenCalledWith("Não foi possível carregar os produtos do PDV. Tente novamente.");
+    expect(consoleError).toHaveBeenCalledWith("[PDV] invalid pdv_catalog_v2 success payload");
+  });
+
+  it("ignores a catalog response that arrives after PDVMain unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: unknown }>();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") return pending.promise;
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    expect(container.textContent).toContain("Carregando produtos");
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({
+      data: null,
+      error: { code: "PGRST500", status: 503, message: "late error" },
+    });
+    await flushAsync();
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+});

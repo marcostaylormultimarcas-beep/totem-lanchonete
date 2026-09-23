@@ -3044,9 +3044,12 @@ describe("PDV PIX request invalidation", () => {
       data: {
         ok: true,
         intent_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        payment_id: 700000001,
+        status: "pending",
         amount: 10,
         qr_code_base64: "qr-base64-1",
         qr_code: "pix-code-1",
+        ticket_url: "",
       },
       error: null,
     });
@@ -3101,9 +3104,12 @@ describe("PDV PIX request invalidation", () => {
       data: {
         ok: true,
         intent_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        payment_id: 700000002,
+        status: "pending",
         amount: 10.01,
         qr_code_base64: "qr-base64-loop",
         qr_code: "pix-code-loop",
+        ticket_url: "",
       },
       error: null,
     });
@@ -3583,6 +3589,372 @@ describe("PDV PIX request invalidation", () => {
         body: expect.objectContaining({ intent_id: staleIntentId }),
       }),
     );
+  });
+
+
+  const EDGE_INTENT_ID = "20202020-2020-4020-8020-202020202020";
+  const EDGE_OTHER_INTENT_ID = "21212121-2121-4121-8121-212121212121";
+
+  function edgeSuccessPayload(
+    intentId = EDGE_INTENT_ID,
+    amount = 10,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      ok: true,
+      intent_id: intentId,
+      payment_id: 700000003,
+      status: "pending",
+      amount,
+      qr_code_base64: "qr-base64-valid",
+      qr_code: "pix-code-valid",
+      ticket_url: "",
+      ...overrides,
+    };
+  }
+
+  function edgePayloadWithout(
+    field: string,
+    intentId = EDGE_INTENT_ID,
+    amount = 10,
+  ): Record<string, unknown> {
+    const payload = edgeSuccessPayload(intentId, amount);
+    delete payload[field];
+    return payload;
+  }
+
+  function mockSinglePixIntent(intentId = EDGE_INTENT_ID, amount = 10) {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: { ok: true, intent_id: intentId, amount },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+  }
+
+  function readCustomerMirror() {
+    return JSON.parse(localStorage.getItem("pdv_cliente_mirror_v1") || "{}");
+  }
+
+  it.each([
+    ["non-boolean ok", edgeSuccessPayload(EDGE_INTENT_ID, 10, { ok: "true" })],
+    ["missing intent_id", edgePayloadWithout("intent_id")],
+    ["blank intent_id", edgeSuccessPayload(EDGE_INTENT_ID, 10, { intent_id: "   " })],
+    ["mismatched intent_id", edgeSuccessPayload(EDGE_OTHER_INTENT_ID)],
+    ["missing payment_id", edgePayloadWithout("payment_id")],
+    ["blank payment_id", edgeSuccessPayload(EDGE_INTENT_ID, 10, { payment_id: "   " })],
+    ["missing status", edgePayloadWithout("status")],
+    ["blank status", edgeSuccessPayload(EDGE_INTENT_ID, 10, { status: "   " })],
+    ["missing amount", edgePayloadWithout("amount")],
+    ["string amount", edgeSuccessPayload(EDGE_INTENT_ID, 10, { amount: "10" })],
+    ["non-finite amount", edgeSuccessPayload(EDGE_INTENT_ID, 10, { amount: Number.POSITIVE_INFINITY })],
+    ["mismatched amount", edgeSuccessPayload(EDGE_INTENT_ID, 10, { amount: 10.01 })],
+    ["missing qr_code_base64", edgePayloadWithout("qr_code_base64")],
+    ["blank qr_code_base64", edgeSuccessPayload(EDGE_INTENT_ID, 10, { qr_code_base64: "   " })],
+    ["numeric qr_code_base64", edgeSuccessPayload(EDGE_INTENT_ID, 10, { qr_code_base64: 123 })],
+    ["missing qr_code", edgePayloadWithout("qr_code")],
+    ["blank qr_code", edgeSuccessPayload(EDGE_INTENT_ID, 10, { qr_code: "   " })],
+    ["numeric qr_code", edgeSuccessPayload(EDGE_INTENT_ID, 10, { qr_code: 123 })],
+    ["missing ticket_url", edgePayloadWithout("ticket_url")],
+    ["numeric ticket_url", edgeSuccessPayload(EDGE_INTENT_ID, 10, { ticket_url: 123 })],
+  ])("fails closed before setPixData for malformed Edge PIX success payload: %s", async (_label, payload) => {
+    mockSinglePixIntent();
+    functionsInvokeMock.mockResolvedValue({ data: payload, error: null });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível gerar o PIX. Tente novamente.",
+    );
+  });
+
+  it("accepts the real Edge success contract with an empty optional ticket_url", async () => {
+    mockSinglePixIntent();
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(EDGE_INTENT_ID, 10, { ticket_url: "" }),
+      error: null,
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-valid",
+      pixCopiaECola: "pix-code-valid",
+    });
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "Não foi possível gerar o PIX. Tente novamente.",
+    );
+  });
+
+  it.each([
+    ["FunctionsHttpError", 502],
+    ["FunctionsFetchError", undefined],
+    ["FunctionsRelayError", undefined],
+  ])("fails closed and reports a generic error for Edge %s", async (name, status) => {
+    mockSinglePixIntent();
+    functionsInvokeMock.mockResolvedValue({
+      data: null,
+      error: { name, status, message: "internal edge detail" },
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível gerar o PIX. Tente novamente.",
+    );
+  });
+
+  it("contains a rejected Edge invoke promise and fails closed", async () => {
+    mockSinglePixIntent();
+    functionsInvokeMock.mockRejectedValue(
+      Object.assign(new Error("network detail"), { name: "FunctionsFetchError" }),
+    );
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+
+    await expect(advancePixTimers(350)).resolves.toBeUndefined();
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível gerar o PIX. Tente novamente.",
+    );
+  });
+
+  it("never mirrors an old Edge response after quantity changes and a newer Edge request wins", async () => {
+    const firstEdge = deferred<{ data: unknown; error: null }>();
+    const firstIntentId = "22222222-2222-4222-8222-222222222222";
+    const secondIntentId = "23232323-2323-4323-8323-232323232323";
+    let intentCall = 0;
+    let edgeCall = 0;
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [product] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        intentCall += 1;
+        return Promise.resolve({
+          data: intentCall === 1
+            ? { ok: true, intent_id: firstIntentId, amount: 10 }
+            : { ok: true, intent_id: secondIntentId, amount: 20 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+    functionsInvokeMock.mockImplementation(() => {
+      edgeCall += 1;
+      if (edgeCall === 1) return firstEdge.promise;
+      return Promise.resolve({
+        data: edgeSuccessPayload(secondIntentId, 20, {
+          qr_code_base64: "qr-base64-new",
+          qr_code: "pix-code-new",
+        }),
+        error: null,
+      });
+    });
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await clickProduct();
+    await advancePixTimers(350);
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-new",
+      pixCopiaECola: "pix-code-new",
+    });
+
+    firstEdge.resolve({
+      data: edgeSuccessPayload(firstIntentId, 10, {
+        qr_code_base64: "qr-base64-old",
+        qr_code: "pix-code-old",
+      }),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "qr-base64-new",
+      pixCopiaECola: "pix-code-new",
+    });
+  });
+
+  it("ignores an in-flight Edge response after the operator leaves PIX mode", async () => {
+    const pendingEdge = deferred<{ data: unknown; error: null }>();
+    mockSinglePixIntent();
+    functionsInvokeMock.mockReturnValue(pendingEdge.promise);
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await choosePayment("Dinheiro");
+
+    pendingEdge.resolve({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+  });
+
+  it("ignores an in-flight Edge response after the cart becomes empty", async () => {
+    const pendingEdge = deferred<{ data: unknown; error: null }>();
+    mockSinglePixIntent();
+    functionsInvokeMock.mockReturnValue(pendingEdge.promise);
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    const minusButton = container.querySelector("svg.lucide-minus")?.closest("button");
+    expect(minusButton).toBeTruthy();
+    await act(async () => {
+      minusButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    pendingEdge.resolve({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+  });
+
+  it("ignores an in-flight Edge response after a validated coupon changes the PIX input", async () => {
+    const pendingEdge = deferred<{ data: unknown; error: null }>();
+    mockSinglePixIntent();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_validar_cupom_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            cupom: {
+              codigo: "SAVE10",
+              tipo: "percent",
+              valor: 10,
+              minimo_pedido: 0,
+            },
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+    functionsInvokeMock.mockReturnValue(pendingEdge.promise);
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await applyPixCoupon("save10");
+
+    pendingEdge.resolve({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
+  });
+
+  it("ignores an in-flight Edge response after unmount", async () => {
+    const pendingEdge = deferred<{ data: unknown; error: null }>();
+    mockSinglePixIntent();
+    functionsInvokeMock.mockReturnValue(pendingEdge.promise);
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pendingEdge.resolve({
+      data: edgeSuccessPayload(),
+      error: null,
+    });
+    await flushAsync();
+
+    expect(readCustomerMirror()).toMatchObject({
+      pixQrBase64: "",
+      pixCopiaECola: "",
+    });
   });
 
 });

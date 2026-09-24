@@ -2708,6 +2708,8 @@ function PDVMain({
           sessionToken={sessionToken}
           caixaId={caixaId}
           onClose={() => setShowFechar(false)}
+          onInvalidCash={onClose}
+          onLogout={onLogout}
           onClosed={() => {
             setShowFechar(false);
             onClose();
@@ -3544,43 +3546,316 @@ function DevolucaoModal({
   );
 }
 
+type PdvCashSummary = {
+  saldo_inicial: number;
+  vendas_dinheiro: number;
+  vendas_pix: number;
+  vendas_cartao: number;
+  total_vendas: number;
+  sangrias: number;
+  suprimentos: number;
+  devolucoes: number;
+  saldo_final_dinheiro: number;
+};
+
+function parsePdvCashSummary(value: unknown): PdvCashSummary | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  const saldoInicial = pdvMoneyToSafeCents(payload.saldo_inicial);
+  const vendasDinheiro = pdvMoneyToSafeCents(payload.vendas_dinheiro);
+  const vendasPix = pdvMoneyToSafeCents(payload.vendas_pix);
+  const vendasCartao = pdvMoneyToSafeCents(payload.vendas_cartao);
+  const totalVendas = pdvMoneyToSafeCents(payload.total_vendas);
+  const sangrias = pdvMoneyToSafeCents(payload.sangrias);
+  const suprimentos = pdvMoneyToSafeCents(payload.suprimentos);
+  const devolucoes = pdvMoneyToSafeCents(payload.devolucoes);
+  const saldoFinalDinheiro = pdvMoneyToSafeCents(payload.saldo_final_dinheiro);
+
+  if (
+    saldoInicial === null ||
+    vendasDinheiro === null ||
+    vendasPix === null ||
+    vendasCartao === null ||
+    totalVendas === null ||
+    sangrias === null ||
+    suprimentos === null ||
+    devolucoes === null ||
+    saldoFinalDinheiro === null
+  ) {
+    return null;
+  }
+
+  return {
+    saldo_inicial: saldoInicial / 100,
+    vendas_dinheiro: vendasDinheiro / 100,
+    vendas_pix: vendasPix / 100,
+    vendas_cartao: vendasCartao / 100,
+    total_vendas: totalVendas / 100,
+    sangrias: sangrias / 100,
+    suprimentos: suprimentos / 100,
+    devolucoes: devolucoes / 100,
+    saldo_final_dinheiro: saldoFinalDinheiro / 100,
+  };
+}
+
 function FechamentoModal({
   operador,
   sessionToken,
   caixaId,
   onClose,
+  onInvalidCash,
+  onLogout,
   onClosed,
 }: {
   operador: Operador;
   sessionToken: string;
   caixaId: string;
   onClose: () => void;
+  onInvalidCash: () => void;
+  onLogout: () => void;
   onClosed: () => void;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [resumo, setResumo] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [resumo, setResumo] = useState<PdvCashSummary | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const mountedRef = useRef(true);
+  const summaryRequestIdRef = useRef(0);
+  const closeRequestIdRef = useRef(0);
+  const closingRef = useRef(false);
 
-  // Pré-visualização (carrega resumo parcial via movimentos)
   useEffect(() => {
-    (async () => {
-      const { data, error } = await pdvRpc.cashSummary(sessionToken, caixaId);
-      const res = data as any;
-      if (error || !res?.ok || !res?.resumo) {
-        toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Falha ao carregar resumo do caixa");
-        return;
+    return () => {
+      mountedRef.current = false;
+      summaryRequestIdRef.current += 1;
+      closeRequestIdRef.current += 1;
+      closingRef.current = false;
+    };
+  }, []);
+
+  const invalidateAsyncWork = () => {
+    summaryRequestIdRef.current += 1;
+    closeRequestIdRef.current += 1;
+    closingRef.current = false;
+  };
+
+  const closeModal = () => {
+    invalidateAsyncWork();
+    onClose();
+  };
+
+  // Pré-visualização autoritativa via movimentos do caixa.
+  useEffect(() => {
+    const requestId = ++summaryRequestIdRef.current;
+    setLoading(true);
+    setResumo(null);
+
+    void (async () => {
+      try {
+        let data: unknown;
+        let error: unknown;
+
+        try {
+          const result = await pdvRpc.cashSummary(sessionToken, caixaId);
+          data = result.data;
+          error = result.error;
+        } catch (summaryError) {
+          if (
+            !mountedRef.current ||
+            requestId !== summaryRequestIdRef.current
+          ) {
+            return;
+          }
+
+          console.error("[PDV] pdv_caixa_resumo_v2 rejected", summaryError);
+          toast.error("Não foi possível carregar o resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        if (
+          !mountedRef.current ||
+          requestId !== summaryRequestIdRef.current
+        ) {
+          return;
+        }
+
+        if (error) {
+          const transportError = error as any;
+          console.error("[PDV] pdv_caixa_resumo_v2 transport error", {
+            code: transportError?.code,
+            status: transportError?.status,
+          });
+          toast.error("Não foi possível carregar o resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+          console.error("[PDV] invalid pdv_caixa_resumo_v2 payload");
+          toast.error("Resposta inválida ao carregar resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        const response = data as Record<string, unknown>;
+        if (response.ok !== true) {
+          if (response.ok !== false) {
+            console.error("[PDV] invalid pdv_caixa_resumo_v2 success flag");
+            toast.error("Resposta inválida ao carregar resumo do caixa. Tente novamente.");
+            return;
+          }
+
+          if (response.reason === "invalid_session") {
+            toast.error("Sessão expirada. Entre novamente.");
+            invalidateAsyncWork();
+            onLogout();
+            return;
+          }
+
+          if (response.reason === "invalid_cash") {
+            toast.error("Caixa não está mais disponível. Reabra o caixa.");
+            invalidateAsyncWork();
+            onInvalidCash();
+            return;
+          }
+
+          console.error("[PDV] pdv_caixa_resumo_v2 returned a non-success response");
+          toast.error("Não foi possível carregar o resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        if (typeof response.status !== "string") {
+          console.error("[PDV] invalid pdv_caixa_resumo_v2 status");
+          toast.error("Resposta inválida ao carregar resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        const status = response.status.trim().toLowerCase();
+        if (status !== "open" && status !== "aberto") {
+          toast.error("Caixa não está mais disponível. Reabra o caixa.");
+          invalidateAsyncWork();
+          onInvalidCash();
+          return;
+        }
+
+        const parsedSummary = parsePdvCashSummary(response.resumo);
+        if (!parsedSummary) {
+          console.error("[PDV] invalid pdv_caixa_resumo_v2 summary");
+          toast.error("Resposta inválida ao carregar resumo do caixa. Tente novamente.");
+          return;
+        }
+
+        setResumo(parsedSummary);
+      } finally {
+        if (
+          mountedRef.current &&
+          requestId === summaryRequestIdRef.current
+        ) {
+          setLoading(false);
+        }
       }
-      setResumo(res.resumo);
     })();
-  }, [caixaId, sessionToken]);
+
+    return () => {
+      summaryRequestIdRef.current += 1;
+    };
+  }, [caixaId, sessionToken, onInvalidCash, onLogout]);
 
   const fechar = async () => {
+    if (closingRef.current) return;
+
+    closingRef.current = true;
+    const requestId = ++closeRequestIdRef.current;
     setConfirming(true);
-    const { data, error } = await pdvRpc.closeCash(sessionToken, caixaId);
-    setConfirming(false);
-    if (error || !(data as any)?.ok) return toast.error("Falha ao fechar caixa");
-    toast.success("Caixa fechado");
-    onClosed();
+
+    try {
+      let data: unknown;
+      let error: unknown;
+
+      try {
+        const result = await pdvRpc.closeCash(sessionToken, caixaId);
+        data = result.data;
+        error = result.error;
+      } catch (closeError) {
+        if (
+          !mountedRef.current ||
+          requestId !== closeRequestIdRef.current
+        ) {
+          return;
+        }
+
+        console.error("[PDV] pdv_fechar_caixa_v2 rejected", closeError);
+        toast.error("Não foi possível fechar o caixa. Tente novamente.");
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        requestId !== closeRequestIdRef.current
+      ) {
+        return;
+      }
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_fechar_caixa_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível fechar o caixa. Tente novamente.");
+        return;
+      }
+
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        console.error("[PDV] invalid pdv_fechar_caixa_v2 payload");
+        toast.error("Resposta inválida ao fechar caixa. Tente novamente.");
+        return;
+      }
+
+      const response = data as Record<string, unknown>;
+      if (response.ok !== true) {
+        if (response.ok !== false) {
+          console.error("[PDV] invalid pdv_fechar_caixa_v2 success flag");
+          toast.error("Resposta inválida ao fechar caixa. Tente novamente.");
+          return;
+        }
+
+        if (response.reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          invalidateAsyncWork();
+          onLogout();
+          return;
+        }
+
+        if (response.reason === "invalid_cash") {
+          toast.error("Caixa não está mais disponível. Reabra o caixa.");
+          invalidateAsyncWork();
+          onInvalidCash();
+          return;
+        }
+
+        console.error("[PDV] pdv_fechar_caixa_v2 returned a non-success response");
+        toast.error("Não foi possível fechar o caixa. Tente novamente.");
+        return;
+      }
+
+      const canonicalSummary = parsePdvCashSummary(response.resumo);
+      if (!canonicalSummary) {
+        console.error("[PDV] invalid pdv_fechar_caixa_v2 success payload");
+        toast.error("Resposta inválida ao fechar caixa. Tente novamente.");
+        return;
+      }
+
+      toast.success("Caixa fechado");
+      invalidateAsyncWork();
+      onClosed();
+    } finally {
+      if (
+        mountedRef.current &&
+        requestId === closeRequestIdRef.current
+      ) {
+        closingRef.current = false;
+        setConfirming(false);
+      }
+    }
   };
 
   const row = (label: string, value: number, accent = false) => (
@@ -3591,9 +3866,11 @@ function FechamentoModal({
   );
 
   return (
-    <ModalShell title="Fechamento de Caixa" onClose={onClose}>
-      {!resumo ? (
+    <ModalShell title="Fechamento de Caixa" onClose={closeModal}>
+      {loading ? (
         <div className="text-center text-zinc-500 py-6">Carregando resumo…</div>
+      ) : !resumo ? (
+        <div className="text-center text-zinc-500 py-6">Resumo indisponível.</div>
       ) : (
         <div className="space-y-1">
           {row("Saldo inicial", resumo.saldo_inicial)}
@@ -3621,3 +3898,4 @@ function FechamentoModal({
     </ModalShell>
   );
 }
+

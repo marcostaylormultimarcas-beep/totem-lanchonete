@@ -585,3 +585,183 @@ describe('OrdersPanel organization bootstrap lifecycle', () => {
   });
 
 });
+
+
+describe('OrdersPanel filters, table labels, realtime and polling lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let orderRequests: Array<{ organizationId: string; deferred: Deferred<any> }>;
+  let tableRequests: Array<{ organizationId: string; deferred: Deferred<any> }>;
+  let realtimeHandlers: Array<{ channel: string; callback: () => void }>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    orderRequests = [];
+    tableRequests = [];
+    realtimeHandlers = [];
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        realtimeHandlers.push({ channel, callback });
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: { _org?: string }) => {
+      if (fn === 'visionfood_admin_tables') {
+        const request = deferred<any>();
+        tableRequests.push({ organizationId: args?._org || '', deferred: request });
+        return request.promise;
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          const request = deferred<any>();
+          orderRequests.push({ organizationId, deferred: request });
+          return request.promise;
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.restoreAllMocks();
+  });
+
+  it('clears registered table labels immediately when the organization changes', async () => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(tableRequests.map(r => r.organizationId)).toEqual(['org-a']);
+
+    await act(async () => {
+      tableRequests[0].deferred.resolve({
+        data: [{ label: 'Mesa A', active: true }],
+        error: null,
+      });
+      orderRequests[0].deferred.resolve({ data: [], error: null });
+      await flushAsync();
+    });
+
+    expect(Array.from(container.querySelectorAll('option')).some(option => option.textContent === 'Mesa A')).toBe(true);
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(tableRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+    expect(Array.from(container.querySelectorAll('option')).some(option => option.textContent === 'Mesa A')).toBe(false);
+  });
+
+  it('contains table-filter transport rejection instead of leaving an unhandled promise rejection', async () => {
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'visionfood_admin_tables') return Promise.reject(new Error('tables network unavailable'));
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Todas as mesas');
+  });
+
+  it('does not let a removed realtime subscription start a stale organization request', async () => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a']);
+    expect(realtimeHandlers.map(h => h.channel)).toEqual(['admin-orders-org-a']);
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+    expect(realtimeHandlers.map(h => h.channel)).toEqual(['admin-orders-org-a', 'admin-orders-org-b']);
+
+    await act(async () => {
+      realtimeHandlers[0].callback();
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+  });
+
+  it('does not let a cleared polling callback start a stale organization request', async () => {
+    const pollingCallbacks: Array<() => void> = [];
+    vi.spyOn(window, 'setInterval').mockImplementation(((callback: TimerHandler) => {
+      pollingCallbacks.push(callback as () => void);
+      return pollingCallbacks.length as any;
+    }) as typeof window.setInterval);
+    vi.spyOn(window, 'clearInterval').mockImplementation((() => {}) as typeof window.clearInterval);
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a']);
+    expect(pollingCallbacks).toHaveLength(1);
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+    expect(pollingCallbacks).toHaveLength(2);
+
+    await act(async () => {
+      pollingCallbacks[0]();
+      await flushAsync();
+    });
+
+    expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+  });
+});

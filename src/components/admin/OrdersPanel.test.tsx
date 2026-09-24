@@ -41,7 +41,7 @@ vi.mock('@/data/store', () => ({
 }));
 
 vi.mock('./OrderPrintReceipt', () => ({
-  default: () => null,
+  default: ({ storeName }: { storeName: string }) => <div data-testid="receipt-store-name">{storeName}</div>,
 }));
 
 vi.mock('@/components/FeatureGate', () => ({
@@ -118,6 +118,43 @@ function makeOrder(orderNumber: string, customerName: string) {
     table_session_id: null,
     table_label: null,
   };
+}
+
+function makeDeliveryOrder(orderNumber: string, customerName: string, productId = 'prod-b') {
+  return {
+    ...makeOrder(orderNumber, customerName),
+    order_type: 'delivery',
+    status: 'ready',
+    delivery_address: 'Rua Teste, 100',
+    items: [{ product_id: productId, name: 'Produto teste', quantity: 1, total: 25 }],
+  };
+}
+
+function makeBootstrapQuery(
+  table: string,
+  requests: Record<string, Array<{ organizationId: string; deferred: Deferred<any> }>>,
+  orderData: (organizationId: string) => any[] = () => [],
+) {
+  let organizationId = '';
+  const q: any = {};
+  q.select = vi.fn(() => q);
+  q.eq = vi.fn((column: string, value: string) => {
+    if (column === 'organization_id') organizationId = value;
+    return q;
+  });
+  for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+  q.maybeSingle = vi.fn(() => {
+    const request = deferred<any>();
+    requests[table].push({ organizationId, deferred: request });
+    return request.promise;
+  });
+  q.limit = vi.fn(() => Promise.resolve({ data: orderData(organizationId), error: null }));
+  q.then = (resolve: any, reject: any) => {
+    const request = deferred<any>();
+    requests[table].push({ organizationId, deferred: request });
+    return request.promise.then(resolve, reject);
+  };
+  return q;
 }
 
 async function flushAsync() {
@@ -235,5 +272,202 @@ describe('OrdersPanel fetchOrders lifecycle', () => {
     expect(container.textContent).toContain('Cliente B');
     expect(container.textContent).not.toContain('#A-100');
     expect(container.textContent).not.toContain('Cliente A');
+  });
+});
+
+
+describe('OrdersPanel organization bootstrap lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let requests: Record<string, Array<{ organizationId: string; deferred: Deferred<any> }>>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    requests = { settings: [], entregadores: [], products: [] };
+
+    channelMock.mockImplementation(() => {
+      const ch: any = {};
+      ch.on = vi.fn(() => ch);
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockResolvedValue({ data: [], error: null });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('does not let stale settings from the previous organization overwrite the current store bootstrap', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') return makeBootstrapQuery(table, { ...requests, orders: [] } as any, () => []);
+      if (table === 'settings') return makeBootstrapQuery(table, requests);
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(requests.settings.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+
+    await act(async () => {
+      requests.settings[1].deferred.resolve({
+        data: {
+          store_name: 'Loja B',
+          scheduling_preparation_lead_min: 45,
+          delivery_assignment_mode: 'manual',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+    expect(container.querySelector('[data-testid="receipt-store-name"]')?.textContent).toBe('Loja B');
+
+    await act(async () => {
+      requests.settings[0].deferred.resolve({
+        data: {
+          store_name: 'Loja A',
+          scheduling_preparation_lead_min: 10,
+          delivery_assignment_mode: 'free',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="receipt-store-name"]')?.textContent).toBe('Loja B');
+  });
+
+  it('does not let stale entregadores from the previous organization overwrite the current organization list', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        const holder = { ...requests, orders: [] } as any;
+        return makeBootstrapQuery(table, holder, organizationId =>
+          organizationId === 'org-b' ? [makeDeliveryOrder('B-200', 'Cliente B')] : [],
+        );
+      }
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+      if (table === 'entregadores') return makeBootstrapQuery(table, requests);
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(requests.entregadores.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+
+    await act(async () => {
+      requests.entregadores[1].deferred.resolve({
+        data: [{ id: 'driver-b', name: 'Entregador B', active: true }],
+        error: null,
+      });
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('Entregador B');
+
+    await act(async () => {
+      requests.entregadores[0].deferred.resolve({
+        data: [{ id: 'driver-a', name: 'Entregador A', active: true }],
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Entregador B');
+    expect(container.textContent).not.toContain('Entregador A');
+  });
+
+  it('does not let stale low-stock products from the previous organization overwrite lowStockIds', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        const holder = { ...requests, orders: [] } as any;
+        return makeBootstrapQuery(table, holder, organizationId =>
+          organizationId === 'org-b' ? [makeDeliveryOrder('B-200', 'Cliente B', 'prod-b')] : [],
+        );
+      }
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+      if (table === 'products') return makeBootstrapQuery(table, requests);
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(requests.products.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
+
+    await act(async () => {
+      requests.products[1].deferred.resolve({ data: [{ id: 'prod-b' }], error: null });
+      await flushAsync();
+    });
+
+    const filtersButton = Array.from(container.querySelectorAll('button')).find(
+      button => button.textContent?.includes('Filtros'),
+    );
+    expect(filtersButton).toBeTruthy();
+    await act(async () => {
+      filtersButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushAsync();
+    });
+
+    const checkbox = container.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+    expect(checkbox).toBeTruthy();
+    await act(async () => {
+      checkbox!.click();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      requests.products[0].deferred.resolve({ data: [{ id: 'prod-a' }], error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('#B-200');
   });
 });

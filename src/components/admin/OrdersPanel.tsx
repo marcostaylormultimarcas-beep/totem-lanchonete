@@ -37,7 +37,53 @@ const OrdersPanel=({organizationId}:{organizationId:string|null})=>{
  const closeTrack=()=>{setTrackOrder(null);setTrackRider(null);setTrackDest(null)};
  const openTrack=(order:Order)=>{setTrackRider(null);setTrackDest(null);setTrackOrder(order)};
  useEffect(()=>{if(!trackOrder)return;const fresh=orders.find(o=>o.id===trackOrder.id);if(!fresh||fresh.status!=='out_for_delivery'||fresh.entregador_id!==trackOrder.entregador_id)closeTrack()},[orders,trackOrder?.id,trackOrder?.entregador_id]);
- useEffect(()=>{if(!organizationId){setStoreName('');setEntregadores([]);setSchedulingLeadMin(30);setDeliveryAssignmentMode('manual');return}supabase.from('settings').select('store_name,scheduling_preparation_lead_min,delivery_assignment_mode').eq('organization_id',organizationId).maybeSingle().then(({data})=>{const s:any=data;setStoreName(s?.store_name||'');setSchedulingLeadMin(Math.max(0,Math.min(360,Number(s?.scheduling_preparation_lead_min??30))));setDeliveryAssignmentMode(s?.delivery_assignment_mode==='free'?'free':'manual')});supabase.from('entregadores' as any).select('id,name,active').eq('organization_id',organizationId).eq('active',true).then(({data})=>setEntregadores(((data as any[])||[]) as Entregador[]));supabase.from('products').select('id').eq('organization_id',organizationId).eq('manage_stock',true).lte('stock_quantity',5).then(({data})=>setLowStockIds(new Set(((data as any[])||[]).map((p:any)=>p.id))))},[organizationId]);
+ useEffect(()=>{
+  let cancelled=false;
+  setStoreName('');
+  setEntregadores([]);
+  setLowStockIds(new Set());
+  setSchedulingLeadMin(30);
+  setDeliveryAssignmentMode('manual');
+  if(!organizationId)return()=>{cancelled=true};
+
+  const loadSettings=async()=>{
+   try{
+    const result=await supabase.from('settings').select('store_name,scheduling_preparation_lead_min,delivery_assignment_mode').eq('organization_id',organizationId).maybeSingle();
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap settings',error);return}
+    const s:any=data;
+    setStoreName(s?.store_name||'');
+    setSchedulingLeadMin(Math.max(0,Math.min(360,Number(s?.scheduling_preparation_lead_min??30))));
+    setDeliveryAssignmentMode(s?.delivery_assignment_mode==='free'?'free':'manual');
+   }catch(error){if(!cancelled)console.error('orders bootstrap settings',error)}
+  };
+
+  const loadEntregadores=async()=>{
+   try{
+    const result=await supabase.from('entregadores' as any).select('id,name,active').eq('organization_id',organizationId).eq('active',true);
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap entregadores',error);return}
+    setEntregadores(((data as any[])||[]) as Entregador[]);
+   }catch(error){if(!cancelled)console.error('orders bootstrap entregadores',error)}
+  };
+
+  const loadLowStock=async()=>{
+   try{
+    const result=await supabase.from('products').select('id').eq('organization_id',organizationId).eq('manage_stock',true).lte('stock_quantity',5);
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap low stock',error);return}
+    setLowStockIds(new Set(((data as any[])||[]).map((p:any)=>p.id)));
+   }catch(error){if(!cancelled)console.error('orders bootstrap low stock',error)}
+  };
+
+  void loadSettings();
+  void loadEntregadores();
+  void loadLowStock();
+  return()=>{cancelled=true};
+ },[organizationId]);
  useEffect(()=>{let cancelled=false;if(!organizationId){setRegisteredTableLabels([]);setTableFilter('all');return()=>{cancelled=true}}setTableFilter('all');supabase.rpc('visionfood_admin_tables',{_org:organizationId}).then(({data,error})=>{if(cancelled)return;if(error){console.error('visionfood_admin_tables (orders filter)',error);setRegisteredTableLabels([]);return}const labels=((Array.isArray(data)?data:[]) as Array<{label?:string;active?:boolean}>).filter(t=>t.active!==false&&typeof t.label==='string'&&t.label.trim()).map(t=>t.label!.trim());setRegisteredTableLabels(labels)});return()=>{cancelled=true}},[organizationId]);
  const openPrintDialog=(o:Order)=>setPendingPrintOrder(o); const doPrint=(o:Order,f:PrintFormat)=>{try{localStorage.setItem(PRINT_PREF_KEY,f)}catch{}setPrintFormat(f);setPrintOrder(o);setPendingPrintOrder(null);const cleanup=()=>{setPrintOrder(null);window.removeEventListener('afterprint',cleanup)};window.addEventListener('afterprint',cleanup);requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{document.body.classList.add(f==='cupom'?'printing-cupom':'printing-a4');window.print();setTimeout(()=>{document.body.classList.remove('printing-cupom','printing-a4');setPrintOrder(null)},800)},120)))};
  useEffect(()=>{try{const s=localStorage.getItem(PRINT_PREF_KEY) as PrintFormat|null;if(s==='cupom'||s==='a4')setPrintFormat(s)}catch{}},[]);

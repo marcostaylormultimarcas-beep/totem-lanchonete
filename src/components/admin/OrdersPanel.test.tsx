@@ -764,4 +764,86 @@ describe('OrdersPanel filters, table labels, realtime and polling lifecycle', ()
 
     expect(orderRequests.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
   });
+
+  it('uses local calendar-day boundaries for dateFrom and dateTo', async () => {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = 'America/Sao_Paulo';
+    const gteCalls: string[] = [];
+    const lteCalls: string[] = [];
+
+    try {
+      rpcMock.mockResolvedValue({ data: [], error: null });
+      fromMock.mockImplementation((table: string) => {
+        if (table === 'orders') {
+          const q: any = {};
+          q.select = vi.fn(() => q);
+          q.eq = vi.fn(() => q);
+          q.order = vi.fn(() => q);
+          q.in = vi.fn(() => q);
+          q.not = vi.fn(() => q);
+          q.gte = vi.fn((_column: string, value: string) => {
+            gteCalls.push(value);
+            return q;
+          });
+          q.lte = vi.fn((_column: string, value: string) => {
+            lteCalls.push(value);
+            return q;
+          });
+          q.limit = vi.fn(() => Promise.resolve({ data: [], error: null }));
+          return q;
+        }
+
+        if (table === 'settings') {
+          return resolvedQuery({
+            data: {
+              store_name: 'Loja',
+              scheduling_preparation_lead_min: 30,
+              delivery_assignment_mode: 'manual',
+            },
+            error: null,
+          });
+        }
+
+        return resolvedQuery({ data: [], error: null });
+      });
+
+      await act(async () => {
+        root.render(<OrdersPanel organizationId="org-a" />);
+        await flushAsync();
+      });
+
+      const filtersButton = Array.from(container.querySelectorAll('button')).find(
+        button => button.textContent?.includes('Filtros'),
+      );
+      expect(filtersButton).toBeTruthy();
+
+      await act(async () => {
+        filtersButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await flushAsync();
+      });
+
+      const dateInputs = Array.from(container.querySelectorAll('input[type="date"]')) as HTMLInputElement[];
+      expect(dateInputs).toHaveLength(2);
+
+      await act(async () => {
+        dateInputs[0].value = '2026-09-24';
+        dateInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+        dateInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsync();
+      });
+
+      await act(async () => {
+        dateInputs[1].value = '2026-09-24';
+        dateInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
+        dateInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
+        await flushAsync();
+      });
+
+      expect(gteCalls.at(-1)).toBe(new Date(2026, 8, 24, 0, 0, 0, 0).toISOString());
+      expect(lteCalls.at(-1)).toBe(new Date(2026, 8, 24, 23, 59, 59, 999).toISOString());
+    } finally {
+      process.env.TZ = previousTimezone;
+    }
+  });
+
 });

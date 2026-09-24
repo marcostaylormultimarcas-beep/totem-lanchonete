@@ -7246,3 +7246,713 @@ describe("PDV DevolucaoModal audit", () => {
 
 });
 
+describe("PDV FechamentoModal audit", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+
+  function validSummary(overrides: Record<string, unknown> = {}) {
+    return {
+      saldo_inicial: 100,
+      vendas_dinheiro: 50,
+      vendas_pix: 30,
+      vendas_cartao: 20,
+      total_vendas: 100,
+      sangrias: 5,
+      suprimentos: 10,
+      devolucoes: 15,
+      saldo_final_dinheiro: 145,
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: true, status: "open", resumo: validSummary() },
+          error: null,
+        });
+      }
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: true, resumo: validSummary() },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function buttonWithText(label: string) {
+    const result = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.includes(label),
+    );
+    if (!result) throw new Error("Button not rendered: " + label);
+    return result;
+  }
+
+  function closingModal() {
+    const heading = Array.from(container.querySelectorAll("h3")).find(
+      (candidate) => candidate.textContent?.trim() === "Fechamento de Caixa",
+    );
+    const shell = heading?.closest(".fixed");
+    if (!shell) throw new Error("Closing modal not rendered");
+    return shell;
+  }
+
+  function summaryCalls() {
+    return rpcMock.mock.calls.filter(([name]) => name === "pdv_caixa_resumo_v2");
+  }
+
+  function closeCalls() {
+    return rpcMock.mock.calls.filter(([name]) => name === "pdv_fechar_caixa_v2");
+  }
+
+  async function openClosingModal() {
+    await act(async () => {
+      buttonWithText("Fechar Caixa").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  async function closeCash() {
+    await act(async () => {
+      buttonWithText("Fechar caixa agora").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  it("opens, loads the authoritative summary with the real RPC arguments and closes without closing the cash register", async () => {
+    await renderMain();
+    await openClosingModal();
+
+    expect(container.textContent).toContain("Fechamento de Caixa");
+    expect(summaryCalls()).toContainEqual([
+      "pdv_caixa_resumo_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+      },
+    ]);
+    expect(closingModal().textContent).toContain("R$");
+    expect(closeCalls()).toHaveLength(0);
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain("Fechamento de Caixa");
+    expect(closeCalls()).toHaveLength(0);
+  });
+
+  it("keeps summary loading authoritative while the summary RPC is pending", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await act(async () => {
+      buttonWithText("Fechar Caixa").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(closingModal().textContent).toContain("Carregando resumo");
+    expect(
+      Array.from(closingModal().querySelectorAll("button")).some(
+        (button) => button.textContent?.includes("Fechar caixa agora"),
+      ),
+    ).toBe(false);
+
+    pending.resolve({
+      data: { ok: true, status: "open", resumo: validSummary() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(closingModal().textContent).toContain("Fechar caixa agora");
+  });
+
+  it("logs out authoritatively when summary reports invalid_session", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+  });
+
+  it("returns to cash opening when summary reports an invalid/closed cash register", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_cash" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(container.textContent).toContain("Abertura de Caixa");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).not.toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Caixa não está mais disponível. Reabra o caixa.",
+    );
+  });
+
+  it("fails closed on a truthy non-boolean summary success flag", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: "true", status: "open", resumo: validSummary() },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao carregar resumo do caixa. Tente novamente.",
+    );
+    expect(
+      Array.from(closingModal().querySelectorAll("button")).some(
+        (button) => button.textContent?.includes("Fechar caixa agora"),
+      ),
+    ).toBe(false);
+  });
+
+  it.each([
+    ["missing field", { saldo_inicial: undefined }],
+    ["string money", { vendas_dinheiro: "50.00" }],
+    ["NaN", { vendas_pix: Number.NaN }],
+    ["Infinity", { vendas_cartao: Number.POSITIVE_INFINITY }],
+    ["negative", { sangrias: -1 }],
+    ["unsafe cents", { saldo_final_dinheiro: 90071992547409.92 }],
+  ])("rejects malformed summary money: %s", async (_label, overrides) => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            status: "open",
+            resumo: validSummary(overrides as Record<string, unknown>),
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao carregar resumo do caixa. Tente novamente.",
+    );
+    expect(
+      Array.from(closingModal().querySelectorAll("button")).some(
+        (button) => button.textContent?.includes("Fechar caixa agora"),
+      ),
+    ).toBe(false);
+  });
+
+  it("handles a resolved PostgREST summary error without leaking technical details", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "PGRST500",
+            status: 503,
+            message: "internal summary database detail",
+          },
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível carregar o resumo do caixa. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("internal summary database detail"),
+    );
+  });
+
+  it("contains a rejected summary Promise without leaking its technical message", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.reject(new Error("secret summary transport detail"));
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await act(async () => {
+      buttonWithText("Fechar Caixa").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível carregar o resumo do caixa. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret summary transport detail"),
+    );
+  });
+
+  it("does not let a late summary response affect a newly reopened modal", async () => {
+    const first = deferred<{ data: unknown; error: null }>();
+    let count = 0;
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        count += 1;
+        if (count === 1) return first.promise;
+        return Promise.resolve({
+          data: {
+            ok: true,
+            status: "open",
+            resumo: validSummary({ vendas_dinheiro: 222 }),
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await act(async () => {
+      buttonWithText("Fechar Caixa").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    await openClosingModal();
+
+    toastErrorMock.mockClear();
+    first.resolve({
+      data: { ok: false, reason: "invalid_session" },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Fechamento de Caixa");
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it("does not emit a late summary effect after the PDV unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await act(async () => {
+      buttonWithText("Fechar Caixa").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({
+      data: { ok: false, reason: "invalid_session" },
+      error: null,
+    });
+    await flushAsync();
+
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "Sessão expirada. Entre novamente.",
+    );
+  });
+
+  it("closes with the real RPC arguments only after a valid authoritative success payload", async () => {
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(closeCalls()).toContainEqual([
+      "pdv_fechar_caixa_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+      },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith("Caixa fechado");
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+  });
+
+  it("allows only one close RPC when Fechar caixa agora is clicked twice in the same tick", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    const closeButton = buttonWithText("Fechar caixa agora");
+    await act(async () => {
+      closeButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      closeButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(closeCalls()).toHaveLength(1);
+
+    pending.resolve({
+      data: { ok: true, resumo: validSummary() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+
+  it("keeps close loading authoritative while the close RPC is pending", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    await act(async () => {
+      buttonWithText("Fechar caixa agora").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(buttonWithText("Fechando...")).toHaveProperty("disabled", true);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+
+    pending.resolve({
+      data: { ok: true, resumo: validSummary() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+
+  it("logs out authoritatively when close reports invalid_session", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+  });
+
+  it("returns to cash opening when close reports invalid_cash", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_cash" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Caixa não está mais disponível. Reabra o caixa.",
+    );
+    expect(container.textContent).toContain("Abertura de Caixa");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).not.toBeNull();
+  });
+
+  it("fails closed on a truthy non-boolean close success flag", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: "true", resumo: validSummary() },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao fechar caixa. Tente novamente.",
+    );
+    expect(container.textContent).toContain("Fechamento de Caixa");
+  });
+
+  it.each([
+    ["missing resumo", undefined],
+    ["malformed resumo", validSummary({ total_vendas: Number.POSITIVE_INFINITY })],
+  ])("rejects malformed authoritative close success: %s", async (_label, resumo) => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: { ok: true, resumo },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao fechar caixa. Tente novamente.",
+    );
+    expect(container.textContent).toContain("Fechamento de Caixa");
+  });
+
+  it("handles a resolved PostgREST close error without leaking technical details", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.resolve({
+          data: null,
+          error: {
+            code: "PGRST500",
+            status: 503,
+            message: "internal close database detail",
+          },
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+    await closeCash();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível fechar o caixa. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("internal close database detail"),
+    );
+  });
+
+  it("contains a rejected close Promise without leaking its technical message", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") {
+        return Promise.reject(new Error("secret close transport detail"));
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    await act(async () => {
+      buttonWithText("Fechar caixa agora").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível fechar o caixa. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret close transport detail"),
+    );
+  });
+
+  it("does not let an old close response close or toast over a newly reopened modal", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    await act(async () => {
+      buttonWithText("Fechar caixa agora").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    await openClosingModal();
+
+    toastSuccessMock.mockClear();
+    pending.resolve({
+      data: { ok: true, resumo: validSummary() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Fechamento de Caixa");
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).not.toBeNull();
+  });
+
+  it("does not emit a late close success after the PDV unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_fechar_caixa_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    await act(async () => {
+      buttonWithText("Fechar caixa agora").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({
+      data: { ok: true, resumo: validSummary() },
+      error: null,
+    });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith("Caixa fechado");
+  });
+});
+

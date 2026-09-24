@@ -470,4 +470,118 @@ describe('OrdersPanel organization bootstrap lifecycle', () => {
 
     expect(container.textContent).toContain('#B-200');
   });
+
+  it('clears bootstrap state from the previous organization while the new organization is still loading', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        const holder = { ...requests, orders: [] } as any;
+        return makeBootstrapQuery(table, holder, organizationId => [
+          makeDeliveryOrder(organizationId === 'org-a' ? 'A-100' : 'B-200', organizationId === 'org-a' ? 'Cliente A' : 'Cliente B'),
+        ]);
+      }
+      if (table === 'settings' || table === 'entregadores') return makeBootstrapQuery(table, requests);
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+    await act(async () => {
+      requests.settings[0].deferred.resolve({
+        data: {
+          store_name: 'Loja A',
+          scheduling_preparation_lead_min: 30,
+          delivery_assignment_mode: 'manual',
+        },
+        error: null,
+      });
+      requests.entregadores[0].deferred.resolve({
+        data: [{ id: 'driver-a', name: 'Entregador A', active: true }],
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="receipt-store-name"]')?.textContent).toBe('Loja A');
+    expect(container.textContent).toContain('Entregador A');
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="receipt-store-name"]')?.textContent).toBe('');
+    expect(container.textContent).not.toContain('Entregador A');
+  });
+
+  it('does not consume bootstrap payloads that resolve after unmount', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') return resolvedQuery({ data: [], error: null });
+      if (table === 'settings' || table === 'entregadores' || table === 'products') {
+        return makeBootstrapQuery(table, requests);
+      }
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(requests.settings).toHaveLength(1);
+    expect(requests.entregadores).toHaveLength(1);
+    expect(requests.products).toHaveLength(1);
+
+    await act(async () => {
+      root.unmount();
+      await flushAsync();
+    });
+    container.remove();
+
+    let payloadReads = 0;
+    const lateResponse: any = { error: null };
+    Object.defineProperty(lateResponse, 'data', {
+      get() {
+        payloadReads += 1;
+        return [];
+      },
+    });
+
+    requests.settings[0].deferred.resolve(lateResponse);
+    requests.entregadores[0].deferred.resolve(lateResponse);
+    requests.products[0].deferred.resolve(lateResponse);
+    await flushAsync();
+
+    expect(payloadReads).toBe(0);
+  });
+
+  it('contains bootstrap transport rejections instead of leaving unhandled promise rejections', async () => {
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') return resolvedQuery({ data: [], error: null });
+      if (table === 'settings' || table === 'entregadores' || table === 'products') {
+        return makeBootstrapQuery(table, requests);
+      }
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(requests.settings).toHaveLength(1);
+    expect(requests.entregadores).toHaveLength(1);
+    expect(requests.products).toHaveLength(1);
+
+    await act(async () => {
+      requests.settings[0].deferred.reject(new Error('settings network unavailable'));
+      requests.entregadores[0].deferred.reject(new Error('drivers network unavailable'));
+      requests.products[0].deferred.reject(new Error('products network unavailable'));
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="receipt-store-name"]')?.textContent).toBe('');
+  });
+
 });

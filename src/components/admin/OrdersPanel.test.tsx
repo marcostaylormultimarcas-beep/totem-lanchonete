@@ -1416,4 +1416,46 @@ describe('OrdersPanel assignEntregador contract and UI modes', () => {
     expect(findAssignmentSelect()).toBeTruthy();
     expect(findAssignmentSelect()?.disabled).toBe(false);
   });
+
+  it('blocks two assignment changes dispatched in the same turn while the first RPC is pending', async () => {
+    const request = deferred<any>();
+    assignmentResponder = () => request.promise;
+
+    await renderPanel();
+
+    const select = findAssignmentSelect();
+    expect(select).toBeTruthy();
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    expect(valueSetter).toBeTruthy();
+
+    await act(async () => {
+      valueSetter!.call(select, 'driver-1');
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+      valueSetter!.call(select, 'driver-2');
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(assignmentCalls).toEqual([
+      { _order_id: 'order-A-100', _entregador_id: 'driver-1' },
+    ]);
+
+    currentOrder = { ...currentOrder, entregador_id: 'driver-1' };
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          entregador_id: 'driver-1',
+          idempotent: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
 });

@@ -6978,5 +6978,271 @@ describe("PDV DevolucaoModal audit", () => {
       expect.stringContaining("internal refund detail"),
     );
   });
+
+  it("shows order_not_found as a business result without rendering stale items", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "order_not_found" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder("PDV-4040");
+
+    expect(refundModal().textContent).not.toContain("Produto A");
+    expect(toastErrorMock).toHaveBeenCalledWith("Pedido não encontrado");
+    expect(refundCalls()).toHaveLength(0);
+  });
+
+  it("keeps lookup loading authoritative until the server answers", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await setInputValue(orderInput(), "PDV-1001");
+
+    await act(async () => {
+      buttonWithText("Buscar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(buttonWithText("Buscando...")).toHaveProperty("disabled", true);
+    expect(refundModal().textContent).not.toContain("Produto A");
+
+    pending.resolve({
+      data: { ok: true, order: validOrder() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(refundModal().textContent).toContain("Produto A");
+  });
+
+  it("does not let an obsolete lookup response overwrite a newer search", async () => {
+    const first = deferred<{ data: unknown; error: null }>();
+    let lookupCount = 0;
+    const secondProductId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const baseImplementation = rpcMock.getMockImplementation();
+
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        lookupCount += 1;
+        if (lookupCount === 1) return first.promise;
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({
+              id: secondOrderUuid,
+              order_number: "PDV-2002",
+              items: [
+                {
+                  product_id: secondProductId,
+                  name: "Produto B",
+                  quantity: 1,
+                  price: 7.5,
+                },
+              ],
+              total: 7.5,
+            }),
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await setInputValue(orderInput(), "PDV-1001");
+    await act(async () => {
+      buttonWithText("Buscar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await setInputValue(orderInput(), "PDV-2002");
+    expect(buttonWithText("Buscar")).toHaveProperty("disabled", false);
+
+    await act(async () => {
+      buttonWithText("Buscar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(findCalls()).toHaveLength(2);
+    expect(refundModal().textContent).toContain("Produto B");
+    expect(refundModal().textContent).not.toContain("Produto A");
+
+    first.resolve({
+      data: { ok: true, order: validOrder() },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(refundModal().textContent).toContain("Produto B");
+    expect(refundModal().textContent).not.toContain("Produto A");
+  });
+
+  it("ignores a late lookup error after the refund modal closes and reopens", async () => {
+    const pending = deferred<{ data: null; error: unknown }>();
+    let lookupCount = 0;
+    const baseImplementation = rpcMock.getMockImplementation();
+
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        lookupCount += 1;
+        if (lookupCount === 1) return pending.promise;
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await setInputValue(orderInput(), "PDV-1001");
+    await act(async () => {
+      buttonWithText("Buscar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    await openRefundModal();
+    await setInputValue(orderInput(), "PDV-2002");
+
+    pending.resolve({
+      data: null,
+      error: { code: "PGRST500", message: "late internal detail" },
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Devolução de pedido");
+    expect(orderInput().value).toBe("PDV-2002");
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "Não foi possível buscar o pedido. Tente novamente.",
+    );
+  });
+
+  it("clears item selection when a different order is searched", async () => {
+    let lookupCount = 0;
+    const secondProductId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const baseImplementation = rpcMock.getMockImplementation();
+
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        lookupCount += 1;
+        if (lookupCount === 1) {
+          return Promise.resolve({
+            data: { ok: true, order: validOrder() },
+            error: null,
+          });
+        }
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({
+              id: secondOrderUuid,
+              order_number: "PDV-2002",
+              items: [
+                {
+                  product_id: secondProductId,
+                  name: "Produto B",
+                  quantity: 1,
+                  price: 7.5,
+                },
+              ],
+              total: 7.5,
+            }),
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder("PDV-1001");
+    await selectFirstItem();
+
+    await searchOrder("PDV-2002");
+    await setReason("Motivo válido");
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(refundCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith("Selecione ao menos 1 item");
+  });
+
+  it("keeps refund loading authoritative while the refund RPC is pending", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(buttonWithText("Processando devolução...")).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+
+    pending.resolve({
+      data: {
+        ok: true,
+        order_id: orderUuid,
+        valor_devolucao: 10,
+        items: [],
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      expect.stringContaining("Devolução de"),
+    );
+  });
+
 });
 

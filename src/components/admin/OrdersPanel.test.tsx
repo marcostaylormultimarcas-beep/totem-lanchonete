@@ -1459,3 +1459,460 @@ describe('OrdersPanel assignEntregador contract and UI modes', () => {
   });
 
 });
+
+
+describe('OrdersPanel returnDeliveryToQueue lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let assignmentMode: 'manual' | 'free';
+  let currentOrder: ReturnType<typeof makeDeliveryOrder> & {
+    entregador_id?: string | null;
+    delivery_issue_reason?: string | null;
+    delivery_issue_at?: string | null;
+  };
+  let orderFetches: string[];
+  let returnCalls: Array<{ orderId: string; reason: string }>;
+  let returnResponder: (args: { orderId: string; reason: string }) => Promise<any>;
+  let realtimeCallbacks: Array<() => void>;
+  let promptMock: any;
+  let confirmMock: any;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    assignmentMode = 'manual';
+    currentOrder = {
+      ...makeDeliveryOrder('A-100', 'Cliente A'),
+      status: 'out_for_delivery',
+      entregador_id: 'driver-1',
+      delivery_issue_reason: 'Cliente não atendeu',
+      delivery_issue_at: '2026-09-24T18:00:00.000Z',
+    };
+    orderFetches = [];
+    returnCalls = [];
+    realtimeCallbacks = [];
+
+    promptMock = vi.spyOn(window, 'prompt').mockReturnValue('  retorno confirmado  ');
+    confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    returnResponder = async ({ orderId }) => {
+      currentOrder = {
+        ...currentOrder,
+        status: 'ready',
+        entregador_id: null,
+        delivery_issue_reason: null,
+        delivery_issue_at: null,
+      };
+      return {
+        data: { ok: true, status: 'ready', returned_to_queue: true },
+        error: null,
+      };
+    };
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        if (channel === 'admin-orders-org-a') realtimeCallbacks.push(callback);
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'visionfood_return_delivery_to_queue') {
+        const payload = {
+          orderId: args?._order_id || '',
+          reason: args?._reason || '',
+        };
+        returnCalls.push(payload);
+        return returnResponder(payload);
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          const data =
+            organizationId === 'org-a'
+              ? [currentOrder]
+              : [
+                  {
+                    ...makeDeliveryOrder('B-200', 'Cliente B'),
+                    status: 'out_for_delivery',
+                    entregador_id: 'driver-2',
+                  },
+                ];
+          return Promise.resolve({ data, error: null });
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: assignmentMode,
+          },
+          error: null,
+        });
+      }
+
+      if (table === 'entregadores') {
+        return resolvedQuery({
+          data: [
+            { id: 'driver-1', name: 'Entregador 1', active: true },
+            { id: 'driver-2', name: 'Entregador 2', active: true },
+          ],
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    promptMock?.mockRestore();
+    confirmMock?.mockRestore();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async (organizationId = 'org-a') => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findReturnButton = () =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Pedido voltou à loja'),
+    ) as HTMLButtonElement | undefined;
+
+  const findTrackButton = () =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Ver Moto em Tempo Real'),
+    ) as HTMLButtonElement | undefined;
+
+  const clickReturn = async (times = 1) => {
+    const button = findReturnButton();
+    expect(button).toBeTruthy();
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  };
+
+  it('cancels immediately when the reason prompt is dismissed', async () => {
+    promptMock.mockReturnValue(null);
+    await renderPanel();
+
+    await clickReturn();
+
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(returnCalls).toHaveLength(0);
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('trims the reason, sends the canonical payload, closes tracking, refetches and reports manual success', async () => {
+    await renderPanel();
+
+    const trackButton = findTrackButton();
+    expect(trackButton).toBeTruthy();
+    await act(async () => {
+      trackButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('Rastreio em tempo real');
+
+    await clickReturn();
+
+    expect(rpcMock).toHaveBeenCalledWith('visionfood_return_delivery_to_queue', {
+      _order_id: 'order-A-100',
+      _reason: 'retorno confirmado',
+    });
+    expect(returnCalls).toEqual([
+      { orderId: 'order-A-100', reason: 'retorno confirmado' },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      'Entrega voltou para “Pronto” e aguarda outro entregador.',
+    );
+    expect(container.textContent).not.toContain('Rastreio em tempo real');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+  });
+
+  it('rejects a trimmed reason shorter than 3 characters before confirmation or RPC', async () => {
+    promptMock.mockReturnValue(' a ');
+    await renderPanel();
+
+    await clickReturn();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Informe um motivo com pelo menos 3 caracteres.',
+    );
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(returnCalls).toHaveLength(0);
+    expect(orderFetches).toEqual(['org-a']);
+  });
+
+  it('does not call the RPC when physical-return confirmation is cancelled', async () => {
+    confirmMock.mockReturnValue(false);
+    await renderPanel();
+
+    await clickReturn();
+
+    expect(confirmMock).toHaveBeenCalledWith(
+      'Confirme somente se o pedido físico já retornou à loja e está disponível para outro entregador. Continuar?',
+    );
+    expect(returnCalls).toHaveLength(0);
+    expect(orderFetches).toEqual(['org-a']);
+  });
+
+  it('reports free-mode success without changing the canonical RPC payload', async () => {
+    assignmentMode = 'free';
+    await renderPanel();
+
+    await clickReturn();
+
+    expect(returnCalls).toEqual([
+      { orderId: 'order-A-100', reason: 'retorno confirmado' },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('Entrega devolvida à disputa livre.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+  });
+
+  it.each([
+    ['not_out_for_delivery', 'Esta entrega não está mais em rota.'],
+    ['driver_missing', 'O pedido não possui entregador atribuído.'],
+    ['reason_required', 'Informe o motivo.'],
+    ['forbidden', 'Sem permissão para devolver esta entrega à fila.'],
+    ['unauthenticated', 'Não foi possível devolver a entrega à fila.'],
+    ['not_found', 'Não foi possível devolver a entrega à fila.'],
+    ['not_delivery', 'Não foi possível devolver a entrega à fila.'],
+  ])('maps return-to-queue reason %s and refetches the order', async (reason, message) => {
+    returnResponder = async () => ({
+      data: { ok: false, reason },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickReturn();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(message);
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('handles a Supabase error, refetches and releases busy state', async () => {
+    returnResponder = async () => ({
+      data: null,
+      error: { message: 'database unavailable' },
+    });
+
+    await renderPanel();
+    await clickReturn();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível devolver a entrega à fila.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('fails closed on a malformed error payload and refetches', async () => {
+    returnResponder = async () => ({
+      data: { ok: false },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickReturn();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível devolver a entrega à fila.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('does not accept a malformed success payload', async () => {
+    returnResponder = async () => ({
+      data: { ok: true },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickReturn();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível devolver a entrega à fila.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('contains a transport rejection, refetches and releases busy state', async () => {
+    returnResponder = async () => {
+      throw new Error('return delivery network unavailable');
+    };
+
+    await renderPanel();
+    await clickReturn();
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível devolver a entrega à fila.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findReturnButton()?.disabled).toBe(false);
+  });
+
+  it('blocks two return requests dispatched in the same turn while the first RPC is pending', async () => {
+    const request = deferred<any>();
+    returnResponder = () => request.promise;
+
+    await renderPanel();
+    await clickReturn(2);
+
+    expect(returnCalls).toEqual([
+      { orderId: 'order-A-100', reason: 'retorno confirmado' },
+    ]);
+    expect(promptMock).toHaveBeenCalledTimes(1);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+    expect(findReturnButton()?.disabled).toBe(true);
+
+    currentOrder = {
+      ...currentOrder,
+      status: 'ready',
+      entregador_id: null,
+      delivery_issue_reason: null,
+      delivery_issue_at: null,
+    };
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, status: 'ready', returned_to_queue: true },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+  });
+
+  it('ignores a pending return result after the organization changes', async () => {
+    const request = deferred<any>();
+    returnResponder = () => request.promise;
+
+    await renderPanel('org-a');
+    await clickReturn();
+    expect(returnCalls).toHaveLength(1);
+    expect(orderFetches).toEqual(['org-a']);
+
+    await renderPanel('org-b');
+    expect(orderFetches).toEqual(['org-a', 'org-b']);
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, status: 'ready', returned_to_queue: true },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-b']);
+  });
+
+  it('handles a server status change while the return RPC is pending', async () => {
+    const request = deferred<any>();
+    returnResponder = () => request.promise;
+
+    await renderPanel();
+    expect(realtimeCallbacks).toHaveLength(1);
+    await clickReturn();
+
+    currentOrder = { ...currentOrder, status: 'delivered' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+
+    expect(findReturnButton()).toBeUndefined();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: false, reason: 'not_out_for_delivery', current_status: 'delivered' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Esta entrega não está mais em rota.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a', 'org-a']);
+  });
+
+  it('reconciles a driver change while the return RPC is pending', async () => {
+    const request = deferred<any>();
+    returnResponder = () => request.promise;
+
+    await renderPanel();
+    expect(realtimeCallbacks).toHaveLength(1);
+    await clickReturn();
+
+    currentOrder = { ...currentOrder, entregador_id: 'driver-2' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+
+    expect(findReturnButton()).toBeTruthy();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+
+    currentOrder = {
+      ...currentOrder,
+      status: 'ready',
+      entregador_id: null,
+      delivery_issue_reason: null,
+      delivery_issue_at: null,
+    };
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, status: 'ready', returned_to_queue: true },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      'Entrega voltou para “Pronto” e aguarda outro entregador.',
+    );
+    expect(orderFetches).toEqual(['org-a', 'org-a', 'org-a']);
+  });
+});

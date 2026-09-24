@@ -848,3 +848,204 @@ describe('OrdersPanel filters, table labels, realtime and polling lifecycle', ()
   });
 
 });
+
+
+describe('OrdersPanel assignEntregador lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let orderFetches: string[];
+  let assignmentRequest: Deferred<any> | null;
+  let assignmentCalls: Array<{ orderId: string; entregadorId: string | null }>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    orderFetches = [];
+    assignmentRequest = null;
+    assignmentCalls = [];
+
+    channelMock.mockImplementation(() => {
+      const ch: any = {};
+      ch.on = vi.fn(() => ch);
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'assign_entregador') {
+        assignmentCalls.push({
+          orderId: args?._order_id || '',
+          entregadorId: args?._entregador_id ?? null,
+        });
+        if (assignmentRequest) return assignmentRequest.promise;
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: args?._order_id,
+            entregador_id: args?._entregador_id ?? null,
+            idempotent: false,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          return Promise.resolve({
+            data: [
+              makeDeliveryOrder(
+                organizationId === 'org-a' ? 'A-100' : 'B-200',
+                organizationId === 'org-a' ? 'Cliente A' : 'Cliente B',
+              ),
+            ],
+            error: null,
+          });
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      if (table === 'entregadores') {
+        return resolvedQuery({
+          data: [{ id: 'driver-1', name: 'Entregador 1', active: true }],
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const findAssignmentSelect = () =>
+    Array.from(container.querySelectorAll('select')).find(select =>
+      Array.from(select.options).some(option => option.value === 'driver-1'),
+    ) as HTMLSelectElement | undefined;
+
+  const changeAssignment = async (value: string) => {
+    const select = findAssignmentSelect();
+    expect(select).toBeTruthy();
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    expect(valueSetter).toBeTruthy();
+    await act(async () => {
+      valueSetter!.call(select, value);
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushAsync();
+    });
+  };
+
+  it('contains assign_entregador transport rejection and releases the busy state', async () => {
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'assign_entregador') return Promise.reject(new Error('assign network unavailable'));
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    await changeAssignment('driver-1');
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao atribuir entregador.');
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('does not accept malformed success payload from assign_entregador', async () => {
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'assign_entregador') return Promise.resolve({ data: { ok: true }, error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a']);
+    await changeAssignment('driver-1');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao atribuir entregador.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('ignores a pending assignment result after the organization changes', async () => {
+    assignmentRequest = deferred<any>();
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a']);
+    await changeAssignment('driver-1');
+    expect(assignmentCalls).toEqual([{ orderId: 'order-A-100', entregadorId: 'driver-1' }]);
+
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-b" />);
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a', 'org-b']);
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      assignmentRequest!.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          entregador_id: 'driver-1',
+          idempotent: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(orderFetches).toEqual(['org-a', 'org-b']);
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('#B-200');
+    expect(container.textContent).not.toContain('#A-100');
+  });
+});

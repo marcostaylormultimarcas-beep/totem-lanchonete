@@ -2698,6 +2698,8 @@ function PDVMain({
           sessionToken={sessionToken}
           caixaId={caixaId}
           onClose={() => setShowDevolucao(false)}
+          onInvalidCash={onClose}
+          onLogout={onLogout}
         />
       )}
       {showFechar && (
@@ -2965,76 +2967,486 @@ function SangriaModal({
   );
 }
 
+type PdvRefundItem = {
+  product_id: string;
+  name: string;
+  quantity: number;
+  price: number;
+};
+
+type PdvRefundOrder = {
+  id: string;
+  order_number: string;
+  customer_name: string | null;
+  total: number;
+  items: PdvRefundItem[];
+};
+
+function pdvMoneyToSafeCents(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  const cents = Math.round(value * 100);
+  if (
+    !Number.isSafeInteger(cents) ||
+    Math.abs(value * 100 - cents) > 1e-7
+  ) {
+    return null;
+  }
+
+  return cents;
+}
+
+function parsePdvRefundOrder(value: unknown): PdvRefundOrder | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  const rawOrder = payload.order;
+  if (!rawOrder || typeof rawOrder !== "object" || Array.isArray(rawOrder)) {
+    return null;
+  }
+
+  const order = rawOrder as Record<string, unknown>;
+  const id = typeof order.id === "string" ? order.id.trim() : "";
+  if (!PDV_UUID_PATTERN.test(id)) return null;
+
+  const totalCents = pdvMoneyToSafeCents(order.total);
+  if (totalCents === null) return null;
+
+  if (!Array.isArray(order.items) || order.items.length === 0) return null;
+
+  const items: PdvRefundItem[] = [];
+  for (const rawItem of order.items) {
+    if (!rawItem || typeof rawItem !== "object" || Array.isArray(rawItem)) {
+      return null;
+    }
+
+    const item = rawItem as Record<string, unknown>;
+    const productId =
+      typeof item.product_id === "string" ? item.product_id.trim() : "";
+    const quantity = item.quantity;
+    const priceCents = pdvMoneyToSafeCents(item.price);
+
+    if (
+      !PDV_UUID_PATTERN.test(productId) ||
+      typeof quantity !== "number" ||
+      !Number.isSafeInteger(quantity) ||
+      quantity <= 0 ||
+      priceCents === null
+    ) {
+      return null;
+    }
+
+    items.push({
+      product_id: productId,
+      name:
+        typeof item.name === "string" && item.name.trim()
+          ? item.name.trim()
+          : "Produto",
+      quantity,
+      price: priceCents / 100,
+    });
+  }
+
+  return {
+    id,
+    order_number:
+      typeof order.order_number === "string" ? order.order_number : "",
+    customer_name:
+      typeof order.customer_name === "string" ? order.customer_name : null,
+    total: totalCents / 100,
+    items,
+  };
+}
+
+function calculatePdvRefundTotal(
+  items: PdvRefundItem[],
+  selected: Record<string, number>,
+): number | null {
+  let totalCents = 0;
+
+  for (const item of items) {
+    const quantity = selected[item.product_id] ?? 0;
+    if (
+      !Number.isSafeInteger(quantity) ||
+      quantity < 0 ||
+      quantity > item.quantity
+    ) {
+      return null;
+    }
+
+    const priceCents = pdvMoneyToSafeCents(item.price);
+    if (priceCents === null) return null;
+
+    const lineCents = priceCents * quantity;
+    if (!Number.isSafeInteger(lineCents)) return null;
+
+    totalCents += lineCents;
+    if (!Number.isSafeInteger(totalCents)) return null;
+  }
+
+  return totalCents / 100;
+}
+
+function parsePdvRefundSuccess(
+  value: unknown,
+  expectedOrderId: string,
+): number | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  const orderId =
+    typeof payload.order_id === "string" ? payload.order_id.trim() : "";
+  if (orderId !== expectedOrderId) return null;
+  if (!Array.isArray(payload.items)) return null;
+
+  const refundCents = pdvMoneyToSafeCents(payload.valor_devolucao);
+  if (refundCents === null || refundCents <= 0) return null;
+
+  return refundCents / 100;
+}
+
 function DevolucaoModal({
   operador,
   sessionToken,
   caixaId,
   onClose,
+  onInvalidCash,
+  onLogout,
 }: {
   operador: Operador;
   sessionToken: string;
   caixaId: string;
   onClose: () => void;
+  onInvalidCash: () => void;
+  onLogout: () => void;
 }) {
   const [orderId, setOrderId] = useState("");
-  const [order, setOrder] = useState<any | null>(null);
-  const [items, setItems] = useState<any[]>([]);
-  const [selected, setSelected] = useState<Record<number, number>>({});
+  const [order, setOrder] = useState<PdvRefundOrder | null>(null);
+  const [items, setItems] = useState<PdvRefundItem[]>([]);
+  const [selected, setSelected] = useState<Record<string, number>>({});
   const [motivo, setMotivo] = useState("");
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const searchRequestIdRef = useRef(0);
+  const refundRequestIdRef = useRef(0);
+  const searchingRef = useRef(false);
+  const refundingRef = useRef(false);
 
-  const buscar = async () => {
-    if (!orderId.trim()) return;
-    setLoading(true);
-    const { data, error } = await pdvRpc.findOrder(sessionToken, orderId.trim());
-    setLoading(false);
-    const res = data as any;
-    if (error || !res?.ok || !res?.order) {
-      setOrder(null);
-      setItems([]);
-      return toast.error(res?.reason === "invalid_session" ? "Sessão expirada. Entre novamente." : "Pedido não encontrado");
-    }
-    const dataOrder = res.order;
-    setOrder(dataOrder);
-    const arr = Array.isArray(dataOrder.items) ? dataOrder.items : [];
-    setItems(arr);
-    setSelected({});
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      searchRequestIdRef.current += 1;
+      refundRequestIdRef.current += 1;
+      searchingRef.current = false;
+      refundingRef.current = false;
+    };
+  }, []);
+
+  const invalidateAsyncWork = () => {
+    searchRequestIdRef.current += 1;
+    refundRequestIdRef.current += 1;
+    searchingRef.current = false;
+    refundingRef.current = false;
   };
 
-  const toggleQty = (idx: number, delta: number, max: number) => {
-    setSelected((s) => {
-      const cur = s[idx] || 0;
-      const next = Math.max(0, Math.min(max, cur + delta));
-      return { ...s, [idx]: next };
-    });
-  };
-
-  const valorTotal = useMemo(() => {
-    return items.reduce((sum, it, idx) => {
-      const qty = selected[idx] || 0;
-      const price = Number(it.price) || 0;
-      return sum + qty * price;
-    }, 0);
-  }, [items, selected]);
-
-  const confirmar = async () => {
-    const devolvidos = items
-      .map((it, idx) => ({ ...it, quantity: selected[idx] || 0 }))
-      .filter((x) => x.quantity > 0);
-    if (devolvidos.length === 0) return toast.error("Selecione ao menos 1 item");
-    if (motivo.trim().length < 3) return toast.error("Informe o motivo");
-    setLoading(true);
-    const { data, error } = await pdvRpc.refund(sessionToken, caixaId, order.id, devolvidos, valorTotal, motivo.trim());
-    setLoading(false);
-    const res = data as any;
-    if (error || !res?.ok) return toast.error("Falha ao processar devolução");
-    const canonicalRefund = Number(res.valor_devolucao) || 0;
-    toast.success(`Devolução de ${fmt(canonicalRefund)} registrada`);
+  const closeModal = () => {
+    invalidateAsyncWork();
     onClose();
   };
 
+  const clearLoadedOrder = () => {
+    setOrder(null);
+    setItems([]);
+    setSelected({});
+  };
+
+  const buscar = async () => {
+    const query = orderId.trim();
+    if (query.length < 4) {
+      toast.error("Informe ao menos 4 caracteres do pedido");
+      return;
+    }
+    if (searchingRef.current || refundingRef.current) return;
+
+    searchingRef.current = true;
+    const requestId = ++searchRequestIdRef.current;
+    setLoading(true);
+    clearLoadedOrder();
+
+    try {
+      let data: unknown;
+      let error: unknown;
+
+      try {
+        const result = await pdvRpc.findOrder(sessionToken, query);
+        data = result.data;
+        error = result.error;
+      } catch (lookupError) {
+        if (
+          !mountedRef.current ||
+          requestId !== searchRequestIdRef.current
+        ) {
+          return;
+        }
+
+        console.error("[PDV] pdv_buscar_pedido_v2 rejected", lookupError);
+        toast.error("Não foi possível buscar o pedido. Tente novamente.");
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        requestId !== searchRequestIdRef.current
+      ) {
+        return;
+      }
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_buscar_pedido_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível buscar o pedido. Tente novamente.");
+        return;
+      }
+
+      if (
+        data &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        (data as Record<string, unknown>).ok === false
+      ) {
+        const reason = (data as Record<string, unknown>).reason;
+
+        if (reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          invalidateAsyncWork();
+          onLogout();
+          return;
+        }
+
+        if (reason === "order_not_found") {
+          toast.error("Pedido não encontrado");
+          return;
+        }
+
+        if (reason === "invalid_query") {
+          toast.error("Informe ao menos 4 caracteres do pedido");
+          return;
+        }
+
+        toast.error("Não foi possível buscar o pedido. Tente novamente.");
+        return;
+      }
+
+      const parsedOrder = parsePdvRefundOrder(data);
+      if (!parsedOrder) {
+        toast.error("Resposta inválida ao buscar o pedido. Tente novamente.");
+        return;
+      }
+
+      setOrder(parsedOrder);
+      setItems(parsedOrder.items);
+      setSelected({});
+    } finally {
+      if (
+        mountedRef.current &&
+        requestId === searchRequestIdRef.current
+      ) {
+        searchingRef.current = false;
+        setLoading(false);
+      }
+    }
+  };
+
+  const toggleQty = (
+    productId: string,
+    delta: -1 | 1,
+    max: number,
+  ) => {
+    if (!PDV_UUID_PATTERN.test(productId) || !Number.isSafeInteger(max) || max <= 0) {
+      return;
+    }
+
+    setSelected((current) => {
+      const previous = current[productId] ?? 0;
+      if (!Number.isSafeInteger(previous) || previous < 0) {
+        return current;
+      }
+
+      const next = Math.max(0, Math.min(max, previous + delta));
+      if (next === previous) return current;
+      return { ...current, [productId]: next };
+    });
+  };
+
+  const valorTotal = useMemo(
+    () => calculatePdvRefundTotal(items, selected),
+    [items, selected],
+  );
+
+  const confirmar = async () => {
+    if (refundingRef.current || searchingRef.current) return;
+    if (!order) return;
+
+    const devolvidos = items
+      .map((item) => ({
+        product_id: item.product_id,
+        quantity: selected[item.product_id] ?? 0,
+      }))
+      .filter((item) => item.quantity > 0);
+
+    if (devolvidos.length === 0) {
+      toast.error("Selecione ao menos 1 item");
+      return;
+    }
+
+    const trimmedReason = motivo.trim();
+    if (trimmedReason.length < 3) {
+      toast.error("Informe o motivo");
+      return;
+    }
+
+    if (valorTotal === null) {
+      toast.error("Itens selecionados inválidos. Busque o pedido novamente.");
+      return;
+    }
+
+    refundingRef.current = true;
+    const requestId = ++refundRequestIdRef.current;
+    setLoading(true);
+
+    try {
+      let data: unknown;
+      let error: unknown;
+
+      try {
+        const result = await pdvRpc.refund(
+          sessionToken,
+          caixaId,
+          order.id,
+          devolvidos,
+          valorTotal,
+          trimmedReason,
+        );
+        data = result.data;
+        error = result.error;
+      } catch (refundError) {
+        if (
+          !mountedRef.current ||
+          requestId !== refundRequestIdRef.current
+        ) {
+          return;
+        }
+
+        console.error("[PDV] pdv_devolver_pedido_v2 rejected", refundError);
+        toast.error("Não foi possível processar a devolução. Tente novamente.");
+        return;
+      }
+
+      if (
+        !mountedRef.current ||
+        requestId !== refundRequestIdRef.current
+      ) {
+        return;
+      }
+
+      if (error) {
+        const transportError = error as any;
+        console.error("[PDV] pdv_devolver_pedido_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível processar a devolução. Tente novamente.");
+        return;
+      }
+
+      if (
+        data &&
+        typeof data === "object" &&
+        !Array.isArray(data) &&
+        (data as Record<string, unknown>).ok === false
+      ) {
+        const reason = (data as Record<string, unknown>).reason;
+
+        if (reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          invalidateAsyncWork();
+          onLogout();
+          return;
+        }
+
+        if (reason === "invalid_cash_register") {
+          toast.error("Caixa não está mais aberto. Reabra o caixa.");
+          invalidateAsyncWork();
+          onInvalidCash();
+          return;
+        }
+
+        if (
+          reason === "return_quantity_exceeds_available" ||
+          reason === "nothing_left_to_refund" ||
+          reason === "duplicate_return_item"
+        ) {
+          clearLoadedOrder();
+          toast.error(
+            "A quantidade disponível para devolução mudou. Busque o pedido novamente.",
+          );
+          return;
+        }
+
+        if (reason === "order_not_found") {
+          clearLoadedOrder();
+          toast.error("Pedido não está mais disponível para devolução.");
+          return;
+        }
+
+        if (
+          reason === "invalid_return" ||
+          reason === "invalid_return_item" ||
+          reason === "invalid_return_quantity" ||
+          reason === "item_not_in_order" ||
+          reason === "invalid_original_items" ||
+          reason === "invalid_original_item" ||
+          reason === "invalid_original_price" ||
+          reason === "invalid_original_total"
+        ) {
+          toast.error("Devolução rejeitada. Busque o pedido novamente.");
+          return;
+        }
+
+        toast.error("Não foi possível processar a devolução. Tente novamente.");
+        return;
+      }
+
+      const canonicalRefund = parsePdvRefundSuccess(data, order.id);
+      if (canonicalRefund === null) {
+        toast.error("Resposta inválida ao processar devolução. Tente novamente.");
+        return;
+      }
+
+      toast.success("Devolução de " + fmt(canonicalRefund) + " registrada");
+      closeModal();
+    } finally {
+      if (
+        mountedRef.current &&
+        requestId === refundRequestIdRef.current
+      ) {
+        refundingRef.current = false;
+        setLoading(false);
+      }
+    }
+  };
+
   return (
-    <ModalShell title="Devolução de pedido" onClose={onClose}>
+    <ModalShell title="Devolução de pedido" onClose={closeModal}>
       <div className="flex items-center gap-2">
         <input
           value={orderId}
@@ -3045,9 +3457,9 @@ function DevolucaoModal({
         <button
           onClick={buscar}
           disabled={loading}
-          className="touch-btn px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 font-bold text-sm hover:bg-amber-400"
+          className="touch-btn px-4 py-2 rounded-lg bg-amber-500 text-zinc-950 font-bold text-sm hover:bg-amber-400 disabled:opacity-60"
         >
-          Buscar
+          {loading && searchingRef.current ? "Buscando..." : "Buscar"}
         </button>
       </div>
 
@@ -3055,32 +3467,32 @@ function DevolucaoModal({
         <div className="space-y-2">
           <div className="text-xs text-zinc-400">
             Pedido {order.id.slice(0, 8)} • {order.customer_name || "-"} •{" "}
-            <b className="text-amber-400">{fmt(Number(order.total))}</b>
+            <b className="text-amber-400">{fmt(order.total)}</b>
           </div>
           <div className="space-y-1.5 max-h-60 overflow-y-auto">
-            {items.map((it: any, idx) => {
-              const max = Number(it.quantity) || 1;
-              const cur = selected[idx] || 0;
+            {items.map((item) => {
+              const max = item.quantity;
+              const current = selected[item.product_id] ?? 0;
               return (
                 <div
-                  key={idx}
+                  key={item.product_id}
                   className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 flex items-center gap-2"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">{it.name}</div>
+                    <div className="text-sm text-white truncate">{item.name}</div>
                     <div className="text-xs text-zinc-500">
-                      {fmt(Number(it.price))} × até {max}
+                      {fmt(item.price)} × até {max}
                     </div>
                   </div>
                   <button
-                    onClick={() => toggleQty(idx, -1, max)}
+                    onClick={() => toggleQty(item.product_id, -1, max)}
                     className="w-7 h-7 rounded-md bg-zinc-800"
                   >
                     <Minus className="w-3.5 h-3.5 mx-auto" />
                   </button>
-                  <div className="w-6 text-center text-sm font-bold">{cur}</div>
+                  <div className="w-6 text-center text-sm font-bold">{current}</div>
                   <button
-                    onClick={() => toggleQty(idx, 1, max)}
+                    onClick={() => toggleQty(item.product_id, 1, max)}
                     className="w-7 h-7 rounded-md bg-zinc-800"
                   >
                     <Plus className="w-3.5 h-3.5 mx-auto" />
@@ -3098,14 +3510,18 @@ function DevolucaoModal({
           />
           <div className="flex items-center justify-between text-sm">
             <span className="text-zinc-400">Valor a estornar (dinheiro):</span>
-            <b className="text-amber-400">{fmt(valorTotal)}</b>
+            <b className="text-amber-400">
+              {fmt(valorTotal ?? 0)}
+            </b>
           </div>
           <button
             disabled={loading}
             onClick={confirmar}
             className="w-full touch-btn rounded-xl bg-amber-500 text-zinc-950 font-bold py-3 hover:bg-amber-400 disabled:opacity-60"
           >
-            Confirmar devolução
+            {loading && refundingRef.current
+              ? "Processando devolução..."
+              : "Confirmar devolução"}
           </button>
         </div>
       )}

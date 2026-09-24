@@ -825,17 +825,18 @@ describe('OrdersPanel filters, table labels, realtime and polling lifecycle', ()
       const dateInputs = Array.from(container.querySelectorAll('input[type="date"]')) as HTMLInputElement[];
       expect(dateInputs).toHaveLength(2);
 
+      const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      expect(valueSetter).toBeTruthy();
+
       await act(async () => {
-        dateInputs[0].value = '2026-09-24';
+        valueSetter!.call(dateInputs[0], '2026-09-24');
         dateInputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-        dateInputs[0].dispatchEvent(new Event('change', { bubbles: true }));
         await flushAsync();
       });
 
       await act(async () => {
-        dateInputs[1].value = '2026-09-24';
+        valueSetter!.call(dateInputs[1], '2026-09-24');
         dateInputs[1].dispatchEvent(new Event('input', { bubbles: true }));
-        dateInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
         await flushAsync();
       });
 

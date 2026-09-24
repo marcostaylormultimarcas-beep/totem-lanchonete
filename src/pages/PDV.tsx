@@ -3166,6 +3166,20 @@ function DevolucaoModal({
     setSelected({});
   };
 
+  const changeOrderId = (value: string) => {
+    setOrderId(value);
+    clearLoadedOrder();
+
+    // A result belongs to the exact query that started it. If the operator edits
+    // the query while a lookup is pending, invalidate that lookup immediately so
+    // a new search can start and the obsolete response cannot populate the modal.
+    if (searchingRef.current) {
+      searchRequestIdRef.current += 1;
+      searchingRef.current = false;
+      setLoading(refundingRef.current);
+    }
+  };
+
   const buscar = async () => {
     const query = orderId.trim();
     if (query.length < 4) {
@@ -3450,9 +3464,10 @@ function DevolucaoModal({
       <div className="flex items-center gap-2">
         <input
           value={orderId}
-          onChange={(e) => setOrderId(e.target.value)}
+          onChange={(e) => changeOrderId(e.target.value)}
+          disabled={refundingRef.current}
           placeholder="Número/ID do pedido"
-          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none"
+          className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white focus:border-amber-500 outline-none disabled:opacity-60"
         />
         <button
           onClick={buscar}

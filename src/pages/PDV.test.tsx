@@ -5606,6 +5606,261 @@ describe("PDV PIX request invalidation", () => {
     expect(readCustomerMirror().forma).toBe("pix");
   });
 
+
+  function nonPixSaleSuccess(overrides: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      order_id: "34343434-3434-4434-8434-343434343434",
+      order_number: "PDV-CASH-1",
+      created_at: "2026-09-24T11:00:00.000Z",
+      subtotal: 10,
+      desconto: 0,
+      total: 10,
+      items: [
+        {
+          product_id: product.id,
+          name: product.name,
+          price: 10,
+          quantity: 1,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  function mockNonPixSale(
+    response: () => Promise<{ data: unknown; error: unknown }>,
+  ) {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_registrar_venda_v2") return response();
+      return baseImplementation!(name, ...args);
+    });
+  }
+
+  async function startNonPixSale() {
+    await renderMain();
+    await clickProduct();
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  it("expires the whole PDV session when a cash/card sale reports invalid_session", async () => {
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: { ok: false, reason: "invalid_session" },
+        error: null,
+      }),
+    );
+
+    await startNonPixSale();
+
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Sessão expirada. Entre novamente.",
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+  });
+
+  it("returns to cash opening when the server closes the cash register during a non-PIX sale", async () => {
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: { ok: false, reason: "invalid_cash_register" },
+        error: null,
+      }),
+    );
+
+    await startNonPixSale();
+
+    expect(container.textContent).toContain("Abertura de Caixa");
+    const persisted = JSON.parse(
+      sessionStorage.getItem(PDV_SESSION_KEY) || "null",
+    );
+    expect(persisted?.caixaId).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Caixa não está mais aberto. Reabra o caixa.",
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+  });
+
+  it("does not leak a non-PIX PostgREST error message to the operator", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: null,
+        error: {
+          code: "PGRST000",
+          status: 503,
+          message: "database connection detail",
+        },
+      }),
+    );
+
+    await startNonPixSale();
+
+    expect(button("Finalizar venda").hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível registrar a venda. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      "database connection detail",
+    );
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] pdv_registrar_venda_v2 transport error",
+      { code: "PGRST000", status: 503 },
+    );
+  });
+
+  it("contains a rejected non-PIX sale Promise and releases the current comanda", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockNonPixSale(() =>
+      Promise.reject(
+        Object.assign(new Error("database offline detail"), {
+          code: "PGRST000",
+          status: 503,
+        }),
+      ),
+    );
+
+    await startNonPixSale();
+    await flushAsync();
+
+    expect(button("Finalizar venda").hasAttribute("disabled")).toBe(false);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível registrar a venda. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith("database offline detail");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[PDV] pdv_registrar_venda_v2 rejected",
+      { code: "PGRST000", status: 503 },
+    );
+    expect(readCustomerMirror().items).toHaveLength(1);
+  });
+
+  it("fails closed on a truthy non-boolean non-PIX sale success flag", async () => {
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: nonPixSaleSuccess({ ok: "true" }),
+        error: null,
+      }),
+    );
+
+    await startNonPixSale();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao registrar a venda. Tente novamente.",
+    );
+    expect(readCustomerMirror().items).toHaveLength(1);
+  });
+
+  it("fails closed when a non-PIX success omits the authoritative total", async () => {
+    const payload = nonPixSaleSuccess();
+    delete (payload as Record<string, unknown>).total;
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: payload,
+        error: null,
+      }),
+    );
+
+    await startNonPixSale();
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao registrar a venda. Tente novamente.",
+    );
+    expect(readCustomerMirror().items).toHaveLength(1);
+  });
+
+  it("does not let an old non-PIX sale response erase edits for the next comanda", async () => {
+    const pendingSale = deferred<{ data: unknown; error: null }>();
+    mockNonPixSale(() => pendingSale.promise);
+
+    await renderMain();
+    await clickProduct();
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    await clickProduct();
+    expect(readCustomerMirror().items?.[0]?.quantity).toBe(2);
+
+    pendingSale.resolve({
+      data: nonPixSaleSuccess(),
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("Venda registrada"),
+    );
+    expect(readCustomerMirror().items?.[0]?.quantity).toBe(2);
+    expect(readCustomerMirror().forma).toBe("dinheiro");
+  });
+
+  it("keeps cartão on the same authoritative non-PIX sale contract", async () => {
+    mockNonPixSale(() =>
+      Promise.resolve({
+        data: nonPixSaleSuccess({
+          order_number: "PDV-CARD-1",
+        }),
+        error: null,
+      }),
+    );
+
+    await renderMain();
+    await clickProduct();
+    await choosePayment("Cartão");
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_registrar_venda_v2", {
+      _session_token: savedSession.sessionToken,
+      _caixa_id: openCaixaId,
+      _items: [
+        {
+          id: product.id,
+          product_id: product.id,
+          name: product.name,
+          price: 10,
+          quantity: 1,
+        },
+      ],
+      _forma: "cartao",
+      _total: 10,
+      _cupom_code: "",
+      _desconto: 0,
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      "Venda registrada — R$ 10,00",
+    );
+  });
+
 });
 
 describe("PDV Sangria / Suprimento audit", () => {

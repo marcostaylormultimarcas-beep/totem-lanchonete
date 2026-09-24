@@ -1049,3 +1049,371 @@ describe('OrdersPanel assignEntregador lifecycle', () => {
     expect(container.textContent).not.toContain('#A-100');
   });
 });
+
+
+describe('OrdersPanel assignEntregador contract and UI modes', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let assignmentMode: 'manual' | 'free';
+  let currentOrder: any;
+  let orderFetches: string[];
+  let assignmentCalls: Array<{ _order_id: string; _entregador_id: string | null }>;
+  let realtimeCallbacks: Array<() => void>;
+  let assignmentResponder: (args: { _order_id: string; _entregador_id: string | null }) => Promise<any>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    assignmentMode = 'manual';
+    currentOrder = makeDeliveryOrder('A-100', 'Cliente A');
+    orderFetches = [];
+    assignmentCalls = [];
+    realtimeCallbacks = [];
+    assignmentResponder = async args => ({
+      data: {
+        ok: true,
+        order_id: args._order_id,
+        entregador_id: args._entregador_id,
+        idempotent: false,
+      },
+      error: null,
+    });
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        if (channel === 'admin-orders-org-a') realtimeCallbacks.push(callback);
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'assign_entregador') {
+        const payload = {
+          _order_id: args?._order_id || '',
+          _entregador_id: args?._entregador_id ?? null,
+        };
+        assignmentCalls.push(payload);
+        return assignmentResponder(payload);
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          return Promise.resolve({ data: [currentOrder], error: null });
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: assignmentMode,
+          },
+          error: null,
+        });
+      }
+
+      if (table === 'entregadores') {
+        return resolvedQuery({
+          data: [
+            { id: 'driver-1', name: 'Entregador 1', active: true },
+            { id: 'driver-2', name: 'Entregador 2', active: true },
+          ],
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async () => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+  };
+
+  const findAssignmentSelect = () =>
+    Array.from(container.querySelectorAll('select')).find(select =>
+      Array.from(select.options).some(option => option.value === 'driver-1'),
+    ) as HTMLSelectElement | undefined;
+
+  const changeAssignment = async (value: string) => {
+    const select = findAssignmentSelect();
+    expect(select).toBeTruthy();
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    expect(valueSetter).toBeTruthy();
+    await act(async () => {
+      valueSetter!.call(select, value);
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushAsync();
+    });
+  };
+
+  it('sends the canonical payload, blocks a simultaneous second assignment, refetches on success and releases busy state', async () => {
+    const request = deferred<any>();
+    assignmentResponder = () => request.promise;
+
+    await renderPanel();
+    expect(orderFetches).toEqual(['org-a']);
+
+    await changeAssignment('driver-1');
+
+    expect(assignmentCalls).toEqual([
+      { _order_id: 'order-A-100', _entregador_id: 'driver-1' },
+    ]);
+    expect(rpcMock).toHaveBeenCalledWith('assign_entregador', {
+      _order_id: 'order-A-100',
+      _entregador_id: 'driver-1',
+    });
+    expect(findAssignmentSelect()?.disabled).toBe(true);
+
+    const select = findAssignmentSelect()!;
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    await act(async () => {
+      valueSetter!.call(select, 'driver-2');
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(assignmentCalls).toHaveLength(1);
+
+    currentOrder = { ...currentOrder, entregador_id: 'driver-1' };
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          entregador_id: 'driver-1',
+          idempotent: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      'Entregador reservado para o pedido. Ele iniciará a entrega após retirar na loja.',
+    );
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+    expect(findAssignmentSelect()?.value).toBe('driver-1');
+  });
+
+  it('removes a manual assignment with _entregador_id null and refetches the order', async () => {
+    currentOrder = { ...currentOrder, entregador_id: 'driver-1' };
+    assignmentResponder = async args => {
+      currentOrder = { ...currentOrder, entregador_id: null };
+      return {
+        data: {
+          ok: true,
+          order_id: args._order_id,
+          entregador_id: null,
+          idempotent: false,
+        },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+    expect(findAssignmentSelect()?.value).toBe('driver-1');
+
+    await changeAssignment('');
+
+    expect(assignmentCalls).toEqual([
+      { _order_id: 'order-A-100', _entregador_id: null },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('Atribuição removida.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(findAssignmentSelect()?.value).toBe('');
+  });
+
+  it('keeps an unassigned ready order in free mode out of the manual selector', async () => {
+    assignmentMode = 'free';
+
+    await renderPanel();
+
+    expect(findAssignmentSelect()).toBeUndefined();
+    expect(container.textContent).toContain('Disputa livre: este pedido está disponível no app dos entregadores.');
+    expect(assignmentCalls).toHaveLength(0);
+  });
+
+  it('releases an assigned ready order back to free mode through assign_entregador null', async () => {
+    assignmentMode = 'free';
+    currentOrder = { ...currentOrder, entregador_id: 'driver-1' };
+    assignmentResponder = async args => {
+      currentOrder = { ...currentOrder, entregador_id: null };
+      return {
+        data: {
+          ok: true,
+          order_id: args._order_id,
+          entregador_id: null,
+          idempotent: false,
+        },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+
+    const releaseButton = Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Liberar para outro entregador'),
+    );
+    expect(releaseButton).toBeTruthy();
+
+    await act(async () => {
+      releaseButton!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(assignmentCalls).toEqual([
+      { _order_id: 'order-A-100', _entregador_id: null },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pedido liberado para os outros entregadores.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('Disputa livre: este pedido está disponível no app dos entregadores.');
+  });
+
+  it.each([
+    ['delivery_in_progress', 'A entrega já saiu da loja. Use “Devolver à fila” antes de trocar o entregador.'],
+    ['status_locked', 'Este pedido não permite mais alterar o entregador.'],
+    ['entregador_invalid', 'Entregador inválido ou inativo.'],
+    ['forbidden', 'Sem permissão para alterar esta entrega.'],
+  ])('maps assign_entregador reason %s and releases busy state', async (reason, message) => {
+    assignmentResponder = async () => ({
+      data: { ok: false, reason },
+      error: null,
+    });
+
+    await renderPanel();
+    await changeAssignment('driver-1');
+
+    expect(toastErrorMock).toHaveBeenCalledWith(message);
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('fails closed on a Supabase error response and releases busy state', async () => {
+    assignmentResponder = async () => ({
+      data: null,
+      error: { message: 'database unavailable' },
+    });
+
+    await renderPanel();
+    await changeAssignment('driver-1');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao atribuir entregador.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('fails closed on malformed error payload', async () => {
+    assignmentResponder = async () => ({
+      data: { ok: false, reason: 42 },
+      error: null,
+    });
+
+    await renderPanel();
+    await changeAssignment('driver-1');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao atribuir entregador.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('rejects a success payload correlated to another order', async () => {
+    assignmentResponder = async () => ({
+      data: {
+        ok: true,
+        order_id: 'order-other',
+        entregador_id: 'driver-1',
+        idempotent: false,
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await changeAssignment('driver-1');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao atribuir entregador.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a']);
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+
+  it('handles a server status change while assign_entregador is pending without stale success UI', async () => {
+    const request = deferred<any>();
+    assignmentResponder = () => request.promise;
+
+    await renderPanel();
+    expect(realtimeCallbacks).toHaveLength(1);
+
+    await changeAssignment('driver-1');
+    expect(findAssignmentSelect()?.disabled).toBe(true);
+
+    currentOrder = { ...currentOrder, status: 'out_for_delivery', entregador_id: null };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+
+    expect(findAssignmentSelect()).toBeUndefined();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: false, reason: 'delivery_in_progress' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'A entrega já saiu da loja. Use “Devolver à fila” antes de trocar o entregador.',
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+
+    currentOrder = { ...currentOrder, status: 'ready', entregador_id: null };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+
+    expect(findAssignmentSelect()).toBeTruthy();
+    expect(findAssignmentSelect()?.disabled).toBe(false);
+  });
+});

@@ -7468,9 +7468,7 @@ describe("PDV FechamentoModal audit", () => {
   it.each([
     ["closed", "closed"],
     ["fechado", "fechado"],
-    ["missing", undefined],
-    ["malformed", 123],
-  ])("does not treat a non-open summary status as an active cash register: %s", async (_label, status) => {
+  ])("does not treat a closed summary status as an active cash register: %s", async (_label, status) => {
     const baseImplementation = rpcMock.getMockImplementation();
     rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
       if (name === "pdv_caixa_resumo_v2") {
@@ -7490,6 +7488,31 @@ describe("PDV FechamentoModal audit", () => {
     );
     expect(container.textContent).toContain("Abertura de Caixa");
     expect(sessionStorage.getItem(PDV_SESSION_KEY)).not.toBeNull();
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["malformed", 123],
+  ])("rejects malformed summary status: %s", async (_label, status) => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: true, status, resumo: validSummary() },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao carregar resumo do caixa. Tente novamente.",
+    );
+    expect(container.textContent).toContain("Fechamento de Caixa");
+    expect(container.textContent).not.toContain("Abertura de Caixa");
   });
 
   it("fails closed on a truthy non-boolean summary success flag", async () => {

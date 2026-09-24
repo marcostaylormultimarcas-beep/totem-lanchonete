@@ -327,6 +327,109 @@ function parsePdvPixSaleSuccess(
   };
 }
 
+type PdvNonPixSaleSuccess = {
+  order_id: string;
+  order_number: string;
+  created_at: string;
+  subtotal: number;
+  desconto: number;
+  total: number;
+  items: PdvPixSaleItem[];
+};
+
+function parsePdvNonPixSaleSuccess(
+  value: unknown,
+): PdvNonPixSaleSuccess | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const payload = value as Record<string, unknown>;
+  if (payload.ok !== true) return null;
+
+  const orderId =
+    typeof payload.order_id === "string" ? payload.order_id.trim() : "";
+  const orderNumber =
+    typeof payload.order_number === "string" ? payload.order_number.trim() : "";
+  const createdAt =
+    typeof payload.created_at === "string" ? payload.created_at.trim() : "";
+  if (!PDV_UUID_PATTERN.test(orderId) || !orderNumber || !createdAt) {
+    return null;
+  }
+
+  const subtotalCents = pdvMoneyToSafeCents(payload.subtotal);
+  const descontoCents = pdvMoneyToSafeCents(payload.desconto);
+  const totalCents = pdvMoneyToSafeCents(payload.total);
+  if (
+    subtotalCents === null ||
+    descontoCents === null ||
+    totalCents === null ||
+    descontoCents > subtotalCents ||
+    totalCents !== subtotalCents - descontoCents
+  ) {
+    return null;
+  }
+
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    return null;
+  }
+
+  const items: PdvPixSaleItem[] = [];
+  for (const raw of payload.items) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const item = raw as Record<string, unknown>;
+    const productId =
+      typeof item.product_id === "string" ? item.product_id.trim() : "";
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const priceCents = pdvMoneyToSafeCents(item.price);
+    const quantity =
+      typeof item.quantity === "number" ? item.quantity : Number.NaN;
+
+    if (
+      !PDV_UUID_PATTERN.test(productId) ||
+      !name ||
+      priceCents === null ||
+      !Number.isSafeInteger(quantity) ||
+      quantity <= 0 ||
+      quantity > PDV_MAX_ITEM_QUANTITY
+    ) {
+      return null;
+    }
+
+    items.push({
+      product_id: productId,
+      name,
+      price: priceCents / 100,
+      quantity,
+    });
+  }
+
+  return {
+    order_id: orderId,
+    order_number: orderNumber,
+    created_at: createdAt,
+    subtotal: subtotalCents / 100,
+    desconto: descontoCents / 100,
+    total: totalCents / 100,
+    items,
+  };
+}
+
+function pdvNonPixSaleReasonMessage(reason: unknown) {
+  const messages: Record<string, string> = {
+    payment_method_disabled: "Forma de pagamento indisponível.",
+    invalid_coupon: "Cupom não é mais válido para esta venda. Revise o pedido.",
+    coupon_minimum_not_met:
+      "O pedido não atende mais ao mínimo do cupom. Revise o pedido.",
+    product_not_found: "Produto indisponível. Atualize o carrinho.",
+    invalid_sale: "Venda rejeitada. Revise os itens e tente novamente.",
+    invalid_quantity: "Venda rejeitada. Revise os itens e tente novamente.",
+    invalid_product_id: "Venda rejeitada. Revise os itens e tente novamente.",
+  };
+
+  return typeof reason === "string" && messages[reason]
+    ? messages[reason]
+    : "Falha ao registrar venda";
+}
+
 function pdvPixSaleReasonMessage(reason: unknown) {
   const messages: Record<string, string> = {
     invalid_pix_intent: "PIX inválido para esta sessão. Gere um novo PIX.",
@@ -2311,19 +2414,89 @@ function PDVMain({
       if (!isCurrentPixSale()) return;
       res = parsedSale;
     } else {
-      const { data, error } = await pdvRpc.sale(
-        sessionToken,
-        caixaId,
-        items,
-        forma,
-        total,
-        snapCupom,
-        desconto,
-      );
-      setSaleLoading(false);
-      if (error) return toast.error(error.message);
-      res = data as any;
-      if (!res?.ok) return toast.error("Falha ao registrar venda");
+      const requestKey = pixInputKeyRef.current;
+      const isCurrentNonPixSale = () =>
+        finalizeMountedRef.current &&
+        pixInputKeyRef.current === requestKey;
+
+      let saleData: unknown;
+      let saleError: unknown;
+
+      try {
+        const result = await pdvRpc.sale(
+          sessionToken,
+          caixaId,
+          items,
+          forma,
+          total,
+          snapCupom,
+          desconto,
+        );
+        saleData = result.data;
+        saleError = result.error;
+      } catch (saleRequestError: any) {
+        if (finalizeMountedRef.current) setSaleLoading(false);
+        if (!isCurrentNonPixSale()) return;
+
+        console.error("[PDV] pdv_registrar_venda_v2 rejected", {
+          code: saleRequestError?.code,
+          status: saleRequestError?.status,
+        });
+        toast.error("Não foi possível registrar a venda. Tente novamente.");
+        return;
+      }
+
+      if (finalizeMountedRef.current) setSaleLoading(false);
+
+      // A completed request belongs only to the cart/payment/coupon/session/cash
+      // snapshot that started it. Never clear a newer comanda with an old reply.
+      if (!isCurrentNonPixSale()) return;
+
+      if (saleError) {
+        const transportError = saleError as any;
+        console.error("[PDV] pdv_registrar_venda_v2 transport error", {
+          code: transportError?.code,
+          status: transportError?.status,
+        });
+        toast.error("Não foi possível registrar a venda. Tente novamente.");
+        return;
+      }
+
+      if (
+        saleData &&
+        typeof saleData === "object" &&
+        !Array.isArray(saleData) &&
+        (saleData as Record<string, unknown>).ok === false
+      ) {
+        const reason = (saleData as Record<string, unknown>).reason;
+
+        if (reason === "invalid_session") {
+          toast.error("Sessão expirada. Entre novamente.");
+          onLogout();
+          return;
+        }
+
+        if (reason === "invalid_cash_register") {
+          toast.error("Caixa não está mais aberto. Reabra o caixa.");
+          onClose();
+          return;
+        }
+
+        toast.error(pdvNonPixSaleReasonMessage(reason));
+        return;
+      }
+
+      const parsedSale = parsePdvNonPixSaleSuccess(saleData);
+      if (!parsedSale) {
+        console.error("[PDV] invalid pdv_registrar_venda_v2 response");
+        toast.error(
+          "Resposta inválida ao registrar a venda. Tente novamente.",
+        );
+        return;
+      }
+
+      if (!isCurrentNonPixSale()) return;
+      res = parsedSale;
     }
     const canonicalSubtotal = Number(res.subtotal ?? snapSubtotal);
     const canonicalDesconto = Number(res.desconto ?? snapDesconto);

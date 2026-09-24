@@ -6198,3 +6198,785 @@ describe("PDV Sangria / Suprimento audit", () => {
 
 });
 
+
+describe("PDV DevolucaoModal audit", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+  const orderUuid = "77777777-7777-4777-8777-777777777777";
+  const secondOrderUuid = "88888888-8888-4888-8888-888888888888";
+  const productUuid = "99999999-9999-4999-8999-999999999999";
+
+  function validOrder(overrides: Record<string, unknown> = {}) {
+    return {
+      id: orderUuid,
+      order_number: "PDV-1001",
+      customer_name: "Cliente",
+      total: 20,
+      items: [
+        {
+          product_id: productUuid,
+          name: "Produto A",
+          quantity: 2,
+          price: 10,
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: true, order: validOrder() },
+          error: null,
+        });
+      }
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: orderUuid,
+            valor_devolucao: 10,
+            items: [
+              {
+                product_id: productUuid,
+                name: "Produto A",
+                quantity: 1,
+                price: 10,
+              },
+            ],
+          },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function buttonWithText(label: string) {
+    const result = Array.from(container.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent?.includes(label),
+    );
+    if (!result) throw new Error("Button not rendered: " + label);
+    return result;
+  }
+
+  function refundModal() {
+    const heading = Array.from(container.querySelectorAll("h3")).find(
+      (candidate) => candidate.textContent?.trim() === "Devolução de pedido",
+    );
+    const shell = heading?.closest(".fixed");
+    if (!shell) throw new Error("Refund modal not rendered");
+    return shell;
+  }
+
+  function orderInput() {
+    const input = refundModal().querySelector<HTMLInputElement>(
+      'input[placeholder="Número/ID do pedido"]',
+    );
+    if (!input) throw new Error("Refund order input not rendered");
+    return input;
+  }
+
+  function reasonInput() {
+    const textarea = refundModal().querySelector<HTMLTextAreaElement>("textarea");
+    if (!textarea) throw new Error("Refund reason input not rendered");
+    return textarea;
+  }
+
+  async function setInputValue(input: HTMLInputElement, value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function setReason(value: string) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML textarea setter unavailable");
+
+    await act(async () => {
+      setter.call(reasonInput(), value);
+      reasonInput().dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function openRefundModal() {
+    await act(async () => {
+      buttonWithText("Devoluções").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  async function searchOrder(query = "PDV-1001") {
+    await setInputValue(orderInput(), query);
+    await act(async () => {
+      buttonWithText("Buscar").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+  }
+
+  function plusButton() {
+    const result = Array.from(refundModal().querySelectorAll("button")).find(
+      (candidate) => candidate.querySelector(".lucide-plus"),
+    );
+    if (!result) throw new Error("Refund plus button not rendered");
+    return result;
+  }
+
+  async function selectFirstItem(clicks = 1) {
+    await act(async () => {
+      for (let i = 0; i < clicks; i += 1) {
+        plusButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  }
+
+  function findCalls() {
+    return rpcMock.mock.calls.filter(([name]) => name === "pdv_buscar_pedido_v2");
+  }
+
+  function refundCalls() {
+    return rpcMock.mock.calls.filter(([name]) => name === "pdv_devolver_pedido_v2");
+  }
+
+  async function prepareRefund(reason = "Cliente desistiu") {
+    await openRefundModal();
+    await searchOrder();
+    await selectFirstItem();
+    await setReason(reason);
+  }
+
+  it("opens and closes the refund modal without issuing a refund RPC", async () => {
+    await renderMain();
+    await openRefundModal();
+
+    expect(container.textContent).toContain("Devolução de pedido");
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain("Devolução de pedido");
+    expect(refundCalls()).toHaveLength(0);
+  });
+
+  it("trims the order query and renders a valid server order", async () => {
+    await renderMain();
+    await openRefundModal();
+    await searchOrder("  PDV-1001  ");
+
+    expect(findCalls()).toContainEqual([
+      "pdv_buscar_pedido_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _query: "PDV-1001",
+      },
+    ]);
+    expect(refundModal().textContent).toContain("Produto A");
+  });
+
+  it("treats invalid_session from order lookup as authoritative", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      if (name === "pdv_logout_v2") {
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(toastErrorMock).toHaveBeenCalledWith("Sessão expirada. Entre novamente.");
+  });
+
+  it("fails closed on a truthy non-boolean lookup success flag", async () => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: "true", order: validOrder() },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    expect(refundModal().textContent).not.toContain("Produto A");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao buscar o pedido. Tente novamente.",
+    );
+  });
+
+  it.each([
+    ["zero quantity", { quantity: 0 }],
+    ["fractional quantity", { quantity: 1.5 }],
+    ["negative price", { price: -1 }],
+    ["infinite price", { price: Number.POSITIVE_INFINITY }],
+    ["string price", { price: "10" }],
+    ["unsafe cents", { price: 90071992547409.92 }],
+  ])("rejects a malformed server item: %s", async (_label, itemOverride) => {
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({
+              items: [
+                {
+                  product_id: productUuid,
+                  name: "Produto A",
+                  quantity: 2,
+                  price: 10,
+                  ...itemOverride,
+                },
+              ],
+            }),
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    expect(refundModal().textContent).not.toContain("Produto A");
+    expect(refundCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao buscar o pedido. Tente novamente.",
+    );
+  });
+
+  it("caps rapid item increments at the quantity sold and sends a minimal canonical refund request", async () => {
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+    await selectFirstItem(3);
+    await setReason("  Cliente desistiu  ");
+
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(refundCalls()).toContainEqual([
+      "pdv_devolver_pedido_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+        _order_id: orderUuid,
+        _items_devolvidos: [{ product_id: productUuid, quantity: 2 }],
+        _valor_devolucao: 20,
+        _motivo: "Cliente desistiu",
+      },
+    ]);
+  });
+
+  it("does not submit without a selected item or with a trimmed reason under three characters", async () => {
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+    expect(refundCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith("Selecione ao menos 1 item");
+
+    await selectFirstItem();
+    await setReason("  ab  ");
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(refundCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith("Informe o motivo");
+  });
+
+  it("allows only one refund RPC when Confirmar devolução is clicked twice in the same tick", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+
+    const confirm = buttonWithText("Confirmar devolução");
+    await act(async () => {
+      confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      confirm.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(refundCalls()).toHaveLength(1);
+
+    pending.resolve({
+      data: {
+        ok: true,
+        order_id: orderUuid,
+        valor_devolucao: 10,
+        items: [],
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+  });
+
+  it("treats invalid_session from refund as authoritative", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_session" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).toBeNull();
+    expect(container.textContent).toContain("PDV — Balcão");
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("returns to cash opening when refund reports invalid_cash_register", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: { ok: false, reason: "invalid_cash_register" },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Abertura de Caixa");
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("fails closed on a truthy non-boolean refund success flag", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: "true",
+            order_id: orderUuid,
+            valor_devolucao: 10,
+            items: [],
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Devolução de pedido");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao processar devolução. Tente novamente.",
+    );
+  });
+
+  it.each([
+    ["missing canonical value", undefined],
+    ["non-numeric canonical value", "abc"],
+    ["infinite canonical value", Number.POSITIVE_INFINITY],
+    ["unsafe canonical cents", 90071992547409.92],
+  ])("rejects malformed refund success payload: %s", async (_label, canonicalValue) => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: orderUuid,
+            valor_devolucao: canonicalValue,
+            items: [],
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Devolução de pedido");
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Resposta inválida ao processar devolução. Tente novamente.",
+    );
+  });
+
+  it("handles a rejected lookup Promise without leaking technical details", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.reject(new Error("secret lookup transport detail"));
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível buscar o pedido. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret lookup transport detail"),
+    );
+  });
+
+  it("handles a rejected refund Promise without leaking technical details", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.reject(new Error("secret refund transport detail"));
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Não foi possível processar a devolução. Tente novamente.",
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("secret refund transport detail"),
+    );
+  });
+
+  it("does not let an old refund response close or toast over a newly reopened modal", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      buttonWithText("×").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+    await openRefundModal();
+    await setInputValue(orderInput(), "PDV-2002");
+
+    pending.resolve({
+      data: {
+        ok: true,
+        order_id: orderUuid,
+        valor_devolucao: 10,
+        items: [],
+      },
+      error: null,
+    });
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Devolução de pedido");
+    expect(orderInput().value).toBe("PDV-2002");
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("does not emit a late refund success after the PDV unmounts", async () => {
+    const pending = deferred<{ data: unknown; error: null }>();
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") return pending.promise;
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      root.unmount();
+      container.remove();
+    });
+
+    pending.resolve({
+      data: {
+        ok: true,
+        order_id: orderUuid,
+        valor_devolucao: 10,
+        items: [],
+      },
+      error: null,
+    });
+    await flushAsync();
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the modal open for authoritative repeated/over-quantity rejection", async () => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: false,
+            reason: "return_quantity_exceeds_available",
+            available_quantity: 0,
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await prepareRefund();
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain("Devolução de pedido");
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it("does not leak resolved PostgREST lookup/refund errors to the operator", async () => {
+    let phase: "lookup" | "refund" = "lookup";
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2" && phase === "lookup") {
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST301", message: "internal lookup detail" },
+        });
+      }
+      if (name === "pdv_devolver_pedido_v2" && phase === "refund") {
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST500", message: "internal refund detail" },
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("internal lookup detail"),
+    );
+
+    phase = "refund";
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({ data: { ok: true, products: [] }, error: null });
+      }
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({ id: secondOrderUuid }),
+          },
+          error: null,
+        });
+      }
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: null,
+          error: { code: "PGRST500", message: "internal refund detail" },
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await searchOrder("PDV-2002");
+    await selectFirstItem();
+    await setReason("Motivo válido");
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining("internal refund detail"),
+    );
+  });
+});
+

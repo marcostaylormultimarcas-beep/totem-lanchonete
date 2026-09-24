@@ -7465,6 +7465,33 @@ describe("PDV FechamentoModal audit", () => {
     );
   });
 
+  it.each([
+    ["closed", "closed"],
+    ["fechado", "fechado"],
+    ["missing", undefined],
+    ["malformed", 123],
+  ])("does not treat a non-open summary status as an active cash register: %s", async (_label, status) => {
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_caixa_resumo_v2") {
+        return Promise.resolve({
+          data: { ok: true, status, resumo: validSummary() },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openClosingModal();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "Caixa não está mais disponível. Reabra o caixa.",
+    );
+    expect(container.textContent).toContain("Abertura de Caixa");
+    expect(sessionStorage.getItem(PDV_SESSION_KEY)).not.toBeNull();
+  });
+
   it("fails closed on a truthy non-boolean summary success flag", async () => {
     const baseImplementation = rpcMock.getMockImplementation();
     rpcMock.mockImplementation((name: string, ...args: unknown[]) => {

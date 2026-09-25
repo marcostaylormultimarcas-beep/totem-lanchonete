@@ -484,3 +484,275 @@ describe('LoyaltyPanel prize consumption', () => {
     expect(String(toastErrorMock.mock.calls.at(-1)?.[0])).not.toContain('internal_rule_name_that_must_not_leak');
   });
 });
+
+
+describe('LoyaltyPanel loyalty campaign configuration', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let configsByOrg: Record<string, any>;
+  let configReadResolver: (organizationId: string) => Promise<any>;
+  let saveConfigMock: ReturnType<typeof vi.fn>;
+
+  const tableResult = (table: string, organizationId: string) => {
+    if (table === 'resgates_fidelidade') return { data: [], error: null };
+    return { data: [], error: null };
+  };
+
+  const makeQuery = (table: string) => {
+    let organizationId = '';
+    const q: any = {};
+
+    q.select = vi.fn(() => q);
+    q.eq = vi.fn((column: string, value: unknown) => {
+      if (column === 'organization_id') organizationId = String(value);
+      return q;
+    });
+    q.order = vi.fn(() => q);
+    q.limit = vi.fn(() => Promise.resolve(tableResult(table, organizationId)));
+    q.maybeSingle = vi.fn(() => {
+      if (table === 'config_fidelidade') return configReadResolver(organizationId);
+      return Promise.resolve(tableResult(table, organizationId));
+    });
+    q.upsert = vi.fn((payload: any, options: any) => {
+      const result = saveConfigMock(payload, options);
+      const writeQ: any = {};
+      writeQ.select = vi.fn(() => writeQ);
+      writeQ.maybeSingle = vi.fn(() => result);
+      return writeQ;
+    });
+    q.then = (resolve: any, reject: any) =>
+      Promise.resolve(tableResult(table, organizationId)).then(resolve, reject);
+
+    return q;
+  };
+
+  const configRow = (
+    organizationId: string,
+    pointsPerOrder: number,
+    minimum = 0,
+    start: string | null = null,
+    end: string | null = null,
+  ) => ({
+    id: 'config-' + organizationId,
+    organization_id: organizationId,
+    ativo: true,
+    earning_mode: 'order',
+    points_per_real: 1,
+    points_per_order: pointsPerOrder,
+    valor_minimo_pedido: minimum,
+    data_inicio: start,
+    data_fim: end,
+  });
+
+  const renderPanel = async (organizationId: string) => {
+    await act(async () => {
+      root.render(<LoyaltyPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findButton = (text: string) => {
+    const button = Array.from(container.querySelectorAll('button'))
+      .find(item => item.textContent?.includes(text));
+    if (!button) throw new Error('Button not found: ' + text);
+    return button as HTMLButtonElement;
+  };
+
+  const openEditor = async () => {
+    await act(async () => {
+      findButton('Editar programa').click();
+      await flushAsync();
+    });
+  };
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+
+    configsByOrg = {
+      [ORG_A]: configRow(
+        ORG_A,
+        7,
+        25,
+        '2026-09-20T00:00:00.000Z',
+        '2026-10-20T23:59:59.999Z',
+      ),
+      [ORG_B]: configRow(ORG_B, 19),
+    };
+
+    configReadResolver = (organizationId: string) =>
+      Promise.resolve({ data: configsByOrg[organizationId] || null, error: null });
+
+    saveConfigMock = vi.fn().mockResolvedValue({
+      data: { id: 'config-' + ORG_A },
+      error: null,
+    });
+
+    fromMock.mockImplementation((table: string) => makeQuery(table));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'loyalty_admin_summary') {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            active_customers: 0,
+            points_issued: 0,
+            points_reversed: 0,
+            points_spent: 0,
+            outstanding_points: 0,
+            pending_rewards: 0,
+          },
+          error: null,
+        });
+      }
+      throw new Error('Unexpected RPC: ' + name);
+    });
+
+    channelMock.mockImplementation(() => {
+      const channel: any = {};
+      channel.on = vi.fn(() => channel);
+      channel.subscribe = vi.fn(() => channel);
+      return channel;
+    });
+    removeChannelMock.mockResolvedValue(null);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container?.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  it('writes the live campaign columns with organization_id as the upsert conflict key', async () => {
+    await renderPanel(ORG_A);
+    await openEditor();
+
+    await act(async () => {
+      findButton('Salvar alterações').click();
+      await flushAsync();
+    });
+
+    expect(saveConfigMock).toHaveBeenCalledTimes(1);
+    expect(saveConfigMock).toHaveBeenCalledWith(
+      {
+        organization_id: ORG_A,
+        ativo: true,
+        earning_mode: 'order',
+        points_per_real: 1,
+        points_per_order: 7,
+        valor_minimo_pedido: 25,
+        data_inicio: '2026-09-20T00:00:00.000Z',
+        data_fim: '2026-10-20T23:59:59.999Z',
+      },
+      { onConflict: 'organization_id' },
+    );
+    expect(toastSuccessMock).toHaveBeenCalledWith('Programa de pontos salvo e atualizado.');
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  it('does not let an older organization bootstrap overwrite the newer campaign', async () => {
+    const loadA = deferred<any>();
+    const loadB = deferred<any>();
+
+    configReadResolver = (organizationId: string) =>
+      organizationId === ORG_A ? loadA.promise : loadB.promise;
+
+    await renderPanel(ORG_A);
+
+    await act(async () => {
+      root.render(<LoyaltyPanel organizationId={ORG_B} />);
+      await flushAsync();
+    });
+
+    await act(async () => {
+      loadB.resolve({ data: configsByOrg[ORG_B], error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('19 pontos por pedido elegível');
+    expect(container.textContent).not.toContain('7 pontos por pedido elegível');
+
+    await act(async () => {
+      loadA.resolve({ data: configsByOrg[ORG_A], error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('19 pontos por pedido elegível');
+    expect(container.textContent).not.toContain('7 pontos por pedido elegível');
+  });
+
+  it('does not let a save from the previous organization show success or overwrite the newer campaign', async () => {
+    const saveA = deferred<any>();
+    saveConfigMock.mockReturnValue(saveA.promise);
+
+    await renderPanel(ORG_A);
+    await openEditor();
+
+    await act(async () => {
+      findButton('Salvar alterações').click();
+      await Promise.resolve();
+    });
+
+    await renderPanel(ORG_B);
+    expect(container.textContent).toContain('19 pontos por pedido elegível');
+    toastSuccessMock.mockClear();
+
+    await act(async () => {
+      saveA.resolve({ data: { id: 'config-' + ORG_A }, error: null });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('19 pontos por pedido elegível');
+    expect(container.textContent).not.toContain('7 pontos por pedido elegível');
+  });
+
+  it('does not dispatch two campaign upserts from two save events in the same turn', async () => {
+    const saveA = deferred<any>();
+    saveConfigMock.mockReturnValue(saveA.promise);
+
+    await renderPanel(ORG_A);
+    await openEditor();
+
+    await act(async () => {
+      const button = findButton('Salvar alterações');
+      button.click();
+      button.click();
+      await Promise.resolve();
+    });
+
+    expect(saveConfigMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      saveA.resolve({ data: { id: 'config-' + ORG_A }, error: null });
+      await flushAsync();
+    });
+  });
+
+  it('does not show campaign save success after the panel unmounts', async () => {
+    const saveA = deferred<any>();
+    saveConfigMock.mockReturnValue(saveA.promise);
+
+    await renderPanel(ORG_A);
+    await openEditor();
+
+    await act(async () => {
+      findButton('Salvar alterações').click();
+      await Promise.resolve();
+      root.unmount();
+    });
+    container.remove();
+
+    await act(async () => {
+      saveA.resolve({ data: { id: 'config-' + ORG_A }, error: null });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+});

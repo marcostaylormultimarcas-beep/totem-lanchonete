@@ -281,10 +281,13 @@ const LoyaltyCard = ({
 
     try {
       const { data: authData, error: authError } = await supabase.auth.getSession();
-      if (!isCurrentRequest()) return;
-      if (authError) throw authError;
+      if (authError) {
+        if (!isCurrentRequest()) return;
+        throw authError;
+      }
 
       if (!authData.session) {
+        if (!isCurrentRequest()) return;
         setState({ ...EMPTY_STATE, signedIn: false });
         setStateError(false);
         setHasSuccessfulState(false);

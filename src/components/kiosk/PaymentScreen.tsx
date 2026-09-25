@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { ArrowLeft, Copy, Check, MessageCircle, CheckCircle2, Ticket, Banknote, QrCode, CreditCard, Globe, Loader2, CalendarClock, ShoppingCart } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency, StoreSettings } from '@/data/store';
@@ -64,6 +64,8 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const [deliveryCode, setDeliveryCode] = useState('');
   const [partnerGift, setPartnerGift] = useState<{ codigo: string; discount_percent: number; partner_name: string; partner_slug: string } | null>(null);
   const [copiedPartner, setCopiedPartner] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const confirmedDoneRef = useRef(false);
   const [storeSettings, setStoreSettings] = useState<{
     storeName: string; whatsappNumber: string; pixKeyManual: string;
     payCash: boolean; payPix: boolean; payTerminal: boolean; payOnline: boolean; terminalId: string;
@@ -292,7 +294,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   });
 
   const handleConfirmPayment = async () => {
-    if (saving) return;
+    if (saving || submitInFlightRef.current) return;
     setPaymentError('');
     setCheckoutBlockReason('');
 
@@ -312,6 +314,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         return;
       }
 
+      submitInFlightRef.current = true;
       setSaving(true);
       try {
         const queued = await enqueueOfflineOrderOnCompanion(buildCompanionOfflineDraft());
@@ -337,6 +340,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
         );
         toast.error('Fila offline indisponível', { description: 'Nenhum pedido foi criado no servidor.' });
       } finally {
+        submitInFlightRef.current = false;
         setSaving(false);
       }
       return;
@@ -352,6 +356,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     if (!isDemoMode() && (quoteLoading || quoteError || !serverQuote)) {
       toast.error('Total ainda não foi validado pelo servidor.'); return;
     }
+    submitInFlightRef.current = true;
     setSaving(true);
 
     try {
@@ -472,8 +477,15 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
       }
       setConfirmed(false);
     } finally {
+      submitInFlightRef.current = false;
       setSaving(false);
     }
+  };
+
+  const handleConfirmedDone = (orderId?: string) => {
+    if (confirmedDoneRef.current) return;
+    confirmedDoneRef.current = true;
+    onDone(orderId);
   };
 
 
@@ -813,12 +825,12 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
 
 
         {currentOrderId && (
-          <button onClick={() => onDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+          <button onClick={() => handleConfirmedDone(currentOrderId)} className="touch-btn w-full bg-muted text-foreground py-4 rounded-xl text-lg flex items-center justify-center gap-2">
             📍 {scheduledOrderLabel ? 'Acompanhar Pedido Agendado' : 'Acompanhar Pedido'}
           </button>
         )}
 
-        <button onClick={() => onDone()} className="touch-btn w-full bg-primary/10 border-2 border-primary text-primary py-4 rounded-xl text-lg flex items-center justify-center gap-2">
+        <button onClick={() => handleConfirmedDone()} className="touch-btn w-full bg-primary/10 border-2 border-primary text-primary py-4 rounded-xl text-lg flex items-center justify-center gap-2">
           {deviceOwnedKiosk ? '✅ Finalizar e liberar o totem' : '🏠 Voltar ao Menu Inicial'}
         </button>
       </div>

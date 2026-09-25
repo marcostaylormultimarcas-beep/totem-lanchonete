@@ -2672,6 +2672,8 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
   let orderFetches: string[];
   let statusCalls: Array<{ _order_id: string; _expected_status: string; _next_status: string }>;
   let statusResponder: (args: { _order_id: string; _expected_status: string; _next_status: string }) => Promise<any>;
+  let loyaltyCalls: Array<{ _order_id: string }>;
+  let loyaltyResponder: (args: { _order_id: string }) => Promise<any>;
   let passwordCalls: Array<{ organization_id: string; numero: string; tipo: string }>;
   let passwordResponder: (payload: { organization_id: string; numero: string; tipo: string }) => Promise<any>;
   let realtimeCallbacks: Record<string, Array<() => void>>;
@@ -2684,6 +2686,7 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
     currentOrder = { ...makeOrder('A-100', 'Cliente A') };
     orderFetches = [];
     statusCalls = [];
+    loyaltyCalls = [];
     passwordCalls = [];
     realtimeCallbacks = {};
 
@@ -2696,6 +2699,7 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
       },
       error: null,
     });
+    loyaltyResponder = async () => ({ data: { ok: false, reason: 'inactive' }, error: null });
     passwordResponder = async () => ({ data: null, error: null });
 
     channelMock.mockImplementation((channel: string) => {
@@ -2720,7 +2724,9 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
         return statusResponder(payload);
       }
       if (fn === 'grant_loyalty_stamp') {
-        return Promise.resolve({ data: { ok: false, reason: 'already_stamped' }, error: null });
+        const payload = { _order_id: args?._order_id || '' };
+        loyaltyCalls.push(payload);
+        return loyaltyResponder(payload);
       }
       return Promise.resolve({ data: [], error: null });
     });
@@ -3106,6 +3112,252 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
         _next_status: 'delivered',
       },
     ]);
+  });
+
+
+  it('calls grant_loyalty_stamp exactly once with only _order_id after correlated ready -> delivered success', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({
+      data: {
+        ok: true,
+        awarded: true,
+        points_awarded: 5,
+        balance: 12,
+        eligible_amount: 20,
+        earning_mode: 'spend',
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Retirado', 2);
+
+    expect(statusCalls).toEqual([
+      {
+        _order_id: 'order-A-100',
+        _expected_status: 'ready',
+        _next_status: 'delivered',
+      },
+    ]);
+    expect(loyaltyCalls).toEqual([{ _order_id: 'order-A-100' }]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('⭐ Cliente A recebeu +5 pontos. Saldo: 12 pts.');
+  });
+
+  it.each([
+    ['status_changed', { data: { ok: false, reason: 'status_changed', current_status: 'delivered' }, error: null }],
+    ['invalid_transition', { data: { ok: false, reason: 'invalid_transition', current_status: 'ready' }, error: null }],
+    ['PostgREST error', { data: null, error: { code: '42501', message: 'denied' } }],
+  ])('never calls loyalty when delivered transition fails with %s', async (_label, response) => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    statusResponder = async () => response;
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(loyaltyCalls).toHaveLength(0);
+  });
+
+  it('never calls loyalty when organization changes before delivered confirmation returns', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    const request = deferred<any>();
+    statusResponder = () => request.promise;
+
+    await renderPanel('org-a');
+    await clickButton('Retirado');
+    await renderPanel('org-b');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'ready',
+          status: 'delivered',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(loyaltyCalls).toHaveLength(0);
+    expect(container.textContent).toContain('#B-200');
+  });
+
+  it('does not invent loyalty success from malformed { ok: true } payload', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({ data: { ok: true }, error: null });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Fidelidade processada automaticamente.');
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +'))).toBe(false);
+  });
+
+  it('requires loyalty ok to be boolean true and rejects truthy non-boolean success', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({
+      data: {
+        ok: 'true',
+        awarded: true,
+        points_awarded: 5,
+        balance: 12,
+        eligible_amount: 20,
+        earning_mode: 'spend',
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +'))).toBe(false);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Fidelidade processada automaticamente.');
+  });
+
+  it('does not coerce string loyalty numbers into a visual award', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({
+      data: {
+        ok: true,
+        awarded: true,
+        points_awarded: '5',
+        balance: '12',
+        eligible_amount: 20,
+        earning_mode: 'spend',
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +'))).toBe(false);
+  });
+
+  it.each([
+    [{ ok: true, awarded: true, points_awarded: Number.POSITIVE_INFINITY, balance: 12, eligible_amount: 20, earning_mode: 'spend' }],
+    [{ ok: true, awarded: true, points_awarded: 5, balance: -1, eligible_amount: 20, earning_mode: 'spend' }],
+    [{ ok: true, awarded: true, points_awarded: 5, balance: 12, eligible_amount: Number.NaN, earning_mode: 'spend' }],
+    [{ ok: true, awarded: true, points_awarded: 5, balance: 12, eligible_amount: 20, earning_mode: 'unknown' }],
+    [{ ok: true, points_awarded: 5, balance: 12, eligible_amount: 20, earning_mode: 'spend' }],
+  ])('does not display false loyalty points for malformed awarded payload %#', async payload => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({ data: payload, error: null });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +'))).toBe(false);
+  });
+
+  it('treats already_stamped as idempotent without visually awarding the same points again', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({
+      data: {
+        ok: true,
+        already_stamped: true,
+        awarded: false,
+        points_awarded: 7,
+        balance: 21,
+        eligible_amount: 30,
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +7 pontos'))).toBe(false);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Fidelidade processada automaticamente.');
+  });
+
+  it.each([
+    'unauthenticated',
+    'order_not_found',
+    'forbidden',
+    'order_not_delivered',
+    'payment_not_confirmed',
+    'inactive',
+    'not_started',
+    'expired',
+    'no_phone',
+    'eligible_amount_unknown',
+    'below_minimum',
+    'no_points',
+    'identity_conflict',
+  ])('keeps delivered confirmed and does not invent success for loyalty reason %s', async reason => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({ data: { ok: false, reason }, error: null });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +'))).toBe(false);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Fidelidade processada automaticamente.');
+  });
+
+  it('keeps delivered confirmed on loyalty PostgREST error without reporting delivery failure', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => ({
+      data: null,
+      error: { code: '57014', message: 'statement timeout internal detail' },
+    });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(toastErrorMock).not.toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(toastErrorMock.mock.calls.flat().some(call => String(call).includes('internal detail'))).toBe(false);
+  });
+
+  it('contains loyalty Promise rejection after delivered without telling the operator that delivery failed', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    loyaltyResponder = async () => {
+      throw new Error('loyalty transport secret');
+    };
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(toastErrorMock).not.toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(toastErrorMock.mock.calls.flat().some(call => String(call).includes('loyalty transport secret'))).toBe(false);
+  });
+
+  it('does not emit organization A loyalty toast after switching to organization B while loyalty is pending', async () => {
+    currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
+    const loyaltyRequest = deferred<any>();
+    loyaltyResponder = () => loyaltyRequest.promise;
+
+    await renderPanel('org-a');
+    await clickButton('Retirado');
+    expect(loyaltyCalls).toEqual([{ _order_id: 'order-A-100' }]);
+
+    await renderPanel('org-b');
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      loyaltyRequest.resolve({
+        data: {
+          ok: true,
+          awarded: true,
+          points_awarded: 9,
+          balance: 30,
+          eligible_amount: 45,
+          earning_mode: 'spend',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock.mock.calls.flat().some(call => String(call).includes('recebeu +9 pontos'))).toBe(false);
+    expect(container.textContent).toContain('#B-200');
   });
 });
 

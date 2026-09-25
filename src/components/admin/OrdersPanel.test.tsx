@@ -2384,11 +2384,20 @@ describe('OrdersPanel callPassword contract and lifecycle', () => {
       return ch;
     });
 
-    rpcMock.mockImplementation((fn: string) => {
+    rpcMock.mockImplementation((fn: string, args?: any) => {
       if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
       if (fn === 'visionfood_update_order_status') {
-        currentOrder = { ...currentOrder, status: 'ready' };
-        return Promise.resolve({ data: { ok: true }, error: null });
+        const previousStatus = currentOrder.status;
+        currentOrder = { ...currentOrder, status: args?._next_status || 'ready' };
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: args?._order_id,
+            previous_status: previousStatus,
+            status: args?._next_status,
+          },
+          error: null,
+        });
       }
       return Promise.resolve({ data: [], error: null });
     });

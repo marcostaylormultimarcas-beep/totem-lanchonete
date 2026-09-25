@@ -1916,3 +1916,398 @@ describe('OrdersPanel returnDeliveryToQueue lifecycle', () => {
     expect(orderFetches).toEqual(['org-a', 'org-a', 'org-a']);
   });
 });
+
+
+describe('OrdersPanel confirmPayment contract and lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let currentOrder: ReturnType<typeof makeOrder>;
+  let orderFetches: string[];
+  let paymentCalls: Array<{ _order_id: string }>;
+  let paymentResponder: (args: { _order_id: string }) => Promise<any>;
+  let realtimeCallbacks: Array<() => void>;
+  let confirmMock: any;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    currentOrder = { ...makeOrder('A-100', 'Cliente A'), payment_status: 'pending' };
+    orderFetches = [];
+    paymentCalls = [];
+    realtimeCallbacks = [];
+    confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    paymentResponder = async args => {
+      currentOrder = { ...currentOrder, payment_status: 'paid' };
+      return {
+        data: { ok: true, order_id: args._order_id, payment_status: 'paid' },
+        error: null,
+      };
+    };
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        if (channel === 'admin-orders-org-a') realtimeCallbacks.push(callback);
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'confirm_order_payment') {
+        const payload = { _order_id: args?._order_id || '' };
+        paymentCalls.push(payload);
+        return paymentResponder(payload);
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          const data =
+            organizationId === 'org-a'
+              ? [currentOrder]
+              : [{ ...makeOrder('B-200', 'Cliente B'), payment_status: 'pending' }];
+          return Promise.resolve({ data, error: null });
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      if (table === 'entregadores') {
+        return resolvedQuery({ data: [], error: null });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    confirmMock?.mockRestore();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async (organizationId = 'org-a') => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findPaymentButton = () =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Confirmar pagamento'),
+    ) as HTMLButtonElement | undefined;
+
+  const clickPayment = async (times = 1) => {
+    const button = findPaymentButton();
+    expect(button).toBeTruthy();
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  };
+
+  it('shows the action only for pending payment on a non-cancelled order', async () => {
+    await renderPanel();
+    expect(findPaymentButton()).toBeTruthy();
+
+    currentOrder = { ...currentOrder, payment_status: 'paid' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(findPaymentButton()).toBeUndefined();
+
+    currentOrder = { ...currentOrder, payment_status: 'pending', status: 'cancelled' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(findPaymentButton()).toBeUndefined();
+  });
+
+  it('does not call confirm_order_payment when the confirmation dialog is cancelled', async () => {
+    confirmMock.mockReturnValue(false);
+    await renderPanel();
+
+    await clickPayment();
+
+    expect(confirmMock).toHaveBeenCalledWith('Confirmar que este pagamento foi recebido?');
+    expect(paymentCalls).toHaveLength(0);
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('sends the canonical _order_id payload and accepts the normal authoritative success shape', async () => {
+    await renderPanel();
+
+    await clickPayment();
+
+    expect(paymentCalls).toEqual([{ _order_id: 'order-A-100' }]);
+    expect(rpcMock).toHaveBeenCalledWith('confirm_order_payment', {
+      _order_id: 'order-A-100',
+    });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pagamento confirmado.');
+    expect(container.textContent).toContain('✅ Pago');
+    expect(findPaymentButton()).toBeUndefined();
+  });
+
+  it('accepts the authoritative already_paid success shape', async () => {
+    paymentResponder = async () => ({
+      data: {
+        ok: true,
+        already_paid: true,
+        payment_confirmed_at: '2026-09-24T20:00:00.000Z',
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pagamento já estava confirmado.');
+    expect(container.textContent).toContain('✅ Pago');
+    expect(findPaymentButton()).toBeUndefined();
+  });
+
+  it.each([
+    'unauthenticated',
+    'not_found',
+    'forbidden',
+    'order_cancelled',
+    'payment_status_locked',
+  ])('fails closed for confirm_order_payment reason %s and releases busy state', async reason => {
+    paymentResponder = async () => ({
+      data: { ok: false, reason },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('fails closed on a Supabase error response and releases busy state', async () => {
+    paymentResponder = async () => ({
+      data: null,
+      error: { message: 'database unavailable' },
+    });
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('fails closed on malformed error payload', async () => {
+    paymentResponder = async () => ({
+      data: { ok: false },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('does not accept malformed success payload', async () => {
+    paymentResponder = async () => ({
+      data: { ok: true },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('💳 Pagamento pendente');
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('contains a transport rejection and releases busy state', async () => {
+    paymentResponder = async () => {
+      throw new Error('confirm payment network unavailable');
+    };
+
+    await renderPanel();
+    await clickPayment();
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(findPaymentButton()?.disabled).toBe(false);
+  });
+
+  it('blocks two confirmation events dispatched in the same turn while the first RPC is pending', async () => {
+    const request = deferred<any>();
+    paymentResponder = () => request.promise;
+
+    await renderPanel();
+    await clickPayment(2);
+
+    currentOrder = { ...currentOrder, payment_status: 'paid' };
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, order_id: 'order-A-100', payment_status: 'paid' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(paymentCalls).toEqual([{ _order_id: 'order-A-100' }]);
+    expect(confirmMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a pending payment result after the organization changes', async () => {
+    const request = deferred<any>();
+    paymentResponder = () => request.promise;
+
+    await renderPanel('org-a');
+    await clickPayment();
+    expect(paymentCalls).toEqual([{ _order_id: 'order-A-100' }]);
+
+    await renderPanel('org-b');
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, order_id: 'order-A-100', payment_status: 'paid' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('#B-200');
+    expect(container.textContent).not.toContain('#A-100');
+  });
+
+  it('does not let an older successful RPC overwrite a newer payment status from realtime', async () => {
+    const request = deferred<any>();
+    paymentResponder = () => request.promise;
+
+    await renderPanel();
+    await clickPayment();
+
+    currentOrder = { ...currentOrder, payment_status: 'refunded' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('↩️ Reembolsado');
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: true, order_id: 'order-A-100', payment_status: 'paid' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('↩️ Reembolsado');
+    expect(container.textContent).not.toContain('✅ Pago');
+  });
+
+  it('preserves a cancellation received while the RPC is pending', async () => {
+    const request = deferred<any>();
+    paymentResponder = () => request.promise;
+
+    await renderPanel();
+    await clickPayment();
+
+    currentOrder = { ...currentOrder, status: 'cancelled' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(findPaymentButton()).toBeUndefined();
+
+    await act(async () => {
+      request.resolve({
+        data: { ok: false, reason: 'order_cancelled' },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(findPaymentButton()).toBeUndefined();
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it('handles payment becoming paid while the RPC is pending and server returns already_paid', async () => {
+    const request = deferred<any>();
+    paymentResponder = () => request.promise;
+
+    await renderPanel();
+    await clickPayment();
+
+    currentOrder = { ...currentOrder, payment_status: 'paid' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(findPaymentButton()).toBeUndefined();
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          already_paid: true,
+          payment_confirmed_at: '2026-09-24T20:00:00.000Z',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('✅ Pago');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pagamento já estava confirmado.');
+  });
+});

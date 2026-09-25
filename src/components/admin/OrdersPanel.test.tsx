@@ -2167,8 +2167,9 @@ describe('OrdersPanel confirmPayment contract and lifecycle', () => {
     expect(findPaymentButton()?.disabled).toBe(false);
   });
 
-  it('contains a transport rejection and releases busy state', async () => {
+  it('contains a transport rejection, reconciles authoritative state and releases busy state', async () => {
     paymentResponder = async () => {
+      currentOrder = { ...currentOrder, payment_status: 'paid' };
       throw new Error('confirm payment network unavailable');
     };
 
@@ -2180,7 +2181,9 @@ describe('OrdersPanel confirmPayment contract and lifecycle', () => {
 
     expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível confirmar o pagamento.');
     expect(toastSuccessMock).not.toHaveBeenCalled();
-    expect(findPaymentButton()?.disabled).toBe(false);
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('✅ Pago');
+    expect(findPaymentButton()).toBeUndefined();
   });
 
   it('blocks two confirmation events dispatched in the same turn while the first RPC is pending', async () => {

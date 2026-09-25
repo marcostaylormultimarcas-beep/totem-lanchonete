@@ -204,6 +204,54 @@ const parseCustomerState = (payload: unknown): CustomerState | null => {
   };
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+interface RedemptionSuccess {
+  balance: number;
+  redemption: Redemption;
+}
+
+const parseRedemptionSuccess = (
+  payload: unknown,
+  expectedRewardId: string,
+): RedemptionSuccess | null => {
+  if (!isRecord(payload) || payload.ok !== true) return null;
+  if (
+    typeof payload.redemption_id !== 'string'
+    || !UUID_PATTERN.test(payload.redemption_id)
+    || typeof payload.code !== 'string'
+    || payload.code.trim().length === 0
+    || !isNonNegativeInteger(payload.balance)
+    || !isNonNegativeInteger(payload.points_spent)
+    || payload.points_spent < 1
+    || payload.points_spent > 100000000
+    || !isRecord(payload.reward)
+    || typeof payload.reward.id !== 'string'
+    || payload.reward.id !== expectedRewardId
+    || typeof payload.reward.title !== 'string'
+    || typeof payload.reward.description !== 'string'
+    || typeof payload.reward.image_url !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    balance: payload.balance,
+    redemption: {
+      id: payload.redemption_id,
+      reward_id: payload.reward.id,
+      premio_texto: payload.reward.title,
+      premio_descricao: payload.reward.description,
+      premio_imagem: payload.reward.image_url,
+      codigo_resgate: payload.code.trim(),
+      points_spent: payload.points_spent,
+      status: 'pendente',
+      created_at: new Date().toISOString(),
+      used_at: null,
+    },
+  };
+};
+
 const SEEN_KEY = (org: string) => `vf-loyalty-seen-v2:${org}`;
 
 const LoyaltyCard = ({
@@ -225,6 +273,8 @@ const LoyaltyCard = ({
   const [hasSuccessfulState, setHasSuccessfulState] = useState(false);
   const walletRequestSeqRef = useRef(0);
   const walletOrgRef = useRef(organizationId);
+  const redeemRequestSeqRef = useRef(0);
+  const redeemInFlightRef = useRef(false);
   walletOrgRef.current = organizationId;
 
   useEffect(() => {
@@ -345,6 +395,17 @@ const LoyaltyCard = ({
     };
   }, [organizationId, loadCustomerState]);
 
+  useEffect(() => {
+    redeemRequestSeqRef.current += 1;
+    redeemInFlightRef.current = false;
+    setRedeeming(null);
+
+    return () => {
+      redeemRequestSeqRef.current += 1;
+      redeemInFlightRef.current = false;
+    };
+  }, [organizationId]);
+
   const catalog = useMemo(() => {
     const source = state.catalog.length > 0 ? state.catalog : (config?.rewards || []);
     return [...source].sort((a, b) => a.points_cost - b.points_cost);
@@ -376,23 +437,38 @@ const LoyaltyCard = ({
   };
 
   const redeem = async (reward: PublicLoyaltyReward) => {
-    if (!organizationId || redeeming) return;
+    if (!organizationId || redeemInFlightRef.current) return;
     if (!state.signedIn) return;
     if (availableBalance < reward.points_cost) return;
 
     const confirmed = window.confirm(
       `Resgatar "${reward.title}" por ${reward.points_cost} pontos?`,
     );
-    if (!confirmed) return;
+    if (!confirmed || redeemInFlightRef.current) return;
 
+    const requestOrganizationId = organizationId;
+    const requestId = ++redeemRequestSeqRef.current;
+    const isCurrentRequest = () =>
+      redeemRequestSeqRef.current === requestId
+      && walletOrgRef.current === requestOrganizationId;
+
+    redeemInFlightRef.current = true;
     setRedeeming(reward.id);
+
     try {
       const { data, error } = await supabase.rpc('loyalty_redeem_reward' as any, {
-        _organization_id: organizationId,
+        _organization_id: requestOrganizationId,
         _reward_id: reward.id,
       });
-      const result = data as any;
-      if (error || !result?.ok) {
+      if (!isCurrentRequest()) return;
+
+      if (error) {
+        console.error('[loyalty] reward redemption error:', error);
+        window.alert('Não foi possível resgatar agora.');
+        return;
+      }
+
+      if (!isRecord(data) || data.ok !== true) {
         const messages: Record<string, string> = {
           insufficient_points: 'Seu saldo mudou e não há pontos suficientes para este prêmio.',
           wallet_not_found: 'Faça ao menos um pedido elegível antes de resgatar.',
@@ -402,28 +478,36 @@ const LoyaltyCard = ({
           expired: 'Esta campanha de fidelidade terminou.',
           not_started: 'Esta campanha ainda não começou.',
         };
-        throw new Error(messages[result?.reason] || error?.message || 'Não foi possível resgatar agora.');
+        const reason = isRecord(data) && typeof data.reason === 'string' ? data.reason : '';
+        window.alert(messages[reason] || 'Não foi possível resgatar agora.');
+        return;
       }
 
-      const prize = result.reward || {};
-      setPrizeModal({
-        id: String(result.redemption_id || ''),
-        reward_id: reward.id,
-        premio_texto: String(prize.title || reward.title),
-        premio_descricao: String(prize.description || reward.description || ''),
-        premio_imagem: String(prize.image_url || reward.image_url || ''),
-        codigo_resgate: String(result.code || ''),
-        points_spent: Number(result.points_spent) || reward.points_cost,
-        status: 'pendente',
-        created_at: new Date().toISOString(),
-        used_at: null,
-      });
+      const parsed = parseRedemptionSuccess(data, reward.id);
+      if (!parsed) {
+        console.error('[loyalty] invalid reward redemption payload');
+        window.alert('Não foi possível resgatar agora.');
+        return;
+      }
+
+      setState(current => (
+        current.signedIn
+          ? { ...current, balance: parsed.balance }
+          : current
+      ));
+      setPrizeModal(parsed.redemption);
       await loadCustomerState();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Não foi possível resgatar agora.';
-      window.alert(message);
+      if (!isCurrentRequest()) return;
+      console.error('[loyalty] reward redemption request failed:', error);
+      window.alert('Não foi possível resgatar agora.');
     } finally {
-      setRedeeming(null);
+      if (redeemRequestSeqRef.current === requestId) {
+        redeemInFlightRef.current = false;
+        if (walletOrgRef.current === requestOrganizationId) {
+          setRedeeming(null);
+        }
+      }
     }
   };
 

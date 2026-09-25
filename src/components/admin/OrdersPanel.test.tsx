@@ -2351,3 +2351,308 @@ describe('OrdersPanel confirmPayment contract and lifecycle', () => {
   });
 
 });
+
+
+describe('OrdersPanel callPassword contract and lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let currentOrder: ReturnType<typeof makeOrder>;
+  let orderFetches: string[];
+  let passwordCalls: Array<{ organization_id: string; numero: string; tipo: string }>;
+  let passwordResponder: (payload: { organization_id: string; numero: string; tipo: string }) => Promise<any>;
+  let realtimeCallbacks: Array<() => void>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    currentOrder = { ...makeOrder('A-100', 'Cliente A'), status: 'ready' };
+    orderFetches = [];
+    passwordCalls = [];
+    realtimeCallbacks = [];
+
+    passwordResponder = async () => ({ data: null, error: null });
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        if (channel === 'admin-orders-org-a') realtimeCallbacks.push(callback);
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'visionfood_update_order_status') {
+        currentOrder = { ...currentOrder, status: 'ready' };
+        return Promise.resolve({ data: { ok: true }, error: null });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          const data =
+            organizationId === 'org-a'
+              ? [currentOrder]
+              : [{ ...makeOrder('B-200', 'Cliente B'), status: 'ready' }];
+          return Promise.resolve({ data, error: null });
+        });
+        return q;
+      }
+
+      if (table === 'senhas_chamadas') {
+        return {
+          insert: vi.fn((payload: { organization_id: string; numero: string; tipo: string }) => {
+            passwordCalls.push(payload);
+            return passwordResponder(payload);
+          }),
+        };
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      if (table === 'entregadores') {
+        return resolvedQuery({ data: [], error: null });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async (organizationId: string | null = 'org-a') => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findButton = (label: string) =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes(label),
+    ) as HTMLButtonElement | undefined;
+
+  const clickButton = async (label: string, times = 1) => {
+    const button = findButton(label);
+    expect(button).toBeTruthy();
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  };
+
+  it('shows Rechamar Senha only for a ready order outside scheduledWaiting', async () => {
+    await renderPanel();
+    expect(findButton('Rechamar Senha')).toBeTruthy();
+
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+    });
+    expect(findButton('Rechamar Senha')).toBeUndefined();
+
+    currentOrder = {
+      ...currentOrder,
+      status: 'ready',
+      scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+    await act(async () => {
+      realtimeCallbacks[0]();
+      await flushAsync();
+      findButton('Agendados')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('AGENDADO');
+    expect(findButton('Rechamar Senha')).toBeUndefined();
+  });
+
+  it('trims the password number and inserts only the canonical payload', async () => {
+    currentOrder = { ...currentOrder, order_number: '  A-100  ' };
+    await renderPanel();
+
+    await clickButton('Rechamar Senha');
+
+    expect(passwordCalls).toEqual([
+      { organization_id: 'org-a', numero: 'A-100', tipo: 'normal' },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('🔔 Senha #A-100 chamada na TV');
+  });
+
+  it('rejects a blank password number before inserting', async () => {
+    currentOrder = { ...currentOrder, order_number: '   ' };
+    await renderPanel();
+
+    await clickButton('Rechamar Senha');
+
+    expect(passwordCalls).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalledWith('Pedido sem número de senha válido.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps technical Supabase details out of the operator toast', async () => {
+    passwordResponder = async () => ({
+      data: null,
+      error: { message: 'sensitive database detail' },
+    });
+    await renderPanel();
+
+    await clickButton('Rechamar Senha');
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Pedido ficou pronto, mas a senha não pôde ser chamada na TV.',
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('sensitive database detail'),
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it('contains a transport rejection and reports only the generic operator error', async () => {
+    passwordResponder = async () => {
+      throw new Error('sensitive transport detail');
+    };
+    await renderPanel();
+
+    await clickButton('Rechamar Senha');
+    await act(async () => {
+      await flushAsync();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Pedido ficou pronto, mas a senha não pôde ser chamada na TV.',
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('sensitive transport detail'),
+    );
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks two password calls dispatched in the same turn while the first insert is pending', async () => {
+    const request = deferred<any>();
+    passwordResponder = () => request.promise;
+    await renderPanel();
+
+    await clickButton('Rechamar Senha', 2);
+
+    expect(passwordCalls).toEqual([
+      { organization_id: 'org-a', numero: 'A-100', tipo: 'normal' },
+    ]);
+
+    await act(async () => {
+      request.resolve({ data: null, error: null });
+      await flushAsync();
+    });
+  });
+
+  it('keeps order actions visually busy while a password insert is pending', async () => {
+    const request = deferred<any>();
+    passwordResponder = () => request.promise;
+    await renderPanel();
+
+    await clickButton('Rechamar Senha');
+
+    expect(findButton('Rechamar Senha')?.disabled).toBe(true);
+    expect(findButton('Retirado')?.disabled).toBe(true);
+
+    await act(async () => {
+      request.resolve({ data: null, error: null });
+      await flushAsync();
+    });
+
+    expect(findButton('Rechamar Senha')?.disabled).toBe(false);
+    expect(findButton('Retirado')?.disabled).toBe(false);
+  });
+
+  it('ignores an old password result after the organization changes', async () => {
+    const request = deferred<any>();
+    passwordResponder = () => request.promise;
+    await renderPanel('org-a');
+
+    await clickButton('Rechamar Senha');
+    expect(passwordCalls).toEqual([
+      { organization_id: 'org-a', numero: 'A-100', tipo: 'normal' },
+    ]);
+
+    await renderPanel('org-b');
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      request.resolve({ data: null, error: null });
+      await flushAsync();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('#B-200');
+    expect(container.textContent).not.toContain('#A-100');
+  });
+
+  it('keeps Rechamar Senha disabled while another status update for the order is pending', async () => {
+    const statusRequest = deferred<any>();
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'visionfood_update_order_status') return statusRequest.promise;
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    await renderPanel();
+    await clickButton('Retirado');
+
+    expect(findButton('Rechamar Senha')?.disabled).toBe(true);
+
+    await act(async () => {
+      statusRequest.resolve({ data: { ok: true }, error: null });
+      await flushAsync();
+    });
+  });
+
+  it('preserves the automatic password call after updateStatus transitions preparing to ready', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    await renderPanel();
+
+    await clickButton('Pronto');
+
+    expect(passwordCalls).toEqual([
+      { organization_id: 'org-a', numero: 'A-100', tipo: 'normal' },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pedido marcado como Pronto.');
+    expect(toastSuccessMock).toHaveBeenCalledWith('🔔 Senha #A-100 chamada na TV');
+  });
+});

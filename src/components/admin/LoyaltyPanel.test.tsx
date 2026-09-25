@@ -379,12 +379,13 @@ describe('LoyaltyPanel prize consumption', () => {
 
   it('does not let an old post-success reconciliation overwrite a newer organization', async () => {
     const oldRefresh = deferred<any>();
+    const newRefresh = deferred<any>();
     let redemptionQueryCount = 0;
 
     fromMock.mockImplementation((table: string) => {
       if (table === 'resgates_fidelidade') {
         redemptionQueryCount += 1;
-        if (redemptionQueryCount === 2) {
+        if (redemptionQueryCount === 2 || redemptionQueryCount === 3) {
           let organizationId = '';
           const q: any = {};
           q.select = vi.fn(() => q);
@@ -395,7 +396,7 @@ describe('LoyaltyPanel prize consumption', () => {
           q.order = vi.fn(() => q);
           q.limit = vi.fn(() => {
             loadCalls.push({ table, organizationId });
-            return oldRefresh.promise;
+            return redemptionQueryCount === 2 ? oldRefresh.promise : newRefresh.promise;
           });
           return q;
         }
@@ -410,7 +411,16 @@ describe('LoyaltyPanel prize consumption', () => {
       await flushAsync();
     });
 
-    await renderPanel(ORG_B);
+    await act(async () => {
+      root.render(<LoyaltyPanel organizationId={ORG_B} />);
+      await flushAsync();
+    });
+
+    await act(async () => {
+      newRefresh.resolve({ data: redemptionsByOrg[ORG_B], error: null });
+      await flushAsync();
+    });
+
     expect(container.textContent).toContain('Prêmio B');
     expect(container.textContent).not.toContain('Prêmio A');
 

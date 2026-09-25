@@ -3,7 +3,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   getSessionMock,
@@ -109,6 +109,14 @@ describe('LoyaltyCard customer wallet read', () => {
       await flushAsync();
     });
   };
+
+  afterEach(async () => {
+    if (container?.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.useRealTimers();
+  });
 
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;

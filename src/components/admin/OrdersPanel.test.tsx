@@ -1150,8 +1150,6 @@ describe('OrdersPanel assignEntregador contract and UI modes', () => {
   });
 
   afterEach(async () => {
-    cancelConfirmMock?.mockRestore();
-    cancelPromptMock?.mockRestore();
     if (container.isConnected) {
       await act(async () => root.unmount());
       container.remove();
@@ -2375,18 +2373,6 @@ describe('OrdersPanel callPassword contract and lifecycle', () => {
     realtimeCallbacks = [];
 
     passwordResponder = async () => ({ data: null, error: null });
-    cancelResponder = async args => ({
-      data: {
-        ok: true,
-        order_id: args._order_id,
-        previous_status: currentOrder.status,
-        payment_status: currentOrder.payment_status,
-        status_reembolso: 'auto_eligible',
-        stock_restocked: true,
-        ingredient_stock_restocked: false,
-      },
-      error: null,
-    });
 
     channelMock.mockImplementation((channel: string) => {
       const ch: any = {};
@@ -2400,14 +2386,6 @@ describe('OrdersPanel callPassword contract and lifecycle', () => {
 
     rpcMock.mockImplementation((fn: string, args?: any) => {
       if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
-      if (fn === 'cancelar_pedido') {
-        const payload = {
-          _order_id: args?._order_id || '',
-          _motivo: args?._motivo ?? null,
-        };
-        cancelCalls.push(payload);
-        return cancelResponder(payload);
-      }
       if (fn === 'visionfood_update_order_status') {
         const previousStatus = currentOrder.status;
         currentOrder = { ...currentOrder, status: args?._next_status || 'ready' };
@@ -2697,10 +2675,6 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
   let passwordCalls: Array<{ organization_id: string; numero: string; tipo: string }>;
   let passwordResponder: (payload: { organization_id: string; numero: string; tipo: string }) => Promise<any>;
   let realtimeCallbacks: Record<string, Array<() => void>>;
-  let cancelCalls: Array<{ _order_id: string; _motivo: string | null }>;
-  let cancelResponder: (args: { _order_id: string; _motivo: string | null }) => Promise<any>;
-  let cancelConfirmMock: any;
-  let cancelPromptMock: any;
 
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -2712,9 +2686,6 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
     statusCalls = [];
     passwordCalls = [];
     realtimeCallbacks = {};
-    cancelCalls = [];
-    cancelConfirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    cancelPromptMock = vi.spyOn(window, 'prompt').mockReturnValue('  falha operacional  ');
 
     statusResponder = async args => ({
       data: {
@@ -2824,22 +2795,6 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
 
   const clickButton = async (label: string, times = 1) => {
     const button = findButton(label);
-    expect(button).toBeTruthy();
-    await act(async () => {
-      for (let i = 0; i < times; i += 1) {
-        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      }
-      await flushAsync();
-    });
-  };
-
-  const findCancelButton = () =>
-    Array.from(container.querySelectorAll('button')).find(button =>
-      button.className.includes('bg-destructive'),
-    ) as HTMLButtonElement | undefined;
-
-  const clickCancel = async (times = 1) => {
-    const button = findCancelButton();
     expect(button).toBeTruthy();
     await act(async () => {
       for (let i = 0; i < times; i += 1) {
@@ -3152,273 +3107,449 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
       },
     ]);
   });
+});
 
-  describe('cancelled transition contract and lifecycle', () => {
-    it('sends pending cancellation with a null reason and accepts a correlated authoritative success', async () => {
-      await renderPanel();
-      await clickCancel();
+describe('OrdersPanel cancelar_pedido contract and lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let currentOrder: ReturnType<typeof makeOrder>;
+  let orderFetches: string[];
+  let cancelCalls: Array<{ _order_id: string; _motivo: string | null }>;
+  let cancelResponder: (args: { _order_id: string; _motivo: string | null }) => Promise<any>;
+  let realtimeCallbacks: Record<string, Array<() => void>>;
+  let confirmMock: any;
+  let promptMock: any;
 
-      expect(cancelConfirmMock).toHaveBeenCalledWith(
-        'Cancelar este pedido? O estoque será devolvido.',
-      );
-      expect(cancelCalls).toEqual([{ _order_id: 'order-A-100', _motivo: null }]);
-      expect(container.textContent).toContain('❌ Cancelado');
-      expect(toastSuccessMock).toHaveBeenCalledWith(
-        'Pedido cancelado e estoque devolvido. Reembolso automático elegível.',
-      );
-    });
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
 
-    it('trims and sends the mandatory reason for a preparing cancellation', async () => {
-      currentOrder = { ...currentOrder, status: 'preparing' };
-      cancelPromptMock.mockReturnValue('  falta de ingrediente  ');
+    currentOrder = { ...makeOrder('A-100', 'Cliente A') };
+    orderFetches = [];
+    cancelCalls = [];
+    realtimeCallbacks = {};
+    confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    promptMock = vi.spyOn(window, 'prompt').mockReturnValue('  falha operacional  ');
 
-      await renderPanel();
-      await clickCancel();
-
-      expect(cancelCalls).toEqual([
-        { _order_id: 'order-A-100', _motivo: 'falta de ingrediente' },
-      ]);
-    });
-
-    it('allows out_for_delivery cancellation through the admin flow with a reason', async () => {
-      currentOrder = {
-        ...currentOrder,
-        status: 'out_for_delivery',
-        order_type: 'delivery',
-        delivery_address: 'Rua Teste, 100',
-      };
-      cancelPromptMock.mockReturnValue('  cliente solicitou  ');
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(cancelCalls).toEqual([
-        { _order_id: 'order-A-100', _motivo: 'cliente solicitou' },
-      ]);
-    });
-
-    it.each(['delivered', 'cancelled'])(
-      'does not expose the common cancel action for an order already %s',
-      async status => {
-        currentOrder = { ...currentOrder, status };
-
-        await renderPanel();
-
-        expect(findCancelButton()).toBeUndefined();
-        expect(cancelCalls).toHaveLength(0);
+    cancelResponder = async args => ({
+      data: {
+        ok: true,
+        order_id: args._order_id,
+        previous_status: currentOrder.status,
+        payment_status: currentOrder.payment_status,
+        status_reembolso: 'auto_eligible',
+        stock_restocked: true,
+        ingredient_stock_restocked: false,
       },
-    );
-
-    it('fails closed for malformed cancellation success { ok: true } and reconciles instead of assuming cancellation', async () => {
-      cancelResponder = async () => ({ data: { ok: true }, error: null });
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
-      expect(orderFetches).toEqual(['org-a', 'org-a']);
-      expect(container.textContent).toContain('⏳ Pendente');
-      expect(container.textContent).not.toContain('❌ Cancelado');
+      error: null,
     });
 
-    it('requires cancellation ok to be the boolean true', async () => {
-      cancelResponder = async args => ({
-        data: {
-          ok: 'true',
-          order_id: args._order_id,
-          previous_status: 'pending',
-          status_reembolso: 'auto_eligible',
-        },
-        error: null,
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        (realtimeCallbacks[channel] ||= []).push(callback);
+        return ch;
       });
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
-      expect(container.textContent).toContain('⏳ Pendente');
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
     });
 
-    it('rejects an uncorrelated normal cancellation success for another order', async () => {
-      cancelResponder = async () => ({
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'cancelar_pedido') {
+        const payload = {
+          _order_id: args?._order_id || '',
+          _motivo: args?._motivo ?? null,
+        };
+        cancelCalls.push(payload);
+        return cancelResponder(payload);
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          const data =
+            organizationId === 'org-a'
+              ? [currentOrder]
+              : [{ ...makeOrder('B-200', 'Cliente B'), status: 'preparing' }];
+          return Promise.resolve({ data, error: null });
+        });
+        return q;
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    confirmMock?.mockRestore();
+    promptMock?.mockRestore();
+    if (container?.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async (organizationId: string | null = 'org-a') => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findCancelButton = () =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.className.includes('bg-destructive'),
+    ) as HTMLButtonElement | undefined;
+
+  const clickCancel = async (times = 1) => {
+    const button = findCancelButton();
+    expect(button).toBeTruthy();
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  };
+
+  it('sends pending cancellation with a null reason and accepts a correlated authoritative success', async () => {
+    await renderPanel();
+    await clickCancel();
+
+    expect(confirmMock).toHaveBeenCalledWith('Cancelar este pedido? O estoque será devolvido.');
+    expect(cancelCalls).toEqual([{ _order_id: 'order-A-100', _motivo: null }]);
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(toastSuccessMock).toHaveBeenCalledWith(
+      'Pedido cancelado e estoque devolvido. Reembolso automático elegível.',
+    );
+  });
+
+  it('trims and sends the mandatory reason for a preparing cancellation', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    promptMock.mockReturnValue('  falta de ingrediente  ');
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(cancelCalls).toEqual([
+      { _order_id: 'order-A-100', _motivo: 'falta de ingrediente' },
+    ]);
+  });
+
+  it('does not call cancelar_pedido when the required preparing reason is dismissed', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    promptMock.mockReturnValue(null);
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(cancelCalls).toHaveLength(0);
+  });
+
+  it('does not call cancelar_pedido for a trimmed reason shorter than three characters', async () => {
+    currentOrder = { ...currentOrder, status: 'ready' };
+    promptMock.mockReturnValue(' a ');
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(cancelCalls).toHaveLength(0);
+  });
+
+  it('allows out_for_delivery cancellation through the admin flow with a reason', async () => {
+    currentOrder = {
+      ...currentOrder,
+      status: 'out_for_delivery',
+      order_type: 'delivery',
+      delivery_address: 'Rua Teste, 100',
+    };
+    promptMock.mockReturnValue('  cliente solicitou  ');
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(cancelCalls).toEqual([
+      { _order_id: 'order-A-100', _motivo: 'cliente solicitou' },
+    ]);
+  });
+
+  it.each(['delivered', 'cancelled'])(
+    'does not expose the common cancel action for an order already %s',
+    async status => {
+      currentOrder = { ...currentOrder, status };
+
+      await renderPanel();
+
+      expect(findCancelButton()).toBeUndefined();
+      expect(cancelCalls).toHaveLength(0);
+    },
+  );
+
+  it('fails closed for malformed cancellation success { ok: true } and reconciles instead of assuming cancellation', async () => {
+    cancelResponder = async () => ({ data: { ok: true }, error: null });
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('⏳ Pendente');
+    expect(container.textContent).not.toContain('❌ Cancelado');
+  });
+
+  it('requires cancellation ok to be the boolean true', async () => {
+    cancelResponder = async args => ({
+      data: {
+        ok: 'true',
+        order_id: args._order_id,
+        previous_status: 'pending',
+        status_reembolso: 'auto_eligible',
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('rejects an uncorrelated normal cancellation success for another order', async () => {
+    cancelResponder = async () => ({
+      data: {
+        ok: true,
+        order_id: 'another-order',
+        previous_status: 'pending',
+        status_reembolso: 'auto_eligible',
+        stock_restocked: true,
+        ingredient_stock_restocked: false,
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('blocks two cancellation events dispatched in the same turn while the RPC is pending', async () => {
+    const request = deferred<any>();
+    cancelResponder = () => request.promise;
+
+    await renderPanel();
+    await clickCancel(2);
+
+    expect(cancelCalls).toEqual([{ _order_id: 'order-A-100', _motivo: null }]);
+    expect(findCancelButton()?.disabled).toBe(true);
+
+    await act(async () => {
+      request.resolve({
         data: {
           ok: true,
-          order_id: 'another-order',
+          order_id: 'order-A-100',
           previous_status: 'pending',
+          payment_status: 'paid',
           status_reembolso: 'auto_eligible',
           stock_restocked: true,
           ingredient_stock_restocked: false,
         },
         error: null,
       });
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(toastErrorMock).toHaveBeenCalledWith('Falha ao cancelar.');
-      expect(orderFetches).toEqual(['org-a', 'org-a']);
-      expect(container.textContent).toContain('⏳ Pendente');
-    });
-
-    it('blocks two cancellation events dispatched in the same turn while the RPC is pending', async () => {
-      const request = deferred<any>();
-      cancelResponder = () => request.promise;
-
-      await renderPanel();
-      await clickCancel(2);
-
-      expect(cancelCalls).toEqual([{ _order_id: 'order-A-100', _motivo: null }]);
-      expect(findCancelButton()?.disabled).toBe(true);
-
-      await act(async () => {
-        request.resolve({
-          data: {
-            ok: true,
-            order_id: 'order-A-100',
-            previous_status: 'pending',
-            payment_status: 'paid',
-            status_reembolso: 'auto_eligible',
-            stock_restocked: true,
-            ingredient_stock_restocked: false,
-          },
-          error: null,
-        });
-        await flushAsync();
-      });
-    });
-
-    it('contains an ambiguous transport rejection, refetches authoritative state and never leaks technical detail', async () => {
-      cancelResponder = async () => {
-        currentOrder = { ...currentOrder, status: 'cancelled' };
-        throw new Error('network secret detail');
-      };
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(
-        toastErrorMock.mock.calls.flat().some(call => String(call).includes('network secret detail')),
-      ).toBe(false);
-      expect(orderFetches).toEqual(['org-a', 'org-a']);
-      expect(container.textContent).toContain('❌ Cancelado');
-      expect(findCancelButton()).toBeUndefined();
-    });
-
-    it('does not let an older cancellation success overwrite a newer incompatible Realtime status', async () => {
-      const request = deferred<any>();
-      cancelResponder = () => request.promise;
-
-      await renderPanel();
-      await clickCancel();
-
-      currentOrder = { ...currentOrder, status: 'delivered' };
-      await act(async () => {
-        realtimeCallbacks['admin-orders-org-a'][0]();
-        await flushAsync();
-      });
-      expect(container.textContent).toContain('✅ Entregue');
-
-      await act(async () => {
-        request.resolve({
-          data: {
-            ok: true,
-            order_id: 'order-A-100',
-            previous_status: 'pending',
-            payment_status: 'paid',
-            status_reembolso: 'auto_eligible',
-            stock_restocked: true,
-            ingredient_stock_restocked: false,
-          },
-          error: null,
-        });
-        await flushAsync();
-      });
-
-      expect(container.textContent).toContain('✅ Entregue');
-      expect(container.textContent).not.toContain('❌ Cancelado');
-    });
-
-    it('ignores an old cancellation response after organization changes and emits no stale success toast', async () => {
-      const request = deferred<any>();
-      cancelResponder = () => request.promise;
-
-      await renderPanel('org-a');
-      await clickCancel();
-
-      await renderPanel('org-b');
-      expect(container.textContent).toContain('#B-200');
-
-      await act(async () => {
-        request.resolve({
-          data: {
-            ok: true,
-            order_id: 'order-A-100',
-            previous_status: 'pending',
-            payment_status: 'paid',
-            status_reembolso: 'auto_eligible',
-            stock_restocked: true,
-            ingredient_stock_restocked: false,
-          },
-          error: null,
-        });
-        await flushAsync();
-      });
-
-      expect(container.textContent).toContain('#B-200');
-      expect(toastSuccessMock).not.toHaveBeenCalledWith(
-        'Pedido cancelado e estoque devolvido. Reembolso automático elegível.',
-      );
-    });
-
-    it('treats already_cancelled as idempotent only after authoritative reconciliation', async () => {
-      cancelResponder = async () => {
-        currentOrder = {
-          ...currentOrder,
-          status: 'cancelled',
-          status_reembolso: 'manual_required',
-        } as any;
-        return {
-          data: {
-            ok: true,
-            already_cancelled: true,
-            status_reembolso: 'manual_required',
-          },
-          error: null,
-        };
-      };
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(orderFetches).toEqual(['org-a', 'org-a']);
-      expect(container.textContent).toContain('❌ Cancelado');
-      expect(toastSuccessMock).toHaveBeenCalledWith('Pedido já estava cancelado.');
-    });
-
-    it.each([
-      ['unauthenticated', 'Sua sessão não está mais válida. Entre novamente antes de cancelar o pedido.'],
-      ['not_found', 'Pedido não encontrado.'],
-      ['forbidden', 'Sem permissão para cancelar este pedido.'],
-      ['status_locked', 'Pedido não pode mais ser cancelado pelo cliente.'],
-      ['admin_only', 'A partir do preparo, apenas o lojista pode cancelar.'],
-      ['reason_required', 'Informe um motivo (mín. 3 caracteres).'],
-      ['already_delivered', 'Pedido já entregue — não pode ser cancelado.'],
-    ])('maps authoritative cancelar_pedido reason %s without exposing raw backend details', async (reason, message) => {
-      cancelResponder = async () => ({
-        data: { ok: false, reason, detail: 'internal backend detail' },
-        error: null,
-      });
-
-      await renderPanel();
-      await clickCancel();
-
-      expect(toastErrorMock).toHaveBeenCalledWith(message);
-      expect(
-        toastErrorMock.mock.calls.flat().some(call => String(call).includes('internal backend detail')),
-      ).toBe(false);
-      expect(findCancelButton()?.disabled).toBe(false);
+      await flushAsync();
     });
   });
 
+  it('contains an ambiguous transport rejection, refetches authoritative state and never leaks technical detail', async () => {
+    cancelResponder = async () => {
+      currentOrder = { ...currentOrder, status: 'cancelled' };
+      throw new Error('network secret detail');
+    };
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(
+      toastErrorMock.mock.calls.flat().some(call => String(call).includes('network secret detail')),
+    ).toBe(false);
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(findCancelButton()).toBeUndefined();
+  });
+
+  it('does not let an older cancellation success overwrite a newer incompatible Realtime status', async () => {
+    const request = deferred<any>();
+    cancelResponder = () => request.promise;
+
+    await renderPanel();
+    await clickCancel();
+
+    currentOrder = { ...currentOrder, status: 'delivered' };
+    await act(async () => {
+      realtimeCallbacks['admin-orders-org-a'][0]();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('✅ Entregue');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'pending',
+          payment_status: 'paid',
+          status_reembolso: 'auto_eligible',
+          stock_restocked: true,
+          ingredient_stock_restocked: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(container.textContent).not.toContain('❌ Cancelado');
+  });
+
+  it('preserves a cancellation received from another origin while the RPC is pending', async () => {
+    const request = deferred<any>();
+    cancelResponder = () => request.promise;
+
+    await renderPanel();
+    await clickCancel();
+
+    currentOrder = { ...currentOrder, status: 'cancelled' };
+    await act(async () => {
+      realtimeCallbacks['admin-orders-org-a'][0]();
+      await flushAsync();
+    });
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          already_cancelled: true,
+          status_reembolso: 'manual_required',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(findCancelButton()).toBeUndefined();
+  });
+
+  it('ignores an old cancellation response after organization changes and emits no stale success toast', async () => {
+    const request = deferred<any>();
+    cancelResponder = () => request.promise;
+
+    await renderPanel('org-a');
+    await clickCancel();
+
+    await renderPanel('org-b');
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'pending',
+          payment_status: 'paid',
+          status_reembolso: 'auto_eligible',
+          stock_restocked: true,
+          ingredient_stock_restocked: false,
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('#B-200');
+    expect(toastSuccessMock).not.toHaveBeenCalledWith(
+      'Pedido cancelado e estoque devolvido. Reembolso automático elegível.',
+    );
+  });
+
+  it('treats already_cancelled as idempotent only after authoritative reconciliation', async () => {
+    cancelResponder = async () => {
+      currentOrder = {
+        ...currentOrder,
+        status: 'cancelled',
+        status_reembolso: 'manual_required',
+      } as any;
+      return {
+        data: {
+          ok: true,
+          already_cancelled: true,
+          status_reembolso: 'manual_required',
+        },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pedido já estava cancelado.');
+  });
+
+  it.each([
+    ['unauthenticated', 'Sua sessão não está mais válida. Entre novamente antes de cancelar o pedido.'],
+    ['not_found', 'Pedido não encontrado.'],
+    ['forbidden', 'Sem permissão para cancelar este pedido.'],
+    ['status_locked', 'Pedido não pode mais ser cancelado pelo cliente.'],
+    ['admin_only', 'A partir do preparo, apenas o lojista pode cancelar.'],
+    ['reason_required', 'Informe um motivo (mín. 3 caracteres).'],
+    ['already_delivered', 'Pedido já entregue — não pode ser cancelado.'],
+  ])('maps authoritative cancelar_pedido reason %s without exposing raw backend details', async (reason, message) => {
+    cancelResponder = async () => ({
+      data: { ok: false, reason, detail: 'internal backend detail' },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickCancel();
+
+    expect(toastErrorMock).toHaveBeenCalledWith(message);
+    expect(
+      toastErrorMock.mock.calls.flat().some(call => String(call).includes('internal backend detail')),
+    ).toBe(false);
+    expect(findCancelButton()?.disabled).toBe(false);
+  });
 });
 

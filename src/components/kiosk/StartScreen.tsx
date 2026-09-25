@@ -36,7 +36,12 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [instagramUrl, setInstagramUrl] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
   const [favorites, setFavorites] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('vf_favoritos') || '[]'); } catch { return []; }
+    try {
+      const saved = JSON.parse(localStorage.getItem('vf_favoritos') || '[]');
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
   });
   const [showFavorites, setShowFavorites] = useState(false);
   const bannerTouchStartX = useRef<number | null>(null);

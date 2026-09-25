@@ -2656,3 +2656,447 @@ describe('OrdersPanel callPassword contract and lifecycle', () => {
     expect(toastSuccessMock).toHaveBeenCalledWith('🔔 Senha #A-100 chamada na TV');
   });
 });
+describe('OrdersPanel updateStatus normal transition contract and lifecycle', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let currentOrder: ReturnType<typeof makeOrder>;
+  let orderFetches: string[];
+  let statusCalls: Array<{ _order_id: string; _expected_status: string; _next_status: string }>;
+  let statusResponder: (args: { _order_id: string; _expected_status: string; _next_status: string }) => Promise<any>;
+  let passwordCalls: Array<{ organization_id: string; numero: string; tipo: string }>;
+  let passwordResponder: (payload: { organization_id: string; numero: string; tipo: string }) => Promise<any>;
+  let realtimeCallbacks: Record<string, Array<() => void>>;
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+
+    currentOrder = { ...makeOrder('A-100', 'Cliente A') };
+    orderFetches = [];
+    statusCalls = [];
+    passwordCalls = [];
+    realtimeCallbacks = {};
+
+    statusResponder = async args => ({
+      data: {
+        ok: true,
+        order_id: args._order_id,
+        previous_status: args._expected_status,
+        status: args._next_status,
+      },
+      error: null,
+    });
+    passwordResponder = async () => ({ data: null, error: null });
+
+    channelMock.mockImplementation((channel: string) => {
+      const ch: any = {};
+      ch.on = vi.fn((_event: string, _config: unknown, callback: () => void) => {
+        (realtimeCallbacks[channel] ||= []).push(callback);
+        return ch;
+      });
+      ch.subscribe = vi.fn(() => ch);
+      return ch;
+    });
+
+    rpcMock.mockImplementation((fn: string, args?: any) => {
+      if (fn === 'visionfood_admin_tables') return Promise.resolve({ data: [], error: null });
+      if (fn === 'visionfood_update_order_status') {
+        const payload = {
+          _order_id: args?._order_id || '',
+          _expected_status: args?._expected_status || '',
+          _next_status: args?._next_status || '',
+        };
+        statusCalls.push(payload);
+        return statusResponder(payload);
+      }
+      if (fn === 'grant_loyalty_stamp') {
+        return Promise.resolve({ data: { ok: false, reason: 'already_stamped' }, error: null });
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+
+    fromMock.mockImplementation((table: string) => {
+      if (table === 'orders') {
+        let organizationId = '';
+        const q: any = {};
+        q.select = vi.fn(() => q);
+        q.eq = vi.fn((column: string, value: string) => {
+          if (column === 'organization_id') organizationId = value;
+          return q;
+        });
+        for (const method of ['order', 'in', 'not', 'gte', 'lte']) q[method] = vi.fn(() => q);
+        q.limit = vi.fn(() => {
+          orderFetches.push(organizationId);
+          const data =
+            organizationId === 'org-a'
+              ? [currentOrder]
+              : [{ ...makeOrder('B-200', 'Cliente B'), status: 'preparing' }];
+          return Promise.resolve({ data, error: null });
+        });
+        return q;
+      }
+
+      if (table === 'senhas_chamadas') {
+        return {
+          insert: vi.fn((payload: { organization_id: string; numero: string; tipo: string }) => {
+            passwordCalls.push(payload);
+            return passwordResponder(payload);
+          }),
+        };
+      }
+
+      if (table === 'settings') {
+        return resolvedQuery({
+          data: {
+            store_name: 'Loja',
+            scheduling_preparation_lead_min: 30,
+            delivery_assignment_mode: 'manual',
+          },
+          error: null,
+        });
+      }
+
+      return resolvedQuery({ data: [], error: null });
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  const renderPanel = async (organizationId: string | null = 'org-a') => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId={organizationId} />);
+      await flushAsync();
+    });
+  };
+
+  const findButton = (label: string) =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes(label),
+    ) as HTMLButtonElement | undefined;
+
+  const clickButton = async (label: string, times = 1) => {
+    const button = findButton(label);
+    expect(button).toBeTruthy();
+    await act(async () => {
+      for (let i = 0; i < times; i += 1) {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      }
+      await flushAsync();
+    });
+  };
+
+  it('sends the canonical pending -> preparing payload and accepts the correlated authoritative success shape', async () => {
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(statusCalls).toEqual([
+      {
+        _order_id: 'order-A-100',
+        _expected_status: 'pending',
+        _next_status: 'preparing',
+      },
+    ]);
+    expect(container.textContent).toContain('👨‍🍳 Preparando');
+  });
+
+  it('fails closed for malformed success payload { ok: true } and reconciles the authoritative order', async () => {
+    statusResponder = async () => ({ data: { ok: true }, error: null });
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('requires ok to be the boolean true instead of accepting a truthy non-boolean value', async () => {
+    statusResponder = async args => ({
+      data: {
+        ok: 'true',
+        order_id: args._order_id,
+        previous_status: args._expected_status,
+        status: args._next_status,
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('rejects a success payload whose order/status correlation does not match the requested transition', async () => {
+    statusResponder = async args => ({
+      data: {
+        ok: true,
+        order_id: 'another-order',
+        previous_status: args._expected_status,
+        status: args._next_status,
+      },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('contains a transport rejection, shows only the generic operator error and releases busy state', async () => {
+    statusResponder = async () => {
+      throw new Error('network secret detail');
+    };
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('O status não pôde ser atualizado.');
+    expect(
+      toastErrorMock.mock.calls.flat().some(call => String(call).includes('network secret detail')),
+    ).toBe(false);
+    expect(findButton('Preparando')?.disabled).toBe(false);
+  });
+
+  it('blocks two status updates dispatched in the same turn while the first RPC is pending', async () => {
+    const request = deferred<any>();
+    statusResponder = () => request.promise;
+
+    await renderPanel();
+    await clickButton('Preparando', 2);
+
+    expect(statusCalls).toEqual([
+      {
+        _order_id: 'order-A-100',
+        _expected_status: 'pending',
+        _next_status: 'preparing',
+      },
+    ]);
+    expect(findButton('Preparando')?.disabled).toBe(true);
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'pending',
+          status: 'preparing',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+  });
+
+  it('reconciles status_changed using the current authoritative status and releases busy state', async () => {
+    statusResponder = async () => {
+      currentOrder = { ...currentOrder, status: 'preparing' };
+      return {
+        data: { ok: false, reason: 'status_changed', current_status: 'preparing' },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'O status do pedido mudou. Atualize a lista antes de tentar novamente.',
+    );
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('👨‍🍳 Preparando');
+    expect(findButton('Pronto')?.disabled).toBe(false);
+  });
+
+  it('reconciles invalid_transition from the authoritative RPC instead of applying the requested status locally', async () => {
+    statusResponder = async () => ({
+      data: { ok: false, reason: 'invalid_transition', current_status: 'pending' },
+      error: null,
+    });
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    expect(toastErrorMock).toHaveBeenCalledWith('Essa mudança de status não é permitida.');
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('⏳ Pendente');
+  });
+
+  it('does not let an older RPC success regress a newer status loaded by Realtime', async () => {
+    const request = deferred<any>();
+    statusResponder = () => request.promise;
+
+    await renderPanel();
+    await clickButton('Preparando');
+
+    currentOrder = { ...currentOrder, status: 'ready' };
+    await act(async () => {
+      realtimeCallbacks['admin-orders-org-a'][0]();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('🔔 Pronto');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'pending',
+          status: 'preparing',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('🔔 Pronto');
+    expect(container.textContent).not.toContain('👨‍🍳 Preparando');
+  });
+
+  it('ignores an older ready success after organization change and does not call the old password', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    const request = deferred<any>();
+    statusResponder = () => request.promise;
+
+    await renderPanel('org-a');
+    await clickButton('Pronto');
+    expect(statusCalls).toHaveLength(1);
+
+    await renderPanel('org-b');
+    expect(container.textContent).toContain('#B-200');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'preparing',
+          status: 'ready',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(passwordCalls).toHaveLength(0);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Pedido marcado como Pronto.');
+    expect(container.textContent).toContain('#B-200');
+  });
+
+  it('does not call the password or overwrite a newer incompatible Realtime status after ready succeeds late', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    const request = deferred<any>();
+    statusResponder = () => request.promise;
+
+    await renderPanel();
+    await clickButton('Pronto');
+
+    currentOrder = { ...currentOrder, status: 'delivered' };
+    await act(async () => {
+      realtimeCallbacks['admin-orders-org-a'][0]();
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('✅ Entregue');
+
+    await act(async () => {
+      request.resolve({
+        data: {
+          ok: true,
+          order_id: 'order-A-100',
+          previous_status: 'preparing',
+          status: 'ready',
+        },
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('✅ Entregue');
+    expect(passwordCalls).toHaveLength(0);
+    expect(toastSuccessMock).not.toHaveBeenCalledWith('Pedido marcado como Pronto.');
+  });
+
+  it('calls the password exactly once after a correlated preparing -> ready success', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+
+    await renderPanel();
+    await clickButton('Pronto');
+
+    expect(statusCalls).toEqual([
+      {
+        _order_id: 'order-A-100',
+        _expected_status: 'preparing',
+        _next_status: 'ready',
+      },
+    ]);
+    expect(passwordCalls).toEqual([
+      { organization_id: 'org-a', numero: 'A-100', tipo: 'normal' },
+    ]);
+    expect(toastSuccessMock).toHaveBeenCalledWith('Pedido marcado como Pronto.');
+  });
+
+  it('keeps ready confirmed when the automatic password call fails', async () => {
+    currentOrder = { ...currentOrder, status: 'preparing' };
+    passwordResponder = async () => ({ data: null, error: { message: 'insert failed' } });
+
+    await renderPanel();
+    await clickButton('Pronto');
+
+    expect(container.textContent).toContain('🔔 Pronto');
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Pedido ficou pronto, mas a senha não pôde ser chamada na TV.',
+    );
+  });
+
+  it.each([
+    ['delivery', null],
+    ['viagem', null],
+  ])('does not expose local Retirado transition for %s ready orders', async (orderType, tableLabel) => {
+    currentOrder = {
+      ...currentOrder,
+      status: 'ready',
+      order_type: orderType,
+      table_label: tableLabel,
+    };
+
+    await renderPanel();
+
+    expect(findButton('Retirado')).toBeUndefined();
+    expect(statusCalls).toHaveLength(0);
+  });
+
+  it('keeps ready -> delivered available for a non-delivery table order', async () => {
+    currentOrder = {
+      ...currentOrder,
+      status: 'ready',
+      order_type: 'local',
+      table_label: 'Mesa 7',
+    };
+
+    await renderPanel();
+
+    expect(findButton('Retirado')).toBeTruthy();
+    await clickButton('Retirado');
+    expect(statusCalls).toEqual([
+      {
+        _order_id: 'order-A-100',
+        _expected_status: 'ready',
+        _next_status: 'delivered',
+      },
+    ]);
+  });
+});
+

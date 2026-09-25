@@ -380,28 +380,31 @@ describe('LoyaltyPanel prize consumption', () => {
   it('does not let an old post-success reconciliation overwrite a newer organization', async () => {
     const oldRefresh = deferred<any>();
     const newRefresh = deferred<any>();
-    let redemptionQueryCount = 0;
+    let orgARedemptionLoads = 0;
 
     fromMock.mockImplementation((table: string) => {
-      if (table === 'resgates_fidelidade') {
-        redemptionQueryCount += 1;
-        if (redemptionQueryCount === 2 || redemptionQueryCount === 3) {
-          let organizationId = '';
-          const q: any = {};
-          q.select = vi.fn(() => q);
-          q.eq = vi.fn((column: string, value: unknown) => {
-            if (column === 'organization_id') organizationId = String(value);
-            return q;
-          });
-          q.order = vi.fn(() => q);
-          q.limit = vi.fn(() => {
-            loadCalls.push({ table, organizationId });
-            return redemptionQueryCount === 2 ? oldRefresh.promise : newRefresh.promise;
-          });
-          return q;
+      if (table !== 'resgates_fidelidade') return makeQuery(table);
+
+      let organizationId = '';
+      const q: any = {};
+      q.select = vi.fn(() => q);
+      q.eq = vi.fn((column: string, value: unknown) => {
+        if (column === 'organization_id') organizationId = String(value);
+        return q;
+      });
+      q.order = vi.fn(() => q);
+      q.limit = vi.fn(() => {
+        loadCalls.push({ table, organizationId });
+
+        if (organizationId === ORG_A) {
+          orgARedemptionLoads += 1;
+          if (orgARedemptionLoads === 2) return oldRefresh.promise;
         }
-      }
-      return makeQuery(table);
+
+        if (organizationId === ORG_B) return newRefresh.promise;
+        return Promise.resolve(tableResult(table, organizationId));
+      });
+      return q;
     });
 
     await renderPanel(ORG_A);

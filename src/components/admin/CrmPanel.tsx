@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
 import {
@@ -78,6 +78,8 @@ const buildWaUrl = (phone: string, msg: string) => {
 const daysSince = (iso: string | null) =>
   iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)) : null;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const emptySummary: Summary = {
   contacts: 0, customers: 0, leads: 0, vip: 0, inactive_15: 0,
   confirmed_revenue: 0, average_ticket: 0, pending_tasks: 0,
@@ -98,11 +100,38 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
   const [extras, setExtras] = useState('');
   const [message, setMessage] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [openingWhatsApp, setOpeningWhatsApp] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileNotes, setProfileNotes] = useState('');
   const [profileTags, setProfileTags] = useState('');
   const [profileBirthDate, setProfileBirthDate] = useState('');
   const [profileConsent, setProfileConsent] = useState<'unknown' | 'opt_in' | 'opt_out'>('unknown');
+
+  const mountedRef = useRef(true);
+  const footerActionEpochRef = useRef(0);
+  const generateEpochRef = useRef<number | null>(null);
+  const whatsappEpochRef = useRef<number | null>(null);
+  const organizationIdRef = useRef(organizationId);
+  const selectedIdRef = useRef<string | null>(selected?.id || null);
+
+  organizationIdRef.current = organizationId;
+  selectedIdRef.current = selected?.id || null;
+
+  const invalidateFooterActions = () => {
+    footerActionEpochRef.current += 1;
+    generateEpochRef.current = null;
+    whatsappEpochRef.current = null;
+    if (mountedRef.current) {
+      setGenerating(false);
+      setOpeningWhatsApp(false);
+    }
+  };
+
+  const isCurrentFooterAction = (epoch: number, orgId: string, contactId: string) =>
+    mountedRef.current
+    && footerActionEpochRef.current === epoch
+    && organizationIdRef.current === orgId
+    && selectedIdRef.current === contactId;
 
   const load = async () => {
     if (!organizationId) {
@@ -163,7 +192,22 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
     }
   };
 
-  useEffect(() => { void load(); }, [organizationId]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      footerActionEpochRef.current += 1;
+      generateEpochRef.current = null;
+      whatsappEpochRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    invalidateFooterActions();
+    setSelected(null);
+    setMessage('');
+    void load();
+  }, [organizationId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -182,6 +226,7 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
   }, [contacts, segment, daysInactive, search]);
 
   const openCustomer = (c: Contact) => {
+    invalidateFooterActions();
     setSelected(c);
     setObjetivo(c.lifecycle_stage === 'lead' ? 'novidade' : 'recuperar');
     setExtras('');
@@ -190,6 +235,11 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
     setProfileTags((c.tags || []).join(', '));
     setProfileBirthDate(c.birth_date || '');
     setProfileConsent(c.consent_status || 'unknown');
+  };
+
+  const closeCustomer = () => {
+    invalidateFooterActions();
+    setSelected(null);
   };
 
   const saveProfile = async () => {
@@ -223,35 +273,83 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
 
   const generate = async () => {
     if (!selected || !organizationId) return;
+
+    const epoch = footerActionEpochRef.current;
+    if (generateEpochRef.current === epoch) return;
+
+    const orgId = organizationId;
+    const contactId = selected.id;
+    generateEpochRef.current = epoch;
     setGenerating(true);
+
     try {
       const { data, error } = await supabase.functions.invoke('crm-generate-message', {
         body: {
-          organization_id: organizationId,
-          contact_id: selected.id,
+          organization_id: orgId,
+          contact_id: contactId,
           objetivo,
           loja: storeName || '',
           extras: extras || undefined,
         },
       });
-      if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
-      setMessage((data as any)?.message || '');
-      if ((data as any)?.generated_by === 'template') {
+
+      if (error) {
+        let code = error?.message || '';
+        const context = (error as any)?.context;
+        if (context && typeof context.json === 'function') {
+          try {
+            const payload = await context.json();
+            if (typeof payload?.error === 'string' && payload.error) code = payload.error;
+          } catch {
+            // Mantém a mensagem original do SDK quando o corpo não puder ser lido.
+          }
+        }
+        throw new Error(code || 'Erro ao gerar mensagem');
+      }
+
+      if (typeof (data as any)?.error === 'string' && (data as any).error) {
+        throw new Error((data as any).error);
+      }
+
+      const generatedBy = (data as any)?.generated_by;
+      const generatedMessage = (data as any)?.message;
+      if (
+        (data as any)?.ok !== true
+        || typeof generatedMessage !== 'string'
+        || !generatedMessage.trim()
+        || (generatedBy !== 'ai' && generatedBy !== 'template')
+      ) {
+        throw new Error('invalid_generation_response');
+      }
+
+      if (!isCurrentFooterAction(epoch, orgId, contactId)) return;
+
+      setMessage(generatedMessage);
+      if (generatedBy === 'template') {
         toast.info('Mensagem criada por template seguro; IA externa indisponível.');
       }
     } catch (error: any) {
+      if (!isCurrentFooterAction(epoch, orgId, contactId)) return;
+
       const msg = error?.message === 'marketing_opt_out'
         ? 'Este contato optou por não receber marketing.'
-        : error?.message || 'Erro ao gerar mensagem';
+        : error?.message === 'invalid_generation_response'
+          ? 'Erro ao gerar mensagem'
+          : error?.message || 'Erro ao gerar mensagem';
       toast.error(msg);
     } finally {
-      setGenerating(false);
+      if (generateEpochRef.current === epoch) {
+        generateEpochRef.current = null;
+        if (mountedRef.current && footerActionEpochRef.current === epoch) {
+          setGenerating(false);
+        }
+      }
     }
   };
 
   const openWhatsApp = async () => {
-    if (!selected || !organizationId || !message.trim()) {
+    const trimmedMessage = message.trim();
+    if (!selected || !organizationId || !trimmedMessage) {
       toast.error('Gere ou escreva uma mensagem primeiro.');
       return;
     }
@@ -260,22 +358,51 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
       return;
     }
 
-    const { error } = await supabase.rpc('crm_record_interaction' as any, {
-      _org: organizationId,
-      _contact_id: selected.id,
-      _objective: objetivo,
-      _message: message.trim(),
-      _channel: 'whatsapp',
-      _status: 'opened',
-    });
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
+    const epoch = footerActionEpochRef.current;
+    if (whatsappEpochRef.current === epoch) return;
 
-    window.open(buildWaUrl(selected.phone_normalized, message.trim()), '_blank', 'noopener,noreferrer');
-    toast.success('WhatsApp aberto e interação registrada.');
-    await load();
+    const orgId = organizationId;
+    const contactId = selected.id;
+    const phone = selected.phone_normalized;
+    const objective = objetivo;
+    whatsappEpochRef.current = epoch;
+    setOpeningWhatsApp(true);
+
+    try {
+      const { data, error } = await supabase.rpc('crm_record_interaction' as any, {
+        _org: orgId,
+        _contact_id: contactId,
+        _objective: objective,
+        _message: trimmedMessage,
+        _channel: 'whatsapp',
+        _status: 'opened',
+      });
+      if (error) throw error;
+      if (typeof data !== 'string' || !UUID_RE.test(data)) {
+        throw new Error('invalid_interaction_response');
+      }
+
+      if (!isCurrentFooterAction(epoch, orgId, contactId)) return;
+
+      window.open(buildWaUrl(phone, trimmedMessage), '_blank', 'noopener,noreferrer');
+      toast.success('WhatsApp aberto e interação registrada.');
+      await load();
+    } catch (error: any) {
+      if (!isCurrentFooterAction(epoch, orgId, contactId)) return;
+
+      if (error?.message === 'invalid_interaction_response') {
+        toast.error('Não foi possível registrar a interação no CRM.');
+      } else {
+        toast.error(error?.message || 'Erro ao registrar interação no CRM.');
+      }
+    } finally {
+      if (whatsappEpochRef.current === epoch) {
+        whatsappEpochRef.current = null;
+        if (mountedRef.current && footerActionEpochRef.current === epoch) {
+          setOpeningWhatsApp(false);
+        }
+      }
+    }
   };
 
   const toggleAutomation = async (automation: Automation) => {
@@ -434,7 +561,7 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
       {selected && (
         <div
           className="fixed inset-0 z-[140] bg-background/90 backdrop-blur-md flex items-end sm:items-center justify-center sm:p-3"
-          onClick={() => setSelected(null)}
+          onClick={closeCustomer}
         >
           <div
             className="w-full sm:max-w-xl max-h-[calc(100dvh-0.5rem)] sm:max-h-[92dvh] kiosk-card border border-primary/30 rounded-t-3xl sm:rounded-2xl overflow-hidden flex flex-col"
@@ -529,14 +656,14 @@ const CrmPanel = ({ organizationId, storeName }: Props) => {
                 </button>
                 <button
                   onClick={() => void openWhatsApp()}
-                  disabled={!message.trim()}
+                  disabled={openingWhatsApp || !message.trim()}
                   className="py-3 rounded-xl bg-success text-success-foreground font-black text-sm flex items-center justify-center gap-2 disabled:opacity-40"
                 >
                   <MessageCircle className="w-4 h-4" /> Abrir WhatsApp
                 </button>
               </div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={closeCustomer}
                 className="w-full mt-2 py-2 rounded-lg text-xs font-bold text-muted-foreground"
               >
                 Fechar

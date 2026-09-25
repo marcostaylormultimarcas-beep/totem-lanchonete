@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   Award, Check, ChevronRight, Coins, Gift, History as HistoryIcon,
@@ -62,11 +62,152 @@ const EMPTY_STATE: CustomerState = {
   history: [],
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
+const isNonNegativeInteger = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isFinite(value)
+  && Number.isInteger(value)
+  && value >= 0;
+
+const isFiniteInteger = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isFinite(value)
+  && Number.isInteger(value);
+
+const isNonNegativeFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number'
+  && Number.isFinite(value)
+  && value >= 0;
+
+const isValidTimestamp = (value: unknown): value is string =>
+  typeof value === 'string'
+  && value.length > 0
+  && Number.isFinite(Date.parse(value));
+
+const parseCustomerState = (payload: unknown): CustomerState | null => {
+  if (!isRecord(payload) || payload.ok !== true) return null;
+
+  if (
+    !isNonNegativeInteger(payload.points_balance)
+    || !isNonNegativeInteger(payload.points_earned_total)
+    || !isNonNegativeInteger(payload.points_spent_total)
+    || !Array.isArray(payload.catalog)
+    || !Array.isArray(payload.redemptions)
+    || !Array.isArray(payload.history)
+  ) {
+    return null;
+  }
+
+  const catalog: PublicLoyaltyReward[] = [];
+  for (const value of payload.catalog) {
+    if (
+      !isRecord(value)
+      || typeof value.id !== 'string'
+      || value.id.length === 0
+      || typeof value.title !== 'string'
+      || typeof value.description !== 'string'
+      || typeof value.image_url !== 'string'
+      || !isNonNegativeInteger(value.points_cost)
+      || value.points_cost < 1
+      || value.points_cost > 100000000
+      || (value.reward_type !== 'benefit' && value.reward_type !== 'product')
+      || !(value.product_id === null || typeof value.product_id === 'string')
+    ) {
+      return null;
+    }
+
+    catalog.push({
+      id: value.id,
+      title: value.title,
+      description: value.description,
+      image_url: value.image_url,
+      points_cost: value.points_cost,
+      reward_type: value.reward_type,
+      product_id: value.product_id,
+    });
+  }
+
+  const redemptions: Redemption[] = [];
+  for (const value of payload.redemptions) {
+    if (
+      !isRecord(value)
+      || typeof value.id !== 'string'
+      || value.id.length === 0
+      || !(value.reward_id === null || typeof value.reward_id === 'string')
+      || typeof value.premio_texto !== 'string'
+      || typeof value.premio_descricao !== 'string'
+      || !(value.premio_imagem === null || typeof value.premio_imagem === 'string')
+      || typeof value.codigo_resgate !== 'string'
+      || !isNonNegativeInteger(value.points_spent)
+      || (value.status !== 'pendente' && value.status !== 'utilizado')
+      || !isValidTimestamp(value.created_at)
+      || !(value.used_at === null || isValidTimestamp(value.used_at))
+    ) {
+      return null;
+    }
+
+    redemptions.push({
+      id: value.id,
+      reward_id: value.reward_id,
+      premio_texto: value.premio_texto,
+      premio_descricao: value.premio_descricao,
+      premio_imagem: value.premio_imagem || '',
+      codigo_resgate: value.codigo_resgate,
+      points_spent: value.points_spent,
+      status: value.status,
+      created_at: value.created_at,
+      used_at: value.used_at,
+    });
+  }
+
+  const history: LedgerEntry[] = [];
+  for (const value of payload.history) {
+    if (
+      !isRecord(value)
+      || typeof value.id !== 'string'
+      || value.id.length === 0
+      || !['earn', 'redeem', 'reversal', 'adjustment'].includes(String(value.entry_type))
+      || !isFiniteInteger(value.points)
+      || value.points === 0
+      || !isNonNegativeInteger(value.balance_after)
+      || !(
+        value.eligible_amount === null
+        || isNonNegativeFiniteNumber(value.eligible_amount)
+      )
+      || typeof value.description !== 'string'
+      || !isValidTimestamp(value.created_at)
+    ) {
+      return null;
+    }
+
+    history.push({
+      id: value.id,
+      entry_type: value.entry_type as LedgerEntry['entry_type'],
+      points: value.points,
+      balance_after: value.balance_after,
+      eligible_amount: value.eligible_amount,
+      description: value.description,
+      created_at: value.created_at,
+    });
+  }
+
+  return {
+    signedIn: true,
+    balance: payload.points_balance,
+    earnedTotal: payload.points_earned_total,
+    spentTotal: payload.points_spent_total,
+    catalog,
+    redemptions,
+    history,
+  };
+};
+
 const SEEN_KEY = (org: string) => `vf-loyalty-seen-v2:${org}`;
 
 const LoyaltyCard = ({
   organizationId,
-  customerPhone = '',
   className = '',
   compact = false,
 }: Props) => {
@@ -81,6 +222,10 @@ const LoyaltyCard = ({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [redeeming, setRedeeming] = useState<string | null>(null);
   const [prizeModal, setPrizeModal] = useState<Redemption | null>(null);
+  const [hasSuccessfulState, setHasSuccessfulState] = useState(false);
+  const walletRequestSeqRef = useRef(0);
+  const walletOrgRef = useRef(organizationId);
+  walletOrgRef.current = organizationId;
 
   useEffect(() => {
     if (!organizationId) {
@@ -118,112 +263,91 @@ const LoyaltyCard = ({
   }, [organizationId]);
 
   const loadCustomerState = useCallback(async () => {
-    if (!organizationId) {
-      setState(EMPTY_STATE);
-      setStateLoading(false);
+    const requestOrganizationId = organizationId;
+    const requestId = ++walletRequestSeqRef.current;
+    const isCurrentRequest = () =>
+      walletRequestSeqRef.current === requestId
+      && walletOrgRef.current === requestOrganizationId;
+
+    if (!requestOrganizationId) {
+      if (isCurrentRequest()) {
+        setState(EMPTY_STATE);
+        setStateError(false);
+        setHasSuccessfulState(false);
+        setStateLoading(false);
+      }
       return;
     }
 
     try {
-      const { data: authData } = await supabase.auth.getSession();
+      const { data: authData, error: authError } = await supabase.auth.getSession();
+      if (!isCurrentRequest()) return;
+      if (authError) throw authError;
+
       if (!authData.session) {
         setState({ ...EMPTY_STATE, signedIn: false });
         setStateError(false);
+        setHasSuccessfulState(false);
         return;
       }
 
       const { data, error } = await supabase.rpc('loyalty_customer_state' as any, {
-        _organization_id: organizationId,
+        _organization_id: requestOrganizationId,
       });
-      const result = data as any;
-      if (error || !result?.ok) throw error || new Error(result?.reason || 'loyalty_state_failed');
+      if (!isCurrentRequest()) return;
+      if (error) throw error;
 
-      const redemptions = Array.isArray(result.redemptions)
-        ? result.redemptions.map((r: any) => ({
-            id: String(r.id || ''),
-            reward_id: r.reward_id ? String(r.reward_id) : null,
-            premio_texto: String(r.premio_texto || 'Prêmio'),
-            premio_descricao: String(r.premio_descricao || ''),
-            premio_imagem: String(r.premio_imagem || ''),
-            codigo_resgate: String(r.codigo_resgate || ''),
-            points_spent: Number(r.points_spent) || 0,
-            status: r.status === 'utilizado' ? 'utilizado' as const : 'pendente' as const,
-            created_at: String(r.created_at || ''),
-            used_at: r.used_at ? String(r.used_at) : null,
-          })).filter((r: Redemption) => Boolean(r.id))
-        : [];
+      const nextState = parseCustomerState(data);
+      if (!nextState) throw new Error('loyalty_state_invalid');
 
-      const history = Array.isArray(result.history)
-        ? result.history.map((entry: any) => ({
-            id: String(entry.id || ''),
-            entry_type: ['earn', 'redeem', 'reversal', 'adjustment'].includes(entry.entry_type)
-              ? entry.entry_type as LedgerEntry['entry_type']
-              : 'adjustment',
-            points: Number(entry.points) || 0,
-            balance_after: Number(entry.balance_after) || 0,
-            eligible_amount: entry.eligible_amount == null ? null : Number(entry.eligible_amount),
-            description: String(entry.description || ''),
-            created_at: String(entry.created_at || ''),
-          })).filter((entry: LedgerEntry) => Boolean(entry.id))
-        : [];
-
-      const catalog = Array.isArray(result.catalog)
-        ? result.catalog.map((reward: any) => ({
-            id: String(reward.id || ''),
-            title: String(reward.title || 'Prêmio'),
-            description: String(reward.description || ''),
-            image_url: String(reward.image_url || ''),
-            points_cost: Math.max(1, Number(reward.points_cost) || 1),
-            reward_type: reward.reward_type === 'product' ? 'product' as const : 'benefit' as const,
-            product_id: reward.product_id ? String(reward.product_id) : null,
-          })).filter((reward: PublicLoyaltyReward) => Boolean(reward.id))
-        : [];
-
-      const nextState: CustomerState = {
-        signedIn: true,
-        balance: Number(result.points_balance) || 0,
-        earnedTotal: Number(result.points_earned_total) || 0,
-        spentTotal: Number(result.points_spent_total) || 0,
-        catalog,
-        redemptions,
-        history,
-      };
       setState(nextState);
       setStateError(false);
+      setHasSuccessfulState(true);
 
       const seen = (() => {
-        try { return JSON.parse(localStorage.getItem(SEEN_KEY(organizationId)) || '[]') as string[]; }
+        try { return JSON.parse(localStorage.getItem(SEEN_KEY(requestOrganizationId)) || '[]') as string[]; }
         catch { return []; }
       })();
-      const fresh = redemptions.find((r: Redemption) => r.status === 'pendente' && !seen.includes(r.id));
+      const fresh = nextState.redemptions.find(
+        redemption => redemption.status === 'pendente' && !seen.includes(redemption.id),
+      );
       if (fresh) setPrizeModal(current => current || fresh);
     } catch (error) {
+      if (!isCurrentRequest()) return;
       console.error('[loyalty] customer state error:', error);
-      setState(current => ({ ...current, signedIn: true }));
       setStateError(true);
     } finally {
-      setStateLoading(false);
+      if (isCurrentRequest()) setStateLoading(false);
     }
   }, [organizationId]);
 
   useEffect(() => {
-    setStateLoading(true);
+    walletRequestSeqRef.current += 1;
+    setState(EMPTY_STATE);
+    setStateError(false);
+    setHasSuccessfulState(false);
+    setPrizeModal(null);
+    setStateLoading(Boolean(organizationId));
+
+    if (!organizationId) return;
+
     void loadCustomerState();
     const timer = window.setInterval(() => { void loadCustomerState(); }, 15000);
     const onFocus = () => { void loadCustomerState(); };
     window.addEventListener('focus', onFocus);
     return () => {
+      walletRequestSeqRef.current += 1;
       window.clearInterval(timer);
       window.removeEventListener('focus', onFocus);
     };
-  }, [loadCustomerState, customerPhone]);
+  }, [organizationId, loadCustomerState]);
 
   const catalog = useMemo(() => {
     const source = state.catalog.length > 0 ? state.catalog : (config?.rewards || []);
     return [...source].sort((a, b) => a.points_cost - b.points_cost);
   }, [state.catalog, config?.rewards]);
 
-  const availableBalance = Math.max(0, state.balance);
+  const availableBalance = state.balance;
   const affordable = [...catalog].reverse().find(reward => reward.points_cost <= availableBalance) || null;
   const nextLocked = catalog.find(reward => reward.points_cost > availableBalance) || null;
   const target = nextLocked || catalog[catalog.length - 1] || null;
@@ -330,6 +454,28 @@ const LoyaltyCard = ({
           </div>
         </div>
         <p className="mt-3 text-[11px] text-muted-foreground">Sincronizando sua fidelidade…</p>
+      </div>
+    );
+  }
+
+  if (stateError && !hasSuccessfulState) {
+    return (
+      <div className={`rounded-2xl border border-border bg-card p-4 ${className}`}>
+        <p className="text-sm font-bold">Não foi possível carregar sua fidelidade</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Seus pontos não foram alterados. Tente novamente em alguns instantes.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setStateError(false);
+            setStateLoading(true);
+            void loadCustomerState();
+          }}
+          className="mt-3 min-h-10 rounded-xl border border-border bg-muted/50 px-4 text-xs font-bold"
+        >
+          Tentar novamente
+        </button>
       </div>
     );
   }
@@ -453,7 +599,7 @@ const LoyaltyCard = ({
           </div>
         )}
 
-        {stateError && (
+        {stateError && hasSuccessfulState && (
           <p className="relative mt-3 text-xs text-amber-400">
             Não foi possível atualizar o saldo agora. Mostrando a última informação disponível.
           </p>
@@ -625,7 +771,7 @@ const LoyaltyCard = ({
                             <p className={`text-sm font-black ${positive ? 'text-success' : 'text-destructive'}`}>
                               {positive ? '+' : ''}{entry.points} pts
                             </p>
-                            <p className="text-[10px] text-muted-foreground">saldo {Math.max(0, entry.balance_after)}</p>
+                            <p className="text-[10px] text-muted-foreground">saldo {entry.balance_after}</p>
                           </div>
                         </div>
                       );

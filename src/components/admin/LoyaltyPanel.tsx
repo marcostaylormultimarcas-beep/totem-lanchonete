@@ -39,6 +39,7 @@ interface RewardForm {
   image_url: string;
   points_cost: number;
   product_id: string;
+  estimated_cost?: number | null;
   active: boolean;
 }
 
@@ -159,9 +160,16 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const redemptionScopeRef = useRef(0);
   const panelScopeRef = useRef(0);
   const savingConfigRef = useRef(false);
+  const catalogMutationRef = useRef(false);
+  const rewardDraftRef = useRef(0);
+  const rewardReadRef = useRef(0);
+  const uploadingRewardRef = useRef(false);
+  const [removingRewardId, setRemovingRewardId] = useState<string | null>(null);
+  const catalogBusy = savingReward || removingRewardId !== null;
 
   const fetchAll = async (isCurrent: () => boolean = () => true) => {
     if (!organizationId) return;
+    const rewardRead = ++rewardReadRef.current;
     setLoading(true);
     try {
       const [cfgResult, rewardsResult, resgatesResult, productsResult, summaryResult, customersResult, historyResult] = await Promise.all([
@@ -211,7 +219,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         setEditorOpen(true);
       }
 
-      setRewards((rewardsResult.data || []).map(row => ({
+      if (rewardReadRef.current === rewardRead) setRewards((rewardsResult.data || []).map(row => ({
         id: row.id,
         title: row.title,
         description: row.description || '',
@@ -275,6 +283,17 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     panelScopeRef.current += 1;
     savingConfigRef.current = false;
     setSavingConfig(false);
+    catalogMutationRef.current = false;
+    rewardDraftRef.current += 1;
+    rewardReadRef.current += 1;
+    uploadingRewardRef.current = false;
+    setSavingReward(false);
+    setRemovingRewardId(null);
+    setUploadingReward(false);
+    setRewardForm(DEFAULT_REWARD);
+    setShowRewardForm(false);
+    setRewards([]);
+    setProducts([]);
 
     return () => {
       panelScopeRef.current += 1;
@@ -384,11 +403,16 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   }, [config.earning_mode, config.points_per_real, rewardForm.points_cost]);
 
   const resetRewardForm = () => {
+    rewardDraftRef.current += 1;
+    uploadingRewardRef.current = false;
+    setUploadingReward(false);
     setRewardForm(DEFAULT_REWARD);
     setShowRewardForm(false);
   };
 
   const editReward = (reward: Reward) => {
+    if (catalogMutationRef.current) return;
+    resetRewardForm();
     setRewardForm({
       id: reward.id,
       title: reward.title,
@@ -396,6 +420,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       image_url: reward.image_url,
       points_cost: reward.points_cost,
       product_id: reward.product_id || '',
+      estimated_cost: reward.estimated_cost,
       active: reward.active,
     });
     setShowRewardForm(true);
@@ -406,27 +431,36 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
     setRewardForm(current => ({
       ...current,
       product_id: productId,
+      estimated_cost: product?.cost_price ?? null,
       title: current.title || product?.name || '',
     }));
   };
 
   const uploadRewardImage = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !organizationId) return;
+    if (!file || !organizationId || uploadingRewardRef.current || catalogMutationRef.current) return;
+    const scope = panelScopeRef.current;
+    const draft = rewardDraftRef.current;
+    const isCurrent = () => panelScopeRef.current === scope && rewardDraftRef.current === draft;
+    uploadingRewardRef.current = true;
     setUploadingReward(true);
     try {
       const url = await uploadProductImage(file, organizationId);
+      if (!isCurrent()) return;
       setRewardForm(current => ({ ...current, image_url: url }));
       toast.success('Imagem enviada. Salve a recompensa para confirmar.');
     } catch (error) {
-      toast.error(error instanceof StorageLimitError ? error.message : 'Erro ao enviar imagem.');
+      if (isCurrent()) toast.error(error instanceof StorageLimitError ? error.message : 'Erro ao enviar imagem.');
     } finally {
-      setUploadingReward(false);
+      if (isCurrent()) {
+        uploadingRewardRef.current = false;
+        setUploadingReward(false);
+      }
     }
   };
 
   const saveReward = async () => {
-    if (!organizationId) return;
+    if (!organizationId || catalogMutationRef.current || uploadingRewardRef.current) return;
     const title = rewardForm.title.trim();
     if (!title) {
       toast.error('Informe o nome da recompensa.');
@@ -437,6 +471,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       return;
     }
 
+    const scope = panelScopeRef.current;
+    const isCurrent = () => panelScopeRef.current === scope;
     const product = products.find(item => item.id === rewardForm.product_id);
     const payload = {
       organization_id: organizationId,
@@ -444,50 +480,71 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       description: rewardForm.description.trim(),
       image_url: rewardForm.image_url,
       points_cost: Math.trunc(rewardForm.points_cost),
-      reward_type: product ? 'product' : 'benefit',
-      product_id: product?.id || null,
-      estimated_cost: product?.cost_price ?? null,
+      reward_type: rewardForm.product_id ? 'product' : 'benefit',
+      product_id: rewardForm.product_id || null,
+      estimated_cost: product ? product.cost_price : rewardForm.estimated_cost ?? null,
       active: rewardForm.active,
     };
 
+    catalogMutationRef.current = true;
     setSavingReward(true);
     try {
-      if (rewardForm.id) {
-        const { error } = await supabase
-          .from('loyalty_rewards' as any)
-          .update(payload)
-          .eq('id', rewardForm.id)
-          .eq('organization_id', organizationId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('loyalty_rewards' as any).insert(payload);
-        if (error) throw error;
-      }
+      const query = rewardForm.id
+        ? supabase.from('loyalty_rewards' as any).update(payload)
+          .eq('id', rewardForm.id).eq('organization_id', organizationId)
+        : supabase.from('loyalty_rewards' as any).insert(payload);
+      const { data, error } = await query.select('id').maybeSingle();
+      if (!isCurrent()) return;
+      if (error) throw error;
+      if (!data || typeof data.id !== 'string' || !UUID_PATTERN.test(data.id)
+        || (rewardForm.id && data.id !== rewardForm.id)) throw new Error('reward_write_not_confirmed');
 
       toast.success(rewardForm.id ? 'Recompensa atualizada.' : 'Recompensa criada.');
       resetRewardForm();
-      await fetchAll();
+      await fetchAll(isCurrent);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[LoyaltyPanel] reward save error', error);
       toast.error('Não foi possível salvar a recompensa.');
     } finally {
-      setSavingReward(false);
+      if (isCurrent()) {
+        catalogMutationRef.current = false;
+        setSavingReward(false);
+      }
     }
   };
 
   const removeReward = async (reward: Reward) => {
-    if (!organizationId || !window.confirm(`Excluir a recompensa "${reward.title}"?`)) return;
-    const { error } = await supabase
-      .from('loyalty_rewards' as any)
-      .delete()
-      .eq('id', reward.id)
-      .eq('organization_id', organizationId);
-    if (error) {
+    if (!organizationId || catalogMutationRef.current) return;
+    if (!window.confirm(`Excluir a recompensa "${reward.title}"?`) || catalogMutationRef.current) return;
+    const scope = panelScopeRef.current;
+    const isCurrent = () => panelScopeRef.current === scope;
+    catalogMutationRef.current = true;
+    setRemovingRewardId(reward.id);
+    try {
+      const { data, error } = await supabase
+        .from('loyalty_rewards' as any)
+        .delete()
+        .eq('id', reward.id)
+        .eq('organization_id', organizationId)
+        .select('id')
+        .maybeSingle();
+      if (!isCurrent()) return;
+      if (error) throw error;
+      if (!data || data.id !== reward.id) throw new Error('reward_delete_not_confirmed');
+      if (rewardForm.id === reward.id) resetRewardForm();
+      toast.success('Recompensa excluída.');
+      await fetchAll(isCurrent);
+    } catch (error) {
+      if (!isCurrent()) return;
+      console.error('[LoyaltyPanel] reward delete error', error);
       toast.error('Não foi possível excluir a recompensa.');
-      return;
+    } finally {
+      if (isCurrent()) {
+        catalogMutationRef.current = false;
+        setRemovingRewardId(null);
+      }
     }
-    toast.success('Recompensa excluída.');
-    await fetchAll();
   };
 
   const redeem = async (id: string) => {
@@ -880,7 +937,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
             <p className="text-xs text-muted-foreground mt-1">Cadastre quantos prêmios quiser. O cliente escolhe onde gastar seus pontos.</p>
           </div>
           <button
-            onClick={() => { setRewardForm(DEFAULT_REWARD); setShowRewardForm(true); }}
+            onClick={() => { if (catalogMutationRef.current) return; resetRewardForm(); setShowRewardForm(true); }}
+            disabled={catalogBusy}
             className="min-h-10 px-3 rounded-xl bg-primary text-primary-foreground text-xs font-bold flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" /> Novo
@@ -888,7 +946,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         </div>
 
         {showRewardForm && (
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
+          <fieldset disabled={catalogBusy} className="rounded-xl border border-primary/30 bg-primary/5 p-4 space-y-3">
             <h4 className="font-bold">{rewardForm.id ? 'Editar recompensa' : 'Nova recompensa'}</h4>
 
             <div>
@@ -899,6 +957,9 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
                 className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2"
               >
                 <option value="">Benefício / recompensa manual</option>
+                {rewardForm.product_id && !selectedProduct && (
+                  <option value={rewardForm.product_id}>Produto vinculado (indisponível)</option>
+                )}
                 {products.map(product => (
                   <option key={product.id} value={product.id}>
                     {product.name} — venda {formatCurrency(product.price)}
@@ -1000,14 +1061,14 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
               </button>
               <button
                 onClick={() => { void saveReward(); }}
-                disabled={savingReward}
+                disabled={catalogBusy || uploadingReward}
                 className="flex-1 min-h-11 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {savingReward ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 Salvar
               </button>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {rewards.length === 0 ? (
@@ -1039,10 +1100,10 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
                     )}
                   </div>
                 </div>
-                <button onClick={() => editReward(reward)} className="p-2 rounded-lg border border-border" aria-label="Editar recompensa">
+                <button onClick={() => editReward(reward)} disabled={catalogBusy} className="p-2 rounded-lg border border-border" aria-label="Editar recompensa">
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={() => { void removeReward(reward); }} className="p-2 rounded-lg bg-destructive/10 text-destructive" aria-label="Excluir recompensa">
+                <button onClick={() => { void removeReward(reward); }} disabled={catalogBusy} className="p-2 rounded-lg bg-destructive/10 text-destructive" aria-label="Excluir recompensa">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>

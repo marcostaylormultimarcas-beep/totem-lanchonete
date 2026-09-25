@@ -48,6 +48,7 @@ vi.mock('@/data/store', () => ({
 }));
 
 import LoyaltyPanel from './LoyaltyPanel';
+import { uploadProductImage } from '@/lib/imageUpload';
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -755,4 +756,218 @@ describe('LoyaltyPanel loyalty campaign configuration', () => {
 
     expect(toastSuccessMock).not.toHaveBeenCalled();
   });
+});
+
+// Catalog writes use real PostgREST semantics: no representation without select,
+// zero matching rows is a successful HTTP response, and filters apply on await.
+describe('LoyaltyPanel administrative reward catalog', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let rows: Record<string, any[]>;
+  let writes: any[];
+  let writeResult: (write: any) => Promise<any>;
+  let readResult: (org: string) => Promise<any>;
+  const REWARD = '44444444-4444-4444-8444-444444444444';
+  const PRODUCT = '55555555-5555-4555-8555-555555555555';
+  const reward = (org: string) => ({ id: REWARD, organization_id: org, title: `Prêmio ${org === ORG_A ? 'A' : 'B'}`, description: 'Benefício', image_url: '', points_cost: 10, reward_type: 'benefit', product_id: null, estimated_cost: null, active: true, sort_order: 0 });
+  let products: any[];
+  let realtime: () => void;
+
+  const query = (table: string) => {
+    const filters: Record<string, any> = {};
+    let operation = 'read';
+    let payload: any;
+    let returning = false;
+    const q: any = {};
+    q.select = () => { returning = operation !== 'read'; return q; };
+    q.eq = (key: string, value: any) => { filters[key] = value; return q; };
+    q.order = q.limit = () => q;
+    for (const op of ['insert', 'update', 'delete']) q[op] = (value: any) => { operation = op; payload = value; return q; };
+    const execute = async () => {
+      const org = filters.organization_id;
+      if (operation !== 'read') {
+        if (table !== 'loyalty_rewards') throw new Error('Unexpected write: ' + table);
+        const write = { operation, payload, filters: { ...filters }, returning };
+        writes.push(write);
+        const result = await writeResult(write);
+        return { ...result, data: returning ? result.data : null };
+      }
+      if (table === 'loyalty_rewards') return readResult(org);
+      if (table === 'config_fidelidade') return { data: { id: 'cfg', ativo: true, earning_mode: 'order', points_per_order: 1, points_per_real: 1 }, error: null };
+      if (table === 'products') return { data: products, error: null };
+      return { data: [], error: null };
+    };
+    q.then = (resolve: any, reject: any) => execute().then(resolve, reject);
+    q.maybeSingle = async () => { const r = await execute(); return { ...r, data: Array.isArray(r.data) ? r.data[0] ?? null : r.data }; };
+    return q;
+  };
+  const render = async (org = ORG_A) => { await act(async () => { root.render(<LoyaltyPanel organizationId={org} />); await flushAsync(); }); };
+  const button = (name: string) => {
+    const found = Array.from(container.querySelectorAll('button')).find(b => b.textContent?.trim() === name || b.getAttribute('aria-label') === name);
+    if (!found) throw new Error('Missing button: ' + name);
+    return found;
+  };
+  const click = async (name: string) => { await act(async () => { button(name).click(); await flushAsync(); }); };
+  const change = async (selector: string, value: string) => {
+    await act(async () => {
+      const el = container.querySelector(selector) as HTMLInputElement;
+      if (!el) throw new Error('Missing input: ' + selector);
+      const prototype = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(el, value);
+      el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
+      await flushAsync();
+    });
+  };
+  const create = async () => { await click('Novo'); await change('input[placeholder^="Ex."]', 'Nova recompensa'); };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    rows = { [ORG_A]: [reward(ORG_A)], [ORG_B]: [{ ...reward(ORG_B), id: OTHER_REDEMPTION }] };
+    products = [{ id: PRODUCT, name: 'Batata', price: 20, cost_price: 5 }];
+    writes = [];
+    readResult = async org => ({ data: rows[org] || [], error: null });
+    writeResult = async write => ({ data: [{ id: write.filters.id || REWARD }], error: null });
+    fromMock.mockImplementation(query);
+    rpcMock.mockResolvedValue({ data: { ok: true }, error: null });
+    channelMock.mockImplementation(() => {
+      const channel: any = {};
+      channel.on = (_: any, __: any, callback: any) => { realtime = callback; return channel; };
+      channel.subscribe = () => channel;
+      return channel;
+    });
+    removeChannelMock.mockResolvedValue(null);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
+  });
+  afterEach(async () => {
+    if (container.isConnected) { await act(async () => root.unmount()); container.remove(); }
+    vi.restoreAllMocks();
+  });
+
+  it('creates a product reward with the live payload and selected product cost', async () => {
+    await render(); await create(); await change('select', PRODUCT); await click('Salvar');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].payload).toEqual({ organization_id: ORG_A, title: 'Nova recompensa', description: '', image_url: '', points_cost: 100, reward_type: 'product', product_id: PRODUCT, estimated_cost: 5, active: true });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Recompensa criada.');
+  });
+  it.each([false, true])('saves active=%s through the scoped edit contract', async active => {
+    rows[ORG_A][0].active = !active;
+    await render(); await click('Editar recompensa');
+    await act(async () => { (container.querySelector('input[type="checkbox"]') as HTMLInputElement).click(); });
+    await click('Salvar');
+    expect(writes[0]).toMatchObject({ operation: 'update', filters: { id: REWARD, organization_id: ORG_A }, payload: { active } });
+    expect(toastSuccessMock).toHaveBeenCalledWith('Recompensa atualizada.');
+  });
+  it.each(['create', 'edit', 'delete'])('deduplicates same-turn %s events', async op => {
+    const pending = deferred<any>(); writeResult = () => pending.promise;
+    await render(); if (op === 'create') await create(); if (op === 'edit') await click('Editar recompensa');
+    await act(async () => { const b = button(op === 'delete' ? 'Excluir recompensa' : 'Salvar'); b.click(); b.click(); await flushAsync(); });
+    expect(writes).toHaveLength(1);
+    await act(async () => { pending.resolve({ data: [{ id: REWARD }], error: null }); await flushAsync(); });
+  });
+  it.each(['edit', 'delete'])('does not report success for %s matching zero rows', async op => {
+    writeResult = async () => ({ data: [], error: null });
+    await render(); if (op === 'edit') await click('Editar recompensa'); await click(op === 'edit' ? 'Salvar' : 'Excluir recompensa');
+    expect(toastSuccessMock).not.toHaveBeenCalled(); expect(toastErrorMock).toHaveBeenCalled();
+  });
+  it.each(['create', 'edit', 'delete'])('ignores %s completion from the previous organization', async op => {
+    const pending = deferred<any>(); writeResult = () => pending.promise;
+    await render(); if (op === 'create') await create(); if (op === 'edit') await click('Editar recompensa');
+    await click(op === 'delete' ? 'Excluir recompensa' : 'Salvar'); await render(ORG_B);
+    expect(container.textContent).toContain('Prêmio B');
+    await act(async () => { pending.resolve({ data: [{ id: REWARD }], error: null }); await flushAsync(); });
+    expect(toastSuccessMock).not.toHaveBeenCalled(); expect(container.textContent).toContain('Prêmio B'); expect(container.textContent).not.toContain('Prêmio A');
+  });
+  it('clears an unsaved reward draft on organization change', async () => {
+    await render(); await create(); await render(ORG_B);
+    expect(container.querySelector('input[placeholder^="Ex."]')).toBeNull();
+  });
+  it.each(['create', 'delete'])('ignores %s completion after unmount', async op => {
+    const pending = deferred<any>(); writeResult = () => pending.promise;
+    await render(); if (op === 'create') await create(); await click(op === 'create' ? 'Salvar' : 'Excluir recompensa');
+    await act(async () => root.unmount()); container.remove();
+    await act(async () => { pending.resolve({ data: [{ id: REWARD }], error: null }); await flushAsync(); });
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+  it('does not resurrect a deleted reward from an older realtime read', async () => {
+    await render(); const old = deferred<any>(); let reads = 0;
+    readResult = () => ++reads === 1 ? old.promise : Promise.resolve({ data: [], error: null });
+    await act(async () => { realtime(); await flushAsync(); });
+    await click('Excluir recompensa'); expect(container.textContent).not.toContain('Prêmio A');
+    await act(async () => { old.resolve({ data: rows[ORG_A], error: null }); await flushAsync(); });
+    expect(container.textContent).not.toContain('Prêmio A');
+  });
+  it('preserves product linkage when editing a reward whose product is unavailable', async () => {
+    rows[ORG_A][0] = { ...rows[ORG_A][0], reward_type: 'product', product_id: PRODUCT, estimated_cost: 5 }; products = [];
+    await render(); await click('Editar recompensa'); await change('input[placeholder^="Ex."]', 'Novo nome'); await click('Salvar');
+    expect(writes[0].payload).toMatchObject({ reward_type: 'product', product_id: PRODUCT, estimated_cost: 5 });
+  });
+  it.each(['create', 'edit'])('handles %s transport rejection and permits retry', async op => {
+    writeResult = async () => { throw new Error('network'); };
+    await render(); if (op === 'create') await create(); else await click('Editar recompensa'); await click('Salvar');
+    expect(toastSuccessMock).not.toHaveBeenCalled(); expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível salvar a recompensa.');
+    writeResult = async () => ({ data: [{ id: REWARD }], error: null }); await click('Salvar'); expect(toastSuccessMock).toHaveBeenCalled();
+  });
+  it('does not delete after cancelled confirmation', async () => {
+    await render(); vi.mocked(window.confirm).mockReturnValue(false); await click('Excluir recompensa'); expect(writes).toHaveLength(0);
+  });
+  it('handles a returned delete error without success', async () => {
+    writeResult = async () => ({ data: null, error: { message: 'denied' } });
+    await render(); await click('Excluir recompensa'); expect(toastSuccessMock).not.toHaveBeenCalled(); expect(toastErrorMock).toHaveBeenCalled();
+  });
+  const upload = async () => {
+    await act(async () => {
+      const input = container.querySelector('input[type="file"]')!;
+      Object.defineProperty(input, 'files', { configurable: true, value: [new File(['image'], 'reward.png', { type: 'image/png' })] });
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushAsync();
+    });
+  };
+  it.each(['new draft', 'organization', 'unmount'])('ignores image completion after %s', async transition => {
+    const pending = deferred<string>(); vi.mocked(uploadProductImage).mockReturnValue(pending.promise);
+    await render(); await create(); await upload();
+    expect(uploadProductImage).toHaveBeenCalledWith(expect.any(File), ORG_A);
+    if (transition === 'new draft') { await click('Cancelar'); await create(); }
+    if (transition === 'organization') { await render(ORG_B); await create(); }
+    if (transition === 'unmount') { await act(async () => root.unmount()); container.remove(); }
+    await act(async () => { pending.resolve('https://example.test/old.png'); await flushAsync(); });
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(container.querySelector('img[src="https://example.test/old.png"]')).toBeNull();
+  });
+  it('waits for image upload before saving the reward', async () => {
+    const pending = deferred<string>(); vi.mocked(uploadProductImage).mockReturnValue(pending.promise);
+    await render(); await create(); await upload(); await click('Salvar'); expect(writes).toHaveLength(0);
+    await act(async () => { pending.resolve('https://example.test/new.png'); await flushAsync(); });
+    await click('Salvar'); expect(writes[0].payload.image_url).toBe('https://example.test/new.png');
+  });
+
+  it('handles delete transport rejection and permits retry', async () => {
+    writeResult = async () => { throw new Error('catalog-delete-network'); };
+    await render(); await click('Excluir recompensa');
+    expect(toastErrorMock).toHaveBeenCalledWith('Não foi possível excluir a recompensa.');
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    writeResult = async () => ({ data: [{ id: REWARD }], error: null });
+    await click('Excluir recompensa'); expect(toastSuccessMock).toHaveBeenCalledWith('Recompensa excluída.');
+  });
+  it('does not accept a malformed create representation as confirmed success', async () => {
+    writeResult = async () => ({ data: [{}], error: null });
+    await render(); await create(); await click('Salvar');
+    expect(toastSuccessMock).not.toHaveBeenCalled(); expect(toastErrorMock).toHaveBeenCalled();
+  });
+  it('does not overlap deletion with a pending edit of the same reward', async () => {
+    const pending = deferred<any>(); writeResult = () => pending.promise;
+    await render(); await click('Editar recompensa'); await click('Salvar'); await click('Excluir recompensa');
+    expect(writes).toHaveLength(1);
+    await act(async () => { pending.resolve({ data: [{ id: REWARD }], error: null }); await flushAsync(); });
+  });
+  it('does not close a different draft after an older save completes', async () => {
+    const pending = deferred<any>(); writeResult = () => pending.promise;
+    await render(); await click('Editar recompensa'); await click('Salvar'); await click('Novo');
+    const hasNewDraft = (container.querySelector('input[placeholder^="Ex."]') as HTMLInputElement).value === '';
+    await act(async () => { pending.resolve({ data: [{ id: REWARD }], error: null }); await flushAsync(); });
+    // It is valid to block opening a new draft while a save is pending.
+    if (hasNewDraft) expect(container.querySelector('input[placeholder^="Ex."]')).not.toBeNull();
+  });
+
 });

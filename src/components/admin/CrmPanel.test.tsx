@@ -301,6 +301,30 @@ describe('CrmPanel footer actions', () => {
     );
   });
 
+  it('maps marketing_opt_out from a non-2xx Edge Function error body', async () => {
+    generateResponder = async () => ({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: {
+          json: async () => ({ error: 'marketing_opt_out' }),
+        },
+      },
+    });
+
+    await renderPanel(ORG_A);
+    await openContact('Ana Cliente');
+    await clickButton('Gerar mensagem');
+
+    expect(messageTextarea()?.value).toBe('');
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'Este contato optou por não receber marketing.',
+    );
+    expect(toastErrorMock).not.toHaveBeenCalledWith(
+      'Edge Function returned a non-2xx status code',
+    );
+  });
+
   it('rejects malformed generation success without ok=true', async () => {
     generateResponder = async () => ({
       data: { message: 'Mensagem sem confirmação', generated_by: 'ai' },

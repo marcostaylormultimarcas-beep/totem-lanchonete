@@ -97,6 +97,32 @@ const OrdersPanel=({organizationId}:{organizationId:string|null})=>{
  const callPassword=async(o:Order):Promise<boolean>=>{if(callPasswordInFlight.current.has(o.id))return false;const callOrganizationId=organizationId;if(!callOrganizationId){toast.error('Organização não identificada para chamar a senha.');return false}const numero=String(o.order_number??'').trim();if(!numero){toast.error('Pedido sem número de senha válido.');return false}callPasswordInFlight.current.add(o.id);setPasswordCalling(s=>new Set(s).add(o.id));try{const{error}=await(supabase.from('senhas_chamadas' as any).insert({organization_id:callOrganizationId,numero,tipo:'normal'}) as any);if(currentOrganizationId.current!==callOrganizationId)return false;if(error){toast.error('Pedido ficou pronto, mas a senha não pôde ser chamada na TV.');console.error('callPassword',error);return false}toast.success(`🔔 Senha #${numero} chamada na TV`);return true}catch(error){if(currentOrganizationId.current===callOrganizationId){toast.error('Pedido ficou pronto, mas a senha não pôde ser chamada na TV.');console.error('callPassword',error)}return false}finally{callPasswordInFlight.current.delete(o.id);setPasswordCalling(s=>{const n=new Set(s);n.delete(o.id);return n})}};
  const isDeliveryOrder=(orderType:string)=>orderType==='delivery'||orderType==='viagem';
  const allowedTransition=(o:Order,next:string)=>{if(next==='cancelled')return !['delivered','cancelled'].includes(o.status);if(o.status==='pending')return next==='preparing';if(o.status==='preparing')return next==='ready';if(o.status==='ready'&&!isDeliveryOrder(o.order_type))return next==='delivered';return false};
+ const processDeliveredLoyalty=(order:Order,loyaltyOrganizationId:string)=>{
+  void(async()=>{
+   try{
+    const{data,error}=await supabase.rpc('grant_loyalty_stamp' as any,{_order_id:order.id});
+    if(currentOrganizationId.current!==loyaltyOrganizationId)return;
+    if(error){console.error('grant_loyalty_stamp',error);return}
+    const r:any=data;
+    const knownReasons=['unauthenticated','order_not_found','forbidden','order_not_delivered','payment_not_confirmed','inactive','not_started','expired','no_phone','eligible_amount_unknown','below_minimum','no_points','identity_conflict'];
+    if(r?.ok!==true){
+     const reason=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';
+     if(!knownReasons.includes(reason))console.warn('grant_loyalty_stamp malformed/unknown response',r);
+     return
+    }
+    if(r?.already_stamped===true){
+     const validAlreadyStamped=r?.awarded===false&&typeof r?.points_awarded==='number'&&Number.isFinite(r.points_awarded)&&Number.isInteger(r.points_awarded)&&r.points_awarded>=0&&typeof r?.balance==='number'&&Number.isFinite(r.balance)&&Number.isInteger(r.balance)&&r.balance>=0&&(r?.eligible_amount==null||(typeof r.eligible_amount==='number'&&Number.isFinite(r.eligible_amount)&&r.eligible_amount>=0));
+     if(!validAlreadyStamped)console.warn('grant_loyalty_stamp malformed idempotent response',r);
+     return
+    }
+    const validAward=r?.awarded===true&&typeof r?.points_awarded==='number'&&Number.isFinite(r.points_awarded)&&Number.isInteger(r.points_awarded)&&r.points_awarded>0&&typeof r?.balance==='number'&&Number.isFinite(r.balance)&&Number.isInteger(r.balance)&&r.balance>=0&&typeof r?.eligible_amount==='number'&&Number.isFinite(r.eligible_amount)&&r.eligible_amount>=0&&['spend','order'].includes(r?.earning_mode);
+    if(!validAward){console.warn('grant_loyalty_stamp malformed success response',r);return}
+    toast.success(`⭐ ${order.customer_name||'Cliente'} recebeu +${r.points_awarded} pontos. Saldo: ${r.balance} pts.`)
+   }catch(error){
+    if(currentOrganizationId.current===loyaltyOrganizationId)console.error('grant_loyalty_stamp',error)
+   }
+  })()
+ };
  const updateStatus=async(id:string,status:string,motivo?:string)=>{
   const order=orders.find(o=>o.id===id);
   if(!order){toast.error('Pedido não encontrado no painel. Atualize a lista e tente novamente.');return}
@@ -154,17 +180,7 @@ const OrdersPanel=({organizationId}:{organizationId:string|null})=>{
    if(!latestOrder||(latestOrder.status!==order.status&&latestOrder.status!==status)){await fetchOrders();return}
    setOrders(cur=>cur.map(o=>o.id===id&&o.status===order.status?{...o,status}:o));
    if(status==='ready'){toast.success('Pedido marcado como Pronto.');await callPassword({...order,status})}
-   if(status==='delivered'){
-    const{data,error:loyaltyError}=await supabase.rpc('grant_loyalty_stamp' as any,{_order_id:id});
-    const r:any=data;
-    if(loyaltyError)console.error('grant_loyalty_stamp',loyaltyError);
-    else if(r?.ok){
-     const pts=Number(r.points_awarded)||0;
-     const balance=Number(r.balance)||0;
-     if(pts>0)toast.success(`⭐ ${order.customer_name||'Cliente'} recebeu +${pts} pontos. Saldo: ${Math.max(0,balance)} pts.`);
-     else toast.success('Fidelidade processada automaticamente.')
-    }else if(r?.reason&&!['below_minimum','no_phone','inactive','already_stamped','eligible_amount_unknown','payment_not_confirmed','expired','not_started'].includes(r.reason))console.warn('Carimbo não concedido:',r.reason)
-   }
+   if(status==='delivered')processDeliveredLoyalty({...order,status},statusOrganizationId);
   }catch(error){
    if(currentOrganizationId.current===statusOrganizationId){
     if(status==='cancelled'){

@@ -414,10 +414,15 @@ describe('LoyaltyPanel prize consumption', () => {
     await act(async () => {
       root.render(<LoyaltyPanel organizationId={ORG_B} />);
       await flushAsync();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await flushAsync();
     });
 
     await act(async () => {
       newRefresh.resolve({ data: redemptionsByOrg[ORG_B], error: null });
+      await newRefresh.promise;
+      await flushAsync();
+      await new Promise(resolve => setTimeout(resolve, 0));
       await flushAsync();
     });
 

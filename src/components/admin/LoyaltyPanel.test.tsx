@@ -377,6 +377,70 @@ describe('LoyaltyPanel prize consumption', () => {
     expect(orgALoadsAfter).toBe(orgALoadsBefore);
   });
 
+  it('does not let an old post-success reconciliation overwrite a newer organization', async () => {
+    const oldRefresh = deferred<any>();
+    const newRefresh = deferred<any>();
+    let orgARedemptionLoads = 0;
+
+    fromMock.mockImplementation((table: string) => {
+      if (table !== 'resgates_fidelidade') return makeQuery(table);
+
+      let organizationId = '';
+      const q: any = {};
+      q.select = vi.fn(() => q);
+      q.eq = vi.fn((column: string, value: unknown) => {
+        if (column === 'organization_id') organizationId = String(value);
+        return q;
+      });
+      q.order = vi.fn(() => q);
+      q.limit = vi.fn(() => {
+        loadCalls.push({ table, organizationId });
+
+        if (organizationId === ORG_A) {
+          orgARedemptionLoads += 1;
+          if (orgARedemptionLoads === 2) return oldRefresh.promise;
+        }
+
+        if (organizationId === ORG_B) return newRefresh.promise;
+        return Promise.resolve(tableResult(table, organizationId));
+      });
+      return q;
+    });
+
+    await renderPanel(ORG_A);
+
+    await act(async () => {
+      deliverButton().click();
+      await flushAsync();
+    });
+
+    await act(async () => {
+      root.render(<LoyaltyPanel organizationId={ORG_B} />);
+      await flushAsync();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await flushAsync();
+    });
+
+    await act(async () => {
+      newRefresh.resolve({ data: redemptionsByOrg[ORG_B], error: null });
+      await newRefresh.promise;
+      await flushAsync();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Prêmio B');
+    expect(container.textContent).not.toContain('Prêmio A');
+
+    await act(async () => {
+      oldRefresh.resolve({ data: redemptionsByOrg[ORG_A], error: null });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Prêmio B');
+    expect(container.textContent).not.toContain('Prêmio A');
+  });
+
   it('does not show a success after the panel unmounts while redemption is pending', async () => {
     const request = deferred<any>();
     redeemRpcMock.mockReturnValue(request.promise);

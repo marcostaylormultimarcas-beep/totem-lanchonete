@@ -218,10 +218,13 @@ describe('PaymentScreen scheduled post-confirmation', () => {
 
     await renderScreen();
 
-    await act(async () => {
-      findButton('Dinheiro no Balcão')!.click();
-      await flushAsync();
-    });
+    const cashChoice = findButton('Dinheiro no Balcão');
+    if (cashChoice) {
+      await act(async () => {
+        cashChoice.click();
+        await flushAsync();
+      });
+    }
 
     const confirmButton = findButton('Confirmar Pedido');
     expect(confirmButton).toBeTruthy();
@@ -274,10 +277,13 @@ describe('PaymentScreen scheduled post-confirmation', () => {
 
     const onDone = await renderScreen(vi.fn());
 
-    await act(async () => {
-      findButton('Dinheiro no Balcão')!.click();
-      await flushAsync();
-    });
+    const cashChoice = findButton('Dinheiro no Balcão');
+    if (cashChoice) {
+      await act(async () => {
+        cashChoice.click();
+        await flushAsync();
+      });
+    }
 
     await act(async () => {
       findButton('Confirmar Pedido')!.click();

@@ -157,6 +157,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
   const redeemingIdsRef = useRef(new Set<string>());
   const redemptionScopeRef = useRef(0);
+  const panelScopeRef = useRef(0);
+  const savingConfigRef = useRef(false);
 
   const fetchAll = async (isCurrent: () => boolean = () => true) => {
     if (!organizationId) return;
@@ -270,13 +272,27 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   };
 
   useEffect(() => {
-    void fetchAll();
+    panelScopeRef.current += 1;
+    savingConfigRef.current = false;
+    setSavingConfig(false);
+
+    return () => {
+      panelScopeRef.current += 1;
+      savingConfigRef.current = false;
+    };
+  }, [organizationId]);
+
+  useEffect(() => {
+    const requestScope = panelScopeRef.current;
+    const isCurrent = () => panelScopeRef.current === requestScope;
+
+    void fetchAll(isCurrent);
     if (!organizationId) return;
 
     const channel = supabase
       .channel(`admin-loyalty-${organizationId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'resgates_fidelidade', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'loyalty_points_ledger', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resgates_fidelidade', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(isCurrent); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loyalty_points_ledger', filter: `organization_id=eq.${organizationId}` }, () => { void fetchAll(isCurrent); })
       .subscribe();
 
     return () => { void supabase.removeChannel(channel); };
@@ -294,7 +310,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   }, [organizationId]);
 
   const saveConfig = async () => {
-    if (!organizationId) return;
+    if (!organizationId || savingConfigRef.current) return;
     if (config.points_per_real <= 0 || config.points_per_real > 1000) {
       toast.error('Pontos por R$ 1 deve ser maior que zero e no máximo 1.000.');
       return;
@@ -312,7 +328,11 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       return;
     }
 
+    const requestScope = panelScopeRef.current;
+    const isCurrent = () => panelScopeRef.current === requestScope;
+    savingConfigRef.current = true;
     setSavingConfig(true);
+
     try {
       const payload = {
         organization_id: organizationId,
@@ -330,6 +350,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         .upsert(payload, { onConflict: 'organization_id' })
         .select('id')
         .maybeSingle();
+
+      if (!isCurrent()) return;
       if (error) throw error;
 
       const savedId = data?.id || config.id;
@@ -338,12 +360,16 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       setSavedConfig(nextSaved);
       setEditorOpen(false);
       toast.success('Programa de pontos salvo e atualizado.');
-      await fetchAll();
+      await fetchAll(isCurrent);
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[LoyaltyPanel] config save error', error);
       toast.error('Não foi possível salvar as regras de fidelidade.');
     } finally {
-      setSavingConfig(false);
+      if (isCurrent()) {
+        savingConfigRef.current = false;
+        setSavingConfig(false);
+      }
     }
   };
 

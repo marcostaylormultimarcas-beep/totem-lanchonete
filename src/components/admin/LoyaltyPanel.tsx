@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Award, Calendar, Check, Coins, Gift, History, Image as ImageIcon,
   Loader2, Package, Pencil, Plus, RotateCcw, Save, Trash2, Upload, Users, WalletCards,
@@ -126,6 +126,17 @@ const formatPhone = (value: string) => {
   return digits || 'Cliente';
 };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isRedeemSuccess = (value: unknown, expectedId: string) => {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Record<string, unknown>;
+  return result.ok === true
+    && typeof result.id === 'string'
+    && UUID_PATTERN.test(result.id)
+    && result.id === expectedId;
+};
+
 const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => {
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
   const [savedConfig, setSavedConfig] = useState<Config | null>(null);
@@ -144,6 +155,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const [savingReward, setSavingReward] = useState(false);
   const [uploadingReward, setUploadingReward] = useState(false);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const redeemingIdsRef = useRef(new Set<string>());
+  const redemptionScopeRef = useRef(0);
 
   const fetchAll = async () => {
     if (!organizationId) return;
@@ -264,6 +277,17 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       .subscribe();
 
     return () => { void supabase.removeChannel(channel); };
+  }, [organizationId]);
+
+  useEffect(() => {
+    redemptionScopeRef.current += 1;
+    redeemingIdsRef.current.clear();
+    setRedeemingId(null);
+
+    return () => {
+      redemptionScopeRef.current += 1;
+      redeemingIdsRef.current.clear();
+    };
   }, [organizationId]);
 
   const saveConfig = async () => {
@@ -438,19 +462,37 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   };
 
   const redeem = async (id: string) => {
+    if (!organizationId || redeemingIdsRef.current.has(id)) return;
     if (!window.confirm('Confirmar que este prêmio foi entregue ao cliente?')) return;
+    if (redeemingIdsRef.current.has(id)) return;
+
+    const requestScope = redemptionScopeRef.current;
+    redeemingIdsRef.current.add(id);
     setRedeemingId(id);
+
     try {
       const { data, error } = await supabase.rpc('redeem_loyalty_prize', { _resgate_id: id });
-      const result = data as any;
-      if (error || !result?.ok) throw error || new Error(result?.reason || 'redeem_failed');
+      if (redemptionScopeRef.current !== requestScope) return;
+
+      if (error) throw error;
+      if (!isRedeemSuccess(data, id)) {
+        const reason = data && typeof data === 'object' && typeof (data as Record<string, unknown>).reason === 'string'
+          ? String((data as Record<string, unknown>).reason)
+          : 'invalid_redeem_response';
+        throw new Error(reason);
+      }
+
       toast.success('Prêmio marcado como utilizado.');
       await fetchAll();
     } catch (error) {
+      if (redemptionScopeRef.current !== requestScope) return;
       console.error('[LoyaltyPanel] redemption error', error);
       toast.error('Não foi possível concluir a entrega do prêmio.');
     } finally {
-      setRedeemingId(null);
+      if (redemptionScopeRef.current === requestScope) {
+        redeemingIdsRef.current.delete(id);
+        setRedeemingId(current => current === id ? null : current);
+      }
     }
   };
 

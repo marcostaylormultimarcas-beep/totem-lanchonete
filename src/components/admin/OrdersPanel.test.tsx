@@ -2310,4 +2310,41 @@ describe('OrdersPanel confirmPayment contract and lifecycle', () => {
     expect(container.textContent).toContain('✅ Pago');
     expect(toastSuccessMock).toHaveBeenCalledWith('Pagamento já estava confirmado.');
   });
+
+  it('reconciles order_cancelled from the authoritative RPC instead of leaving stale pending UI', async () => {
+    paymentResponder = async () => {
+      currentOrder = { ...currentOrder, status: 'cancelled' };
+      return {
+        data: { ok: false, reason: 'order_cancelled' },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('❌ Cancelado');
+    expect(findPaymentButton()).toBeUndefined();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
+  it('reconciles payment_status_locked from the authoritative RPC instead of leaving stale pending UI', async () => {
+    paymentResponder = async () => {
+      currentOrder = { ...currentOrder, payment_status: 'refunded' };
+      return {
+        data: { ok: false, reason: 'payment_status_locked' },
+        error: null,
+      };
+    };
+
+    await renderPanel();
+    await clickPayment();
+
+    expect(orderFetches).toEqual(['org-a', 'org-a']);
+    expect(container.textContent).toContain('↩️ Reembolsado');
+    expect(findPaymentButton()).toBeUndefined();
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+
 });

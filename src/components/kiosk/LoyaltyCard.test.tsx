@@ -453,3 +453,406 @@ describe('LoyaltyCard customer wallet read', () => {
     container.remove();
   });
 });
+
+
+describe('LoyaltyCard reward redemption', () => {
+  let root: Root;
+  let container: HTMLDivElement;
+  let redeemHandler: any;
+  let customerState: Record<string, unknown>;
+
+  const validRedeemResult = (overrides: Record<string, unknown> = {}) => ({
+    ok: true,
+    redemption_id: '11111111-1111-4111-8111-111111111111',
+    code: 'FID-A1B2C3D4',
+    balance: 20,
+    points_spent: 10,
+    reward: {
+      id: 'reward-1',
+      title: 'Batata grátis',
+      description: '',
+      image_url: '',
+    },
+    ...overrides,
+  });
+
+  const renderCard = async (organizationId: string | null = 'org-a') => {
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/loja/demo']}>
+          <LoyaltyCard organizationId={organizationId} />
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+  };
+
+  const buttonWithText = (text: string) =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      button.textContent?.includes(text),
+    ) as HTMLButtonElement | undefined;
+
+  const openCatalog = async () => {
+    const button = buttonWithText('Ver recompensas');
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button!.click();
+      await flushAsync();
+    });
+  };
+
+  const clickRedeem = async () => {
+    const button = buttonWithText('Resgatar');
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button!.click();
+      await flushAsync();
+    });
+  };
+
+  afterEach(async () => {
+    if (container?.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    vi.useRealTimers();
+    localStorage.clear();
+
+    fetchPublicLoyaltyConfigMock.mockResolvedValue(ACTIVE_CONFIG);
+    getSessionMock.mockResolvedValue({
+      data: { session: { user: { id: 'user-1' } } },
+      error: null,
+    });
+
+    customerState = validState({
+      points_balance: 30,
+      points_earned_total: 30,
+      points_spent_total: 0,
+      catalog: ACTIVE_CONFIG.rewards,
+    });
+    redeemHandler = vi.fn().mockResolvedValue({
+      data: validRedeemResult(),
+      error: null,
+    });
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'loyalty_redeem_reward') return redeemHandler();
+      if (name === 'loyalty_customer_state') {
+        return Promise.resolve({ data: customerState, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  it('accepts a complete authoritative redemption and refreshes the wallet afterwards', async () => {
+    await renderCard();
+    await openCatalog();
+
+    customerState = validState({
+      points_balance: 20,
+      points_earned_total: 30,
+      points_spent_total: 10,
+      catalog: ACTIVE_CONFIG.rewards,
+    });
+
+    await clickRedeem();
+
+    expect(redeemHandler).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Prêmio reservado');
+    expect(container.textContent).toContain('FID-A1B2C3D4');
+    expect(container.textContent).toContain('−10 pontos');
+    expect(container.textContent).toContain('20');
+    expect(window.alert).not.toHaveBeenCalled();
+  });
+
+  it('disables redemption while the RPC is pending', async () => {
+    const pending = deferred<any>();
+    redeemHandler.mockImplementation(() => pending.promise);
+
+    await renderCard();
+    await openCatalog();
+
+    const button = buttonWithText('Resgatar');
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button!.click();
+      await Promise.resolve();
+    });
+
+    expect(buttonWithText('Resgatando…')).toBeDisabled();
+
+    await act(async () => {
+      pending.resolve({ data: validRedeemResult(), error: null });
+      await flushAsync();
+    });
+  });
+
+  it('does not turn two same-turn clicks into two redemption RPC calls', async () => {
+    const pending = deferred<any>();
+    redeemHandler.mockImplementation(() => pending.promise);
+
+    await renderCard();
+    await openCatalog();
+
+    const button = buttonWithText('Resgatar');
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button!.click();
+      button!.click();
+      await Promise.resolve();
+    });
+
+    expect(redeemHandler).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pending.resolve({ data: validRedeemResult(), error: null });
+      await flushAsync();
+    });
+  });
+
+  it('ignores a redemption response from organization A after switching to organization B', async () => {
+    const pending = deferred<any>();
+    redeemHandler.mockImplementation(() => pending.promise);
+
+    await renderCard('org-a');
+    await openCatalog();
+
+    const button = buttonWithText('Resgatar');
+    expect(button).toBeTruthy();
+    await act(async () => {
+      button!.click();
+      await Promise.resolve();
+    });
+
+    customerState = validState({
+      points_balance: 40,
+      points_earned_total: 40,
+      points_spent_total: 0,
+      catalog: ACTIVE_CONFIG.rewards,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/loja/b']}>
+          <LoyaltyCard organizationId="org-b" />
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('40');
+
+    await act(async () => {
+      pending.resolve({
+        data: validRedeemResult({
+          code: 'FID-OLD0A000',
+          reward: {
+            id: 'reward-1',
+            title: 'Prêmio antigo da organização A',
+            description: '',
+            image_url: '',
+          },
+        }),
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain('Prêmio antigo da organização A');
+    expect(container.textContent).not.toContain('FID-OLD0A000');
+    expect(container.textContent).toContain('40');
+  });
+
+  it('does not expose a PostgREST error message to the customer', async () => {
+    redeemHandler.mockResolvedValue({
+      data: null,
+      error: { message: 'duplicate key value violates internal_constraint' },
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+    expect(container.textContent).not.toContain('Prêmio reservado');
+  });
+
+  it('does not expose a rejected transport error message to the customer', async () => {
+    redeemHandler.mockRejectedValue(new Error('fetch failed at internal gateway'));
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+    expect(container.textContent).not.toContain('Prêmio reservado');
+  });
+
+  it('requires redemption ok to be the boolean true', async () => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ ok: 'true' }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('fails closed when ok=true omits the redemption contract', async () => {
+    redeemHandler.mockResolvedValue({
+      data: { ok: true },
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('rejects an invalid redemption_id instead of opening a false prize', async () => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ redemption_id: 'not-a-uuid' }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('rejects an empty redemption code instead of opening a false prize', async () => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ code: '   ' }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('rejects a malformed reward object instead of falling back to local catalog data', async () => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ reward: { title: 'Batata grátis' } }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it.each([
+    ['numeric string', '10'],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['negative', -10],
+  ])('rejects malformed points_spent: %s', async (_label, pointsSpent) => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ points_spent: pointsSpent }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('requires an authoritative non-negative integer balance in the success payload', async () => {
+    redeemHandler.mockResolvedValue({
+      data: validRedeemResult({ balance: '20' }),
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(container.textContent).not.toContain('Prêmio reservado');
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+  });
+
+  it('maps a known server reason to a customer-safe message', async () => {
+    redeemHandler.mockResolvedValue({
+      data: { ok: false, reason: 'reward_not_found' },
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(window.alert).toHaveBeenCalledWith('Este prêmio não está mais disponível.');
+    expect(container.textContent).not.toContain('Prêmio reservado');
+  });
+
+  it('fails an unknown server reason closed with the generic customer message', async () => {
+    redeemHandler.mockResolvedValue({
+      data: { ok: false, reason: 'unexpected_internal_reason' },
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(window.alert).toHaveBeenCalledWith('Não foi possível resgatar agora.');
+    expect(container.textContent).not.toContain('Prêmio reservado');
+  });
+
+  it('trusts the server when the rendered balance became insufficient before redemption', async () => {
+    redeemHandler.mockResolvedValue({
+      data: {
+        ok: false,
+        reason: 'insufficient_points',
+        balance: 2,
+        required: 10,
+      },
+      error: null,
+    });
+
+    await renderCard();
+    await openCatalog();
+    await clickRedeem();
+
+    expect(window.alert).toHaveBeenCalledWith(
+      'Seu saldo mudou e não há pontos suficientes para este prêmio.',
+    );
+    expect(container.textContent).not.toContain('Prêmio reservado');
+  });
+});

@@ -158,7 +158,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
   const redeemingIdsRef = useRef(new Set<string>());
   const redemptionScopeRef = useRef(0);
 
-  const fetchAll = async () => {
+  const fetchAll = async (isCurrent: () => boolean = () => true) => {
     if (!organizationId) return;
     setLoading(true);
     try {
@@ -179,6 +179,8 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
           .order('created_at', { ascending: false })
           .limit(100),
       ]);
+
+      if (!isCurrent()) return;
 
       if (cfgResult.error) throw cfgResult.error;
       if (rewardsResult.error) throw rewardsResult.error;
@@ -259,10 +261,11 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
         });
       }
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('[LoyaltyPanel] load error', error);
       toast.error('Não foi possível carregar a fidelidade.');
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   };
 
@@ -483,7 +486,7 @@ const LoyaltyPanel = ({ organizationId }: { organizationId: string | null }) => 
       }
 
       toast.success('Prêmio marcado como utilizado.');
-      await fetchAll();
+      await fetchAll(() => redemptionScopeRef.current === requestScope);
     } catch (error) {
       if (redemptionScopeRef.current !== requestScope) return;
       console.error('[LoyaltyPanel] redemption error', error);

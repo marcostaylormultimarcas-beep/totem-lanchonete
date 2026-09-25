@@ -3318,6 +3318,7 @@ describe('OrdersPanel updateStatus normal transition contract and lifecycle', ()
   it('contains loyalty Promise rejection after delivered without telling the operator that delivery failed', async () => {
     currentOrder = { ...currentOrder, status: 'ready', order_type: 'local', table_label: 'Mesa 7' };
     loyaltyResponder = async () => {
+      currentOrder = { ...currentOrder, status: 'delivered' };
       throw new Error('loyalty transport secret');
     };
 

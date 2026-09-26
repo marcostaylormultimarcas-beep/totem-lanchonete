@@ -183,6 +183,41 @@ describe('OrderHistory', () => {
     container.remove();
   });
 
+  it('shows kg for weighted items while preserving unit quantities and the three-item preview', async () => {
+    const mixedOrder = {
+      ...order,
+      items: [
+        { name: 'Self-service', quantity: 1, weight_kg: 0.75, sold_by_weight: true },
+        { name: 'Refrigerante', quantity: 2 },
+        { name: 'Picanha', quantity: 1, weight_kg: 0.325, sold_by_weight: true },
+        { name: 'Sobremesa', quantity: 1 },
+      ],
+    };
+    rpcMock.mockResolvedValue({ data: [mixedOrder], error: null });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/meus-pedidos']}>
+          <Routes>
+            <Route path="/meus-pedidos" element={<OrderHistory />} />
+            <Route path="/auth" element={<div>AUTH</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith('visionfood_my_orders', { _limit: 50 });
+    expect(container.textContent).toContain('0.750 kg Self-service');
+    expect(container.textContent).toContain('2x Refrigerante');
+    expect(container.textContent).toContain('0.325 kg Picanha');
+    expect(container.textContent).not.toContain('Sobremesa');
+    expect(container.textContent).toContain('+1 itens');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('keeps the last successful order list visible when a background refresh fails', async () => {
     vi.useFakeTimers();
     rpcMock

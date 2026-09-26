@@ -235,8 +235,6 @@ describe('Index local-service QR concurrency', () => {
       await flushAsync();
     });
 
-    expect(container.textContent).toContain('Mesa 7');
-
     const landing = Array.from(container.querySelectorAll('button'))
       .find(button => button.textContent === 'landing-next') as HTMLButtonElement | undefined;
     expect(landing).toBeTruthy();

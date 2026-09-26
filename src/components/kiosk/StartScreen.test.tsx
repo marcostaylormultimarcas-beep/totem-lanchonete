@@ -784,7 +784,10 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(onStart).toHaveBeenCalledTimes(1);
     expect(categoryButton!.querySelector('div')?.className).toContain('border-2');
     expect(categoryButton!.querySelector('div')?.className).toContain('border-[#FF7A00]');
-    expect(categoryButton!.querySelector('span')?.className).toContain('text-[#FF7A00]');
+    const categoryLabel = Array.from(categoryButton!.querySelectorAll('span')).find(
+      span => span.textContent === 'Hambúrgueres',
+    );
+    expect(categoryLabel?.className).toContain('text-[#FF7A00]');
   });
 
   it('uses configured public categories instead of the default fallback', async () => {

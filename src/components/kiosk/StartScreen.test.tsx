@@ -8,9 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   fetchPublicStorefrontConfigMock,
   fetchPublicCatalogMock,
+  useVisionPrimeConfigMock,
 } = vi.hoisted(() => ({
   fetchPublicStorefrontConfigMock: vi.fn(),
   fetchPublicCatalogMock: vi.fn(),
+  useVisionPrimeConfigMock: vi.fn(),
 }));
 
 vi.mock('@/contexts/OrgContext', () => ({
@@ -23,6 +25,10 @@ vi.mock('@/lib/publicStorefrontConfig', () => ({
 
 vi.mock('@/lib/publicCatalog', () => ({
   fetchPublicCatalog: fetchPublicCatalogMock,
+}));
+
+vi.mock('@/hooks/useVisionPrime', () => ({
+  useVisionPrimeConfig: useVisionPrimeConfigMock,
 }));
 
 vi.mock('@/components/kiosk/LoyaltyCard', () => ({
@@ -105,6 +111,10 @@ describe('StartScreen favorites bottom navigation', () => {
       category_icons: {},
     });
     fetchPublicCatalogMock.mockResolvedValue(CATALOG);
+    useVisionPrimeConfigMock.mockReturnValue({
+      config: null,
+      loading: false,
+    });
 
     Object.defineProperty(window, 'scrollTo', {
       configurable: true,
@@ -890,6 +900,68 @@ describe('StartScreen favorites bottom navigation', () => {
     });
 
     expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not advertise free shipping without an authoritative active rule', async () => {
+    await renderScreen();
+
+    expect(findButton('Frete Grátis')).toBeFalsy();
+    expect(container.textContent).not.toContain('R$ 40,00');
+  });
+
+  it('uses the authoritative Vision Prime free-shipping minimum and starts exactly once', async () => {
+    const onStart = vi.fn();
+    useVisionPrimeConfigMock.mockReturnValue({
+      config: {
+        ativo: true,
+        valor_mensalidade: 19.9,
+        desconto_percentual: 10,
+        frete_gratis_minimo: 73.5,
+      },
+      loading: false,
+    });
+
+    await renderScreen({ onStart });
+
+    const promo = findButton('Frete Grátis');
+    expect(promo).toBeTruthy();
+    expect(promo!.textContent).toContain('Vision Prime');
+    expect(promo!.textContent).toContain('73,50');
+    expect(promo!.textContent).not.toContain('R$ 40,00');
+
+    await act(async () => {
+      promo!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      findButton('Favoritos')!.click();
+      await flushAsync();
+    });
+
+    expect(findButton('Frete Grátis')).toBeFalsy();
+  });
+
+  it('describes zero Vision Prime minimum as free shipping on every member order', async () => {
+    useVisionPrimeConfigMock.mockReturnValue({
+      config: {
+        ativo: true,
+        valor_mensalidade: 19.9,
+        desconto_percentual: 10,
+        frete_gratis_minimo: 0,
+      },
+      loading: false,
+    });
+
+    await renderScreen();
+
+    const promo = findButton('Frete Grátis');
+    expect(promo).toBeTruthy();
+    expect(promo!.textContent).toContain('Vision Prime');
+    expect(promo!.textContent).toContain('todos os pedidos');
+    expect(promo!.textContent).not.toContain('R$ 40,00');
   });
 
 });

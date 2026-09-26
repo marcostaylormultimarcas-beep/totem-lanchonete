@@ -58,6 +58,10 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
       <div className="pr-section">
         <p className="pr-section-title">ITENS</p>
         {items.map((item, i) => {
+          const weightKg = Number(item.weight_kg);
+          const quantityLabel = Number.isFinite(weightKg) && weightKg > 0
+            ? `${weightKg.toFixed(3)} kg`
+            : `${item.quantity}x`;
           const removed: string[] = item.removedIngredients || [];
           const extras: string[] = item.extras || [];
           const obs = [
@@ -68,7 +72,7 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
           return (
             <div key={i} className="pr-item">
               <div className="pr-item-row">
-                <span>{item.quantity}x {item.name}</span>
+                <span>{quantityLabel} {item.name}</span>
                 <span>{formatCurrency(item.total)}</span>
               </div>
               {obs && <p className="pr-obs">Obs: {obs}</p>}

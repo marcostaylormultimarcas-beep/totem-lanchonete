@@ -964,4 +964,50 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(promo!.textContent).not.toContain('R$ 40,00');
   });
 
+  it.each([
+    ['', '', null, null],
+    ['https://www.instagram.com/loja.teste/', '', 'https://www.instagram.com/loja.teste/', null],
+    ['', '+55 (62) 99608-1004', null, 'https://wa.me/5562996081004'],
+    ['https://instagram.com/loja/', '5562996081004', 'https://instagram.com/loja/', 'https://wa.me/5562996081004'],
+  ])('renders only configured social channels (%s, %s)', async (instagram, whatsapp, expectedInstagram, expectedWhatsapp) => {
+    fetchPublicStorefrontConfigMock.mockResolvedValue({ instagram_url: instagram, whatsapp_number: whatsapp });
+    await renderScreen();
+    const ig = container.querySelector('a[aria-label="Abrir Instagram"]');
+    const wa = container.querySelector('a[aria-label="Abrir WhatsApp"]');
+    expect(ig?.getAttribute('href') ?? null).toBe(expectedInstagram);
+    expect(wa?.getAttribute('href') ?? null).toBe(expectedWhatsapp);
+    expect(container.textContent?.includes('Siga e fale conosco')).toBe(Boolean(expectedInstagram || expectedWhatsapp));
+    for (const link of [ig, wa].filter(Boolean)) {
+      expect(link!.getAttribute('target')).toBe('_blank');
+      expect(link!.getAttribute('rel')).toBe('noopener noreferrer');
+    }
+  });
+
+  it.each([
+    ['   ', '   '],
+    ['javascript:alert(1)', 'abc'],
+    ['/loja', '123'],
+    ['https://example.com/loja', '000000000000'],
+    ['https://instagram.com.evil.example/loja', 'telefone5562996081004'],
+    ['https://instagram.com@evil.example/loja', 'https://wa.me/5562996081004'],
+    ['https://evil.example@instagram.com/loja', '1234567890123456'],
+    ['https://instagram.com/', '+0 (62) 99608-1004'],
+    [42, 5562996081004],
+  ])('hides malformed social configuration (%s, %s)', async (instagram, whatsapp) => {
+    fetchPublicStorefrontConfigMock.mockResolvedValue({ instagram_url: instagram, whatsapp_number: whatsapp });
+    await renderScreen();
+    expect(container.querySelector('a[aria-label="Abrir Instagram"]')).toBeNull();
+    expect(container.querySelector('a[aria-label="Abrir WhatsApp"]')).toBeNull();
+    expect(container.textContent).not.toContain('Siga e fale conosco');
+  });
+
+  it('keeps the valid channel when the other is malformed', async () => {
+    fetchPublicStorefrontConfigMock.mockResolvedValue({ instagram_url: 'https://example.com', whatsapp_number: '+55 (62) 99608-1004' });
+    await renderScreen();
+    expect(container.querySelector('a[aria-label="Abrir Instagram"]')).toBeNull();
+    const wa = container.querySelector('a[aria-label="Abrir WhatsApp"]')!;
+    expect(wa.getAttribute('href')).toBe('https://wa.me/5562996081004');
+    expect(wa.parentElement?.className).toContain('grid-cols-1');
+  });
+
 });

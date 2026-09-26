@@ -217,4 +217,39 @@ describe('OrderHistory', () => {
     container.remove();
     vi.useRealTimers();
   });
+
+  it('prevents two logout events in the same turn from starting concurrent sign-outs', async () => {
+    rpcMock.mockResolvedValue({ data: [order], error: null });
+    signOutMock.mockImplementation(() => new Promise(() => {}));
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/meus-pedidos']}>
+          <Routes>
+            <Route path="/meus-pedidos" element={<OrderHistory />} />
+            <Route path="/auth" element={<div>AUTH</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    const logoutButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Sair'));
+
+    expect(logoutButton).toBeTruthy();
+
+    await act(async () => {
+      logoutButton!.click();
+      logoutButton!.click();
+      await Promise.resolve();
+    });
+
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(signOutMock).toHaveBeenCalledWith({ scope: 'local' });
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
 });

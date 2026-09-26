@@ -30,7 +30,7 @@ vi.mock('@/components/kiosk/LoyaltyCard', () => ({
 }));
 
 vi.mock('@/components/kiosk/ProductModal', () => ({
-  default: () => null,
+  default: ({ product }: { product: { name: string } }) => `Product modal: ${product.name}`,
 }));
 
 import StartScreen from '@/components/kiosk/StartScreen';
@@ -75,11 +75,11 @@ describe('StartScreen favorites bottom navigation', () => {
   let root: Root;
   let container: HTMLDivElement;
 
-  const renderScreen = async () => {
+  const renderScreen = async (props: Partial<React.ComponentProps<typeof StartScreen>> = {}) => {
     await act(async () => {
       root.render(
         <MemoryRouter initialEntries={['/loja/demo']}>
-          <StartScreen onStart={vi.fn()} />
+          <StartScreen onStart={vi.fn()} {...props} />
         </MemoryRouter>,
       );
       await flushAsync();
@@ -549,6 +549,155 @@ describe('StartScreen favorites bottom navigation', () => {
 
     expect(container.textContent).toContain('Produto mais novo');
     expect(container.textContent).not.toContain('Produto antigo');
+  });
+
+
+  it('shows only the first six non-combo products in normal mode', async () => {
+    const manyProducts = [
+      {
+        ...CATALOG[0],
+        id: 'combo-hidden',
+        name: 'Combo oculto',
+        is_combo: true,
+      },
+      ...Array.from({ length: 7 }, (_, index) => ({
+        ...CATALOG[0],
+        id: `prod-${index + 1}`,
+        name: `Produto ${index + 1}`,
+        is_combo: false,
+      })),
+    ];
+    fetchPublicCatalogMock.mockResolvedValue(manyProducts);
+
+    await renderScreen();
+
+    expect(container.textContent).not.toContain('Combo oculto');
+    for (let index = 1; index <= 6; index += 1) {
+      expect(container.textContent).toContain(`Produto ${index}`);
+    }
+    expect(container.textContent).not.toContain('Produto 7');
+  });
+
+  it('sends a card click to onSelectProduct exactly once', async () => {
+    const onSelectProduct = vi.fn();
+    const onAddToCart = vi.fn();
+
+    await renderScreen({ onSelectProduct, onAddToCart });
+
+    const productHeading = Array.from(container.querySelectorAll('h3')).find(
+      heading => heading.textContent === 'Produto A',
+    );
+    const productButton = productHeading?.closest('button') as HTMLButtonElement | null;
+    expect(productButton).toBeTruthy();
+
+    await act(async () => {
+      productButton!.click();
+      await flushAsync();
+    });
+
+    expect(onSelectProduct).toHaveBeenCalledTimes(1);
+    expect(onSelectProduct).toHaveBeenCalledWith(expect.objectContaining({ id: 'prod-a', name: 'Produto A' }));
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it('opens the selected-product modal when a card has no selection callback', async () => {
+    await renderScreen();
+
+    const productHeading = Array.from(container.querySelectorAll('h3')).find(
+      heading => heading.textContent === 'Produto A',
+    );
+    const productButton = productHeading?.closest('button') as HTMLButtonElement | null;
+    expect(productButton).toBeTruthy();
+
+    await act(async () => {
+      productButton!.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Product modal: Produto A');
+  });
+
+  it('prioritizes onSelectProduct over onAddToCart for quick add', async () => {
+    const onSelectProduct = vi.fn();
+    const onAddToCart = vi.fn();
+
+    await renderScreen({ onSelectProduct, onAddToCart });
+
+    const quickAdd = container.querySelector('button[title="Adicionar"]') as HTMLButtonElement | null;
+    expect(quickAdd).toBeTruthy();
+
+    await act(async () => {
+      quickAdd!.click();
+      await flushAsync();
+    });
+
+    expect(onSelectProduct).toHaveBeenCalledTimes(1);
+    expect(onSelectProduct).toHaveBeenCalledWith(expect.objectContaining({ id: 'prod-a' }));
+    expect(onAddToCart).not.toHaveBeenCalled();
+  });
+
+  it('creates a quantity-one CartItem when quick add uses onAddToCart', async () => {
+    const onAddToCart = vi.fn();
+
+    await renderScreen({ onAddToCart });
+
+    const quickAdd = container.querySelector('button[title="Adicionar"]') as HTMLButtonElement | null;
+    expect(quickAdd).toBeTruthy();
+
+    await act(async () => {
+      quickAdd!.click();
+      await flushAsync();
+    });
+
+    expect(onAddToCart).toHaveBeenCalledTimes(1);
+    const item = onAddToCart.mock.calls[0][0];
+    expect(item).toMatchObject({
+      product: expect.objectContaining({ id: 'prod-a', name: 'Produto A' }),
+      quantity: 1,
+      removedIngredients: [],
+      selectedExtras: [],
+    });
+    expect(typeof item.id).toBe('string');
+    expect(item.id.length).toBeGreaterThan(0);
+  });
+
+  it('opens ProductModal as the quick-add fallback when no callbacks exist', async () => {
+    await renderScreen();
+
+    const quickAdd = container.querySelector('button[title="Adicionar"]') as HTMLButtonElement | null;
+    expect(quickAdd).toBeTruthy();
+
+    await act(async () => {
+      quickAdd!.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Product modal: Produto A');
+  });
+
+  it('isolates heart and quick-add clicks from the card click handler', async () => {
+    const onSelectProduct = vi.fn();
+
+    await renderScreen({ onSelectProduct });
+
+    const favorite = container.querySelector(
+      'button[aria-label="Adicionar aos favoritos"]',
+    ) as HTMLButtonElement | null;
+    const quickAdd = container.querySelector('button[title="Adicionar"]') as HTMLButtonElement | null;
+    expect(favorite).toBeTruthy();
+    expect(quickAdd).toBeTruthy();
+
+    await act(async () => {
+      favorite!.click();
+      await flushAsync();
+    });
+    expect(onSelectProduct).not.toHaveBeenCalled();
+
+    await act(async () => {
+      quickAdd!.click();
+      await flushAsync();
+    });
+    expect(onSelectProduct).toHaveBeenCalledTimes(1);
   });
 
 });

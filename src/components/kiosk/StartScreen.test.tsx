@@ -738,4 +738,72 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(container.textContent).toContain('Bebidas');
   });
 
+
+  it('starts the flow exactly once from the search shortcut', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const searchButton = findButton('Buscar pratos, bebidas e mais');
+    expect(searchButton).toBeTruthy();
+
+    await act(async () => {
+      searchButton!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the flow exactly once from categories Ver todas', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const allCategoriesButton = findButton('Ver todas');
+    expect(allCategoriesButton).toBeTruthy();
+
+    await act(async () => {
+      allCategoriesButton!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects a category visually and starts the flow exactly once', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const categoryButton = findButton('Hambúrgueres');
+    expect(categoryButton).toBeTruthy();
+
+    await act(async () => {
+      categoryButton!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(categoryButton!.querySelector('div')?.className).toContain('border-2');
+    expect(categoryButton!.querySelector('div')?.className).toContain('border-[#FF7A00]');
+    expect(categoryButton!.querySelector('span')?.className).toContain('text-[#FF7A00]');
+  });
+
+  it('uses configured public categories instead of the default fallback', async () => {
+    fetchPublicStorefrontConfigMock.mockResolvedValue({
+      store_name: 'Loja Teste',
+      banners: [],
+      instagram_url: '',
+      whatsapp_number: '',
+      categories: [
+        { key: 'doces', label: 'Doces da casa', icon: '🍰' },
+      ],
+    });
+
+    await renderScreen();
+
+    expect(container.textContent).toContain('Doces da casa');
+    expect(container.textContent).not.toContain('Hambúrgueres');
+    expect(container.textContent).not.toContain('Pizzas');
+    expect(container.textContent).not.toContain('Bebidas');
+  });
+
 });

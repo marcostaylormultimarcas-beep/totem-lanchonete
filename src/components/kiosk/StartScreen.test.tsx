@@ -331,6 +331,60 @@ describe('StartScreen favorites bottom navigation', () => {
   });
 
 
+  it('gives a manually selected banner a fresh four-second autoplay window', async () => {
+    vi.useFakeTimers();
+
+    fetchPublicStorefrontConfigMock.mockResolvedValue({
+      store_name: 'Loja Teste',
+      banners: [
+        { id: 'banner-a', title: 'Banner A', image: 'https://cdn.test/a.jpg' },
+        { id: 'banner-b', title: 'Banner B', image: 'https://cdn.test/b.jpg' },
+        { id: 'banner-c', title: 'Banner C', image: 'https://cdn.test/c.jpg' },
+      ],
+      instagram_url: '',
+      whatsapp_number: '',
+      categories: [],
+      category_icons: {},
+    });
+
+    await renderScreen();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_900);
+      await flushAsync();
+    });
+
+    const secondIndicator = container.querySelector(
+      'button[aria-label="Banner 2"]',
+    ) as HTMLButtonElement | null;
+    expect(secondIndicator).toBeTruthy();
+
+    await act(async () => {
+      secondIndicator!.click();
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner B"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner B"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_899);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner B"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner C"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+
   it('rejects parseable null instead of crashing the storefront', async () => {
     localStorage.setItem('vf_favoritos', 'null');
 

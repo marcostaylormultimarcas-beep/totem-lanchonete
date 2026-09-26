@@ -492,4 +492,63 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(container.textContent).toContain('Produto A');
     expect(container.textContent).toContain('Produto B');
   });
+
+  it('ignores an older catalog response that finishes after a newer product refresh', async () => {
+    vi.useFakeTimers();
+
+    const catalogProduct = (id: string, name: string) => ({
+      id,
+      name,
+      price: 10,
+      category: 'hamburgueres',
+      image: '',
+      removable_ingredients: [],
+      extras: [],
+      is_combo: false,
+      ingredients: [],
+      description: name,
+      prep_time_min: 10,
+    });
+
+    let resolveOlder!: (value: ReturnType<typeof catalogProduct>[]) => void;
+    let resolveNewer!: (value: ReturnType<typeof catalogProduct>[]) => void;
+    const olderResponse = new Promise<ReturnType<typeof catalogProduct>[]>(resolve => {
+      resolveOlder = resolve;
+    });
+    const newerResponse = new Promise<ReturnType<typeof catalogProduct>[]>(resolve => {
+      resolveNewer = resolve;
+    });
+
+    fetchPublicCatalogMock
+      .mockResolvedValueOnce([catalogProduct('initial', 'Produto inicial')])
+      .mockReturnValueOnce(olderResponse)
+      .mockReturnValueOnce(newerResponse);
+
+    await renderScreen();
+    expect(container.textContent).toContain('Produto inicial');
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+
+    await act(async () => {
+      resolveNewer([catalogProduct('newest', 'Produto mais novo')]);
+      await flushAsync();
+    });
+    expect(container.textContent).toContain('Produto mais novo');
+
+    await act(async () => {
+      resolveOlder([catalogProduct('stale', 'Produto antigo')]);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Produto mais novo');
+    expect(container.textContent).not.toContain('Produto antigo');
+  });
+
 });

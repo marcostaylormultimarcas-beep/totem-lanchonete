@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
@@ -99,6 +99,7 @@ const Index = () => {
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
   const [tableToken, setTableToken] = useState('');
   const [tableLabel, setTableLabel] = useState('');
+  const tableQrValidationGenerationRef = useRef(0);
   const [deviceOwnedKiosk, setDeviceOwnedKiosk] = useState(false);
   const [deviceModeOrgId, setDeviceModeOrgId] = useState<string | null>(null);
 
@@ -450,6 +451,7 @@ const Index = () => {
     if (!orgId) return;
     const token = (searchParams.get('mesa') || '').trim();
     if (!token) return;
+    const validationGeneration = ++tableQrValidationGenerationRef.current;
 
     // O QR de mesa é uma capacidade autoritativa. Sem rede não presumimos
     // mesa/label nem persistimos o token em snapshot público.
@@ -465,7 +467,7 @@ const Index = () => {
       _organization_id: orgId,
       _table_token: token,
     }).then(({ data, error }) => {
-      if (cancelled) return;
+      if (cancelled || validationGeneration !== tableQrValidationGenerationRef.current) return;
       const result: any = data;
       if (error || !result?.ok) {
         setTableToken('');
@@ -477,8 +479,17 @@ const Index = () => {
       setTableLabel(String(result.label || 'Mesa'));
       setOrderType('local');
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (tableQrValidationGenerationRef.current === validationGeneration) {
+        tableQrValidationGenerationRef.current += 1;
+      }
+    };
   }, [orgId, searchParams]);
+
+  const invalidatePendingTableQrValidation = () => {
+    tableQrValidationGenerationRef.current += 1;
+  };
 
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
@@ -623,6 +634,7 @@ const Index = () => {
       {step === 'location' && (
         <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => {
           if (type === 'delivery') {
+            invalidatePendingTableQrValidation();
             setTableToken('');
             setTableLabel('');
             setOrderType('viagem');
@@ -630,6 +642,7 @@ const Index = () => {
             return;
           }
           if (type === 'viagem') {
+            invalidatePendingTableQrValidation();
             setTableToken('');
             setTableLabel('');
             setOrderType('viagem');
@@ -646,6 +659,7 @@ const Index = () => {
           tableLabel={tableLabel}
           manualTableSelectionEnabled={deviceOwnedKiosk}
           onBalcony={() => {
+            invalidatePendingTableQrValidation();
             setTableToken('');
             setTableLabel('');
             setOrderType('local');
@@ -669,6 +683,7 @@ const Index = () => {
       {step === 'table' && deviceOwnedKiosk && (
         <TableSelect
           onSelectTable={(table) => {
+            invalidatePendingTableQrValidation();
             // For enrolled kiosks the server accepts this private table UUID as
             // the device-owned table selector. QR public tokens remain separate.
             setTableToken(table.id);
@@ -677,6 +692,7 @@ const Index = () => {
             setStep('menu');
           }}
           onBalcony={() => {
+            invalidatePendingTableQrValidation();
             setTableToken('');
             setTableLabel('');
             setOrderType('local');

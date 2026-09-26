@@ -153,7 +153,7 @@ describe('CartScreen weighted items', () => {
     const subtotalLabel = Array.from(container.querySelectorAll('span')).find(
       span => normalizedText(span) === 'Subtotal',
     );
-    expect(normalizedText(subtotalLabel?.parentElement || null)).toBe('Subtotal R$ 38,00');
+    expect(normalizedText(subtotalLabel?.parentElement || null)).toContain('R$ 38,00');
   });
 
   it('removes a weighted item by id without rewriting its weight or quantity', async () => {

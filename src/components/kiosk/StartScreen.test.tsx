@@ -700,4 +700,42 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(onSelectProduct).toHaveBeenCalledTimes(1);
   });
 
+
+  it('falls back to default categories when a storefront refresh removes configured categories', async () => {
+    vi.useFakeTimers();
+
+    fetchPublicStorefrontConfigMock
+      .mockResolvedValueOnce({
+        store_name: 'Loja Teste',
+        banners: [],
+        instagram_url: '',
+        whatsapp_number: '',
+        categories: [
+          { key: 'sobremesas', label: 'Sobremesas', icon: '🍰' },
+        ],
+      })
+      .mockResolvedValue({
+        store_name: 'Loja Teste',
+        banners: [],
+        instagram_url: '',
+        whatsapp_number: '',
+        categories: [],
+      });
+
+    await renderScreen();
+
+    expect(container.textContent).toContain('Sobremesas');
+    expect(container.textContent).not.toContain('Hambúrgueres');
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+
+    expect(container.textContent).not.toContain('Sobremesas');
+    expect(container.textContent).toContain('Hambúrgueres');
+    expect(container.textContent).toContain('Pizzas');
+    expect(container.textContent).toContain('Bebidas');
+  });
+
 });

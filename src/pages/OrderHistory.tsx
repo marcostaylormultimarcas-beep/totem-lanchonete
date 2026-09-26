@@ -82,6 +82,7 @@ interface Order {
   total: number;
   status: string;
   created_at: string;
+  scheduled_for?: string | null;
   items: any[];
   order_type: string;
   customer_cpf?: string;
@@ -302,10 +303,23 @@ const OrderHistory = () => {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground text-xs">
                   <Clock className="w-3 h-3" />
-                  <span>{formatDate(order.created_at)}</span>
+                  <span>
+                    {order.scheduled_for
+                      ? `Agendado para ${formatDate(order.scheduled_for)}`
+                      : formatDate(order.created_at)}
+                  </span>
                   <span className="mx-1">•</span>
                   <span>{getOrderTypeLabel(order.order_type)}</span>
                 </div>
+                {order.scheduled_for && (
+                  <a
+                    href={`/acompanhar/${order.id}`}
+                    className="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    <Clock className="w-4 h-4" />
+                    Acompanhar pedido
+                  </a>
+                )}
                 {Number(order.loyalty_points_awarded || 0) > 0 && (
                   <div className={`inline-flex items-center gap-1.5 self-start text-xs font-bold px-3 py-2 rounded-xl border ${
                     order.loyalty_points_reversed

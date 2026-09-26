@@ -754,6 +754,23 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(onStart).toHaveBeenCalledTimes(1);
   });
 
+  it('starts the flow exactly once from the bottom navigation search shortcut', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const bottomSearchButton = Array.from(container.querySelectorAll('button')).find(
+      button => button.textContent?.trim() === 'Buscar',
+    ) as HTMLButtonElement | undefined;
+    expect(bottomSearchButton).toBeTruthy();
+
+    await act(async () => {
+      bottomSearchButton!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
   it('starts the flow exactly once from categories Ver todas', async () => {
     const onStart = vi.fn();
     await renderScreen({ onStart });

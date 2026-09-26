@@ -58,6 +58,22 @@ const PRODUCT: Product = {
   soldByWeight: false,
 };
 
+const WEIGHT_PRODUCT: Product = {
+  id: 'prod-weight',
+  name: 'Self-service',
+  price: 20,
+  category: 'refeicoes',
+  image: '',
+  removableIngredients: [],
+  extras: [
+    { name: 'Embalagem premium', price: 4 },
+  ],
+  ingredients: [],
+  description: 'Produto vendido por peso',
+  prepTimeMin: 0,
+  soldByWeight: true,
+};
+
 async function flushAsync() {
   await Promise.resolve();
   await Promise.resolve();
@@ -67,11 +83,11 @@ describe('ProductModal non-weight personalization and add flow', () => {
   let root: Root;
   let container: HTMLDivElement;
 
-  const renderModal = async (onAdd = vi.fn()) => {
+  const renderModal = async (onAdd = vi.fn(), product: Product = PRODUCT) => {
     await act(async () => {
       root.render(
         <ProductModal
-          product={PRODUCT}
+          product={product}
           onAdd={onAdd}
           onClose={vi.fn()}
           deviceOwnedKiosk
@@ -92,6 +108,11 @@ describe('ProductModal non-weight personalization and add flow', () => {
       Boolean(button.querySelector(`svg.lucide-${kind}`)),
     ) as HTMLButtonElement | undefined;
 
+  const addButton = () =>
+    Array.from(container.querySelectorAll('button')).find(button =>
+      Boolean(button.querySelector('svg.lucide-shopping-cart')),
+    ) as HTMLButtonElement | undefined;
+
   beforeEach(() => {
     (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     vi.clearAllMocks();
@@ -106,6 +127,7 @@ describe('ProductModal non-weight personalization and add flow', () => {
       pesoAtual: 0,
       balancaConectada: false,
       supported: true,
+      status: 'idle',
       error: null,
       conectarBalanca: vi.fn(),
       desconectarBalanca: vi.fn(),
@@ -223,4 +245,169 @@ describe('ProductModal non-weight personalization and add flow', () => {
     expect(onAdd).toHaveBeenCalledTimes(1);
     expect(randomUUIDMock).toHaveBeenCalledTimes(1);
   });
+
+  it('detects a sold-by-weight product and renders the scale flow instead of quantity controls', async () => {
+    await renderModal(vi.fn(), WEIGHT_PRODUCT);
+
+    expect(container.textContent).toContain('/ kg');
+    expect(container.textContent).toContain('Peso na Balança');
+    expect(container.textContent).not.toContain('Quantidade');
+  });
+
+  it('routes the balance control to connect when idle and disconnect when connected', async () => {
+    const conectarBalanca = vi.fn();
+    const desconectarBalanca = vi.fn();
+    const onAdd = vi.fn();
+
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0,
+      balancaConectada: false,
+      status: 'idle',
+      supported: true,
+      error: null,
+      conectarBalanca,
+      desconectarBalanca,
+    });
+
+    await renderModal(onAdd, WEIGHT_PRODUCT);
+
+    await act(async () => {
+      findButton('Conectar')!.click();
+      await flushAsync();
+    });
+    expect(conectarBalanca).toHaveBeenCalledTimes(1);
+
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0,
+      balancaConectada: true,
+      status: 'connected',
+      supported: true,
+      error: null,
+      conectarBalanca,
+      desconectarBalanca,
+    });
+
+    await act(async () => {
+      root.render(
+        <ProductModal
+          product={WEIGHT_PRODUCT}
+          onAdd={onAdd}
+          onClose={vi.fn()}
+          deviceOwnedKiosk
+        />,
+      );
+      await flushAsync();
+    });
+
+    await act(async () => {
+      findButton('Conectada')!.click();
+      await flushAsync();
+    });
+    expect(desconectarBalanca).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks the add CTA when the connected scale reports zero weight', async () => {
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0,
+      balancaConectada: true,
+      status: 'connected',
+      supported: true,
+      error: null,
+      conectarBalanca: vi.fn(),
+      desconectarBalanca: vi.fn(),
+    });
+
+    const onAdd = await renderModal(vi.fn(), WEIGHT_PRODUCT);
+
+    expect(addButton()!.disabled).toBe(true);
+    expect(addButton()!.textContent).toContain('Coloque na balança');
+
+    await act(async () => {
+      addButton()!.click();
+      await flushAsync();
+    });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it('calculates price per kg with extras and sends quantity one plus the measured weight', async () => {
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0.75,
+      balancaConectada: true,
+      status: 'connected',
+      supported: true,
+      error: null,
+      conectarBalanca: vi.fn(),
+      desconectarBalanca: vi.fn(),
+    });
+
+    const onAdd = await renderModal(vi.fn(), WEIGHT_PRODUCT);
+
+    await act(async () => {
+      findButton('Embalagem premium')!.click();
+      await flushAsync();
+    });
+
+    expect(addButton()!.textContent).toContain('18,00');
+
+    await act(async () => {
+      addButton()!.click();
+      await flushAsync();
+    });
+
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(onAdd).toHaveBeenCalledWith({
+      id: 'local-cart-item-id',
+      product: WEIGHT_PRODUCT,
+      quantity: 1,
+      removedIngredients: [],
+      selectedExtras: [{ name: 'Embalagem premium', price: 4 }],
+      weightKg: 0.75,
+    });
+  });
+
+  it('does not duplicate a weighted cart item on two immediate add activations', async () => {
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0.75,
+      balancaConectada: true,
+      status: 'connected',
+      supported: true,
+      error: null,
+      conectarBalanca: vi.fn(),
+      desconectarBalanca: vi.fn(),
+    });
+
+    const onAdd = await renderModal(vi.fn(), WEIGHT_PRODUCT);
+
+    await act(async () => {
+      addButton()!.click();
+      addButton()!.click();
+      await flushAsync();
+    });
+
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    expect(randomUUIDMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accept a stale measured weight after the scale is disconnected', async () => {
+    useBalancaMock.mockReturnValue({
+      pesoAtual: 0.75,
+      balancaConectada: false,
+      status: 'idle',
+      supported: true,
+      error: null,
+      conectarBalanca: vi.fn(),
+      desconectarBalanca: vi.fn(),
+    });
+
+    const onAdd = await renderModal(vi.fn(), WEIGHT_PRODUCT);
+
+    expect(addButton()!.disabled).toBe(true);
+
+    await act(async () => {
+      addButton()!.click();
+      await flushAsync();
+    });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
 });

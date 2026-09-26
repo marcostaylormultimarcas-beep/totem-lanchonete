@@ -275,6 +275,15 @@ describe('StartScreen favorites bottom navigation', () => {
     ) as HTMLButtonElement | null;
     expect(visibleSlide).toBeTruthy();
     expect(visibleSlide?.querySelector('img')?.getAttribute('alt')).toBe('Banner A');
+
+    await act(async () => {
+      vi.advanceTimersByTime(8_000);
+      await flushAsync();
+    });
+    const stillVisibleSlide = container.querySelector(
+      '.vf-banner > button[aria-hidden="false"]',
+    ) as HTMLButtonElement | null;
+    expect(stillVisibleSlide?.querySelector('img')?.getAttribute('alt')).toBe('Banner A');
   });
 
 
@@ -382,6 +391,96 @@ describe('StartScreen favorites bottom navigation', () => {
       await flushAsync();
     });
     expect(container.querySelector('img[alt="Banner C"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+
+  it('autoplays to the next banner only after four seconds', async () => {
+    vi.useFakeTimers();
+
+    fetchPublicStorefrontConfigMock.mockResolvedValue({
+      store_name: 'Loja Teste',
+      banners: [
+        { id: 'banner-a', title: 'Banner A', image: 'https://cdn.test/a.jpg' },
+        { id: 'banner-b', title: 'Banner B', image: 'https://cdn.test/b.jpg' },
+      ],
+      instagram_url: '',
+      whatsapp_number: '',
+      categories: [],
+      category_icons: {},
+    });
+
+    await renderScreen();
+
+    await act(async () => {
+      vi.advanceTimersByTime(3_999);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner A"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner B"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
+  });
+
+  it('swipes both directions, suppresses the swipe click, and allows the next deliberate tap', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    fetchPublicStorefrontConfigMock.mockResolvedValue({
+      store_name: 'Loja Teste',
+      banners: [
+        { id: 'banner-a', title: 'Banner A', image: 'https://cdn.test/a.jpg', link: 'https://example.test/a' },
+        { id: 'banner-b', title: 'Banner B', image: 'https://cdn.test/b.jpg', link: 'https://example.test/b' },
+      ],
+      instagram_url: '',
+      whatsapp_number: '',
+      categories: [],
+      category_icons: {},
+    });
+
+    await renderScreen();
+
+    const bannerRoot = container.querySelector('.vf-banner') as HTMLDivElement | null;
+    expect(bannerRoot).toBeTruthy();
+
+    const dispatchTouch = (type: 'touchstart' | 'touchend', clientX: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, type === 'touchstart' ? 'touches' : 'changedTouches', {
+        configurable: true,
+        value: [{ clientX }],
+      });
+      bannerRoot!.dispatchEvent(event);
+    };
+
+    await act(async () => {
+      dispatchTouch('touchstart', 200);
+      dispatchTouch('touchend', 100);
+      await flushAsync();
+    });
+    const bannerBButton = container.querySelector('img[alt="Banner B"]')?.closest('button') as HTMLButtonElement | null;
+    expect(bannerBButton?.getAttribute('aria-hidden')).toBe('false');
+
+    await act(async () => {
+      bannerBButton!.click();
+      await flushAsync();
+    });
+    expect(openSpy).not.toHaveBeenCalled();
+
+    await act(async () => {
+      dispatchTouch('touchstart', 100);
+      dispatchTouch('touchend', 100);
+      bannerBButton!.click();
+      await flushAsync();
+    });
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    expect(openSpy).toHaveBeenCalledWith('https://example.test/b', '_blank', 'noopener');
+
+    await act(async () => {
+      dispatchTouch('touchstart', 100);
+      dispatchTouch('touchend', 200);
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Banner A"]')?.closest('button')?.getAttribute('aria-hidden')).toBe('false');
   });
 
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame, ShoppingCart, Share2, MessageSquare } from 'lucide-react';
 import { Product, CartItem, formatCurrency, isByWeight } from '@/data/store';
 import { useBalanca } from '@/hooks/useBalanca';
@@ -37,6 +37,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
   const [myRating, setMyRating] = useState(5);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const addLockedRef = useRef(false);
 
   const byWeight = isByWeight(product);
   const balanca = useBalanca(baudRate);
@@ -126,15 +127,21 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
   const tempoMax = tempoMin + 10;
 
   const handleAdd = () => {
-    if (!canAdd) return;
-    onAdd({
-      id: crypto.randomUUID(),
-      product,
-      quantity: byWeight ? 1 : quantity,
-      removedIngredients,
-      selectedExtras,
-      weightKg: byWeight ? balanca.pesoAtual : undefined,
-    });
+    if (!canAdd || addLockedRef.current) return;
+    addLockedRef.current = true;
+    try {
+      onAdd({
+        id: crypto.randomUUID(),
+        product,
+        quantity: byWeight ? 1 : quantity,
+        removedIngredients,
+        selectedExtras,
+        weightKg: byWeight ? balanca.pesoAtual : undefined,
+      });
+    } catch (error) {
+      addLockedRef.current = false;
+      throw error;
+    }
   };
 
   const submitReview = async () => {

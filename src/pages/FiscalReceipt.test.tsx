@@ -123,4 +123,60 @@ describe('FiscalReceipt', () => {
     await act(async () => root.unmount());
     container.remove();
   });
+
+  it('shows kg for weighted items, keeps unit quantities, and preserves authoritative line totals', async () => {
+    rpcMock.mockResolvedValue({
+      data: {
+        ok: true,
+        order: {
+          id: '11111111-1111-1111-1111-111111111111',
+          order_number: '43',
+          created_at: '2026-09-22T12:00:00.000Z',
+          customer_name: 'Cliente',
+          customer_cpf: '',
+          total: 52.35,
+          items: [
+            {
+              quantity: 1,
+              weight_kg: 0.75,
+              name: 'Self-service',
+              price: 39.9,
+              total: 29.93,
+            },
+            {
+              quantity: 2,
+              name: 'Refrigerante',
+              price: 11.21,
+              total: 22.42,
+            },
+          ],
+          payment_method: 'pix',
+          organization_id: '22222222-2222-2222-2222-222222222222',
+        },
+        store: {
+          store_name: 'Loja Teste',
+          fiscal_cnpj: '',
+          fiscal_razao: '',
+        },
+      },
+      error: null,
+    });
+
+    await act(async () => {
+      renderReceipt(root);
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith('visionfood_order_receipt', {
+      _order_id: '11111111-1111-1111-1111-111111111111',
+    });
+    expect(container.textContent).toContain('0.750 kg Self-service');
+    expect(container.textContent).toContain('2x Refrigerante');
+    expect(container.textContent).not.toContain('1x Self-service');
+    expect(container.textContent).toContain('R$ 29.93');
+    expect(container.textContent).toContain('R$ 22.42');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
 });

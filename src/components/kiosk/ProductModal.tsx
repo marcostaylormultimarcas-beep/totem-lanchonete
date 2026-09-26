@@ -117,8 +117,9 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
 
   const extrasTotal = selectedExtras.reduce((sum, e) => sum + e.price, 0);
   const unitPrice = product.price + extrasTotal;
-  const total = byWeight ? unitPrice * (balanca.pesoAtual || 0) : unitPrice * quantity;
-  const canAdd = byWeight ? balanca.pesoAtual > 0 : quantity > 0;
+  const measuredWeight = byWeight && balanca.balancaConectada ? (balanca.pesoAtual || 0) : 0;
+  const total = byWeight ? unitPrice * measuredWeight : unitPrice * quantity;
+  const canAdd = byWeight ? measuredWeight > 0 : quantity > 0;
 
   // Tempo estimado
   const prepPerUnit = Math.max(0, Number(product.prepTimeMin || 0));
@@ -136,7 +137,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
         quantity: byWeight ? 1 : quantity,
         removedIngredients,
         selectedExtras,
-        weightKg: byWeight ? balanca.pesoAtual : undefined,
+        weightKg: byWeight ? measuredWeight : undefined,
       });
     } catch (error) {
       addLockedRef.current = false;
@@ -272,7 +273,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
                   {balanca.balancaConectada ? 'Conectada' : 'Conectar'}
                 </button>
               </div>
-              <p className="text-amber-400 font-bold text-3xl tabular-nums">{balanca.pesoAtual.toFixed(3)} <span className="text-xl text-amber-500/70">kg</span></p>
+              <p className="text-amber-400 font-bold text-3xl tabular-nums">{measuredWeight.toFixed(3)} <span className="text-xl text-amber-500/70">kg</span></p>
               {!balanca.supported && (
                 <div className="flex items-start gap-2 text-[11px] text-amber-300/80"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />Use Chrome/Edge em HTTPS.</div>
               )}
@@ -452,7 +453,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKio
           >
             <span className="text-lg tabular-nums">{formatCurrency(total)}</span>
             <span className="flex items-center gap-2 text-base">
-              {byWeight && balanca.pesoAtual <= 0 ? 'Coloque na balança' : 'Adicionar ao carrinho'}
+              {byWeight && !balanca.balancaConectada ? 'Conecte a balança' : byWeight && measuredWeight <= 0 ? 'Coloque na balança' : 'Adicionar ao carrinho'}
               <span className="w-9 h-9 rounded-xl bg-black/25 flex items-center justify-center">
                 <ShoppingCart className="w-4 h-4" />
               </span>

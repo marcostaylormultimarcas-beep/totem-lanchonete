@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, RefreshCw, Store, UtensilsCrossed, WifiOff } from 'lucide-react';
 import {
   CompanionKioskTable,
@@ -16,25 +16,34 @@ const TableSelect = ({ onSelectTable, onBalcony, onBack }: TableSelectProps) => 
   const [loading, setLoading] = useState(true);
   const [stale, setStale] = useState(false);
   const [error, setError] = useState('');
+  const loadGenerationRef = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
     setError('');
     try {
       const result = await getKioskCompanionTables();
+      if (generation !== loadGenerationRef.current) return;
       setTables(result.tables || []);
       setStale(Boolean(result.stale));
     } catch (err) {
+      if (generation !== loadGenerationRef.current) return;
       console.warn('[TableSelect] kiosk tables unavailable:', err);
       setError('Não foi possível atualizar as mesas neste momento.');
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => { void load(); }, 10_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      loadGenerationRef.current += 1;
+      window.clearInterval(timer);
+    };
   }, [load]);
 
   return (

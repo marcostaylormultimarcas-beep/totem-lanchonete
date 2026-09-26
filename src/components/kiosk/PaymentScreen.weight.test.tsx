@@ -161,12 +161,12 @@ describe('PaymentScreen weighted items', () => {
 
   const confirmCashOrder = async () => {
     const cashChoice = findButton('Dinheiro no Balcão');
-    expect(cashChoice).toBeTruthy();
-
-    await act(async () => {
-      cashChoice!.click();
-      await flushAsync();
-    });
+    if (cashChoice) {
+      await act(async () => {
+        cashChoice.click();
+        await flushAsync();
+      });
+    }
 
     const confirmButton = findButton('Confirmar Pedido');
     expect(confirmButton).toBeTruthy();

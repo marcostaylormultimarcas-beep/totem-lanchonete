@@ -1,5 +1,5 @@
 import { getKioskHomePath } from '@/lib/kioskHome';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Package, Clock, FileText, LogOut, Coins, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -115,6 +115,7 @@ const OrderHistory = () => {
   const [retryKey, setRetryKey] = useState(0);
   const [user, setUser] = useState<any>(null);
   const [loggingOut, setLoggingOut] = useState(false);
+  const logoutInFlightRef = useRef(false);
   const navigate = useNavigate();
   const orgId = useOrgId();
 
@@ -213,7 +214,8 @@ const OrderHistory = () => {
   };
 
   const handleLogout = async () => {
-    if (loggingOut) return;
+    if (logoutInFlightRef.current) return;
+    logoutInFlightRef.current = true;
     setLoggingOut(true);
 
     try {

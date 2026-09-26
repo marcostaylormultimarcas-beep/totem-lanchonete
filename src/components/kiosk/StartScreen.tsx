@@ -120,6 +120,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
     : products.slice(0, 6);
 
   useEffect(() => {
+    setActiveBanner(prev => {
+      if (banners.length === 0) return 0;
+      return Math.min(prev, banners.length - 1);
+    });
+  }, [banners]);
+
+  useEffect(() => {
     if (banners.length <= 1) return;
     const interval = setInterval(() => {
       setActiveBanner(prev => (prev + 1) % banners.length);

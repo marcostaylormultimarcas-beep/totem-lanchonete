@@ -138,11 +138,11 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
   useEffect(() => {
     if (banners.length <= 1) return;
-    const interval = setInterval(() => {
+    const timeoutId = window.setTimeout(() => {
       setActiveBanner(prev => (prev + 1) % banners.length);
     }, 4000);
-    return () => clearInterval(interval);
-  }, [banners.length]);
+    return () => window.clearTimeout(timeoutId);
+  }, [banners, activeBanner]);
 
   const handleBannerTouchStart = (clientX: number) => {
     bannerTouchStartX.current = clientX;

@@ -39,7 +39,12 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   delivered: { label: '✓ Entregue', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
 };
 
-const formatItemQuantityLabel = (item: any) => {\n  const weight = Number(item?.weight_kg);\n  return Number.isFinite(weight) && weight > 0 ? `${weight.toFixed(3)} kg` : `${item?.quantity}x`;\n};\n\nconst EntregadorDashboard = () => {
+const formatItemQuantityLabel = (item: any) => {
+  const weight = Number(item?.weight_kg);
+  return Number.isFinite(weight) && weight > 0 ? `${weight.toFixed(3)} kg` : `${item?.quantity}x`;
+};
+
+const EntregadorDashboard = () => {
   const navigate = useNavigate();
   const [session] = useState(() => getEntregadorSession());
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);

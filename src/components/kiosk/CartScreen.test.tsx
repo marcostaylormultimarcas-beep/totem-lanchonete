@@ -159,7 +159,9 @@ describe('CartScreen weighted items', () => {
   it('removes a weighted item by id without rewriting its weight or quantity', async () => {
     const onRemove = await renderCart([WEIGHT_ITEM]);
 
-    const trash = container.querySelector('button svg.lucide-trash-2')?.closest('button') as HTMLButtonElement | null;
+    const trash = Array.from(container.querySelectorAll('button')).find(button =>
+      button.className.includes('text-destructive') && Boolean(button.querySelector('svg')),
+    ) as HTMLButtonElement | undefined;
     expect(trash).toBeTruthy();
 
     await act(async () => {

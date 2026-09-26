@@ -40,7 +40,8 @@ vi.mock('@/lib/kioskCompanionClient', () => ({
 
 vi.mock('@/lib/kioskDeviceMode', () => ({
   clearKioskCustomerBrowserState: vi.fn(),
-  isDeviceOwnedKioskStatus: () => false,
+  isDeviceOwnedKioskStatus: (status: any, orgId: string) =>
+    Boolean(status?.enrolled && status?.organization_id === orgId),
 }));
 
 vi.mock('@/lib/kioskPublicDataWarmup', () => ({
@@ -81,12 +82,30 @@ vi.mock('@/components/kiosk/LocationSelect', () => ({
 }));
 
 vi.mock('@/components/kiosk/LocalServiceSelect', () => ({
-  default: ({ onBalcony }: any) => (
-    <button onClick={onBalcony}>service-balcony</button>
+  default: ({ onBalcony, onTable }: any) => (
+    <div>
+      <button onClick={onBalcony}>service-balcony</button>
+      <button onClick={onTable}>service-table</button>
+    </div>
   ),
 }));
 
-vi.mock('@/components/kiosk/TableSelect', () => ({ default: () => null }));
+vi.mock('@/components/kiosk/TableSelect', () => ({
+  default: ({ onSelectTable }: any) => (
+    <div>
+      private-table-list
+      <button
+        onClick={() => onSelectTable({
+          id: 'mesa-12',
+          label: 'Mesa 12',
+          in_service: true,
+        })}
+      >
+        private-table-select
+      </button>
+    </div>
+  ),
+}));
 vi.mock('@/components/kiosk/AddressSelect', () => ({ default: () => null }));
 
 vi.mock('@/components/kiosk/MenuScreen', () => ({
@@ -198,4 +217,113 @@ describe('Index local-service QR concurrency', () => {
     expect(container.textContent).toContain('menu-screen');
     expect(container.textContent).not.toContain('Mesa 7');
   });
+
+  it('sends a validated QR table straight from landing to the menu', async () => {
+    rpcMock.mockResolvedValue({
+      data: { ok: true, label: 'Mesa 7' },
+      error: null,
+    });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/loja/demo?mesa=token-a']}>
+          <Routes>
+            <Route path="/loja/:slug" element={<Index />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('Mesa 7');
+
+    const landing = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent === 'landing-next') as HTMLButtonElement | undefined;
+    expect(landing).toBeTruthy();
+
+    await act(async () => {
+      landing!.click();
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('menu-screen');
+    expect(container.textContent).toContain('Mesa 7');
+    expect(container.textContent).not.toContain('start-next');
+  });
+
+  it('does not expose the private table selector on web without a validated QR', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: null });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/loja/demo']}>
+          <Routes>
+            <Route path="/loja/:slug" element={<Index />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    const click = async (label: string) => {
+      const button = Array.from(container.querySelectorAll('button'))
+        .find(entry => entry.textContent === label) as HTMLButtonElement | undefined;
+      expect(button).toBeTruthy();
+      await act(async () => {
+        button!.click();
+        await flushAsync();
+      });
+    };
+
+    await click('landing-next');
+    await click('start-next');
+    await click('location-local');
+    await click('service-table');
+
+    expect(container.textContent).not.toContain('private-table-list');
+    expect(container.textContent).toContain('service-table');
+  });
+
+  it('allows manual table selection only after the physical route is device-owned', async () => {
+    getKioskCompanionStatusMock.mockResolvedValue({
+      enrolled: true,
+      organization_id: 'org-a',
+    });
+    rpcMock.mockResolvedValue({ data: null, error: null });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/cardapio/demo']}>
+          <Routes>
+            <Route path="/cardapio/:slug" element={<Index />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+      await flushAsync();
+    });
+
+    const click = async (label: string) => {
+      const button = Array.from(container.querySelectorAll('button'))
+        .find(entry => entry.textContent === label) as HTMLButtonElement | undefined;
+      expect(button).toBeTruthy();
+      await act(async () => {
+        button!.click();
+        await flushAsync();
+      });
+    };
+
+    await click('landing-next');
+    await click('start-next');
+    await click('location-local');
+    await click('service-table');
+
+    expect(container.textContent).toContain('private-table-list');
+
+    await click('private-table-select');
+
+    expect(container.textContent).toContain('menu-screen');
+    expect(container.textContent).toContain('Mesa 12');
+  });
+
 });

@@ -108,6 +108,13 @@ const getOrderTypeLabel = (orderType: string) => {
   return 'Pedido';
 };
 
+const getOrderItemQuantityLabel = (item: any) => {
+  const weightKg = Number(item?.weight_kg);
+  return Number.isFinite(weightKg) && weightKg > 0
+    ? `${weightKg.toFixed(3)} kg`
+    : `${item?.quantity}x`;
+};
+
 const OrderHistory = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -339,7 +346,7 @@ const OrderHistory = () => {
                 {Array.isArray(order.items) && order.items.length > 0 && (
                   <div className="text-sm text-muted-foreground space-y-0.5">
                     {order.items.slice(0, 3).map((item: any, i: number) => (
-                      <p key={i}>{item.quantity}x {item.name}</p>
+                      <p key={i}>{getOrderItemQuantityLabel(item)} {item.name}</p>
                     ))}
                     {order.items.length > 3 && <p className="text-xs">+{order.items.length - 3} itens</p>}
                   </div>

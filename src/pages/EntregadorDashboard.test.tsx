@@ -200,6 +200,48 @@ describe('EntregadorDashboard assigned orders polling', () => {
     root = createRoot(container);
   });
 
+  it('shows weighted assigned items in kg while preserving unit items and delivery context', async () => {
+    const weightedOrder = {
+      ...makeOrder('ready'),
+      delivery_reference: 'Portão azul',
+      delivery_recipient: 'Maria',
+      items: [
+        { name: 'Self-service', quantity: 1, weight_kg: 0.75 },
+        { name: 'Refrigerante', quantity: 2 },
+      ],
+    };
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === 'entregador_orders_session') {
+        return Promise.resolve({ data: { ok: true, orders: [weightedOrder] }, error: null });
+      }
+      if (name === 'entregador_available_orders_session') {
+        return Promise.resolve({ data: { ok: true, mode: 'manual', orders: [] }, error: null });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await act(async () => {
+      renderDashboard(root);
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('0.750 kg Self-service');
+    expect(container.textContent).not.toContain('1x Self-service');
+    expect(container.textContent).toContain('2x Refrigerante');
+    expect(container.textContent).toContain('Rua Teste, 123');
+    expect(container.textContent).toContain('Portão azul');
+    expect(container.textContent).toContain('Recebe: Maria');
+    expect(container.textContent).toContain('Pronto p/ retirar');
+
+    const start = Array.from(container.querySelectorAll<HTMLButtonElement>('button'))
+      .find(button => button.textContent?.includes('Retirei · Iniciar entrega'));
+    expect(start).toBeTruthy();
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('refreshes assigned and available orders when the driver taps the global refresh button', async () => {
     let ordersCalls = 0;
     let availableCalls = 0;

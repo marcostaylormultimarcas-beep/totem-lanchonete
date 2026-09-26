@@ -74,6 +74,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         else if (data.category_icons) {
           const icons = data.category_icons as Record<string, string>;
           setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
         }
       } catch (error) {
         if (!cancelled && requestGeneration === latestRequestGeneration) {

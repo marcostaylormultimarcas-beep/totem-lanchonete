@@ -826,4 +826,67 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(container.textContent).not.toContain('Bebidas');
   });
 
+
+  it('covers header navigation visibility and cart badge', async () => {
+    await renderScreen({ cartCount: 3 });
+
+    const clubLink = container.querySelector('a[title="Clube"]') as HTMLAnchorElement | null;
+    const ordersLink = container.querySelector('a[title="Meus Pedidos"]') as HTMLAnchorElement | null;
+    expect(clubLink?.getAttribute('href')).toBe('/clube');
+    expect(ordersLink?.getAttribute('href')).toBe('/meus-pedidos');
+    expect(ordersLink?.textContent).toContain('3');
+
+    await renderScreen({ cartCount: 0, deviceOwnedKiosk: true });
+
+    expect(container.querySelector('a[title="Clube"]')).toBeNull();
+    expect(container.querySelector('a[title="Meus Pedidos"]')).toBeNull();
+  });
+
+  it('prioritizes onGoToCart from the notification bell and calls it once', async () => {
+    const onStart = vi.fn();
+    const onGoToCart = vi.fn();
+    await renderScreen({ onStart, onGoToCart });
+
+    const bell = container.querySelector('button[title="Notificações"]') as HTMLButtonElement | null;
+    expect(bell).toBeTruthy();
+
+    await act(async () => {
+      bell!.click();
+      await flushAsync();
+    });
+
+    expect(onGoToCart).toHaveBeenCalledTimes(1);
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
+  it('falls back to onStart from the notification bell exactly once', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const bell = container.querySelector('button[title="Notificações"]') as HTMLButtonElement | null;
+    expect(bell).toBeTruthy();
+
+    await act(async () => {
+      bell!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the flow exactly once from Selecionar endereço', async () => {
+    const onStart = vi.fn();
+    await renderScreen({ onStart });
+
+    const addressButton = findButton('Selecionar endereço');
+    expect(addressButton).toBeTruthy();
+
+    await act(async () => {
+      addressButton!.click();
+      await flushAsync();
+    });
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+  });
+
 });

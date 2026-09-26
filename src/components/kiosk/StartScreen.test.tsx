@@ -836,6 +836,9 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(ordersLink?.getAttribute('href')).toBe('/meus-pedidos');
     expect(ordersLink?.textContent).toContain('3');
 
+    await renderScreen({ cartCount: 0 });
+    expect(container.querySelector('a[title="Meus Pedidos"] span')).toBeNull();
+
     await renderScreen({ cartCount: 0, deviceOwnedKiosk: true });
 
     expect(container.querySelector('a[title="Clube"]')).toBeNull();

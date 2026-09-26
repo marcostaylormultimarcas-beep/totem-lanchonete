@@ -147,6 +147,42 @@ describe('OrderHistory', () => {
     container.remove();
   });
 
+  it('identifies a scheduled order, shows its scheduled date/time, and links to tracking', async () => {
+    const scheduledFor = '2026-09-27T18:30:00.000Z';
+    const scheduledOrder = { ...order, scheduled_for: scheduledFor };
+    rpcMock.mockResolvedValue({ data: [scheduledOrder], error: null });
+
+    await act(async () => {
+      root.render(
+        <MemoryRouter initialEntries={['/meus-pedidos']}>
+          <Routes>
+            <Route path="/meus-pedidos" element={<OrderHistory />} />
+            <Route path="/auth" element={<div>AUTH</div>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+      await flushAsync();
+    });
+
+    const expectedScheduledDate = new Date(scheduledFor).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    expect(container.textContent).toContain('Agendado para');
+    expect(container.textContent).toContain(expectedScheduledDate);
+
+    const trackingLink = Array.from(container.querySelectorAll('a'))
+      .find((link) => link.textContent?.includes('Acompanhar pedido'));
+    expect(trackingLink?.getAttribute('href')).toBe('/acompanhar/11111111-1111-1111-1111-111111111111');
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
   it('keeps the last successful order list visible when a background refresh fails', async () => {
     vi.useFakeTimers();
     rpcMock

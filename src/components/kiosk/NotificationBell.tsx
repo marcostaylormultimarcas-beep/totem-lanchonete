@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Bell, X, Gift, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { identifyOneSignalUser, normalizeOneSignalPhone, requestOneSignalPermission } from '@/lib/onesignal';
 import { useNavigate, useParams } from 'react-router-dom';
 
 interface Notif {
@@ -69,6 +70,17 @@ export const NotificationBell = ({ orgId }: { orgId: string | null }) => {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
+  // Mantém a identidade OneSignal alinhada ao telefone usado no pedido.
+  useEffect(() => {
+    if (!phone || !orgId) return;
+    const externalId = normalizeOneSignalPhone(phone);
+    if (!externalId) return;
+    void identifyOneSignalUser(externalId, {
+      tipo: 'customer',
+      organization_id: orgId,
+    });
+  }, [phone, orgId]);
+
   // Realtime — recebe novas notificações em tempo real (sininho + browser push interno)
   useEffect(() => {
     if (!phone || !orgId) return;
@@ -102,9 +114,13 @@ export const NotificationBell = ({ orgId }: { orgId: string | null }) => {
     const nextOpen = !open;
     setOpen(nextOpen);
     if (nextOpen) {
-      // Pede permissão de notificação no primeiro clique
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-        try { await Notification.requestPermission(); } catch { /* ignore */ }
+      // O clique do usuário é o gesto necessário para ativar Web Push.
+      const externalId = normalizeOneSignalPhone(phone);
+      if (externalId) {
+        await requestOneSignalPermission(externalId, {
+          tipo: 'customer',
+          organization_id: orgId || '',
+        });
       }
       // Marca todas como lidas
       const toMark = items.filter(n => !n.read_at).map(n => n.id);

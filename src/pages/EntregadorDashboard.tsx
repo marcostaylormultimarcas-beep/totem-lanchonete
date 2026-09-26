@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon } from 'lucide-react';
+import { Truck, LogOut, CheckCircle2, MapPin, Phone, Package, RefreshCw, KeyRound, History, Clock, Map as MapIcon, Navigation } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { getEntregadorSession, clearEntregadorSession } from './EntregadorLogin';
 import { formatCurrency } from '@/data/store';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
+import { googleMapsDirectionsUrl, MAX_DRIVER_CONFIRM_ACCURACY_M, MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 
 interface DeliveryOrder {
   id: string;
@@ -20,7 +21,15 @@ interface DeliveryOrder {
   total: number;
   status: string;
   created_at: string;
-  delivery_code: string;
+  scheduled_for?: string | null;
+  bairro_nome?: string;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  delivery_accuracy_m?: number | null;
+  delivery_assigned_at?: string | null;
+  delivery_started_at?: string | null;
+  delivery_issue_reason?: string | null;
+  delivery_issue_at?: string | null;
 }
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -32,30 +41,55 @@ const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
 
 const EntregadorDashboard = () => {
   const navigate = useNavigate();
-  const session = getEntregadorSession();
+  const [session] = useState(() => getEntregadorSession());
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ordersLoadError, setOrdersLoadError] = useState('');
   const [codeInputs, setCodeInputs] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
+  const confirmDeliveryInFlightRef = useRef(false);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const claimInFlightRef = useRef(false);
+  const [deliveryAction, setDeliveryAction] = useState<string | null>(null);
+  const startDeliveryInFlightRef = useRef(false);
+  const declineOrderInFlightRef = useRef(false);
+  const reportIssueInFlightRef = useRef(false);
+  const logoutInFlightRef = useRef(false);
+  const sessionExpiredRef = useRef(false);
   const [mode, setMode] = useState<'manual' | 'free'>('manual');
   const [available, setAvailable] = useState<DeliveryOrder[]>([]);
+  const [availableLoadError, setAvailableLoadError] = useState('');
   const [tab, setTab] = useState<'pendentes' | 'disponiveis' | 'historico'>('pendentes');
   const [highlightIds, setHighlightIds] = useState<Set<string>>(new Set());
   const knownIds = useRef<Set<string>>(new Set());
+  const ordersInitializedRef = useRef(false);
+  const ordersRequestVersionRef = useRef(0);
+  const availableRequestVersionRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const unlocked = useRef(false);
+  const audioAlertBusyRef = useRef(false);
+  const audioAlertGenerationRef = useRef(0);
+  const activeAlertNodesRef = useRef<Set<{ oscillator: OscillatorNode; gain: GainNode }>>(new Set());
   const [, forceRender] = useState(0);
   const [mapOpenId, setMapOpenId] = useState<string | null>(null);
   const [riderPos, setRiderPos] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
+  const [trackingSyncError, setTrackingSyncError] = useState('');
+  const [trackingLastSyncedAt, setTrackingLastSyncedAt] = useState<string | null>(null);
   const [destCoords, setDestCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [mapDestinationError, setMapDestinationError] = useState<Record<string, string | null>>({});
   const [geofenceError, setGeofenceError] = useState<Record<string, string | null>>({});
   const [geoChecking, setGeoChecking] = useState<string | null>(null);
   const [currentDistance, setCurrentDistance] = useState<Record<string, number>>({});
   const [refreshingLoc, setRefreshingLoc] = useState<string | null>(null);
+  const refreshDistanceInFlightRef = useRef(false);
+  const destinationLookupInFlightRef = useRef<Map<string, Promise<{ lat: number; lng: number } | null>>>(new Map());
   const watchIdRef = useRef<number | null>(null);
   const sendTimerRef = useRef<number | null>(null);
+  const initialSendTimerRef = useRef<number | null>(null);
+  const locationRequestInFlightRef = useRef(false);
+  const trackingGenerationRef = useRef(0);
   const lastSampleRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastTrackingErrorRef = useRef('');
 
   // Raio máximo permitido para confirmar a entrega (metros)
   const MAX_DELIVERY_RADIUS_M = 200;
@@ -69,40 +103,149 @@ const EntregadorDashboard = () => {
     const lat1 = toRad(a.lat);
     const lat2 = toRad(b.lat);
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(h));
+    const safeH = Math.min(1, Math.max(0, h));
+    return 2 * R * Math.asin(Math.sqrt(safeH));
+  };
+
+  const getExactDestination = (order: DeliveryOrder) => {
+    if (typeof order.delivery_lat !== 'number' || typeof order.delivery_lng !== 'number') return null;
+    const lat = order.delivery_lat;
+    const lng = order.delivery_lng;
+    if (
+      !Number.isFinite(lat) || !Number.isFinite(lng)
+      || lat < -90 || lat > 90 || lng < -180 || lng > 180
+    ) return null;
+
+    if (
+      typeof order.delivery_accuracy_m !== 'number'
+      || !Number.isFinite(order.delivery_accuracy_m)
+      || order.delivery_accuracy_m <= 0
+      || order.delivery_accuracy_m > MAX_EXACT_DESTINATION_ACCURACY_M
+    ) {
+      return null;
+    }
+
+    return { lat, lng };
+  };
+
+  const resolveDestination = async (order: DeliveryOrder) => {
+    const exact = getExactDestination(order);
+    if (exact) {
+      setDestCoords(prev => {
+        const current = prev[order.id];
+        if (current?.lat === exact.lat && current?.lng === exact.lng) return prev;
+        return { ...prev, [order.id]: exact };
+      });
+      return exact;
+    }
+
+    const cached = destCoords[order.id];
+    if (cached) return cached;
+    if (!order.delivery_address) return null;
+
+    const lookupKey = `${order.id}\u0000${order.delivery_address}`;
+    const existingLookup = destinationLookupInFlightRef.current.get(lookupKey);
+    if (existingLookup) return existingLookup;
+
+    const lookup = (async () => {
+      try {
+        const geocoded = await geocodeAddress(order.delivery_address!);
+        if (
+          !geocoded
+          || !Number.isFinite(geocoded.lat)
+          || !Number.isFinite(geocoded.lng)
+          || geocoded.lat < -90 || geocoded.lat > 90
+          || geocoded.lng < -180 || geocoded.lng > 180
+        ) {
+          return null;
+        }
+        setDestCoords(prev => ({ ...prev, [order.id]: geocoded }));
+        return geocoded;
+      } catch (error) {
+        console.warn('[EntregadorDashboard] destination geocoding failed:', error);
+        return null;
+      }
+    })();
+
+    destinationLookupInFlightRef.current.set(lookupKey, lookup);
+    try {
+      return await lookup;
+    } finally {
+      if (destinationLookupInFlightRef.current.get(lookupKey) === lookup) {
+        destinationLookupInFlightRef.current.delete(lookupKey);
+      }
+    }
   };
 
   const getCurrentPositionAsync = () =>
-    new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+    new Promise<{ lat: number; lng: number; accuracyM: number }>((resolve, reject) => {
       if (!('geolocation' in navigator)) {
         reject(new Error('Geolocalização não suportada neste dispositivo.'));
         return;
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const accuracyM = pos.coords.accuracy;
+
+          if (
+            !Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracyM)
+            || lat < -90 || lat > 90 || lng < -180 || lng > 180
+            || accuracyM < 0
+          ) {
+            reject(new Error('GPS retornou uma localização inválida.'));
+            return;
+          }
+
+          resolve({ lat, lng, accuracyM });
+        },
         (err) => reject(err),
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     });
 
   const refreshDistance = async (orderId: string) => {
+    if (refreshDistanceInFlightRef.current) return;
+
     const order = orders.find((o) => o.id === orderId);
-    if (!order?.delivery_address) return;
+    if (!order) return;
+
+    if (!order.delivery_address && !getExactDestination(order)) {
+      setCurrentDistance((p) => {
+        if (!(orderId in p)) return p;
+        const next = { ...p };
+        delete next[orderId];
+        return next;
+      });
+      setGeofenceError((p) => ({ ...p, [orderId]: '📍 Este pedido não possui um destino válido para calcular a distância.' }));
+      return;
+    }
+
+    refreshDistanceInFlightRef.current = true;
     setRefreshingLoc(orderId);
+    setCurrentDistance((p) => {
+      if (!(orderId in p)) return p;
+      const next = { ...p };
+      delete next[orderId];
+      return next;
+    });
+    setGeofenceError((p) => ({ ...p, [orderId]: null }));
+
     try {
-      let dest = destCoords[orderId];
-      if (!dest) {
-        const c = await geocodeAddress(order.delivery_address);
-        if (c) {
-          dest = c;
-          setDestCoords((prev) => ({ ...prev, [orderId]: c }));
-        }
-      }
+      const dest = await resolveDestination(order);
       if (!dest) {
         setGeofenceError((p) => ({ ...p, [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa.' }));
         return;
       }
       const me = await getCurrentPositionAsync();
+      if (me.accuracyM > MAX_DRIVER_CONFIRM_ACCURACY_M) {
+        setGeofenceError((p) => ({
+          ...p,
+          [orderId]: `📍 GPS impreciso (±${Math.round(me.accuracyM)} m). Vá para um local com melhor sinal e atualize novamente.`,
+        }));
+        return;
+      }
       const distM = haversineMeters(me, dest);
       setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
       if (distM > MAX_DELIVERY_RADIUS_M) {
@@ -123,6 +266,7 @@ const EntregadorDashboard = () => {
           : '📍 Não foi possível obter sua localização. Verifique o GPS.',
       }));
     } finally {
+      refreshDistanceInFlightRef.current = false;
       setRefreshingLoc(null);
     }
   };
@@ -131,6 +275,16 @@ const EntregadorDashboard = () => {
 
 
   const stopTracking = useCallback(() => {
+    trackingGenerationRef.current += 1;
+    locationRequestInFlightRef.current = false;
+    lastSampleRef.current = null;
+    lastTrackingErrorRef.current = '';
+    setTrackingSyncError('');
+    setTrackingLastSyncedAt(null);
+    if (initialSendTimerRef.current !== null) {
+      clearTimeout(initialSendTimerRef.current);
+      initialSendTimerRef.current = null;
+    }
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -141,57 +295,155 @@ const EntregadorDashboard = () => {
     }
   }, []);
 
+  const expireSession = useCallback(() => {
+    if (sessionExpiredRef.current) return;
+    sessionExpiredRef.current = true;
+
+    stopTracking();
+    clearEntregadorSession();
+    toast.error('Sessão expirada. Faça login novamente.');
+    navigate('/entregador/login', { replace: true });
+  }, [navigate, stopTracking]);
+
+  const isInvalidSession = (res: any) => res?.reason === 'invalid_session' || res?.reason === 'invalid_credentials';
+
   const startTracking = useCallback((orderId: string) => {
     if (!session) return;
     if (!('geolocation' in navigator)) {
       toast.error('Seu dispositivo não suporta geolocalização.');
       return;
     }
+
     stopTracking();
+    setTrackingSyncError('');
+    setTrackingLastSyncedAt(null);
+    const trackingGeneration = trackingGenerationRef.current;
+
     watchIdRef.current = navigator.geolocation.watchPosition(
       (pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
+        const lat = Number(pos.coords.latitude);
+        const lng = Number(pos.coords.longitude);
+        if (
+          !Number.isFinite(lat) || !Number.isFinite(lng)
+          || lat < -90 || lat > 90 || lng < -180 || lng > 180
+        ) {
+          setTrackingSyncError('O GPS retornou uma localização inválida.');
+          return;
+        }
+
+        lastTrackingErrorRef.current = '';
         lastSampleRef.current = { lat, lng };
         setRiderPos({ lat, lng, updatedAt: new Date().toISOString() });
       },
       (err) => {
-        toast.error('Permissão de localização negada.');
-        console.warn('geolocation error', err);
+        const nextMessage = err?.code === 1
+          ? 'Permissão de localização negada.'
+          : err?.code === 3
+            ? 'Tempo esgotado ao obter localização do GPS.'
+            : 'Localização do GPS indisponível no momento.';
+        setTrackingSyncError(nextMessage);
+        if (lastTrackingErrorRef.current !== nextMessage) {
+          lastTrackingErrorRef.current = nextMessage;
+          toast.error(nextMessage);
+        }
+        console.warn('[EntregadorDashboard] geolocation watch error', err);
       },
       { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
     );
-    // envia a cada 15s
+
+    // Envia ao servidor a cada 15 s. Falha de transporte não encerra o watch local:
+    // a próxima janela tenta novamente sem criar requisições sobrepostas.
     const send = async () => {
+      if (trackingGeneration !== trackingGenerationRef.current || locationRequestInFlightRef.current) return;
       const p = lastSampleRef.current;
       if (!p) return;
-      await supabase.rpc('entregador_update_location' as any, {
-        _entregador_id: session.id,
-        _password: session.password,
-        _lat: p.lat,
-        _lng: p.lng,
-        _order_id: orderId,
-      });
+
+      locationRequestInFlightRef.current = true;
+      try {
+        const { data, error } = await supabase.rpc('entregador_update_location_session' as any, {
+          _session_token: session.session_token,
+          _lat: p.lat,
+          _lng: p.lng,
+          _order_id: orderId,
+        });
+        if (trackingGeneration !== trackingGenerationRef.current) return;
+
+        if (error) {
+          console.warn('[EntregadorDashboard] location sync RPC failed:', error);
+          setTrackingSyncError('Sem conexão para sincronizar sua localização. Tentaremos novamente.');
+          return;
+        }
+
+        if (isInvalidSession(data)) expireSession();
+        const result: any = data;
+        if (isInvalidSession(result)) return;
+        if (result?.reason === 'order_not_assigned') {
+          stopTracking();
+          setMapOpenId(null);
+          setRiderPos(null);
+          toast.info('Esta entrega não está mais atribuída a você. O rastreamento foi encerrado.');
+          return;
+        }
+        if (!result?.ok) {
+          setTrackingSyncError('Não foi possível sincronizar sua localização com o servidor.');
+          return;
+        }
+
+        lastTrackingErrorRef.current = '';
+        setTrackingSyncError('');
+        setTrackingLastSyncedAt(new Date().toISOString());
+      } catch (error) {
+        if (trackingGeneration !== trackingGenerationRef.current) return;
+        console.warn('[EntregadorDashboard] location sync request failed:', error);
+        setTrackingSyncError('Sem conexão para sincronizar sua localização. Tentaremos novamente.');
+      } finally {
+        if (trackingGeneration === trackingGenerationRef.current) {
+          locationRequestInFlightRef.current = false;
+        }
+      }
     };
-    sendTimerRef.current = window.setInterval(send, 15000);
-    // primeiro envio rápido
-    setTimeout(send, 2500);
-  }, [session, stopTracking]);
+
+    sendTimerRef.current = window.setInterval(() => {
+      void send();
+    }, 15000);
+
+    // Primeiro envio rápido; cancelável ao fechar mapa/logout/expirar sessão.
+    initialSendTimerRef.current = window.setTimeout(() => {
+      initialSendTimerRef.current = null;
+      void send();
+    }, 2500);
+  }, [session, stopTracking, expireSession]);
 
   useEffect(() => () => stopTracking(), [stopTracking]);
 
   const toggleMap = async (order: DeliveryOrder) => {
     if (mapOpenId === order.id) {
       setMapOpenId(null);
+      setRiderPos(null);
       stopTracking();
       return;
     }
+
     setMapOpenId(order.id);
     setRiderPos(null);
+    setMapDestinationError((p) => ({ ...p, [order.id]: null }));
     startTracking(order.id);
-    if (order.delivery_address && !destCoords[order.id]) {
-      const coords = await geocodeAddress(order.delivery_address);
-      if (coords) setDestCoords(prev => ({ ...prev, [order.id]: coords }));
+
+    const exactDestination = getExactDestination(order);
+    if (!order.delivery_address && !exactDestination) {
+      setMapDestinationError((p) => ({
+        ...p,
+        [order.id]: 'Destino do cliente indisponível neste pedido.',
+      }));
+      return;
+    }
+
+    const destination = await resolveDestination(order);
+    if (!destination) {
+      setMapDestinationError((p) => ({
+        ...p,
+        [order.id]: 'Não foi possível localizar o destino do cliente no mapa.',
+      }));
     }
   };
 
@@ -199,14 +451,47 @@ const EntregadorDashboard = () => {
     if (!session) navigate('/entregador/login');
   }, [session, navigate]);
 
-  const playAlert = useCallback(() => {
-    if (!unlocked.current) return;
+  const playAlert = useCallback(async () => {
+    if (!unlocked.current || audioAlertBusyRef.current) return;
+
+    const generation = audioAlertGenerationRef.current;
+    audioAlertBusyRef.current = true;
+
     try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      const ctx = audioCtxRef.current;
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+      }
+
+      const state = ctx.state as string;
+      if (state === 'suspended' || state === 'interrupted') {
+        await ctx.resume();
+      }
+
+      if (generation !== audioAlertGenerationRef.current) return;
+      if ((ctx.state as string) !== 'running') {
+        throw new Error(`audio_context_${ctx.state}`);
+      }
+
       [0, 0.18, 0.36].forEach(delay => {
         const o = ctx.createOscillator();
         const g = ctx.createGain();
+        const nodes = { oscillator: o, gain: g };
+        activeAlertNodesRef.current.add(nodes);
+
+        o.onended = () => {
+          try { o.disconnect(); } catch {}
+          try { g.disconnect(); } catch {}
+          activeAlertNodesRef.current.delete(nodes);
+          if (
+            generation === audioAlertGenerationRef.current
+            && activeAlertNodesRef.current.size === 0
+          ) {
+            audioAlertBusyRef.current = false;
+          }
+        };
+
         o.connect(g); g.connect(ctx.destination);
         o.frequency.value = 880;
         g.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
@@ -215,235 +500,683 @@ const EntregadorDashboard = () => {
         o.start(ctx.currentTime + delay);
         o.stop(ctx.currentTime + delay + 0.16);
       });
-    } catch {}
+    } catch (error) {
+      if (generation !== audioAlertGenerationRef.current) return;
+
+      for (const { oscillator, gain } of activeAlertNodesRef.current) {
+        try { oscillator.stop(); } catch {}
+        try { oscillator.disconnect(); } catch {}
+        try { gain.disconnect(); } catch {}
+      }
+      activeAlertNodesRef.current.clear();
+      audioAlertBusyRef.current = false;
+      console.warn('[EntregadorDashboard] sound alert failed:', error);
+      unlocked.current = false;
+      forceRender(x => x + 1);
+      toast.error('Os alertas sonoros foram pausados pelo navegador. Toque para ativá-los novamente.');
+    } finally {
+      if (
+        generation === audioAlertGenerationRef.current
+        && activeAlertNodesRef.current.size === 0
+      ) {
+        audioAlertBusyRef.current = false;
+      }
+    }
+  }, []);
+
+  useEffect(() => () => {
+    audioAlertGenerationRef.current += 1;
+    audioAlertBusyRef.current = false;
+
+    for (const { oscillator, gain } of activeAlertNodesRef.current) {
+      try { oscillator.stop(); } catch {}
+      try { oscillator.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    }
+    activeAlertNodesRef.current.clear();
+
+    const ctx = audioCtxRef.current;
+    audioCtxRef.current = null;
+    unlocked.current = false;
+
+    if (ctx && (ctx.state as string) !== 'closed' && typeof (ctx as any).close === 'function') {
+      try {
+        void Promise.resolve((ctx as any).close()).catch((error) => {
+          console.warn('[EntregadorDashboard] audio context close failed:', error);
+        });
+      } catch (error) {
+        console.warn('[EntregadorDashboard] audio context close failed:', error);
+      }
+    }
   }, []);
 
   const fetchOrders = useCallback(async (silent = false) => {
     if (!session) return;
-    const { data, error } = await supabase.rpc('entregador_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
-    });
-    const res: any = data;
-    if (error || !res?.ok) {
-      if (res?.reason === 'invalid_credentials') {
-        clearEntregadorSession();
-        navigate('/entregador/login');
-      }
-      setLoading(false);
-      return;
+
+    const requestId = ++ordersRequestVersionRef.current;
+    if (!ordersInitializedRef.current) {
+      setLoading(true);
     }
-    const list: DeliveryOrder[] = res.orders || [];
-    // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro
-    const ativos = list.filter(o => o.status !== 'delivered');
-    const novos = ativos.filter(o => !knownIds.current.has(o.id));
-    if (!silent && novos.length > 0 && knownIds.current.size > 0) {
-      playAlert();
-      toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
-      // Destaque visual (pulse) por 8s nos novos pedidos
-      const newIds = new Set(novos.map(o => o.id));
-      setHighlightIds(prev => {
-        const next = new Set(prev);
-        newIds.forEach(id => next.add(id));
-        return next;
+
+    try {
+      const { data, error } = await supabase.rpc('entregador_orders_session' as any, {
+        _session_token: session.session_token,
       });
-      setTimeout(() => {
+      if (requestId !== ordersRequestVersionRef.current) return;
+
+      const res: any = data;
+      if (error) throw error;
+      if (!res?.ok) {
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        if (!ordersInitializedRef.current) {
+          setOrdersLoadError('Não foi possível carregar seus pedidos agora. Tente novamente.');
+        }
+        return;
+      }
+
+      const list: DeliveryOrder[] = Array.isArray(res.orders) ? res.orders : [];
+      // Detecta pedidos NOVOS atribuídos (ainda não entregues) para alerta sonoro.
+      // Remove IDs que deixaram a atribuição para que uma futura reatribuição ao
+      // mesmo entregador seja notificada novamente.
+      const ativos = list.filter(o => o.status !== 'delivered');
+      const activeIds = new Set(ativos.map(o => o.id));
+      for (const id of Array.from(knownIds.current)) {
+        if (!activeIds.has(id)) knownIds.current.delete(id);
+      }
+      const novos = ativos.filter(o => !knownIds.current.has(o.id));
+      if (!silent && ordersInitializedRef.current && novos.length > 0) {
+        void playAlert();
+        toast.success(`🛵 Novo pedido atribuído: #${novos[0].order_number}`, { duration: 6000 });
+        // Destaque visual (pulse) por 8s nos novos pedidos
+        const newIds = new Set(novos.map(o => o.id));
         setHighlightIds(prev => {
           const next = new Set(prev);
-          newIds.forEach(id => next.delete(id));
+          newIds.forEach(id => next.add(id));
           return next;
         });
-      }, 8000);
+        setTimeout(() => {
+          setHighlightIds(prev => {
+            const next = new Set(prev);
+            newIds.forEach(id => next.delete(id));
+            return next;
+          });
+        }, 8000);
+      }
+      ativos.forEach(o => knownIds.current.add(o.id));
+      ordersInitializedRef.current = true;
+      setOrdersLoadError('');
+
+      if (mapOpenId && !ativos.some(o => o.id === mapOpenId)) {
+        setMapOpenId(null);
+        setRiderPos(null);
+        stopTracking();
+      }
+      setOrders(list);
+    } catch (error) {
+      if (requestId !== ordersRequestVersionRef.current) return;
+      console.error('[EntregadorDashboard] orders load failed:', error);
+      if (!ordersInitializedRef.current) {
+        setOrdersLoadError('Não foi possível carregar seus pedidos agora. Verifique a conexão e tente novamente.');
+      } else {
+        console.warn('[EntregadorDashboard] background orders refresh failed; keeping the last valid list visible.');
+      }
+    } finally {
+      if (requestId === ordersRequestVersionRef.current) setLoading(false);
     }
-    ativos.forEach(o => knownIds.current.add(o.id));
-    setOrders(list);
-    setLoading(false);
-  }, [session, navigate, playAlert]);
+  }, [session, playAlert, expireSession, mapOpenId, stopTracking]);
 
   const fetchAvailable = useCallback(async () => {
     if (!session) return;
-    const { data } = await supabase.rpc('entregador_available_orders' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
-    });
-    const res: any = data;
-    if (!res?.ok) return;
-    setMode((res.mode === 'free' ? 'free' : 'manual'));
-    setAvailable(res.orders || []);
-  }, [session]);
 
-  // Carga inicial + polling de segurança
+    const requestId = ++availableRequestVersionRef.current;
+    try {
+      const { data, error } = await supabase.rpc('entregador_available_orders_session' as any, {
+        _session_token: session.session_token,
+      });
+      if (requestId !== availableRequestVersionRef.current) return;
+
+      const res: any = data;
+      if (error) throw error;
+      if (!res?.ok) {
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        setAvailableLoadError('Não foi possível atualizar os pedidos disponíveis.');
+        return;
+      }
+
+      const nextMode: 'manual' | 'free' = res.mode === 'free' ? 'free' : 'manual';
+      setMode(nextMode);
+      setAvailable(Array.isArray(res.orders) ? res.orders : []);
+      setAvailableLoadError('');
+
+      if (nextMode === 'manual') {
+        setTab(current => current === 'disponiveis' ? 'pendentes' : current);
+      }
+    } catch (error) {
+      if (requestId !== availableRequestVersionRef.current) return;
+      console.error('[EntregadorDashboard] available orders load failed:', error);
+      setAvailableLoadError('Não foi possível atualizar os pedidos disponíveis. A atualização automática continuará tentando.');
+    }
+  }, [session, expireSession]);
+
+  // Carga inicial + polling de segurança.
+  // Cada rodada só agenda a próxima depois que ambas as consultas terminarem,
+  // evitando que uma rede lenta invalide continuamente respostas ainda em voo.
   useEffect(() => {
-    fetchOrders(true);
-    fetchAvailable();
-    const i = setInterval(() => { fetchOrders(false); fetchAvailable(); }, 15000);
-    return () => clearInterval(i);
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const poll = async (silent: boolean) => {
+      await Promise.allSettled([
+        fetchOrders(silent),
+        fetchAvailable(),
+      ]);
+      if (cancelled) return;
+
+      timer = window.setTimeout(() => {
+        void poll(false);
+      }, 15000);
+    };
+
+    void poll(true);
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      ordersRequestVersionRef.current += 1;
+      availableRequestVersionRef.current += 1;
+    };
   }, [fetchOrders, fetchAvailable]);
 
-  // Realtime: escuta mudanças na tabela orders da loja do entregador
-  useEffect(() => {
-    if (!session) return;
-    const ch = supabase
-      .channel(`entregador-${session.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `organization_id=eq.${session.organization_id}`,
-        },
-        (payload: any) => {
-          // Atualiza pedidos atribuídos a este entregador
-          if (
-            payload.new?.entregador_id === session.id ||
-            payload.old?.entregador_id === session.id
-          ) {
-            fetchOrders(false);
-          }
-          // Em modo Disputa Livre: refresca lista de disponíveis em qualquer mudança da loja
-          fetchAvailable();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [session, fetchOrders, fetchAvailable]);
+  // Sessões de entregador usam token próprio, não Supabase Auth.
+  // O polling acima é o canal autoritativo e funciona sem abrir SELECT de orders para anon.
 
   const handleClaim = async (orderId: string) => {
-    if (!session) return;
+    if (!session || claimInFlightRef.current) return;
+
+    claimInFlightRef.current = true;
     setClaiming(orderId);
-    const { data, error } = await supabase.rpc('entregador_claim_order' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
-      _order_id: orderId,
-    });
-    setClaiming(null);
-    const res: any = data;
-    if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        invalid_credentials: 'Sessão inválida. Faça login novamente.',
-        order_not_found: 'Pedido não encontrado.',
-        forbidden: 'Pedido não pertence à sua loja.',
-        mode_not_free: 'Modo de disputa livre não está ativo.',
-        already_taken: 'Outro entregador foi mais rápido nesse pedido.',
-      };
-      toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
-      fetchAvailable();
+    try {
+      const { data, error } = await supabase.rpc('entregador_claim_order_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] claim order RPC failed:', error);
+        toast.error('Não foi possível aceitar o pedido agora. Verifique a conexão e tente novamente.');
+        await fetchAvailable();
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery: 'Este pedido não é uma entrega.',
+          not_ready: 'O pedido ainda não está pronto para retirada.',
+          scheduled_not_released: 'Este pedido agendado ainda não entrou na janela operacional.',
+          mode_not_free: 'Modo de disputa livre não está ativo.',
+          already_taken: 'Outro entregador foi mais rápido nesse pedido.',
+          order_changed: 'O pedido mudou enquanto você tentava aceitar. A lista será atualizada.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível aceitar o pedido.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        await fetchAvailable();
+        return;
+      }
+
+      toast.success('🛵 Pedido reservado para você. Retire na loja e confirme quando estiver com o pedido.');
+      setAvailable(prev => prev.filter(o => o.id !== orderId));
+      void fetchOrders(true);
+      setTab('pendentes');
+    } catch (error) {
+      console.error('[EntregadorDashboard] claim order request failed:', error);
+      toast.error('Não foi possível aceitar o pedido agora. Verifique a conexão e tente novamente.');
+      await fetchAvailable();
+    } finally {
+      claimInFlightRef.current = false;
+      setClaiming(null);
+    }
+  };
+
+  const handleStartDelivery = async (orderId: string) => {
+    if (!session || deliveryAction || startDeliveryInFlightRef.current) return;
+
+    startDeliveryInFlightRef.current = true;
+    setDeliveryAction(`start:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_start_delivery_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] start delivery RPC failed:', error);
+        toast.error('Não foi possível iniciar a entrega agora. Verifique a conexão e tente novamente.');
+        await fetchOrders(true);
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery: 'Este pedido não é uma entrega.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          not_ready: 'O pedido ainda não está pronto para retirada.',
+          scheduled_not_released: 'Este pedido agendado ainda não entrou na janela operacional.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível iniciar a entrega.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        await fetchOrders(true);
+        return;
+      }
+
+      setOrders(prev => prev.map(o => o.id === orderId
+        ? { ...o, status: 'out_for_delivery', delivery_issue_reason: null, delivery_issue_at: null }
+        : o));
+      toast.success(res?.idempotent
+        ? '🛵 Esta entrega já estava iniciada. Status sincronizado.'
+        : '🛵 Entrega iniciada. Agora o pedido está oficialmente a caminho.');
+      void fetchOrders(true);
+    } catch (error) {
+      console.error('[EntregadorDashboard] start delivery request failed:', error);
+      toast.error('Não foi possível iniciar a entrega agora. Verifique a conexão e tente novamente.');
+      await fetchOrders(true);
+    } finally {
+      startDeliveryInFlightRef.current = false;
+      setDeliveryAction(null);
+    }
+  };
+
+  const handleDeclineOrder = async (orderId: string) => {
+    if (!session || deliveryAction || declineOrderInFlightRef.current) return;
+
+    const reason = window.prompt('Por que você não poderá realizar esta entrega? Informe um motivo para a loja.');
+    if (reason == null) return;
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 3) {
+      toast.error('Informe um motivo com pelo menos 3 caracteres.');
       return;
     }
-    toast.success('🛵 Pedido aceito! Vá até a loja para retirar.');
-    setAvailable(prev => prev.filter(o => o.id !== orderId));
-    fetchOrders(true);
-    setTab('pendentes');
+    if (cleanReason.length > 300) {
+      toast.error('O motivo deve ter no máximo 300 caracteres.');
+      return;
+    }
+
+    declineOrderInFlightRef.current = true;
+    setDeliveryAction(`decline:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_decline_order_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _reason: cleanReason,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] decline order RPC failed:', error);
+        toast.error('Não foi possível devolver a entrega agora. Verifique a conexão e tente novamente.');
+        await fetchOrders(true);
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          already_picked_up: 'A entrega já foi iniciada. Use “Problema na entrega” para avisar a loja.',
+          reason_required: 'Informe um motivo entre 3 e 300 caracteres.',
+          status_locked: 'Este pedido não pode mais ser recusado nesta etapa.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível devolver a entrega.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        await fetchOrders(true);
+        return;
+      }
+
+      const returnedToQueue = res?.returned_to_queue === true;
+      setOrders(prev => prev.filter(o => o.id !== orderId));
+      stopTracking();
+      if (mapOpenId === orderId) setMapOpenId(null);
+      setRiderPos(null);
+      await fetchAvailable();
+      toast.success(returnedToQueue
+        ? 'Entrega devolvida à disputa. Outro entregador poderá aceitar.'
+        : 'Entrega devolvida para a loja escolher outro entregador.');
+      setTab(returnedToQueue ? 'disponiveis' : 'pendentes');
+    } catch (error) {
+      console.error('[EntregadorDashboard] decline order request failed:', error);
+      toast.error('Não foi possível devolver a entrega agora. Verifique a conexão e tente novamente.');
+      await fetchOrders(true);
+    } finally {
+      declineOrderInFlightRef.current = false;
+      setDeliveryAction(null);
+    }
+  };
+
+  const handleReportIssue = async (orderId: string) => {
+    if (!session || deliveryAction || reportIssueInFlightRef.current) return;
+
+    const reason = window.prompt('Descreva o problema na entrega. A loja será avisada e decidirá o próximo passo.');
+    if (reason == null) return;
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 3) {
+      toast.error('Descreva o problema com pelo menos 3 caracteres.');
+      return;
+    }
+    if (cleanReason.length > 500) {
+      toast.error('A descrição do problema deve ter no máximo 500 caracteres.');
+      return;
+    }
+
+    reportIssueInFlightRef.current = true;
+    setDeliveryAction(`issue:${orderId}`);
+    try {
+      const { data, error } = await supabase.rpc('entregador_report_delivery_issue_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _reason: cleanReason,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] report issue RPC failed:', error);
+        toast.error('Não foi possível registrar o problema agora. Verifique a conexão e tente novamente.');
+        return;
+      }
+
+      if (!res?.ok) {
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_assigned: 'Este pedido não está mais atribuído a você.',
+          reason_required: 'Descreva o problema entre 3 e 500 caracteres.',
+          not_out_for_delivery: 'A entrega ainda não foi iniciada.',
+        };
+        toast.error(msg[res?.reason] || 'Não foi possível registrar o problema.');
+        if (isInvalidSession(res)) expireSession();
+        return;
+      }
+
+      setOrders(prev => prev.map(o => o.id === orderId
+        ? { ...o, delivery_issue_reason: cleanReason }
+        : o));
+      toast.success('⚠️ Problema comunicado à loja. Aguarde orientação antes de abandonar a entrega.');
+      void fetchOrders(true);
+    } catch (error) {
+      console.error('[EntregadorDashboard] report issue request failed:', error);
+      toast.error('Não foi possível registrar o problema agora. Verifique a conexão e tente novamente.');
+    } finally {
+      reportIssueInFlightRef.current = false;
+      setDeliveryAction(null);
+    }
   };
 
   const handleUnlockSound = async () => {
     try {
-      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
-      await audioCtxRef.current.resume();
+      let ctx = audioCtxRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+      }
+
+      if (ctx.state !== 'running') {
+        await ctx.resume();
+      }
+
+      if (ctx.state !== 'running') {
+        throw new Error(`audio_context_${ctx.state}`);
+      }
+
       unlocked.current = true;
       forceRender(x => x + 1);
       toast.success('Alertas sonoros ativados.');
-    } catch { toast.error('Não foi possível ativar o som.'); }
+    } catch (error) {
+      console.warn('[EntregadorDashboard] sound activation failed:', error);
+      if (audioCtxRef.current?.state === 'closed') {
+        audioCtxRef.current = null;
+      }
+      unlocked.current = false;
+      forceRender(x => x + 1);
+      toast.error('Não foi possível ativar o som.');
+    }
   };
 
   const handleConfirm = async (orderId: string) => {
-    if (!session) return;
+    if (!session || confirmDeliveryInFlightRef.current) return;
+
     const code = (codeInputs[orderId] || '').trim();
-    if (code.length !== 4) {
-      toast.error('Digite o código de 4 dígitos.');
+    if (!/^\d{4}$/.test(code)) {
+      toast.error('Digite exatamente os 4 números informados pelo cliente.');
       return;
     }
 
-    // ====== TRAVA DE SEGURANÇA (Geofence 200m) ======
+    confirmDeliveryInFlightRef.current = true;
     const order = orders.find((o) => o.id === orderId);
-    if (order?.delivery_address) {
-      setGeoChecking(orderId);
-      setGeofenceError((p) => ({ ...p, [orderId]: null }));
-      try {
-        let dest = destCoords[orderId];
-        if (!dest) {
-          const c = await geocodeAddress(order.delivery_address);
-          if (c) {
-            dest = c;
-            setDestCoords((prev) => ({ ...prev, [orderId]: c }));
-          }
-        }
-        if (!dest) {
-          setGeoChecking(null);
+    const exactDestination = order ? getExactDestination(order) : null;
+
+    try {
+      // O hard gate de 200 m só usa coordenadas exatas capturadas no pedido.
+      // Endereço geocodificado por serviço externo continua útil para mapa/navegação,
+      // mas não pode bloquear uma entrega válida por imprecisão ou indisponibilidade.
+      if (exactDestination) {
+        setGeoChecking(orderId);
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+
+        const me = await getCurrentPositionAsync();
+        if (me.accuracyM > MAX_DRIVER_CONFIRM_ACCURACY_M) {
           setGeofenceError((p) => ({
             ...p,
-            [orderId]: '📍 Não foi possível localizar o endereço do cliente no mapa. Confirme o endereço com a loja.',
+            [orderId]: `📍 GPS impreciso (±${Math.round(me.accuracyM)} m). Vá para um local com melhor sinal e tente novamente.`,
           }));
           return;
         }
-        const me = await getCurrentPositionAsync();
-        const distM = haversineMeters(me, dest);
+
+        const distM = haversineMeters(me, exactDestination);
         setCurrentDistance((p) => ({ ...p, [orderId]: distM }));
         if (distM > MAX_DELIVERY_RADIUS_M) {
-          setGeoChecking(null);
           setGeofenceError((p) => ({
             ...p,
             [orderId]: `📍 Ação Bloqueada! Você precisa estar próximo ao endereço do cliente para finalizar esta entrega. Vá até o local. (você está a ${Math.round(distM)} m)`,
           }));
           return;
         }
+
+        const { data: locationData, error: locationError } = await supabase.rpc('entregador_update_location_session' as any, {
+          _session_token: session.session_token,
+          _lat: me.lat,
+          _lng: me.lng,
+          _order_id: orderId,
+        });
+        const locationResult: any = locationData;
+
+        if (locationError) {
+          console.error('[EntregadorDashboard] confirm location RPC failed:', locationError);
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível validar sua localização com o servidor. Verifique a conexão e tente novamente.',
+          }));
+          return;
+        }
+
+        if (!locationResult?.ok) {
+          if (isInvalidSession(locationResult)) {
+            expireSession();
+            return;
+          }
+          if (locationResult?.reason === 'order_not_assigned') {
+            setGeofenceError((p) => ({
+              ...p,
+              [orderId]: '📍 Esta entrega não está mais atribuída a você. Atualizando a lista...',
+            }));
+            await fetchOrders(true);
+            return;
+          }
+          setGeofenceError((p) => ({
+            ...p,
+            [orderId]: '📍 Não foi possível validar sua localização com o servidor. Tente novamente.',
+          }));
+          return;
+        }
+
         setGeofenceError((p) => ({ ...p, [orderId]: null }));
-      } catch (err: any) {
-        setGeoChecking(null);
-        const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      } else {
+        // Sem destino GPS exato, não transforme geocodificação aproximada em hard gate.
+        setGeofenceError((p) => ({ ...p, [orderId]: null }));
+      }
+
+      setGeoChecking(null);
+      setConfirming(orderId);
+
+      const { data, error } = await supabase.rpc('confirm_delivery_with_code_session' as any, {
+        _session_token: session.session_token,
+        _order_id: orderId,
+        _code: code,
+      });
+      const res: any = data;
+
+      if (error) {
+        console.error('[EntregadorDashboard] confirm delivery RPC failed:', error);
+        toast.error('Não foi possível confirmar a entrega agora. Verifique a conexão e tente novamente.');
+        await fetchOrders(true);
+        return;
+      }
+
+      if (!res?.ok) {
+        if (res?.reason === 'already_delivered') {
+          toast.info('✅ Esta entrega já estava confirmada. Status sincronizado.');
+          setCodeInputs(p => ({ ...p, [orderId]: '' }));
+          stopTracking();
+          if (mapOpenId === orderId) setMapOpenId(null);
+          setRiderPos(null);
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
+          await fetchOrders(true);
+          return;
+        }
+
+        const retryAfterSeconds = Math.max(0, Number(res?.retry_after_seconds || 0));
+        const msg: Record<string, string> = {
+          invalid_credentials: 'Sessão inválida. Faça login novamente.',
+          invalid_session: 'Sessão expirada. Faça login novamente.',
+          not_found: 'Pedido não encontrado.',
+          order_not_found: 'Pedido não encontrado.',
+          forbidden: 'Pedido não pertence à sua loja.',
+          not_delivery_order: 'Este pedido não é uma entrega.',
+          not_assigned: 'Este pedido não está atribuído a você.',
+          cancelled: 'Pedido cancelado.',
+          not_out_for_delivery: 'O pedido ainda não saiu para entrega. Atualize a lista ou fale com a loja.',
+          invalid_code: res?.remaining_attempts != null
+            ? `❌ Código incorreto. Restam ${res.remaining_attempts} tentativa(s).`
+            : '❌ Código incorreto! Confirme com o cliente.',
+          invalid_code_format: 'Digite exatamente os 4 números informados pelo cliente.',
+          too_many_attempts: retryAfterSeconds > 0
+            ? `Muitas tentativas incorretas. Aguarde cerca de ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minuto(s) e confirme o código com o cliente.`
+            : 'Muitas tentativas incorretas. Aguarde alguns minutos e confirme o código com o cliente.',
+          driver_location_required: 'Atualize sua localização antes de finalizar a entrega.',
+          driver_location_stale: 'Sua localização está desatualizada. Atualize o GPS e tente novamente.',
+          delivery_geofence_exceeded: res?.distance_m != null
+            ? `Você ainda está a ${Math.round(Number(res.distance_m))} m do destino. Aproxime-se do cliente.`
+            : 'Você ainda está fora do raio permitido para finalizar a entrega.',
+        };
+        toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
+        if (isInvalidSession(res)) {
+          expireSession();
+          return;
+        }
+        if (['order_not_found', 'not_assigned', 'cancelled', 'not_out_for_delivery'].includes(String(res?.reason || ''))) {
+          await fetchOrders(true);
+        }
+        return;
+      }
+
+      toast.success('✅ Entrega confirmada!');
+      setCodeInputs(p => ({ ...p, [orderId]: '' }));
+      stopTracking();
+      if (mapOpenId === orderId) setMapOpenId(null);
+      setRiderPos(null);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
+      void fetchOrders(true);
+    } catch (err: any) {
+      const denied = err?.code === 1 || /denied|permission/i.test(err?.message || '');
+      if (exactDestination && (denied || /geolocation|position|gps|timeout/i.test(String(err?.message || '')))) {
         setGeofenceError((p) => ({
           ...p,
           [orderId]: denied
             ? '📍 Ative a permissão de localização do navegador para finalizar a entrega.'
             : '📍 Não foi possível obter sua localização. Verifique o GPS e tente novamente.',
         }));
-        return;
+      } else {
+        console.error('[EntregadorDashboard] confirm delivery request failed:', err);
+        toast.error('Não foi possível confirmar a entrega agora. Verifique a conexão e tente novamente.');
       }
+    } finally {
       setGeoChecking(null);
+      setConfirming(null);
+      confirmDeliveryInFlightRef.current = false;
     }
-
-    setConfirming(orderId);
-    const { data, error } = await supabase.rpc('confirm_delivery_with_code' as any, {
-      _entregador_id: session.id,
-      _password: session.password,
-      _order_id: orderId,
-      _code: code,
-    });
-    setConfirming(null);
-    const res: any = data;
-    if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        invalid_credentials: 'Sessão inválida. Faça login novamente.',
-        not_found: 'Pedido não encontrado.',
-        order_not_found: 'Pedido não encontrado.',
-        forbidden: 'Pedido não pertence à sua loja.',
-        not_assigned: 'Este pedido não está atribuído a você.',
-        already_delivered: 'Pedido já foi entregue.',
-        cancelled: 'Pedido cancelado.',
-        invalid_code: '❌ Código incorreto! Confirme com o cliente.',
-      };
-      toast.error(msg[res?.reason] || 'Falha ao confirmar entrega.');
-      return;
-    }
-    toast.success('✅ Entrega confirmada!');
-    setCodeInputs(p => ({ ...p, [orderId]: '' }));
-    // Move imediatamente para o Histórico via update otimista
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'delivered' } : o));
-    fetchOrders(true);
   };
 
-  const handleLogout = () => {
-    clearEntregadorSession();
-    navigate('/entregador/login');
+  const handleLogout = async () => {
+    if (logoutInFlightRef.current) return;
+
+    logoutInFlightRef.current = true;
+    let serverRevocationConfirmed = false;
+    try {
+      stopTracking();
+      setMapOpenId(null);
+      setRiderPos(null);
+
+      const { data, error } = await supabase.rpc('entregador_logout_session' as any, {
+        _session_token: session.session_token,
+      });
+      const res: any = data;
+      if (error) {
+        console.error('[EntregadorDashboard] logout RPC failed:', error);
+      } else {
+        serverRevocationConfirmed = res?.ok === true;
+      }
+    } catch (error) {
+      console.error('[EntregadorDashboard] logout request failed:', error);
+    } finally {
+      clearEntregadorSession();
+      logoutInFlightRef.current = false;
+      navigate('/entregador/login', { replace: true });
+      if (!serverRevocationConfirmed) {
+        toast.info('Você saiu deste dispositivo, mas não foi possível confirmar a revogação da sessão no servidor.');
+      }
+    }
   };
 
   if (!session) return null;
 
   const pendentes = orders.filter(o => o.status !== 'delivered');
-  const entregues = orders
-    .filter(o => o.status === 'delivered')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  const entregues = orders.filter(o => o.status === 'delivered');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -455,7 +1188,14 @@ const EntregadorDashboard = () => {
           <p className="text-xs text-slate-400">{session.org_name}</p>
           <p className="font-bold truncate">{session.name}</p>
         </div>
-        <button onClick={() => fetchOrders(false)} className="p-2 text-slate-400 hover:text-orange-500" title="Atualizar">
+        <button
+          onClick={() => {
+            void fetchOrders(false);
+            void fetchAvailable();
+          }}
+          className="p-2 text-slate-400 hover:text-orange-500"
+          title="Atualizar"
+        >
           <RefreshCw className="w-5 h-5" />
         </button>
         <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-destructive" title="Sair">
@@ -519,20 +1259,54 @@ const EntregadorDashboard = () => {
           </button>
         )}
 
-        {loading ? (
+        {availableLoadError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 flex items-center gap-2">
+            <span className="flex-1">{availableLoadError}</span>
+            <button
+              type="button"
+              onClick={() => void fetchAvailable()}
+              className="shrink-0 font-black underline underline-offset-2"
+            >
+              Tentar agora
+            </button>
+          </div>
+        )}
+
+        {tab !== 'disponiveis' && loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-4 border-orange-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : tab !== 'disponiveis' && ordersLoadError ? (
+          <div className="text-center py-14 px-4 bg-slate-900 border border-red-500/30 rounded-2xl space-y-3">
+            <RefreshCw className="w-12 h-12 mx-auto text-orange-500" />
+            <p className="font-black text-slate-100">Não foi possível carregar seus pedidos</p>
+            <p className="text-sm text-slate-400">{ordersLoadError}</p>
+            <button
+              type="button"
+              onClick={() => void fetchOrders(true)}
+              className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-4 py-2.5 rounded-xl"
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : tab === 'pendentes' ? (
           pendentes.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
               <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
-              <p>Nenhum pedido atribuído no momento.</p>
-              <p className="text-xs mt-1">Aguarde — você será notificado quando chegar um novo.</p>
+              <p>Nenhum pedido pendente liberado no momento.</p>
+              <p className="text-xs mt-1">Novas atribuições e pedidos agendados aparecem aqui quando entram na janela operacional.</p>
             </div>
           ) : (
             pendentes.map(o => {
               const st = STATUS_LABEL[o.status] || STATUS_LABEL.preparing;
+              const exactDestination = getExactDestination(o);
+              const hasDestination = Boolean(exactDestination || o.delivery_address);
+              const navigationDestination = exactDestination || destCoords[o.id];
+              const navigationUrl = navigationDestination
+                ? googleMapsDirectionsUrl(navigationDestination, riderPos)
+                : o.delivery_address
+                  ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.delivery_address)}&travelmode=driving`
+                  : '';
               return (
                 <div
                   key={o.id}
@@ -555,6 +1329,14 @@ const EntregadorDashboard = () => {
                     <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
                   </div>
 
+                  {o.scheduled_for && (
+                    <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-xs">
+                      <p className="font-black text-violet-300">📅 Pedido agendado</p>
+                      <p className="text-slate-300 mt-0.5">
+                        {new Date(o.scheduled_for).toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  )}
                   <div className="text-sm space-y-1.5">
                     <p className="flex items-center gap-2"><Package className="w-3.5 h-3.5 text-slate-500" /> <span className="font-semibold">{o.customer_name}</span></p>
                     {o.customer_phone && (
@@ -564,7 +1346,7 @@ const EntregadorDashboard = () => {
                     )}
                     {o.delivery_address && (
                       <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.delivery_address)}`}
+                        href={navigationUrl || '#'}
                         target="_blank" rel="noopener noreferrer"
                         className="flex items-start gap-2 text-blue-400 hover:underline"
                       >
@@ -583,64 +1365,133 @@ const EntregadorDashboard = () => {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-800 space-y-2">
-                    <p className="text-xs text-slate-400 flex items-center gap-1.5">
-                      <KeyRound className="w-3.5 h-3.5 text-orange-500" />
-                      Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        inputMode="numeric"
-                        pattern="\d{4}"
-                        maxLength={4}
-                        placeholder="0000"
-                        value={codeInputs[o.id] || ''}
-                        onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
-                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
-                      />
-                      <button
-                        onClick={() => handleConfirm(o.id)}
-                        disabled={confirming === o.id || geoChecking === o.id || (codeInputs[o.id] || '').length !== 4}
-                        className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="w-5 h-5" />
-                        {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
-                      <div className="text-xs">
-                        <span className="text-slate-400">Distância até o cliente: </span>
-                        {currentDistance[o.id] != null ? (
-                          <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {Math.round(currentDistance[o.id])} m
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 italic">não verificada</span>
-                        )}
-                        <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                  {(o.status === 'preparing' || o.status === 'ready') && (
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                        <p className="text-sm font-black text-amber-300">
+                          {o.status === 'ready' ? '📦 Pedido reservado para você' : '👨‍🍳 Pedido ainda em preparo'}
+                        </p>
+                        <p className="text-xs text-slate-300 mt-1">
+                          {o.status === 'ready'
+                            ? 'Retire o pedido na loja. Só depois confirme “Retirei · Iniciar entrega”.'
+                            : 'Aguarde o pedido ficar pronto. Se não puder atender, devolva a atribuição agora.'}
+                        </p>
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {o.status === 'ready' && (
+                          <button
+                            type="button"
+                            onClick={() => handleStartDelivery(o.id)}
+                            disabled={deliveryAction != null}
+                            className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black py-3 rounded-xl disabled:opacity-50"
+                          >
+                            {deliveryAction === `start:${o.id}` ? 'Iniciando...' : '✅ Retirei · Iniciar entrega'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleDeclineOrder(o.id)}
+                          disabled={deliveryAction != null}
+                          className="w-full border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold py-3 rounded-xl disabled:opacity-50"
+                        >
+                          {deliveryAction === `decline:${o.id}` ? 'Devolvendo...' : 'Não posso realizar'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {o.status === 'out_for_delivery' && (
+                    <div className="pt-2 border-t border-slate-800 space-y-2">
+                      {o.delivery_issue_reason && (
+                        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                          <p className="font-black text-amber-300">⚠️ Problema já comunicado à loja</p>
+                          <p className="text-slate-300 mt-1">{o.delivery_issue_reason}</p>
+                        </div>
+                      )}
+                      <p className="text-xs text-slate-400 flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-orange-500" />
+                        Peça o <span className="font-bold text-orange-500">código de 4 dígitos</span> ao cliente para finalizar.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          inputMode="numeric"
+                          pattern="\d{4}"
+                          maxLength={4}
+                          placeholder="0000"
+                          value={codeInputs[o.id] || ''}
+                          onChange={e => setCodeInputs(p => ({ ...p, [o.id]: e.target.value.replace(/\D/g, '').slice(0,4) }))}
+                          className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.4em] text-orange-500 focus:border-orange-600 outline-none"
+                        />
+                        <button
+                          onClick={() => handleConfirm(o.id)}
+                          disabled={confirming !== null || geoChecking !== null || (codeInputs[o.id] || '').length !== 4}
+                          className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 rounded-xl flex items-center gap-2 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="w-5 h-5" />
+                          {geoChecking === o.id ? '📍...' : confirming === o.id ? '...' : 'OK'}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-800/60 border border-slate-700 px-3 py-2">
+                        <div className="text-xs">
+                          <span className="text-slate-400">Distância até o cliente: </span>
+                          {currentDistance[o.id] != null ? (
+                            <span className={`font-black ${currentDistance[o.id] <= MAX_DELIVERY_RADIUS_M ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {Math.round(currentDistance[o.id])} m
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 italic">não verificada</span>
+                          )}
+                          <span className="text-slate-500"> · máx. {MAX_DELIVERY_RADIUS_M} m</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => refreshDistance(o.id)}
+                          disabled={refreshingLoc !== null}
+                          className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        >
+                          {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
+                        </button>
+                      </div>
+                      {geofenceError[o.id] && (
+                        <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
+                          {geofenceError[o.id]}
+                        </div>
+                      )}
                       <button
                         type="button"
-                        onClick={() => refreshDistance(o.id)}
-                        disabled={refreshingLoc === o.id}
-                        className="text-xs font-bold bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                        onClick={() => handleReportIssue(o.id)}
+                        disabled={deliveryAction != null}
+                        className="w-full border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-bold py-2.5 rounded-xl disabled:opacity-50"
                       >
-                        {refreshingLoc === o.id ? '📍...' : '📍 Atualizar Localização'}
+                        {deliveryAction === `issue:${o.id}` ? 'Comunicando...' : '⚠️ Problema na entrega'}
                       </button>
                     </div>
-                    {geofenceError[o.id] && (
-                      <div className="rounded-xl border-2 border-red-500 bg-gradient-to-r from-red-500/20 to-amber-500/20 text-red-200 px-3 py-2 text-xs font-bold animate-pulse shadow-[0_0_20px_-4px_rgba(239,68,68,0.7)]">
-                        {geofenceError[o.id]}
-                      </div>
-                    )}
-                  </div>
+                  )}
 
-                  <button
-                    onClick={() => toggleMap(o)}
-                    className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
-                  >
-                    <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar Mapa' : '🗺️ Abrir Rota no Mapa'}
-                  </button>
+                  {hasDestination ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        onClick={() => toggleMap(o)}
+                        className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_0_18px_-4px_rgba(245,158,11,0.8)] hover:brightness-110"
+                      >
+                        <MapIcon className="w-5 h-5" /> {mapOpenId === o.id ? 'Fechar mapa' : 'Ver localização no mapa'}
+                      </button>
+                      {navigationUrl && (
+                        <a
+                          href={navigationUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2"
+                        >
+                          <Navigation className="w-5 h-5" /> Iniciar navegação
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
+                      📍 Destino indisponível para mapa/navegação neste pedido.
+                    </div>
+                  )}
 
                   {mapOpenId === o.id && (
                     <div className="space-y-2">
@@ -650,7 +1501,22 @@ const EntregadorDashboard = () => {
                         height={300}
                       />
                       <p className="text-[11px] text-amber-400/90 text-center">
-                        📡 Enviando sua localização a cada 15s • {riderPos ? '✅ rastreio ativo' : 'aguardando GPS...'}
+                        📡 {trackingSyncError
+                          ? `⚠️ ${trackingSyncError}`
+                          : riderPos
+                            ? trackingLastSyncedAt
+                              ? '✅ localização sincronizada com a loja'
+                              : 'GPS ativo • aguardando primeiro envio'
+                            : 'aguardando GPS...'}
+                        {mapDestinationError[o.id]
+                          ? ` • ⚠️ ${mapDestinationError[o.id]}`
+                          : exactDestination
+                            ? ' • 📍 destino GPS do cliente'
+                            : destCoords[o.id]
+                              ? ' • 📍 destino aproximado pelo endereço'
+                              : o.delivery_address
+                                ? ' • 📍 localizando destino pelo endereço...'
+                                : ' • ⚠️ destino indisponível'}
                       </p>
                     </div>
                   )}
@@ -663,7 +1529,7 @@ const EntregadorDashboard = () => {
             <div className="text-center py-16 text-slate-500">
               <Package className="w-14 h-14 mx-auto mb-3 opacity-40" />
               <p>Nenhum pedido disponível para disputa.</p>
-              <p className="text-xs mt-1">Aguarde — novos pedidos aparecerão aqui em tempo real.</p>
+              <p className="text-xs mt-1">Pedidos prontos e liberados aparecem aqui nas próximas atualizações automáticas.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -673,15 +1539,20 @@ const EntregadorDashboard = () => {
                     <span className="text-yellow-400 font-black text-lg">#{o.order_number}</span>
                     <span className="text-orange-500 font-black">{formatCurrency(o.total)}</span>
                   </div>
-                  <p className="text-sm font-semibold">{o.customer_name}</p>
-                  {o.delivery_address && (
-                    <p className="text-xs text-slate-400 flex items-start gap-1">
-                      <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {o.delivery_address}
+                  <p className="text-sm font-semibold">
+                    {o.bairro_nome ? `📍 Bairro: ${o.bairro_nome}` : '📍 Destino oculto até aceitar'}
+                  </p>
+                  {o.scheduled_for && (
+                    <p className="text-xs font-bold text-violet-300">
+                      📅 Agendado: {new Date(o.scheduled_for).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                     </p>
                   )}
+                  <p className="text-xs text-slate-500">
+                    Nome, telefone e endereço completo são liberados somente após você aceitar o pedido.
+                  </p>
                   <button
                     onClick={() => handleClaim(o.id)}
-                    disabled={claiming === o.id}
+                    disabled={claiming !== null}
                     className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-black py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     ⚡ {claiming === o.id ? 'Aceitando...' : 'ACEITAR PEDIDO'}
@@ -695,8 +1566,8 @@ const EntregadorDashboard = () => {
           entregues.length === 0 ? (
             <div className="text-center py-16 text-slate-500">
               <History className="w-14 h-14 mx-auto mb-3 opacity-40" />
-              <p>Nenhuma entrega concluída ainda.</p>
-              <p className="text-xs mt-1">Suas entregas finalizadas aparecerão aqui.</p>
+              <p>Nenhuma entrega concluída no histórico recente.</p>
+              <p className="text-xs mt-1">Aqui aparecem entregas de pedidos criados ou agendados nos últimos 7 dias.</p>
             </div>
           ) : (
             <div className="space-y-2">

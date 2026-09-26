@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, ClipboardList, Instagram, MessageCircle, Sparkles, Search, SlidersHorizontal, MapPin, Bell, Star, Clock, Heart, Home, User, Crown } from 'lucide-react';
 import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useOrgId } from '@/contexts/OrgContext';
+import { useVisionPrimeConfig } from '@/hooks/useVisionPrime';
 import ProductModal from './ProductModal';
+import LoyaltyCard from './LoyaltyCard';
 
 interface StartScreenProps {
   onStart: () => void;
@@ -12,6 +15,7 @@ interface StartScreenProps {
   onGoToCart?: () => void;
   onSelectProduct?: (product: Product) => void;
   cartCount?: number;
+  deviceOwnedKiosk?: boolean;
 }
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -20,8 +24,34 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
-const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0 }: StartScreenProps) => {
+function getInstagramHref(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed) || /[\s\\]/.test(trimmed)) return '';
+  try {
+    const url = new URL(trimmed);
+    if (!['instagram.com', 'www.instagram.com'].includes(url.hostname)
+      || url.username || url.password || url.port
+      || !/^\/[a-zA-Z0-9_](?:[a-zA-Z0-9_.]{0,28}[a-zA-Z0-9_])?\/?$/.test(url.pathname)
+      || url.pathname.includes('..')) return '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function getWhatsappHref(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!/^\+?[\d\s().-]+$/.test(trimmed)) return '';
+  const digits = trimmed.replace(/\D/g, '');
+  // The settings field requires a country code; never guess or add one here.
+  return /^[1-9]\d{7,14}$/.test(digits) ? `https://wa.me/${digits}` : '';
+}
+
+const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0, deviceOwnedKiosk = false }: StartScreenProps) => {
   const orgId = useOrgId();
+  const { config: primeConfig } = useVisionPrimeConfig(orgId);
   const [storeName, setStoreName] = useState('VisionFood');
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<BannerItem[]>([]);
@@ -31,10 +61,18 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [instagramUrl, setInstagramUrl] = useState('');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappHref, setWhatsappHref] = useState('');
   const [favorites, setFavorites] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('vf_favoritos') || '[]'); } catch { return []; }
+    try {
+      const saved = JSON.parse(localStorage.getItem('vf_favoritos') || '[]');
+      return Array.isArray(saved) ? saved.filter((id): id is string => typeof id === 'string') : [];
+    } catch {
+      return [];
+    }
   });
+  const [showFavorites, setShowFavorites] = useState(false);
+  const bannerTouchStartX = useRef<number | null>(null);
+  const suppressBannerClick = useRef(false);
 
   const toggleFavorite = (id: string) => {
     setFavorites(prev => {
@@ -46,110 +84,126 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
   useEffect(() => {
     if (!orgId) return;
+    let cancelled = false;
+    let latestRequestGeneration = 0;
+
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('organization_id', orgId).maybeSingle();
-      if (data) {
+      const requestGeneration = ++latestRequestGeneration;
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (cancelled || requestGeneration !== latestRequestGeneration) return;
         setStoreName(data.store_name || 'VisionFood');
-        setBanners((data.banners as unknown as BannerItem[]) || []);
-        setInstagramUrl((data as any).instagram_url || '');
-        setWhatsappNumber(data.whatsapp_number || '');
-        const cats = (data as any).categories as CategoryItem[] | undefined;
+        setBanners((data.banners as BannerItem[]) || []);
+        setInstagramUrl(getInstagramHref(data.instagram_url));
+        setWhatsappHref(getWhatsappHref(data.whatsapp_number));
+        const cats = data.categories as CategoryItem[] | undefined;
         if (cats && cats.length > 0) setCategories(cats);
-        else if ((data as any).category_icons) {
-          const icons = (data as any).category_icons as Record<string, string>;
+        else if (data.category_icons) {
+          const icons = data.category_icons as Record<string, string>;
           setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
+        } else {
+          setCategories(DEFAULT_CATEGORIES);
+        }
+      } catch (error) {
+        if (!cancelled && requestGeneration === latestRequestGeneration) {
+          console.warn('[StartScreen] storefront config error:', error);
         }
       }
     };
+
     fetchSettings();
+    const pollId = window.setInterval(fetchSettings, 30000);
+    return () => {
+      cancelled = true;
+      latestRequestGeneration += 1;
+      window.clearInterval(pollId);
+    };
   }, [orgId]);
 
   useEffect(() => {
     if (!orgId) { setLoading(false); return; }
+    let cancelled = false;
+    let latestRequestGeneration = 0;
+
     const fetchProducts = async () => {
-      const { data } = await supabase.from('products').select('*').eq('organization_id', orgId);
-      if (data) {
-        const mapped: Product[] = data.map((p: any) => ({
+      const requestGeneration = ++latestRequestGeneration;
+      try {
+        const data = await fetchPublicCatalog(orgId);
+        if (cancelled || requestGeneration !== latestRequestGeneration) return;
+        const mapped: Product[] = data.map((p) => ({
           id: p.id,
           name: p.name,
           price: Number(p.price),
           category: p.category as Product['category'],
-          image: p.image,
-          removableIngredients: (p.removable_ingredients as string[]) || [],
-          extras: (p.extras as { name: string; price: number }[]) || [],
+          image: p.image || '',
+          removableIngredients: p.removable_ingredients || [],
+          extras: p.extras || [],
           isCombo: p.is_combo || false,
-          ingredients: (p.ingredients as string[]) || [],
+          ingredients: p.ingredients || [],
           description: p.description || '',
-          prepTimeMin: Number((p as any).prep_time_min ?? 0),
-          oldPrice: Number(p.old_price ?? p.preco_antigo ?? 0) || undefined,
-          badge: p.badge || p.selo || undefined,
+          prepTimeMin: Number(p.prep_time_min ?? 0),
         }));
-        setProducts(mapped);
-      }
-      setLoading(false);
-    };
-    fetchProducts();
-  }, [orgId]);
-
-  useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel('settings-changes-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        const data = payload.new;
-        if (data) {
-          setStoreName(data.store_name || 'VisionFood');
-          setBanners((data.banners as unknown as BannerItem[]) || []);
-          setInstagramUrl(data.instagram_url || '');
-          setWhatsappNumber(data.whatsapp_number || '');
-          const cats = data.categories as CategoryItem[] | undefined;
-          if (cats && cats.length > 0) setCategories(cats);
-          else if (data.category_icons) {
-            const icons = data.category_icons as Record<string, string>;
-            setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
-          }
+        setProducts(mapped.filter((product) => !product.isCombo));
+      } catch (error) {
+        if (!cancelled && requestGeneration === latestRequestGeneration) {
+          console.warn('[StartScreen] public catalog error:', error);
         }
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      } finally {
+        if (!cancelled && requestGeneration === latestRequestGeneration) setLoading(false);
+      }
+    };
+
+    fetchProducts();
+    const pollId = window.setInterval(fetchProducts, 30000);
+    return () => {
+      cancelled = true;
+      latestRequestGeneration += 1;
+      window.clearInterval(pollId);
+    };
   }, [orgId]);
+
+  const displayedProducts = showFavorites
+    ? products.filter((product) => favorites.includes(product.id))
+    : products.slice(0, 6);
+  const configuredPrimeFreeShippingMinimum = Number(primeConfig?.frete_gratis_minimo);
+  const primeFreeShippingMinimum = primeConfig?.ativo && Number.isFinite(configuredPrimeFreeShippingMinimum)
+    ? Math.max(0, configuredPrimeFreeShippingMinimum)
+    : null;
 
   useEffect(() => {
-    if (!orgId) return;
-    const channel = supabase
-      .channel('products-changes-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `organization_id=eq.${orgId}` }, () => {
-        supabase.from('products').select('*').eq('organization_id', orgId).then(({ data }) => {
-          if (data) {
-            const mapped: Product[] = data.map((p: any) => ({
-              id: p.id, name: p.name, price: Number(p.price),
-              category: p.category as Product['category'], image: p.image,
-              removableIngredients: (p.removable_ingredients as string[]) || [],
-              extras: (p.extras as { name: string; price: number }[]) || [],
-              isCombo: p.is_combo || false,
-              ingredients: (p.ingredients as string[]) || [],
-              description: p.description || '',
-              prepTimeMin: Number(p.prep_time_min ?? 0),
-              oldPrice: Number(p.old_price ?? p.preco_antigo ?? 0) || undefined,
-              badge: p.badge || p.selo || undefined,
-            }));
-            setProducts(mapped);
-          }
-        });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [orgId]);
-
-  const topProducts = products.slice(0, 6);
+    setActiveBanner(prev => {
+      if (banners.length === 0) return 0;
+      return Math.min(prev, banners.length - 1);
+    });
+  }, [banners]);
 
   useEffect(() => {
     if (banners.length <= 1) return;
-    const interval = setInterval(() => {
+    const timeoutId = window.setTimeout(() => {
       setActiveBanner(prev => (prev + 1) % banners.length);
     }, 4000);
-    return () => clearInterval(interval);
-  }, [banners.length]);
+    return () => window.clearTimeout(timeoutId);
+  }, [banners, activeBanner]);
+
+  const handleBannerTouchStart = (clientX: number) => {
+    bannerTouchStartX.current = clientX;
+    suppressBannerClick.current = false;
+  };
+
+  const handleBannerTouchEnd = (clientX: number) => {
+    const startX = bannerTouchStartX.current;
+    bannerTouchStartX.current = null;
+    if (startX === null || banners.length <= 1) return;
+
+    const deltaX = clientX - startX;
+    if (Math.abs(deltaX) < 40) return;
+
+    suppressBannerClick.current = true;
+    setActiveBanner(prev => deltaX < 0
+      ? (prev + 1) % banners.length
+      : (prev - 1 + banners.length) % banners.length
+    );
+  };
 
   const handleQuickAdd = (product: Product) => {
     if (onSelectProduct) { onSelectProduct(product); return; }
@@ -195,15 +249,19 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           <span className="text-white">{brandRest}</span>
         </h1>
         <div className="flex items-center gap-2">
-          <Link to="/clube" className="w-10 h-10 rounded-full vf-chip flex items-center justify-center text-[#FF7A00] hover:bg-[#FF7A00]/10 transition" title="Clube">
-            <Sparkles className="w-[18px] h-[18px]" />
-          </Link>
-          <Link to="/meus-pedidos" className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Meus Pedidos">
-            <ClipboardList className="w-[18px] h-[18px]" />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF7A00] text-white rounded-full text-[10px] font-bold flex items-center justify-center">{cartCount}</span>
-            )}
-          </Link>
+          {!deviceOwnedKiosk && (
+            <>
+              <Link to="/clube" className="w-10 h-10 rounded-full vf-chip flex items-center justify-center text-[#FF7A00] hover:bg-[#FF7A00]/10 transition" title="Clube">
+                <Sparkles className="w-[18px] h-[18px]" />
+              </Link>
+              <Link to="/meus-pedidos" className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Meus Pedidos">
+                <ClipboardList className="w-[18px] h-[18px]" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-[#FF7A00] text-white rounded-full text-[10px] font-bold flex items-center justify-center">{cartCount}</span>
+                )}
+              </Link>
+            </>
+          )}
           <button onClick={onGoToCart || onStart} className="relative w-10 h-10 rounded-full vf-chip flex items-center justify-center text-zinc-300 hover:text-white transition" title="Notificações">
             <Bell className="w-[18px] h-[18px]" />
           </button>
@@ -233,63 +291,14 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         </button>
       </div>
 
-      {/* Banner rotativo */}
-      {banners.length > 0 && (
-        <div className="px-4 sm:px-5 mt-5 vf-fade-in">
-          <div className="vf-banner relative overflow-hidden h-48 sm:h-56 lg:h-64 max-w-[1200px] mx-auto border border-white/[0.06]" style={{ borderRadius: 24 }}>
-            {banners.map((banner, i) => {
-              const link = (banner as any).link || (banner as any).url || '';
-              const go = () => { if (link) window.open(link, '_blank', 'noopener'); else onStart(); };
-              const hasText = Boolean(banner.title || banner.subtitle || banner.badgeText);
-              return (
-                <button
-                  key={banner.id}
-                  onClick={go}
-                  aria-hidden={i !== activeBanner}
-                  tabIndex={i === activeBanner ? 0 : -1}
-                  className={`absolute inset-0 text-left transition-opacity duration-700 ${i === activeBanner ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                >
-                  {isUrl(banner.image) ? (
-                    <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" style={{ colorScheme: 'light' } as React.CSSProperties} />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-7xl" style={{ background: 'linear-gradient(135deg, #FF7A00, #B23A00)' }}>{banner.image}</div>
-                  )}
-                  {hasText && (
-                    <>
-                      <div className="absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0) 80%)' }} />
-                      <div className="absolute inset-0 p-4 sm:p-6 flex flex-col justify-center gap-2 max-w-[68%]">
-                        {banner.badgeText && (
-                          <span className="self-start rounded-full border border-[#FF7A00] text-[#FF7A00] text-[10px] sm:text-[11px] font-bold px-3 py-1 uppercase tracking-wide">
-                            🔥 {banner.badgeText}
-                          </span>
-                        )}
-                        {banner.title && (
-                          <h3 className="text-white font-extrabold leading-[0.95] text-2xl sm:text-3xl lg:text-4xl uppercase tracking-tight line-clamp-2 drop-shadow-[0_2px_10px_rgba(0,0,0,0.7)]">
-                            {banner.title}
-                          </h3>
-                        )}
-                        {banner.subtitle && (
-                          <p className="text-zinc-300 text-[11px] sm:text-sm leading-snug line-clamp-2">{banner.subtitle}</p>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </button>
-              );
-            })}
-            {banners.length > 1 && (
-              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-10">
-                {banners.map((_, i) => (
-                  <button key={i} onClick={() => setActiveBanner(i)} aria-label={`Banner ${i+1}`}
-                    className={`h-[6px] rounded-full transition-all duration-300 ${i === activeBanner ? 'w-6 bg-[#FF7A00]' : 'w-[6px] bg-white/40'}`} />
-                ))}
-              </div>
-            )}
-          </div>
+      {!deviceOwnedKiosk && orgId && (
+        <div className="px-5 mt-4 vf-fade-in">
+          <LoyaltyCard organizationId={orgId} compact />
         </div>
       )}
 
       {/* Categories */}
+      {!showFavorites && (
       <section className="mt-7 vf-fade-in">
         <div className="px-5 flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold text-white">Categorias</h2>
@@ -316,19 +325,73 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           })}
         </div>
       </section>
+      )}
 
-      {/* Mais pedidos */}
+      {/* Banner rotativo */}
+      {!showFavorites && banners.length > 0 && (
+        <div className="px-4 sm:px-5 mt-5 vf-fade-in">
+          <div
+            className="vf-banner relative overflow-hidden h-32 sm:h-40 lg:h-48 max-w-[1200px] mx-auto border border-white/[0.06]"
+            style={{ borderRadius: 24, touchAction: 'pan-y' }}
+            onTouchStart={(event) => handleBannerTouchStart(event.touches[0]?.clientX ?? 0)}
+            onTouchEnd={(event) => handleBannerTouchEnd(event.changedTouches[0]?.clientX ?? 0)}
+          >
+            {banners.map((banner, i) => {
+              const link = (banner as any).link || (banner as any).url || '';
+              const go = () => { if (link) window.open(link, '_blank', 'noopener'); else onStart(); };
+              return (
+                <button
+                  key={banner.id}
+                  onClick={(event) => {
+                    if (suppressBannerClick.current) {
+                      event.preventDefault();
+                      suppressBannerClick.current = false;
+                      return;
+                    }
+                    go();
+                  }}
+                  aria-hidden={i !== activeBanner}
+                  tabIndex={i === activeBanner ? 0 : -1}
+                  className={`absolute inset-0 text-left transition-opacity duration-700 ${i === activeBanner ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                >
+                  {isUrl(banner.image) ? (
+                    <img src={banner.image} alt={banner.title || 'Banner'} className="w-full h-full object-cover" style={{ colorScheme: 'light' } as React.CSSProperties} />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-7xl" style={{ background: 'linear-gradient(135deg, #FF7A00, #B23A00)' }}>{banner.image}</div>
+                  )}
+                </button>
+              );
+            })}
+            {banners.length > 1 && (
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 z-10">
+                {banners.map((_, i) => (
+                  <button key={i} onClick={() => setActiveBanner(i)} aria-label={`Banner ${i+1}`}
+                    className={`h-[6px] rounded-full transition-all duration-300 ${i === activeBanner ? 'w-6 bg-[#FF7A00]' : 'w-[6px] bg-white/40'}`} />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mais pedidos / Favoritos */}
       <section className="mt-7 vf-fade-in">
         <div className="px-5 flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-white">Mais pedidos</h2>
-          <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
-            Ver tudo <ChevronRight className="w-4 h-4" />
-          </button>
+          <h2 className="text-lg font-bold text-white">{showFavorites ? 'Favoritos' : 'Mais pedidos'}</h2>
+          {showFavorites ? (
+            <button onClick={() => setShowFavorites(false)} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
+              Voltar ao início
+            </button>
+          ) : (
+            <button onClick={onStart} className="text-[#FF7A00] text-sm font-semibold flex items-center gap-0.5 hover:underline">
+              Ver tudo <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-4 sm:px-5 max-w-[1200px] mx-auto">
-          {topProducts.map((product, idx) => {
+          {displayedProducts.map((product, idx) => {
             const fav = favorites.includes(product.id);
-            const badge = product.badge || (idx === 0 ? 'Mais pedido' : product.oldPrice ? 'Oferta' : '');
+            const badge = product.badge || (!showFavorites && idx === 0 ? 'Mais pedido' : product.oldPrice ? 'Oferta' : '');
             const promo = product.oldPrice && product.oldPrice > product.price;
             const eta = product.prepTimeMin && product.prepTimeMin > 0
               ? `${product.prepTimeMin}–${product.prepTimeMin + 10} min`
@@ -344,7 +407,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                     )}
                     {badge && (
                       <span className={`absolute top-2 left-2 text-white text-[9px] sm:text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 max-w-[85%] truncate ${promo && !product.badge && idx !== 0 ? 'bg-red-600' : 'bg-[#FF7A00]'}`}>
-                        {idx === 0 && !product.badge ? '🔥 ' : ''}{badge}
+                        {!showFavorites && idx === 0 && !product.badge ? '🔥 ' : ''}{badge}
                       </span>
                     )}
                   </div>
@@ -382,9 +445,17 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
             );
           })}
         </div>
+        {showFavorites && displayedProducts.length === 0 && (
+          <div className="px-5 py-12 text-center">
+            <Heart className="w-12 h-12 mx-auto text-zinc-700 mb-3" />
+            <p className="font-bold text-white">Nenhum favorito ainda</p>
+            <p className="text-sm text-zinc-500 mt-1">Toque no coração de um produto para encontrá-lo aqui.</p>
+          </div>
+        )}
       </section>
 
       {/* Promo card */}
+      {!showFavorites && primeFreeShippingMinimum !== null && (
       <div className="px-5 mt-7 vf-fade-in">
         <button onClick={onStart} className="w-full vf-chip rounded-2xl px-4 py-4 flex items-center gap-4 hover:border-[#FF7A00]/40 transition">
           <div className="w-11 h-11 rounded-full bg-[#FF7A00]/10 flex items-center justify-center text-[#FF7A00]">
@@ -392,48 +463,77 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           </div>
           <div className="flex-1 text-left">
             <div className="font-bold text-white text-sm">Frete Grátis</div>
-            <div className="text-[12px] text-zinc-400">Em pedidos acima de <span className="text-[#FF7A00] font-semibold">R$ 40,00</span></div>
+            <div className="text-[12px] text-zinc-400">
+              {primeFreeShippingMinimum > 0 ? (
+                <>Para membros Vision Prime a partir de <span className="text-[#FF7A00] font-semibold">{formatCurrency(primeFreeShippingMinimum)}</span></>
+              ) : (
+                <>Para membros Vision Prime em todos os pedidos</>
+              )}
+            </div>
           </div>
           <ChevronRight className="w-4 h-4 text-zinc-500" />
         </button>
       </div>
+      )}
 
       {/* Social/footer */}
-      {(instagramUrl || whatsappNumber) && (
-        <div className="mt-8 flex justify-center gap-3 px-5">
-          {instagramUrl && (
-            <a href={instagramUrl} target="_blank" rel="noopener noreferrer"
-              className="w-11 h-11 rounded-full bg-gradient-to-br from-pink-500 via-red-500 to-yellow-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition" aria-label="Instagram">
-              <Instagram className="w-5 h-5" />
-            </a>
-          )}
-          {whatsappNumber && (
-            <a href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer"
-              className="w-11 h-11 rounded-full bg-[#25D366] flex items-center justify-center text-white shadow-lg active:scale-95 transition" aria-label="WhatsApp">
-              <MessageCircle className="w-5 h-5" />
-            </a>
-          )}
+      {(instagramUrl || whatsappHref) && (
+        <div className="px-5 mt-8 vf-fade-in">
+          <div className="vf-chip rounded-2xl px-4 py-4 max-w-md mx-auto">
+            <div className="text-center">
+              <div className="text-sm font-bold text-white">Siga e fale conosco</div>
+              <div className="text-[11px] text-zinc-500 mt-1">Acompanhe novidades ou chame a loja</div>
+            </div>
+            <div className={`mt-3 grid gap-2 ${instagramUrl && whatsappHref ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {instagramUrl && (
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-h-11 rounded-xl border border-white/[0.06] bg-zinc-900/70 px-3 flex items-center justify-center gap-2 text-sm font-semibold text-zinc-200 hover:border-[#FF7A00]/35 hover:text-white active:scale-[0.98] transition"
+                  aria-label="Abrir Instagram"
+                >
+                  <Instagram className="w-[18px] h-[18px] text-pink-400" />
+                  Instagram
+                </a>
+              )}
+              {whatsappHref && (
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="min-h-11 rounded-xl border border-white/[0.06] bg-zinc-900/70 px-3 flex items-center justify-center gap-2 text-sm font-semibold text-zinc-200 hover:border-[#FF7A00]/35 hover:text-white active:scale-[0.98] transition"
+                  aria-label="Abrir WhatsApp"
+                >
+                  <MessageCircle className="w-[18px] h-[18px] text-emerald-400" />
+                  WhatsApp
+                </a>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       <div className="mt-6 text-center text-[11px] text-zinc-600">
         © {new Date().getFullYear()} {storeName} · by VisionTek
-        <div className="mt-2">
-          <Link to="/admin" className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300">
-            <Settings className="w-3 h-3" /> Painel
-          </Link>
-        </div>
+        {!deviceOwnedKiosk && (
+          <div className="mt-2">
+            <Link to="/admin" className="inline-flex items-center gap-1 text-zinc-500 hover:text-zinc-300">
+              <Settings className="w-3 h-3" /> Painel
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 inset-x-0 z-40 px-3 pb-3 pt-2" style={{ background: 'linear-gradient(180deg, rgba(11,11,13,0) 0%, #0B0B0D 35%)' }}>
         <div className="vf-chip rounded-2xl flex items-center justify-around px-2 py-2 max-w-md mx-auto backdrop-blur" style={{ background: 'rgba(24,24,27,0.92)' }}>
           {[
-            { icon: Home, label: 'Início', active: true, onClick: () => {} },
+            { icon: Home, label: 'Início', active: !showFavorites, onClick: () => { setShowFavorites(false); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
             { icon: Search, label: 'Buscar', onClick: onStart },
-            { icon: ClipboardList, label: 'Pedidos', to: '/meus-pedidos' },
-            { icon: Heart, label: 'Favoritos', onClick: onStart },
-            { icon: User, label: 'Perfil', to: '/meus-pedidos' },
+            ...(!deviceOwnedKiosk ? [{ icon: ClipboardList, label: 'Pedidos', to: '/meus-pedidos' }] : []),
+            { icon: Heart, label: 'Favoritos', active: showFavorites, onClick: () => { setShowFavorites(true); window.scrollTo({ top: 0, behavior: 'smooth' }); } },
+            ...(!deviceOwnedKiosk ? [{ icon: User, label: 'Perfil', to: '/meus-pedidos' }] : []),
           ].map((item, i) => {
             const Icon = item.icon;
             const inner = (
@@ -452,7 +552,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       </nav>
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct}
+        <ProductModal product={selectedProduct} deviceOwnedKiosk={deviceOwnedKiosk}
           onAdd={(item) => { if (onAddToCart) onAddToCart(item); setSelectedProduct(null); }}
           onClose={() => setSelectedProduct(null)} />
       )}

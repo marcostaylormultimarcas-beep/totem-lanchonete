@@ -4,8 +4,8 @@ import { lazy, Suspense, useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Pencil, Trash2, Save, Settings, Lock, Image, Store, Zap, Megaphone, Upload, Loader2, ClipboardList, Shield, Pause, Play, LogOut, Building2, Ticket, Truck, Award, ExternalLink, KeyRound, CreditCard, Share2, FileText, Users, Crown, Sparkles, Palette, Printer, Boxes, MapPin, Bell, Menu, X, Barcode, AlertTriangle } from 'lucide-react';
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 import VencimentoBanner from '@/components/admin/VencimentoBanner';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Link, useNavigate } from 'react-router-dom';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Product, BannerItem, StoreSettings, CategoryItem, formatCurrency } from '@/data/store';
 import { uploadProductImage, StorageLimitError } from '@/lib/imageUpload';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,21 +13,25 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
+import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
+import OneSignalPanel from '@/components/admin/OneSignalPanel';
+import OrgSwitcher from '@/components/admin/OrgSwitcher';
+import CrmPanel from '@/components/admin/CrmPanel';
+import MesasPanel from '@/components/admin/MesasPanel';
+import { AdminTab, normalizeAdminTabForTier, parseAdminTab, withAdminTabSearchParams } from '@/lib/adminTabState';
+import RuntimeErrorBoundary from '@/components/RuntimeErrorBoundary';
 
 // Heavy admin modules are loaded only when the Admin route needs them.
-const CrmPanel = lazy(() => import('@/components/admin/CrmPanel'));
 const ClientesLeadsPanel = lazy(() => import('@/components/admin/ClientesLeadsPanel'));
 const OrdersPanel = lazy(() => import('@/components/admin/OrdersPanel'));
 const DashboardPanel = lazy(() => import('@/components/admin/DashboardPanel'));
 const MasterPanel = lazy(() => import('@/components/admin/MasterPanel'));
 const SuperAdminPanel = lazy(() => import('@/components/admin/SuperAdminPanel'));
 const PlansMatrixPanel = lazy(() => import('@/components/admin/PlansMatrixPanel'));
-const OrgSwitcher = lazy(() => import('@/components/admin/OrgSwitcher'));
 const ChangePasswordCard = lazy(() => import('@/components/admin/ChangePasswordCard'));
 const CouponsPanel = lazy(() => import('@/components/admin/CouponsPanel'));
 const LoyaltyPanel = lazy(() => import('@/components/admin/LoyaltyPanel'));
 const StorageUsageCard = lazy(() => import('@/components/admin/StorageUsageCard'));
-const MasterRecoveryPinCard = lazy(() => import('@/components/admin/MasterRecoveryPinCard'));
 const MercadoPagoCard = lazy(() => import('@/components/admin/MercadoPagoCard'));
 const FiscalExportCard = lazy(() => import('@/components/admin/FiscalExportCard'));
 const EntregadoresPanel = lazy(() => import('@/components/admin/EntregadoresPanel'));
@@ -44,7 +48,6 @@ const FinanceiroPanel = lazy(() => import('@/components/admin/FinanceiroPanel'))
 const EstoqueInteligentePanel = lazy(() => import('@/components/admin/EstoqueInteligentePanel'));
 const EstoquePreditivPanel = lazy(() => import('@/components/admin/EstoquePreditivPanel'));
 const RoteirizacaoIAPanel = lazy(() => import('@/components/admin/RoteirizacaoIAPanel'));
-const OneSignalPanel = lazy(() => import('@/components/admin/OneSignalPanel'));
 const AreaAtendimentoPanel = lazy(() => import('@/components/admin/AreaAtendimentoPanel'));
 const DeliveryPanel = lazy(() => import('@/components/admin/DeliveryPanel'));
 const AssinaturaPanel = lazy(() => import('@/components/admin/AssinaturaPanel'));
@@ -71,6 +74,8 @@ interface AdminUser {
 
 const AdminPage = () => {
   const navigate = useNavigate();
+
+  const [searchParams, setSearchParams] = useSearchParams();
   const { orgId: ctxOrgId, setOrgId, org, refresh: refreshOrg } = useOrg();
   const [authenticated, setAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -96,7 +101,28 @@ const AdminPage = () => {
   const [settingsId, setSettingsId] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [tab, setTab] = useState<'orders' | 'dashboard' | 'multilojas' | 'products' | 'banners' | 'coupons' | 'loyalty' | 'crm' | 'leads' | 'entregadores' | 'bairros' | 'area_cep' | 'delivery' | 'logistica' | 'rotaIA' | 'prime' | 'parcerias' | 'operacao' | 'assistente' | 'tema' | 'impressao' | 'financeiro' | 'estoque' | 'preditivo' | 'assinatura' | 'settings' | 'fiscal' | 'admins' | 'super' | 'plans' | 'parcerias_map' | 'onesignal' | 'billing' | 'senhas' | 'pdv_operadores'>('orders');
+  const [tab, setTabState] = useState<AdminTab>(() => parseAdminTab(searchParams.get('tab')));
+
+  const setTab = (nextTab: AdminTab) => {
+    setTabState(nextTab);
+    setSearchParams(withAdminTabSearchParams(searchParams, nextTab), { replace: false });
+  };
+
+  useEffect(() => {
+    const urlTab = parseAdminTab(searchParams.get('tab'));
+    setTabState(current => current === urlTab ? current : urlTab);
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!authenticated || !currentAdmin) return;
+    const allowedTab = normalizeAdminTabForTier(tab, currentAdmin.tier);
+    if (allowedTab === tab) return;
+
+    setTabState(allowedTab);
+    setSearchParams(withAdminTabSearchParams(searchParams, allowedTab), { replace: true });
+  }, [authenticated, currentAdmin, tab, searchParams, setSearchParams]);
+
+
   const [subscriptionStatus, setSubscriptionStatus] = useState<string>('ativo');
   const [masterUnlocked, setMasterUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
@@ -118,10 +144,15 @@ const AdminPage = () => {
       const { data } = await supabase.from('products').select('*').eq('organization_id', activeOrgId);
       if (data) {
         setProducts(data.map((p: any) => ({
-          id: p.id, name: p.name, price: Number(p.price), category: p.category as Product['category'],
+          id: p.id, name: p.name, price: Number(p.price),
+          costPrice: p.cost_price == null ? null : Number(p.cost_price),
+          markupPercent: p.markup_percent == null ? null : Number(p.markup_percent),
+          category: p.category as Product['category'],
           image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
           extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
           ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+          available: p.available !== false,
+          ingredientStockBlocked: Boolean(p.ingredient_stock_blocked),
           manageStock: Boolean(p.manage_stock),
           stockQuantity: Number(p.stock_quantity ?? 0),
           lowStockThreshold: Number(p.low_stock_threshold ?? 5),
@@ -136,6 +167,39 @@ const AdminPage = () => {
     };
     fetch();
   }, [activeOrgId]);
+
+  // Identifica o administrador no OneSignal sem abrir prompt automaticamente.
+  useEffect(() => {
+    if (!authenticated || !activeOrgId) return;
+    let active = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!active || !user) return;
+      await identifyOneSignalUser(`admin:${user.id}`, {
+        tipo: 'admin',
+        organization_id: activeOrgId,
+      });
+    })();
+    return () => { active = false; };
+  }, [authenticated, activeOrgId]);
+
+  const enableAdminPush = async () => {
+    if (!activeOrgId) {
+      toast.error('Selecione uma loja antes de ativar as notificações.');
+      return;
+    }
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Sessão administrativa não encontrada.');
+      return;
+    }
+    const ok = await requestOneSignalPermission(`admin:${user.id}`, {
+      tipo: 'admin',
+      organization_id: activeOrgId,
+    });
+    if (ok) toast.success('Notificações push ativadas neste dispositivo.');
+    else toast.info('Push não foi ativado. Verifique a permissão de notificações do navegador.');
+  };
 
   // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado
   useEffect(() => {
@@ -166,7 +230,10 @@ const AdminPage = () => {
   useEffect(() => {
     if (!activeOrgId) return;
     const fetch = async () => {
-      const { data } = await supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle();
+      const [{ data }, { data: fiscalOrg }] = await Promise.all([
+        supabase.from('settings').select('*').eq('organization_id', activeOrgId).maybeSingle(),
+        supabase.from('organizations').select('cnpj, razao_social').eq('id', activeOrgId).maybeSingle(),
+      ]);
       if (data) {
         setSettingsId(data.id);
         setSettings({
@@ -188,13 +255,13 @@ const AdminPage = () => {
           payPixEnabled: (data as any).pay_pix_enabled !== false,
           payCardTerminalEnabled: Boolean((data as any).pay_card_terminal_enabled),
           payCardOnlineEnabled: Boolean((data as any).pay_card_online_enabled),
-          fiscalEnabled: Boolean((data as any).fiscal_enabled),
-          fiscalCnpj: (data as any).fiscal_cnpj || '',
-          fiscalRazao: (data as any).fiscal_razao || '',
-          fiscalIe: (data as any).fiscal_ie || '',
-          fiscalRegime: (data as any).fiscal_regime || '',
-          fiscalCsc: (data as any).fiscal_csc || '',
-          fiscalToken: (data as any).fiscal_token || '',
+          fiscalEnabled: false,
+          fiscalCnpj: (fiscalOrg as any)?.cnpj || '',
+          fiscalRazao: (fiscalOrg as any)?.razao_social || '',
+          fiscalIe: '',
+          fiscalRegime: '',
+          fiscalCsc: '',
+          fiscalToken: '',
           balancaModelo: ((data as any).balanca_modelo as any) || 'generic',
           balancaBaudRate: Number((data as any).balanca_baud_rate ?? 9600),
         });
@@ -247,19 +314,46 @@ const AdminPage = () => {
     }
   };
 
-  // Somente colunas estáveis da tabela externa. Delivery, balança, fiscal e
-  // pagamentos são persistidos pelos painéis específicos e nunca entram aqui.
+  const persistAuthoritativeCombo = async (combo: StoreSettings['combo']) => {
+    if (!activeOrgId) throw new Error('Loja não identificada para salvar o combo.');
+    const { data, error } = await supabase.rpc('visionfood_upsert_combo_product' as any, {
+      _org: activeOrgId,
+      _name: combo?.name || '',
+      _price: Number(combo?.price || 0),
+      _description: combo?.description || '',
+      _image: combo?.image || combo?.emoji || '',
+    });
+    const result: any = data;
+    if (error) throw error;
+    if (!result?.ok || !result?.product_id) throw new Error(result?.reason || 'combo_sync_failed');
+    return result;
+  };
+
+  // Preferências não secretas da loja. Credenciais Mercado Pago permanecem
+  // exclusivamente no MercadoPagoCard/RPC seguro e nunca entram neste payload.
   const saveSettingsToDb = async (s: StoreSettings) => {
     const fields: Array<[string, SettingsPayload]> = [
       ['storeName', { store_name: s.storeName }],
       ['whatsapp', { whatsapp_number: s.whatsappNumber }],
-      ['combo', { combo: s.combo as any }],
       ['banners', { banners: s.banners as any }],
       ['categoryIcons', { category_icons: s.categoryIcons as any }],
       ['categories', { categories: s.categories as any }],
       ['instagram', { instagram_url: s.instagramUrl || '' }],
+      ['balancaBaudRate', { balanca_baud_rate: s.balancaBaudRate === 4800 ? 4800 : 9600 }],
+      ['pixKeyManual', { pix_key_manual: s.pixKeyManual || '' }],
+      ['payCashEnabled', { pay_cash_enabled: Boolean(s.payCashEnabled) }],
+      ['payPixEnabled', { pay_pix_enabled: Boolean(s.payPixEnabled) }],
+      ['payCardTerminalEnabled', { pay_card_terminal_enabled: Boolean(s.payCardTerminalEnabled) }],
+      ['payCardOnlineEnabled', { pay_card_online_enabled: Boolean(s.payCardOnlineEnabled) }],
+      ['mpTerminalId', { mp_terminal_id: s.mpTerminalId || '' }],
     ];
     let failed = false;
+    try {
+      await persistAuthoritativeCombo(s.combo);
+    } catch (error) {
+      failed = true;
+      showDatabaseError('saveSettings.combo', error);
+    }
     for (const [field, payload] of fields) {
       try {
         await persistSettingsFields(payload, `saveSettings.${field}`);
@@ -270,6 +364,34 @@ const AdminPage = () => {
     if (failed) {
       throw new Error('Uma ou mais preferências não puderam ser salvas.');
     }
+  };
+
+  const saveFiscalCompany = async () => {
+    if (!activeOrgId) {
+      toast.error('Loja não identificada.');
+      return;
+    }
+
+    const cnpj = (settings.fiscalCnpj || '').trim();
+    const cnpjDigits = cnpj.replace(/\D/g, '');
+    if (cnpj && cnpjDigits.length !== 14) {
+      toast.error('CNPJ inválido. Informe os 14 dígitos.');
+      return;
+    }
+
+    const razaoSocial = (settings.fiscalRazao || '').trim();
+    const { error } = await supabase
+      .from('organizations')
+      .update({ cnpj, razao_social: razaoSocial } as any)
+      .eq('id', activeOrgId);
+
+    if (error) {
+      showDatabaseError('saveFiscalCompany', error);
+      return;
+    }
+
+    toast.success('Dados cadastrais salvos.');
+    await refreshOrg();
   };
 
   const saveCategories = async (updated: StoreSettings, previous: StoreSettings) => {
@@ -416,7 +538,7 @@ const AdminPage = () => {
   };
 
   const [form, setForm] = useState({
-    name: '', price: '', category: 'hamburgueres' as string,
+    name: '', price: '', costPrice: '', markupPercent: '', category: 'hamburgueres' as string,
     image: '🍔', removableIngredients: '', extras: '',
     ingredients: '', description: '',
     manageStock: false, stockQuantity: '0', lowStockThreshold: '5',
@@ -497,10 +619,15 @@ const AdminPage = () => {
       }
 
       setActiveOrgId(initialOrg);
-      if (initialOrg) {
-        try { await setOrgId(initialOrg); } catch (e) { console.error('[Admin] setOrgId failed', e); }
-      }
       setAuthenticated(true);
+
+      // O contexto público da loja é complementar ao shell administrativo.
+      // Não bloqueia mais a abertura do ADM caso a leitura pública demore.
+      if (initialOrg) {
+        void setOrgId(initialOrg).catch((e) => {
+          console.error('[Admin] setOrgId failed', e);
+        });
+      }
     } catch (e) {
       console.error('[Admin] bootstrapSession failed', e);
       setError('Não foi possível carregar o painel. Tente novamente.');
@@ -571,7 +698,7 @@ const AdminPage = () => {
   const resetForm = () => {
     if (productPreviewUrl) URL.revokeObjectURL(productPreviewUrl);
     setProductPreviewUrl(null);
-    setForm({ name: '', price: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false, prepTimeMin: '0' });
+    setForm({ name: '', price: '', costPrice: '', markupPercent: '', category: 'hamburgueres', image: '🍔', removableIngredients: '', extras: '', ingredients: '', description: '', manageStock: false, stockQuantity: '0', lowStockThreshold: '5', soldByWeight: false, codigoBarras: '', dataVencimento: '', lote: '', alertaVencimento: false, prepTimeMin: '0' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -582,7 +709,10 @@ const AdminPage = () => {
       setProductPreviewUrl(null);
     }
     setForm({
-      name: p.name, price: p.price.toString(), category: p.category,
+      name: p.name, price: p.price.toString(),
+      costPrice: p.costPrice == null ? '' : String(p.costPrice),
+      markupPercent: p.markupPercent == null ? '' : String(p.markupPercent),
+      category: p.category,
       image: p.image, removableIngredients: p.removableIngredients.join(', '),
       extras: p.extras.map(e => `${e.name}:${e.price}`).join(', '),
       ingredients: (p.ingredients || []).join('\n'),
@@ -599,6 +729,48 @@ const AdminPage = () => {
     });
     setEditingProduct(p);
     setShowForm(true);
+  };
+
+  const parsePricingNumber = (value: string) => {
+    if (value.trim() === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const formatPricingInput = (value: number) =>
+    String(Math.round((value + Number.EPSILON) * 100) / 100);
+
+  const handleCostPriceChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(value);
+      const markup = parsePricingNumber(prev.markupPercent);
+      const suggestedPrice = cost !== null && cost >= 0 && markup !== null && markup >= -100
+        ? formatPricingInput(cost * (1 + markup / 100))
+        : prev.price;
+      return { ...prev, costPrice: value, price: suggestedPrice };
+    });
+  };
+
+  const handleMarkupPercentChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(prev.costPrice);
+      const markup = parsePricingNumber(value);
+      const suggestedPrice = cost !== null && cost >= 0 && markup !== null && markup >= -100
+        ? formatPricingInput(cost * (1 + markup / 100))
+        : prev.price;
+      return { ...prev, markupPercent: value, price: suggestedPrice };
+    });
+  };
+
+  const handleSellingPriceChange = (value: string) => {
+    setForm(prev => {
+      const cost = parsePricingNumber(prev.costPrice);
+      const price = parsePricingNumber(value);
+      const markup = cost !== null && cost > 0 && price !== null && price >= 0
+        ? formatPricingInput(((price / cost) - 1) * 100)
+        : prev.markupPercent;
+      return { ...prev, price: value, markupPercent: markup };
+    });
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -630,6 +802,17 @@ const AdminPage = () => {
     }
     if (!activeOrgId) { toast.error('Selecione uma loja primeiro.'); return; }
 
+    const costPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice);
+    const markupPercent = form.markupPercent.trim() === '' ? null : Number(form.markupPercent);
+    if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) {
+      toast.error('Informe um custo válido, maior ou igual a zero.');
+      return;
+    }
+    if (markupPercent !== null && (!Number.isFinite(markupPercent) || markupPercent < -100)) {
+      toast.error('Informe um percentual válido, maior ou igual a -100%.');
+      return;
+    }
+
     // Garante que a requisição carrega o token do usuário logado (RLS)
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -649,13 +832,17 @@ const AdminPage = () => {
       organization_id: activeOrgId,
       name: form.name.trim(),
       price: parseFloat(form.price) || 0,
+      cost_price: costPrice,
+      markup_percent: markupPercent,
       category: form.category || 'outros',
       image: form.image.trim() || '🍔',
       removable_ingredients: removable,
       extras: parsedExtras,
       ingredients: ingredientsList,
       description: form.description.trim(),
-      available: true,
+      // Ao editar, preserve a disponibilidade atual. O banco continua sendo a autoridade
+      // para bloqueios automáticos por estoque insuficiente de ingredientes.
+      available: editingProduct ? editingProduct.available !== false : true,
       manage_stock: form.manageStock,
       stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
       low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
@@ -704,6 +891,7 @@ const AdminPage = () => {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
         manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
+        costPrice: dbPayload.cost_price, markupPercent: dbPayload.markup_percent,
         soldByWeight: dbPayload.sold_by_weight,
         codigoBarras: dbPayload.codigo_barras || '',
         dataVencimento: dbPayload.data_vencimento,
@@ -713,12 +901,16 @@ const AdminPage = () => {
     } else if (data) {
       setProducts(prev => [...prev, {
         id: data.id, name: data.name, price: Number(data.price),
+        costPrice: (data as any).cost_price == null ? null : Number((data as any).cost_price),
+        markupPercent: (data as any).markup_percent == null ? null : Number((data as any).markup_percent),
         category: data.category as Product['category'], image: data.image,
         removableIngredients: (data.removable_ingredients as string[]) || [],
         extras: (data.extras as { name: string; price: number }[]) || [],
         isCombo: data.is_combo || false,
         ingredients: ((data as any).ingredients as string[]) || [],
         description: (data as any).description || '',
+        available: (data as any).available !== false,
+        ingredientStockBlocked: Boolean((data as any).ingredient_stock_blocked),
         manageStock: Boolean((data as any).manage_stock),
         stockQuantity: Number((data as any).stock_quantity ?? 0),
         lowStockThreshold: Number((data as any).low_stock_threshold ?? 5),
@@ -795,7 +987,6 @@ const AdminPage = () => {
   }
 
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
     <div className="admin-shell min-h-screen pb-8 text-zinc-100">
       <InstallAppButton />
 
@@ -818,7 +1009,7 @@ const AdminPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Notificações">
+          <button onClick={enableAdminPush} className="relative p-2.5 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 transition-colors" aria-label="Ativar notificações push" title="Ativar notificações push">
             <Bell className="w-4 h-4 text-zinc-300" />
             <span className="absolute top-2 right-2 w-2 h-2 bg-[#FF7A00] rounded-full ring-2 ring-[#0B0B0D]"></span>
           </button>
@@ -857,7 +1048,7 @@ const AdminPage = () => {
           if (!activeSlug) return null;
           return (
             <a
-              href={`/loja/${activeSlug}`}
+              href={getKioskHomePath(activeSlug)}
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-3 border border-[#FF7A00]/40 rounded-2xl text-[#FF7A00] font-bold text-[11px] uppercase tracking-widest whitespace-nowrap flex items-center gap-1.5 hover:bg-[#FF7A00]/10 transition-colors active:scale-95"
@@ -874,6 +1065,7 @@ const AdminPage = () => {
         const ALL_TABS = [
           { key: 'dashboard' as const, label: 'Dashboard', icon: Zap, requires: 'admin' as const, quick: true },
           { key: 'orders' as const, label: 'Pedidos', icon: ClipboardList, requires: 'admin' as const, quick: true },
+          { key: 'mesas' as const, label: 'Mesas', icon: MapPin, requires: 'admin' as const, quick: true },
           { key: 'products' as const, label: 'Produtos', icon: Boxes, requires: 'admin' as const, quick: true },
           { key: 'leads' as const, label: 'Clientes', icon: Users, requires: 'admin' as const, quick: true },
           { key: 'financeiro' as const, label: 'Financeiro', icon: CreditCard, requires: 'admin' as const, quick: true },
@@ -958,18 +1150,19 @@ const AdminPage = () => {
                     const active = tab === t.key;
                     const Icon = t.icon;
                     return (
-                      <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
-                          active
-                            ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
-                            : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
-                        }`}
-                      >
-                        {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
-                        <span className="truncate font-medium">{t.label}</span>
-                      </button>
+                      <SheetClose asChild key={t.key}>
+                        <button
+                          onClick={() => setTab(t.key)}
+                          className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center gap-3 border transition-colors ${
+                            active
+                              ? 'bg-[#FF7A00]/10 text-[#FF7A00] border-[#FF7A00]/40'
+                              : 'bg-white/[0.03] text-zinc-300 border-white/[0.06] hover:border-white/15 hover:text-white'
+                          }`}
+                        >
+                          {Icon && <Icon className="w-4 h-4 flex-shrink-0" />}
+                          <span className="truncate font-medium">{t.label}</span>
+                        </button>
+                      </SheetClose>
                     );
                   })}
                 </div>
@@ -993,6 +1186,13 @@ const AdminPage = () => {
       `}</style>
 
 
+      <RuntimeErrorBoundary resetKey={tab} compact homeHref="/admin?tab=orders">
+      <Suspense fallback={
+        <div className="mx-4 mt-6 kiosk-card p-6 flex items-center justify-center gap-3 text-sm text-zinc-400">
+          <Loader2 className="w-5 h-5 animate-spin text-[#FF7A00]" />
+          <span>Carregando módulo...</span>
+        </div>
+      }>
       {/* Bloqueio por inadimplência (apenas lojista) */}
       {currentAdmin?.tier === 'admin' && (subscriptionStatus === 'inadimplente' || subscriptionStatus === 'cancelado') && tab !== 'assinatura' ? (
         <div className="mx-4 mt-6 kiosk-card p-8 text-center space-y-4 border-2 border-destructive/40">
@@ -1013,6 +1213,12 @@ const AdminPage = () => {
       <>
       <VencimentoBanner organizationId={activeOrgId} />
       {tab === 'orders' && <OrdersPanel organizationId={activeOrgId} />}
+      {tab === 'mesas' && (
+        <MesasPanel
+          organizationId={activeOrgId}
+          orgSlug={allOrgs.find(o => o.id === activeOrgId)?.slug || org?.slug || null}
+        />
+      )}
       {tab === 'dashboard' && <DashboardPanel organizationId={activeOrgId} onNavigate={(t) => setTab(t as any)} />}
       {tab === 'senhas' && (
         <SenhasPanel
@@ -1191,9 +1397,72 @@ const AdminPage = () => {
                 </div>
                 <p className="text-[11px] text-zinc-500">Foque neste campo e bipe o produto. O leitor envia o código e pressiona Enter automaticamente.</p>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço (R$)'}</label>
-                <input placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'} type="number" step="0.01" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              <div className="rounded-xl p-3 bg-muted/30 border border-border space-y-3">
+                <div>
+                  <h4 className="text-sm font-semibold">Precificação</h4>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Informe o custo e o acréscimo desejado para calcular o preço automaticamente. O preço final continua editável.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Custo por Kg (R$)' : 'Custo do produto (R$)'}</label>
+                    <input
+                      placeholder={form.soldByWeight ? 'Ex: 32.00' : 'Ex: 12.00'}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.costPrice}
+                      onChange={e => handleCostPriceChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">Acréscimo sobre o custo (%)</label>
+                    <input
+                      placeholder="Ex: 50"
+                      type="number"
+                      min="-100"
+                      step="0.01"
+                      value={form.markupPercent}
+                      onChange={e => handleMarkupPercentChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Preço por Kg (R$)' : 'Preço de venda (R$)'}</label>
+                    <input
+                      placeholder={form.soldByWeight ? 'Ex: 59.90' : 'Ex: 25.90'}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={form.price}
+                      onChange={e => handleSellingPriceChange(e.target.value)}
+                      className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+                {form.costPrice !== '' && form.price !== '' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <span className="text-muted-foreground">{form.soldByWeight ? 'Resultado bruto estimado por Kg' : 'Resultado bruto estimado por unidade'}</span>
+                      <strong className="block mt-1">
+                        {formatCurrency((parsePricingNumber(form.price) || 0) - (parsePricingNumber(form.costPrice) || 0))}
+                      </strong>
+                    </div>
+                    <div className="rounded-lg border border-border bg-background/50 px-3 py-2">
+                      <span className="text-muted-foreground">Margem bruta estimada</span>
+                      <strong className="block mt-1">
+                        {(parsePricingNumber(form.price) || 0) > 0
+                          ? `${((((parsePricingNumber(form.price) || 0) - (parsePricingNumber(form.costPrice) || 0)) / (parsePricingNumber(form.price) || 1)) * 100).toFixed(1)}%`
+                          : '—'}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  No Financeiro, uma ficha técnica completa tem prioridade. Este custo direto será usado apenas como fallback do CMV quando a ficha técnica não estiver completa.
+                </p>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground mb-1 block">Categoria</label>
@@ -1443,6 +1712,9 @@ const AdminPage = () => {
                 <label className="text-xs text-muted-foreground mb-1 block flex items-center gap-1">
                   <Image className="w-3 h-3" /> Imagem do Banner
                 </label>
+                <p className="text-[11px] text-muted-foreground mb-2">
+                  Tamanho recomendado: 1920 × 768 px (proporção 2,5:1). Mantenha textos e elementos importantes no centro, pois a imagem pode ser recortada conforme a tela.
+                </p>
                 <div className="flex gap-2">
                   <label className={`flex-1 touch-btn flex items-center justify-center gap-2 py-3 rounded-lg cursor-pointer border-2 border-dashed border-border hover:border-primary transition-colors ${uploadingBannerIdx === idx ? 'opacity-50 pointer-events-none' : ''}`}>
                     {uploadingBannerIdx === idx ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
@@ -1496,9 +1768,6 @@ const AdminPage = () => {
       {tab === 'settings' && (
         <div className="px-4 space-y-4">
           <StorageUsageCard organizationId={activeOrgId} />
-
-          {currentAdmin?.tier === 'master' && <MasterRecoveryPinCard userId={currentAdmin.id} />}
-
 
 
           <div className="kiosk-card p-4 space-y-3">
@@ -1687,15 +1956,34 @@ const AdminPage = () => {
           </div>
 
           <div className="kiosk-card p-4 space-y-4">
-            <h3 className="font-bold">📱 WhatsApp da Cozinha</h3>
-            <input placeholder="Número com código do país (ex: 5562994995768)" value={settings.whatsappNumber} onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
-            <p className="text-xs text-muted-foreground">Este número também é usado no ícone do WhatsApp do rodapé do totem.</p>
-          </div>
+            <div>
+              <h3 className="font-bold">🌐 Redes sociais e contato</h3>
+              <p className="text-xs text-muted-foreground mt-1">Os canais preenchidos aparecem na tela inicial da loja. Campos vazios ficam ocultos para o cliente.</p>
+            </div>
 
-          <div className="kiosk-card p-4 space-y-4">
-            <h3 className="font-bold">📷 Link do Instagram (rodapé)</h3>
-            <input placeholder="https://instagram.com/seuperfil" value={settings.instagramUrl || ''} onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={200} />
-            <p className="text-xs text-muted-foreground">Cole o link completo do perfil. Aparecerá no rodapé da tela inicial.</p>
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">WhatsApp da loja</label>
+              <input
+                placeholder="Número com código do país (ex: 5562994995768)"
+                value={settings.whatsappNumber}
+                onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={20}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Também permanece sendo o número utilizado pela operação da cozinha onde esse campo já é usado.</p>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted-foreground mb-1 block">Instagram</label>
+              <input
+                placeholder="https://instagram.com/seuperfil"
+                value={settings.instagramUrl || ''}
+                onChange={e => setSettings({ ...settings, instagramUrl: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={200}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Cole o link completo do perfil para exibir o atalho na home.</p>
+            </div>
           </div>
 
           {/* Imagem de compartilhamento / Favicon */}
@@ -1795,83 +2083,69 @@ const AdminPage = () => {
         <div className="px-4 space-y-4">
           <FiscalExportCard organizationId={activeOrgId} />
 
-          <div className="kiosk-card p-4 space-y-3">
+          <div className="kiosk-card p-4 space-y-3 border border-orange-600/30">
             <div className="flex items-start gap-3">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${settings.fiscalEnabled ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-orange-600/15 text-orange-400">
                 <FileText className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <p className="font-semibold text-sm">Emissão de Nota Fiscal Eletrônica (NFC-e)</p>
-                <p className="text-[11px] text-muted-foreground">
-                  {settings.fiscalEnabled
-                    ? 'Ativa. Os pedidos poderão registrar status fiscal.'
-                    : 'Desativada. Ative para preencher os dados fiscais da sua loja.'}
+                <p className="font-semibold text-sm">Fiscal e Contabilidade</p>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Atualmente o VisionFood gera comprovante interno e exportação CSV para a contabilidade.
+                  Emissão automática de NFC-e/SEFAZ ainda não está habilitada.
                 </p>
               </div>
-              <button
-                role="switch"
-                aria-checked={Boolean(settings.fiscalEnabled)}
-                onClick={async () => {
-                  const updated = { ...settings, fiscalEnabled: !settings.fiscalEnabled };
-                  setSettings(updated);
-                  await saveSettingsToDb(updated);
-                }}
-                className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors ${settings.fiscalEnabled ? 'bg-primary' : 'bg-muted'}`}
-              >
-                <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${settings.fiscalEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
             </div>
           </div>
 
-          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="font-bold flex items-center gap-2"><Building2 className="w-5 h-5 text-primary" /> Dados da Empresa</h3>
+          <div className="kiosk-card p-4 space-y-3">
+            <h3 className="font-bold flex items-center gap-2">
+              <Building2 className="w-5 h-5 text-primary" /> Dados Cadastrais da Empresa
+            </h3>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">CNPJ</label>
-              <input placeholder="00.000.000/0000-00" value={settings.fiscalCnpj || ''} onChange={e => setSettings({ ...settings, fiscalCnpj: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={20} />
+              <input
+                placeholder="00.000.000/0000-00"
+                value={settings.fiscalCnpj || ''}
+                onChange={e => setSettings({ ...settings, fiscalCnpj: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={20}
+              />
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">Razão Social</label>
-              <input placeholder="Razão Social da empresa" value={settings.fiscalRazao || ''} onChange={e => setSettings({ ...settings, fiscalRazao: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={120} />
+              <input
+                placeholder="Razão Social da empresa"
+                value={settings.fiscalRazao || ''}
+                onChange={e => setSettings({ ...settings, fiscalRazao: e.target.value })}
+                className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                maxLength={120}
+              />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Inscrição Estadual</label>
-              <input placeholder="Ex: 123.456.789.000" value={settings.fiscalIe || ''} onChange={e => setSettings({ ...settings, fiscalIe: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" maxLength={30} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Regime Tributário</label>
-              <select value={settings.fiscalRegime || ''} onChange={e => setSettings({ ...settings, fiscalRegime: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                <option value="">Selecione...</option>
-                <option value="simples">Simples Nacional</option>
-                <option value="presumido">Lucro Presumido</option>
-                <option value="real">Lucro Real</option>
-                <option value="mei">MEI</option>
-              </select>
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Esses dados são usados no comprovante interno. Eles não representam autorização de emissão fiscal.
+            </p>
           </div>
 
-          <div className={`kiosk-card p-4 space-y-3 ${!settings.fiscalEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-            <h3 className="font-bold flex items-center gap-2"><KeyRound className="w-5 h-5 text-accent" /> Credenciais SEFAZ</h3>
-            <p className="text-[11px] text-muted-foreground">CSC e Token de Integração fornecidos pela SEFAZ do seu estado. Usados na futura integração de emissão automática.</p>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">CSC (Código de Segurança do Contribuinte)</label>
-              <input placeholder="Ex: ABCD1234..." value={settings.fiscalCsc || ''} onChange={e => setSettings({ ...settings, fiscalCsc: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={120} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Token de Integração</label>
-              <input placeholder="Cole o token da SEFAZ aqui" value={settings.fiscalToken || ''} onChange={e => setSettings({ ...settings, fiscalToken: e.target.value })} className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary font-mono text-sm" maxLength={200} />
-            </div>
-            <div className="bg-accent/10 border border-accent/30 rounded-lg p-3 text-[11px] text-accent">
-              ⚠️ Interface preparada. A emissão automática junto à SEFAZ será habilitada em uma próxima atualização.
-            </div>
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+            A integração SEFAZ/NFC-e será tratada como um módulo separado. Enquanto ela não existir no backend,
+            o sistema não solicita nem armazena CSC ou token da SEFAZ.
           </div>
 
-          <button onClick={saveSettingsHandler} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2">
-            <Save className="w-4 h-4" /> Salvar Configurações Fiscais
+          <button
+            onClick={saveFiscalCompany}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2"
+          >
+            <Save className="w-4 h-4" /> Salvar Dados Cadastrais
           </button>
         </div>
       )}
+
       </>
       )}
+
+      </Suspense>
+      </RuntimeErrorBoundary>
 
       <footer className="mt-8 pb-28 md:pb-4 text-center text-[11px] text-muted-foreground">Desenvolvido by VisionTek</footer>
 
@@ -1913,7 +2187,6 @@ const AdminPage = () => {
         </div>
       </nav>
     </div>
-    </Suspense>
   );
 };
 

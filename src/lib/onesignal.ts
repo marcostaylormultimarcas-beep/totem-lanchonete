@@ -1,148 +1,162 @@
 import { supabase } from '@/integrations/supabase/client';
 
-/**
- * Dispara uma notificação push via OneSignal quando um ingrediente zera.
- * Lê o App ID atualizado direto da tabela `system_settings`.
- */
-export async function triggerRupturaNotification(ingredienteNome: string): Promise<void> {
-  try {
-    const { data, error } = await supabase
-      .from('system_settings' as any)
-      .select('onesignal_app_id, onesignal_api_key')
-      .eq('id', 'global')
-      .maybeSingle();
+type OneSignalTags = Record<string, string>;
 
+let sdkPromise: Promise<any | null> | null = null;
+
+const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
+
+export function normalizeOneSignalPhone(value: string): string {
+  let digits = normalizeDigits(value);
+  if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+    digits = `55${digits}`;
+  }
+  return digits;
+}
+
+async function loadSdkScript(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  if ((window as any).OneSignalDeferred) return;
+
+  await new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById('visionfood-onesignal-sdk') as HTMLScriptElement | null;
+    if (existing) {
+      if ((window as any).OneSignalDeferred) { resolve(); return; }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('onesignal_sdk_load_failed')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'visionfood-onesignal-sdk';
+    script.src = 'https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js';
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('onesignal_sdk_load_failed'));
+    document.head.appendChild(script);
+  });
+}
+
+async function getOneSignal(): Promise<any | null> {
+  if (typeof window === 'undefined' || !window.isSecureContext) return null;
+  if (sdkPromise) return sdkPromise;
+
+  sdkPromise = (async () => {
+    const { data, error } = await supabase.rpc('onesignal_public_config' as any);
+    const cfg: any = data;
+    if (error || !cfg?.ok || !cfg?.enabled || !cfg?.app_id) return null;
+
+    await loadSdkScript();
+
+    const w = window as any;
+    w.OneSignalDeferred = w.OneSignalDeferred || [];
+
+    return await new Promise<any | null>((resolve) => {
+      let settled = false;
+      const finish = (value: any | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      const timer = window.setTimeout(() => finish(null), 10_000);
+
+      w.OneSignalDeferred.push(async (OneSignal: any) => {
+        try {
+          await OneSignal.init({
+            appId: cfg.app_id,
+            notifyButton: { enable: false },
+            serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
+            serviceWorkerParam: { scope: '/onesignal/' },
+          });
+          window.clearTimeout(timer);
+          finish(OneSignal);
+        } catch (err) {
+          console.warn('[OneSignal] Falha ao inicializar SDK:', err);
+          window.clearTimeout(timer);
+          finish(null);
+        }
+      });
+    });
+  })().catch((err) => {
+    console.warn('[OneSignal] Inicialização indisponível:', err);
+    sdkPromise = null;
+    return null;
+  });
+
+  return sdkPromise;
+}
+
+export async function identifyOneSignalUser(
+  externalId: string,
+  tags: OneSignalTags = {},
+): Promise<boolean> {
+  const id = externalId.trim();
+  if (!id) return false;
+
+  const OneSignal = await getOneSignal();
+  if (!OneSignal) return false;
+
+  try {
+    await OneSignal.login(id);
+    if (Object.keys(tags).length) {
+      OneSignal.User.addTags(tags);
+    }
+    return true;
+  } catch (err) {
+    console.warn('[OneSignal] Falha ao identificar usuário:', err);
+    return false;
+  }
+}
+
+export async function requestOneSignalPermission(
+  externalId: string,
+  tags: OneSignalTags = {},
+): Promise<boolean> {
+  const OneSignal = await getOneSignal();
+  if (!OneSignal) return false;
+
+  try {
+    await OneSignal.login(externalId.trim());
+    if (Object.keys(tags).length) OneSignal.User.addTags(tags);
+
+    if (!OneSignal.Notifications.permission) {
+      await OneSignal.Notifications.requestPermission();
+    }
+    if (OneSignal.Notifications.permission && !OneSignal.User.PushSubscription.optedIn) {
+      await OneSignal.User.PushSubscription.optIn();
+    }
+    return Boolean(OneSignal.Notifications.permission);
+  } catch (err) {
+    console.warn('[OneSignal] Falha ao ativar notificações:', err);
+    return false;
+  }
+}
+
+/**
+ * Alerta preditivo calculado no ADM. A API key nunca passa pelo navegador:
+ * o RPC valida a organização e enfileira o envio no servidor.
+ */
+export async function triggerPredictiveStockAlert(
+  organizationId: string,
+  ingredienteNome: string,
+  diasRestantes: number,
+): Promise<void> {
+  try {
+    const { data, error } = await supabase.rpc('visionfood_push_predictive_stock', {
+      _org: organizationId,
+      _ingredient_name: ingredienteNome,
+      _days_remaining: Math.max(1, Math.ceil(diasRestantes)),
+    });
+    const result: any = data;
     if (error) {
-      console.warn('[OneSignal] Falha ao ler system_settings:', error.message);
+      console.warn('[OneSignal] Falha ao enfileirar alerta preditivo:', error.message);
       return;
     }
-
-    const appId = (data as any)?.onesignal_app_id?.trim();
-    const apiKey = (data as any)?.onesignal_api_key?.trim();
-
-    if (!appId) {
-      console.warn('[OneSignal] App ID não configurado. Notificação abortada.');
-      return;
+    if (result?.ok === false) {
+      console.warn('[OneSignal] Alerta preditivo não enfileirado:', result.reason);
     }
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json; charset=utf-8',
-    };
-    if (apiKey) headers['Authorization'] = `Basic ${apiKey}`;
-
-    const res = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        app_id: appId,
-        included_segments: ['All'],
-        headings: { pt: '🚨 Ruptura de Estoque' },
-        contents: { pt: `O ingrediente "${ingredienteNome}" zerou! Produtos pausados no totem.` },
-        android_sound: 'notification_sound',
-        ios_sound: 'notification_sound.wav',
-      }),
-    });
-
-    if (!res.ok) {
-      const txt = await res.text();
-      console.warn('[OneSignal] Disparo falhou:', res.status, txt);
-    } else {
-      console.log('[OneSignal] Notificação de ruptura enviada:', ingredienteNome);
-    }
-  } catch (e: any) {
-    console.warn('[OneSignal] Erro inesperado:', e?.message || e);
-  }
-}
-
-/**
- * Dispara um push preditivo (estoque vai acabar nos próximos N dias) para administradores.
- * Usa filtro por tag `tipo = admin` no OneSignal.
- */
-export async function triggerPredictiveStockAlert(ingredienteNome: string, diasRestantes: number): Promise<void> {
-  try {
-    const { data, error } = await supabase
-      .from('system_settings' as any)
-      .select('onesignal_app_id, onesignal_api_key')
-      .eq('id', 'global')
-      .maybeSingle();
-    if (error) { console.warn('[OneSignal] Falha system_settings:', error.message); return; }
-
-    const appId = (data as any)?.onesignal_app_id?.trim();
-    const apiKey = (data as any)?.onesignal_api_key?.trim();
-    if (!appId) { console.warn('[OneSignal] App ID ausente. Push preditivo abortado.'); return; }
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
-    if (apiKey) headers['Authorization'] = `Basic ${apiKey}`;
-
-    const res = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        app_id: appId,
-        filters: [{ field: 'tag', key: 'tipo', relation: '=', value: 'admin' }],
-        headings: { pt: '🚨 Alerta de Estoque' },
-        contents: { pt: `O item ${ingredienteNome} pode acabar em ${diasRestantes} dia(s). Veja a sugestão de compra no painel.` },
-        android_sound: 'notification_sound',
-        ios_sound: 'notification_sound.wav',
-      }),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      console.warn('[OneSignal] Push preditivo falhou:', res.status, txt);
-    } else {
-      console.log('[OneSignal] Push preditivo enviado:', ingredienteNome, diasRestantes);
-    }
-  } catch (e: any) {
-    console.warn('[OneSignal] Erro preditivo:', e?.message || e);
-  }
-}
-
-/**
- * Dispara push para clientes informando que o motoboy saiu para a rota.
- * Usa `include_external_user_ids` com o telefone normalizado como external_id.
- * Se o cliente não estiver inscrito, o OneSignal simplesmente ignora.
- */
-export async function triggerOutForDeliveryPush(customerPhones: string[]): Promise<void> {
-  try {
-    const phones = Array.from(new Set(customerPhones
-      .map(p => (p || '').replace(/\D/g, ''))
-      .filter(p => p.length >= 8)));
-    if (phones.length === 0) { console.warn('[OneSignal] Sem telefones válidos para rota.'); return; }
-
-    const { data, error } = await supabase
-      .from('system_settings' as any)
-      .select('onesignal_app_id, onesignal_api_key')
-      .eq('id', 'global')
-      .maybeSingle();
-    if (error) { console.warn('[OneSignal] Falha system_settings:', error.message); return; }
-
-    const appId = (data as any)?.onesignal_app_id?.trim();
-    const apiKey = (data as any)?.onesignal_api_key?.trim();
-    if (!appId) { console.warn('[OneSignal] App ID ausente. Push de rota abortado.'); return; }
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8' };
-    if (apiKey) headers['Authorization'] = `Basic ${apiKey}`;
-
-    const res = await fetch('https://onesignal.com/api/v1/notifications', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        app_id: appId,
-        include_external_user_ids: phones,
-        channel_for_external_user_ids: 'push',
-        headings: { pt: '🚀 Seu pedido saiu!' },
-        contents: { pt: 'O motoboy já iniciou a rota de entregas do seu bairro e logo chegará até você.' },
-        android_sound: 'notification_sound',
-        ios_sound: 'notification_sound.wav',
-      }),
-    });
-    if (!res.ok) {
-      const txt = await res.text();
-      console.warn('[OneSignal] Push rota falhou:', res.status, txt);
-    } else {
-      console.log('[OneSignal] Push de rota enviado para', phones.length, 'cliente(s).');
-    }
-  } catch (e: any) {
-    console.warn('[OneSignal] Erro rota:', e?.message || e);
+  } catch (err: any) {
+    console.warn('[OneSignal] Erro no alerta preditivo:', err?.message || err);
   }
 }

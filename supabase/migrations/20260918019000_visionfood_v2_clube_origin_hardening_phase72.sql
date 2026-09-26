@@ -1,0 +1,24 @@
+-- Phase 72: never trust a caller-supplied organization as Clube origin.
+create or replace function public.clube_vantagens_catalog(_fallback_org uuid default null)
+returns jsonb language plpgsql security definer set search_path='' as $$
+declare u uuid:=auth.uid(); origem uuid; profile_org uuid; cat text; nome text; items jsonb;
+begin
+ if u is null then return jsonb_build_object('ok',false,'reason','unauthenticated'); end if;
+ select origem_assinatura_empresa_id,organization_id into origem,profile_org from public.profiles where user_id=u limit 1;
+ if origem is null then origem:=profile_org; end if;
+ if origem is null and _fallback_org is not null then return jsonb_build_object('ok',false,'reason','origin_not_linked'); end if;
+ if origem is null then return jsonb_build_object('ok',false,'reason','origin_not_found'); end if;
+ select coalesce(categoria,'outro'),name into cat,nome from public.organizations where id=origem and coalesce(ativo,true)=true;
+ if not found then return jsonb_build_object('ok',false,'reason','origin_not_found'); end if;
+ select coalesce(jsonb_agg(x order by x->>'partner_name'),'[]'::jsonb) into items
+ from (
+   select jsonb_build_object('partner_id',o.id,'partner_name',o.name,'partner_slug',o.slug,'logo_url',o.logo_url,'categoria',coalesce(o.categoria,'outro'),'cupons',
+     coalesce((select jsonb_agg(jsonb_build_object('id',c.id,'codigo',c.codigo,'tipo',coalesce(c.tipo,c.tipo_desconto),'valor',c.valor) order by c.codigo)
+       from public.cupons c where c.organization_id=o.id and coalesce(c.ativo,false)=true and coalesce(c.status,true)=true
+       and (c.data_inicio is null or c.data_inicio<=now()) and (c.data_fim is null or c.data_fim>=now()) and (c.validade is null or c.validade>=now())),'[]'::jsonb)) x
+   from public.parcerias p join public.organizations o on o.id=case when p.org_origem=origem then p.org_parceira else p.org_origem end
+   where (p.org_origem=origem or p.org_parceira=origem) and p.status='active' and p.habilitada_origem and p.habilitada_parceira
+   and coalesce(o.ativo,true)=true and coalesce(o.categoria,'outro')<>cat
+ ) s where jsonb_array_length(x->'cupons')>0;
+ return jsonb_build_object('ok',true,'origem_id',origem,'origem_nome',nome,'origem_categoria',cat,'partners',items);
+end$$;

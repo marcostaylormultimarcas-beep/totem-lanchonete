@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useOrgId } from '@/contexts/OrgContext';
 import StartScreen from '@/components/kiosk/StartScreen';
 import LocationSelect from '@/components/kiosk/LocationSelect';
+import TableSelect from '@/components/kiosk/TableSelect';
+import LocalServiceSelect from '@/components/kiosk/LocalServiceSelect';
 import AddressSelect from '@/components/kiosk/AddressSelect';
 import MenuScreen from '@/components/kiosk/MenuScreen';
 import CartScreen from '@/components/kiosk/CartScreen';
@@ -15,13 +17,30 @@ import PartnersFooter from '@/components/kiosk/PartnersFooter';
 import { CartItem, Product } from '@/data/store';
 import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { toast } from 'sonner';
+import { clearPendingCheckout, loadPendingCheckout } from '@/lib/offlineCheckoutQueue';
+import { getKioskCompanionStatus } from '@/lib/kioskCompanionClient';
+import { clearKioskCustomerBrowserState, isDeviceOwnedKioskStatus } from '@/lib/kioskDeviceMode';
+import { warmKioskPublicData } from '@/lib/kioskPublicDataWarmup';
 
-type Step = 'landing' | 'start' | 'location' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
+type Step = 'landing' | 'start' | 'location' | 'local-service' | 'table' | 'address' | 'menu' | 'cart' | 'checkout' | 'payment' | 'tracking';
 
 const PENDING_ORDER_STORAGE_KEY = 'pending-kiosk-order';
+const ACTIVE_ORDER_STORAGE_KEY = 'active-kiosk-order';
+
+const normalizeDeliveryKey = (value: string) =>
+  (value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
+
+const normalizeCepDigits = (value: string) => (value || '').replace(/\D/g, '').slice(0, 8);
 
 interface PendingOrderState {
+  organizationId?: string;
   step: Step;
   orderType: 'local' | 'viagem';
   cart: CartItem[];
@@ -35,13 +54,24 @@ interface PendingOrderState {
   bairroNome: string;
   bairroTaxa: number;
   bairroTempo: number;
+  deliveryCep: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAccuracyM?: number | null;
+  tableToken: string;
+  tableLabel: string;
+  appliedCoupon?: AppliedCoupon | null;
+  scheduledFor?: string | null;
 }
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { slug } = useParams<{ slug: string }>();
+  const [searchParams] = useSearchParams();
   const orgId = useOrgId();
   const homePath = slug ? `/cardapio/${slug}` : '/';
+  const isPhysicalKioskRoute = location.pathname.startsWith('/cardapio/');
   const [step, setStep] = useState<Step>('landing');
   const [orderType, setOrderType] = useState<'local' | 'viagem'>('local');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -55,27 +85,45 @@ const Index = () => {
   const [bairroNome, setBairroNome] = useState('');
   const [bairroTaxa, setBairroTaxa] = useState(0);
   const [bairroTempo, setBairroTempo] = useState(0);
+  const [deliveryCep, setDeliveryCep] = useState('');
+  const [deliveryLat, setDeliveryLat] = useState<number | null>(null);
+  const [deliveryLng, setDeliveryLng] = useState<number | null>(null);
+  const [deliveryAccuracyM, setDeliveryAccuracyM] = useState<number | null>(null);
   const [trackingOrderId, setTrackingOrderId] = useState('');
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
+  const [openScheduleOnCart, setOpenScheduleOnCart] = useState(false);
+  const [resumePaymentAfterSchedule, setResumePaymentAfterSchedule] = useState(false);
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean>(true);
+  const [tableToken, setTableToken] = useState('');
+  const [tableLabel, setTableLabel] = useState('');
+  const tableQrValidationGenerationRef = useRef(0);
+  const [deviceOwnedKiosk, setDeviceOwnedKiosk] = useState(false);
+  const [deviceModeOrgId, setDeviceModeOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orgId) { setDeliveryEnabled(true); return; }
     let cancelled = false;
-    supabase
-      .from('settings')
-      .select('delivery_enabled, store_name, share_image')
-      .eq('organization_id', orgId)
-      .maybeSingle()
-      .then(({ data }) => {
+
+    const loadStorefrontConfig = async () => {
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
         if (cancelled) return;
-        setDeliveryEnabled((data as any)?.delivery_enabled !== false);
-        // Inject favicon + Open Graph dynamically based on store settings
-        const shareImage = (data as any)?.share_image as string | undefined;
-        const storeName = (data as any)?.store_name as string | undefined;
+
+        const enabled = data.delivery_enabled !== false;
+        setDeliveryEnabled(enabled);
+        if (!enabled) {
+          setOrderType(prev => {
+            if (prev !== 'viagem') return prev;
+            toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
+            return 'local';
+          });
+        }
+
+        const shareImage = data.share_image;
+        const storeName = data.store_name;
         if (storeName) document.title = storeName;
         if (shareImage) {
           const setMeta = (selector: string, attr: string, value: string, create: () => HTMLElement) => {
@@ -91,34 +139,39 @@ const Index = () => {
             setMeta('meta[property="og:title"]', 'content', storeName, () => { const m = document.createElement('meta'); m.setAttribute('property', 'og:title'); return m; });
           }
         }
-      });
-    const channel = supabase
-      .channel('settings-delivery-' + orgId)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        setDeliveryEnabled(payload.new?.delivery_enabled !== false);
-        if (payload.new?.delivery_enabled === false && orderType === 'viagem') {
-          setOrderType('local');
-          toast.info('A loja pausou as entregas. Modo alterado para Comer no Local.');
-        }
-      })
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
+      } catch (error) {
+        if (!cancelled) console.warn('[Index] storefront config error:', error);
+      }
+    };
+
+    loadStorefrontConfig();
+    const pollId = window.setInterval(loadStorefrontConfig, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   useEffect(() => {
+    // Enquanto a rota física ainda resolve o companion — e durante todo o modo
+    // device-owned — não tocar em sessão de cliente nem iniciar auth online.
+    if (isPhysicalKioskRoute && (deviceModeOrgId !== orgId || deviceOwnedKiosk)) {
+      setIsAuthenticated(false);
+      return;
+    }
+
     let isMounted = true;
+    let restored = false;
 
-    const syncAuthAndRestoreOrder = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!isMounted) return;
-
-      setIsAuthenticated(Boolean(session));
-
+    const restorePendingOrder = () => {
+      if (restored) return;
       const pendingOrder = sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY);
-      if (!session || !pendingOrder) return;
+      if (!pendingOrder) return;
 
+      restored = true;
       try {
         const parsed = JSON.parse(pendingOrder) as PendingOrderState;
+        if (parsed.organizationId && parsed.organizationId !== orgId) {
+          console.warn('[Index] pending auth checkout belongs to another organization; discarding it.');
+          return;
+        }
         setOrderType(parsed.orderType);
         setCart(parsed.cart || []);
         setCustomerName(parsed.customerName || '');
@@ -130,7 +183,15 @@ const Index = () => {
         setBairroNome(parsed.bairroNome || '');
         setBairroTaxa(parsed.bairroTaxa || 0);
         setBairroTempo(parsed.bairroTempo || 0);
+        setDeliveryCep(parsed.deliveryCep || '');
+        setDeliveryLat(typeof parsed.deliveryLat === 'number' && Number.isFinite(parsed.deliveryLat) ? parsed.deliveryLat : null);
+        setDeliveryLng(typeof parsed.deliveryLng === 'number' && Number.isFinite(parsed.deliveryLng) ? parsed.deliveryLng : null);
+        setDeliveryAccuracyM(typeof parsed.deliveryAccuracyM === 'number' && Number.isFinite(parsed.deliveryAccuracyM) ? parsed.deliveryAccuracyM : null);
         setCustomerCpf(parsed.customerCpf || '');
+        setTableToken(parsed.tableToken || '');
+        setTableLabel(parsed.tableLabel || '');
+        setAppliedCoupon(parsed.appliedCoupon || null);
+        setScheduledFor(parsed.scheduledFor || null);
         setStep(parsed.step || 'checkout');
         toast.success('Login realizado. Continue seu pedido.');
       } catch (error) {
@@ -140,23 +201,200 @@ const Index = () => {
       }
     };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const restoreActiveOrder = () => {
+      if (restored) return;
+      const activeOrder = sessionStorage.getItem(ACTIVE_ORDER_STORAGE_KEY);
+      if (!activeOrder) return;
+
+      try {
+        const parsed = JSON.parse(activeOrder) as PendingOrderState;
+        if (parsed.organizationId && parsed.organizationId !== orgId) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+          return;
+        }
+        if ((parsed.step !== 'checkout' && parsed.step !== 'payment') || !parsed.cart?.length) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+          return;
+        }
+
+        restored = true;
+        setOrderType(parsed.orderType);
+        setCart(parsed.cart);
+        setCustomerName(parsed.customerName || '');
+        setCustomerPhone(parsed.customerPhone || '');
+        setCustomerCpf(parsed.customerCpf || '');
+        setDeliveryAddress(parsed.deliveryAddress || '');
+        setDeliveryReference(parsed.deliveryReference || '');
+        setDeliveryRecipient(parsed.deliveryRecipient || '');
+        setBairroId(parsed.bairroId || '');
+        setBairroNome(parsed.bairroNome || '');
+        setBairroTaxa(parsed.bairroTaxa || 0);
+        setBairroTempo(parsed.bairroTempo || 0);
+        setDeliveryCep(parsed.deliveryCep || '');
+        setDeliveryLat(typeof parsed.deliveryLat === 'number' && Number.isFinite(parsed.deliveryLat) ? parsed.deliveryLat : null);
+        setDeliveryLng(typeof parsed.deliveryLng === 'number' && Number.isFinite(parsed.deliveryLng) ? parsed.deliveryLng : null);
+        setDeliveryAccuracyM(typeof parsed.deliveryAccuracyM === 'number' && Number.isFinite(parsed.deliveryAccuracyM) ? parsed.deliveryAccuracyM : null);
+        setTableToken(parsed.tableToken || '');
+        setTableLabel(parsed.tableLabel || '');
+        setAppliedCoupon(parsed.appliedCoupon || null);
+        setScheduledFor(parsed.scheduledFor || null);
+        setStep(parsed.step);
+        toast.info('Seu pedido em andamento foi recuperado.');
+      } catch (error) {
+        sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+        console.error('Erro ao restaurar checkout em andamento:', error);
+      }
+    };
+
+    const applySession = (session: any) => {
       if (!isMounted) return;
       setIsAuthenticated(Boolean(session));
+      if (session) {
+        restorePendingOrder();
+        restoreActiveOrder();
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session);
     });
 
-    syncAuthAndRestoreOrder();
+    const syncInitialSession = async () => {
+      let timer: number | undefined;
+      try {
+        const result = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise<never>((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error('auth_session_timeout')), 5000);
+          }),
+        ]);
+        applySession(result.data.session);
+      } catch (error) {
+        if (isMounted) console.warn('[Index] initial auth session unavailable:', error);
+      } finally {
+        if (timer) window.clearTimeout(timer);
+      }
+    };
+
+    void syncInitialSession();
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [isPhysicalKioskRoute, deviceModeOrgId, deviceOwnedKiosk, orgId]);
 
-  // Reseta carrinho/estado ao trocar de loja (orgId muda)
+  useEffect(() => {
+    if (!orgId || deviceOwnedKiosk || !isAuthenticated || cart.length === 0) return;
+    if (step !== 'checkout' && step !== 'payment') return;
+
+    const activeOrder: PendingOrderState = {
+      organizationId: orgId,
+      step,
+      orderType,
+      cart,
+      customerName,
+      customerPhone,
+      customerCpf,
+      deliveryAddress,
+      deliveryReference,
+      deliveryRecipient,
+      bairroId,
+      bairroNome,
+      bairroTaxa,
+      bairroTempo,
+      deliveryCep,
+      deliveryLat,
+      deliveryLng,
+      deliveryAccuracyM,
+      tableToken,
+      tableLabel,
+      appliedCoupon,
+      scheduledFor,
+    };
+
+    sessionStorage.setItem(ACTIVE_ORDER_STORAGE_KEY, JSON.stringify(activeOrder));
+  }, [
+    orgId, deviceOwnedKiosk, isAuthenticated, step, orderType, cart,
+    customerName, customerPhone, customerCpf, deliveryAddress, deliveryReference,
+    deliveryRecipient, bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+    deliveryLat, deliveryLng, deliveryAccuracyM,
+    tableToken, tableLabel, appliedCoupon, scheduledFor,
+  ]);
+
+  // A rota /cardapio/:slug só entra em modo device-owned quando o companion
+  // local está enrolado para a mesma organização. O cardápio web mantém auth normal.
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isPhysicalKioskRoute || !orgId) {
+      setDeviceOwnedKiosk(false);
+      setDeviceModeOrgId(orgId || null);
+      return;
+    }
+
+    setDeviceModeOrgId(null);
+    const resolveDeviceMode = async () => {
+      try {
+        const status = await getKioskCompanionStatus();
+        if (cancelled) return;
+
+        const deviceOwned = isDeviceOwnedKioskStatus(status, orgId);
+        setDeviceOwnedKiosk(deviceOwned);
+
+        if (deviceOwned) {
+          sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+          // Storage cleanup is synchronous and remains effective even when internet is down.
+          clearKioskCustomerBrowserState();
+          setIsAuthenticated(false);
+          // Best-effort revocation of only this browser session; device checkout never relies on it.
+          void supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+        } else if (status?.enrolled && status?.organization_id && status.organization_id !== orgId) {
+          toast.error('Este totem está vinculado a outra loja. O modo offline por dispositivo foi bloqueado.');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDeviceOwnedKiosk(false);
+          console.warn('[Index] companion device mode unavailable:', error);
+        }
+      } finally {
+        if (!cancelled) setDeviceModeOrgId(orgId);
+      }
+    };
+
+    void resolveDeviceMode();
+    return () => { cancelled = true; };
+  }, [isPhysicalKioskRoute, orgId]);
+
+  useEffect(() => {
+    if (!deviceOwnedKiosk || !orgId) return;
+    void warmKioskPublicData(orgId).catch((error) => {
+      console.warn('[Index] kiosk public data warm-up incomplete:', error);
+    });
+  }, [deviceOwnedKiosk, orgId]);
+
+  // Reseta carrinho/estado ao trocar de loja (orgId muda), mas nunca apaga
+  // um checkout que acabou de ser salvo para atravessar o login.
   useEffect(() => {
     if (!orgId) return;
-    sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    if (isPhysicalKioskRoute && deviceModeOrgId !== orgId) return;
+
+    if (!deviceOwnedKiosk) {
+      const pendingAuthOrder = sessionStorage.getItem(PENDING_ORDER_STORAGE_KEY);
+      if (pendingAuthOrder) {
+        try {
+          const parsed = JSON.parse(pendingAuthOrder) as PendingOrderState;
+          // Snapshots novos são vinculados à organização. Snapshot legado sem
+          // organizationId é preservado uma única vez para não perder o pedido
+          // de quem já entrou no fluxo antes desta correção.
+          if (!parsed.organizationId || parsed.organizationId === orgId) return;
+          sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+        } catch {
+          sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+        }
+      }
+    }
+
     setCart([]);
     setCustomerName('');
     setCustomerPhone('');
@@ -164,12 +402,94 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
+    setDeliveryLat(null); setDeliveryLng(null); setDeliveryAccuracyM(null);
     setTrackingOrderId('');
     setPendingProduct(null);
     setAppliedCoupon(null);
-    setStep('landing');
-  }, [orgId]);
+    setScheduledFor(null);
+    setPendingProduct(null);
+
+    if (deviceOwnedKiosk) {
+      clearPendingCheckout();
+      setStep('landing');
+      return;
+    }
+
+    const pendingCheckout = loadPendingCheckout(orgId);
+    if (pendingCheckout) {
+      setOrderType(pendingCheckout.orderType);
+      setCart(pendingCheckout.cart || []);
+      setCustomerName(pendingCheckout.customerName || '');
+      setCustomerPhone(pendingCheckout.customerPhone || '');
+      setCustomerCpf(pendingCheckout.customerCpf || '');
+      setDeliveryAddress(pendingCheckout.deliveryAddress || '');
+      setDeliveryReference(pendingCheckout.deliveryReference || '');
+      setDeliveryRecipient(pendingCheckout.deliveryRecipient || '');
+      setBairroId(pendingCheckout.bairroId || '');
+      setBairroNome(pendingCheckout.bairroNome || '');
+      setBairroTaxa(Number(pendingCheckout.bairroTaxa || 0));
+      setBairroTempo(Number(pendingCheckout.bairroTempo || 0));
+      setDeliveryCep(pendingCheckout.deliveryCep || '');
+      setDeliveryLat(typeof pendingCheckout.deliveryLat === 'number' && Number.isFinite(pendingCheckout.deliveryLat) ? pendingCheckout.deliveryLat : null);
+      setDeliveryLng(typeof pendingCheckout.deliveryLng === 'number' && Number.isFinite(pendingCheckout.deliveryLng) ? pendingCheckout.deliveryLng : null);
+      setDeliveryAccuracyM(typeof pendingCheckout.deliveryAccuracyM === 'number' && Number.isFinite(pendingCheckout.deliveryAccuracyM) ? pendingCheckout.deliveryAccuracyM : null);
+      setAppliedCoupon(pendingCheckout.appliedCoupon || null);
+      setScheduledFor(pendingCheckout.scheduledFor || null);
+      setTableToken(pendingCheckout.tableToken || '');
+      setTableLabel(pendingCheckout.tableLabel || '');
+      setStep('payment');
+      toast.info(pendingCheckout.state === 'queued_offline'
+        ? 'Pedido salvo neste dispositivo. Ele será sincronizado quando a conexão voltar.'
+        : 'Recuperamos um pedido que estava sendo enviado.');
+    } else {
+      setStep('landing');
+    }
+  }, [orgId, isPhysicalKioskRoute, deviceModeOrgId, deviceOwnedKiosk]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    const token = (searchParams.get('mesa') || '').trim();
+    if (!token) return;
+    const validationGeneration = ++tableQrValidationGenerationRef.current;
+
+    // O QR de mesa é uma capacidade autoritativa. Sem rede não presumimos
+    // mesa/label nem persistimos o token em snapshot público.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setTableToken('');
+      setTableLabel('');
+      toast.error('Este QR de mesa precisa de internet para validação. Nenhuma mesa foi presumida offline.');
+      return;
+    }
+
+    let cancelled = false;
+    supabase.rpc('visionfood_public_table_context', {
+      _organization_id: orgId,
+      _table_token: token,
+    }).then(({ data, error }) => {
+      if (cancelled || validationGeneration !== tableQrValidationGenerationRef.current) return;
+      const result: any = data;
+      if (error || !result?.ok) {
+        setTableToken('');
+        setTableLabel('');
+        toast.error('QR de mesa inválido ou desativado.');
+        return;
+      }
+      setTableToken(token);
+      setTableLabel(String(result.label || 'Mesa'));
+      setOrderType('local');
+    });
+    return () => {
+      cancelled = true;
+      if (tableQrValidationGenerationRef.current === validationGeneration) {
+        tableQrValidationGenerationRef.current += 1;
+      }
+    };
+  }, [orgId, searchParams]);
+
+  const invalidatePendingTableQrValidation = () => {
+    tableQrValidationGenerationRef.current += 1;
+  };
 
   const addToCart = (item: CartItem) => {
     setCart(prev => [...prev, item]);
@@ -181,6 +501,7 @@ const Index = () => {
 
   const resetOrder = () => {
     sessionStorage.removeItem(PENDING_ORDER_STORAGE_KEY);
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     setStep('landing');
     setOrderType('local');
     setCart([]);
@@ -190,30 +511,58 @@ const Index = () => {
     setDeliveryAddress('');
     setDeliveryReference('');
     setDeliveryRecipient('');
-    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0);
+    setBairroId(''); setBairroNome(''); setBairroTaxa(0); setBairroTempo(0); setDeliveryCep('');
+    setDeliveryLat(null); setDeliveryLng(null); setDeliveryAccuracyM(null);
     setTrackingOrderId('');
     setAppliedCoupon(null);
+    setScheduledFor(null);
+    setOpenScheduleOnCart(false);
+    setResumePaymentAfterSchedule(false);
+    setPendingProduct(null);
+    if (deviceOwnedKiosk) {
+      setTableToken('');
+      setTableLabel('');
+      clearKioskCustomerBrowserState();
+    }
   };
 
   const handlePaymentDone = (orderId?: string) => {
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     if (orderId) {
-      setTrackingOrderId(orderId);
-      setStep('tracking');
+      if (deviceOwnedKiosk) {
+        setTrackingOrderId(orderId);
+        setStep('tracking');
+      } else {
+        navigate(`/acompanhar/${orderId}`);
+      }
     } else {
       resetOrder();
     }
   };
 
-  const handleCheckout = async (sched?: string | null) => {
+  const handleCheckout = (sched?: string | null) => {
     setScheduledFor(sched || null);
-    const { data: { session } } = await supabase.auth.getSession();
 
-    if (session) {
+    const shouldResumePayment = Boolean(
+      sched && resumePaymentAfterSchedule && (deviceOwnedKiosk || isAuthenticated),
+    );
+    setResumePaymentAfterSchedule(false);
+
+    if (shouldResumePayment) {
+      setStep('payment');
+      return;
+    }
+
+    if (deviceOwnedKiosk || isAuthenticated) {
       setStep('checkout');
       return;
     }
 
+    // Não bloquear o clique esperando getSession(): o estado de autenticação já
+    // é mantido pelo listener do Supabase. Se não há sessão conhecida, salvar o
+    // pedido e abrir o login imediatamente.
     const pendingOrder: PendingOrderState = {
+      organizationId: orgId || undefined,
       step: 'checkout',
       orderType,
       cart,
@@ -223,41 +572,152 @@ const Index = () => {
       deliveryAddress,
       deliveryReference,
       deliveryRecipient,
-      bairroId, bairroNome, bairroTaxa, bairroTempo,
+      bairroId, bairroNome, bairroTaxa, bairroTempo, deliveryCep,
+      deliveryLat, deliveryLng, deliveryAccuracyM,
+      tableToken, tableLabel,
+      appliedCoupon,
+      scheduledFor: sched || null,
     };
 
+    sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
     sessionStorage.setItem(PENDING_ORDER_STORAGE_KEY, JSON.stringify(pendingOrder));
     toast.info('Faça login para finalizar e acompanhar seu pedido.');
     navigate(`/auth?returnTo=${encodeURIComponent(homePath)}`);
   };
 
+  const resolvingDeviceMode = Boolean(
+    isPhysicalKioskRoute && orgId && deviceModeOrgId !== orgId,
+  );
+
+  if (resolvingDeviceMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto w-14 h-14 rounded-2xl border border-primary/20 bg-primary/10 flex items-center justify-center shadow-lg shadow-primary/5">
+            <div className="w-6 h-6 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          </div>
+          <h1 className="mt-5 text-lg font-black text-foreground">Preparando sua experiência</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Estamos carregando a loja e verificando o ambiente de atendimento.
+          </p>
+          <div className="mt-5 h-1.5 w-32 mx-auto overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/2 rounded-full bg-primary animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Sininho de notificações (canto superior direito) */}
-      {step !== 'landing' && (
+      {step !== 'landing' && !deviceOwnedKiosk && (
         <div className="fixed top-3 right-3 z-50">
           <NotificationBell orgId={orgId} />
         </div>
       )}
-      {step === 'landing' && <LandingScreen onStart={() => setStep('start')} />}
+      {step === 'landing' && <LandingScreen onStart={() => setStep(tableToken && tableLabel ? 'menu' : 'start')} />}
+      {step !== 'landing' && step !== 'table' && tableToken && tableLabel && (
+        <div className="fixed top-3 left-3 z-50 rounded-full bg-primary px-3 py-1.5 text-xs font-black text-primary-foreground shadow-lg">
+          🍽️ {tableLabel}
+        </div>
+      )}
       {step === 'start' && (
         <StartScreen
           onStart={() => setStep('location')}
           onSelectProduct={(p) => { setPendingProduct(p); setStep('location'); }}
           onGoToCart={() => setStep('cart')}
           cartCount={cart.length}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'location' && (
         <LocationSelect deliveryEnabled={deliveryEnabled} cartCount={cart.length} onGoToCart={() => setStep('cart')} onSelect={(type) => {
-          if (type === 'delivery') { setOrderType('viagem'); setStep('address'); }
-          else { setOrderType(type); setStep('menu'); }
+          if (type === 'delivery') {
+            invalidatePendingTableQrValidation();
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('viagem');
+            setStep('address');
+            return;
+          }
+          if (type === 'viagem') {
+            invalidatePendingTableQrValidation();
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('viagem');
+            setStep('menu');
+            return;
+          }
+
+          setOrderType('local');
+          setStep('local-service');
         }} onBack={() => { setPendingProduct(null); setStep('start'); }} />
+      )}
+      {step === 'local-service' && (
+        <LocalServiceSelect
+          tableLabel={tableLabel}
+          manualTableSelectionEnabled={deviceOwnedKiosk}
+          onBalcony={() => {
+            invalidatePendingTableQrValidation();
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onTable={() => {
+            setOrderType('local');
+            if (tableToken && tableLabel) {
+              setStep('menu');
+              return;
+            }
+            if (deviceOwnedKiosk) {
+              setStep('table');
+              return;
+            }
+            toast.info('Para receber na mesa pelo celular, escaneie o QR disponível na mesa.');
+          }}
+          onBack={() => setStep('location')}
+        />
+      )}
+      {step === 'table' && deviceOwnedKiosk && (
+        <TableSelect
+          onSelectTable={(table) => {
+            invalidatePendingTableQrValidation();
+            // For enrolled kiosks the server accepts this private table UUID as
+            // the device-owned table selector. QR public tokens remain separate.
+            setTableToken(table.id);
+            setTableLabel(table.label);
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onBalcony={() => {
+            invalidatePendingTableQrValidation();
+            setTableToken('');
+            setTableLabel('');
+            setOrderType('local');
+            setStep('menu');
+          }}
+          onBack={() => setStep('location')}
+        />
       )}
       {step === 'address' && (
         <AddressSelect
-          onConfirm={(addr, ref) => { setDeliveryAddress(addr); setDeliveryReference(ref); setStep('menu'); }}
+          onConfirm={(addr, ref, details) => {
+            setDeliveryAddress(addr);
+            setDeliveryReference(ref);
+            setDeliveryCep(details?.cep || '');
+            setDeliveryLat(typeof details?.latitude === 'number' && Number.isFinite(details.latitude) ? details.latitude : null);
+            setDeliveryLng(typeof details?.longitude === 'number' && Number.isFinite(details.longitude) ? details.longitude : null);
+            setDeliveryAccuracyM(typeof details?.accuracyM === 'number' && Number.isFinite(details.accuracyM) ? details.accuracyM : null);
+            setBairroId('');
+            setBairroNome(details?.bairro || '');
+            setBairroTaxa(0);
+            setBairroTempo(0);
+            setStep('menu');
+          }}
           onBack={() => setStep('location')}
+          allowCurrentLocation={!deviceOwnedKiosk}
         />
       )}
       {step === 'menu' && (
@@ -265,24 +725,78 @@ const Index = () => {
           cart={cart}
           onAddToCart={addToCart}
           onGoToCart={() => setStep('cart')}
-          onBack={() => setStep('location')}
+          onBack={() => setStep(orderType === 'local' ? 'local-service' : 'location')}
           initialProduct={pendingProduct}
           onInitialProductHandled={() => setPendingProduct(null)}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'cart' && (
-        <CartScreen cart={cart} onRemove={removeFromCart} onCheckout={handleCheckout} onBack={() => setStep('menu')} isAuthenticated={isAuthenticated} orgId={orgId} appliedCoupon={appliedCoupon} onApplyCoupon={setAppliedCoupon} />
+        <CartScreen
+          cart={cart}
+          onRemove={removeFromCart}
+          onCheckout={handleCheckout}
+          onBack={() => {
+            setResumePaymentAfterSchedule(false);
+            setStep('menu');
+          }}
+          isAuthenticated={isAuthenticated && !deviceOwnedKiosk}
+          orgId={orgId}
+          appliedCoupon={appliedCoupon}
+          onApplyCoupon={setAppliedCoupon}
+          deviceOwnedKiosk={deviceOwnedKiosk}
+          openScheduleOnMount={openScheduleOnCart}
+          onScheduleOpened={() => setOpenScheduleOnCart(false)}
+          onScheduleCancelled={() => setResumePaymentAfterSchedule(false)}
+        />
       )}
       {step === 'checkout' && (
         <CheckoutScreen
           name={customerName} phone={customerPhone} cpf={customerCpf} orderType={orderType}
           deliveryAddress={deliveryAddress} deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId}
-          onBairroChange={(id, nome, taxa, tempo) => { setBairroId(id); setBairroNome(nome); setBairroTaxa(taxa); setBairroTempo(tempo); }}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryCep={deliveryCep}
+          onBairroChange={(id, nome, taxa, tempo) => {
+            if (
+              deliveryLat != null
+              && deliveryLng != null
+              && normalizeDeliveryKey(nome) !== normalizeDeliveryKey(bairroNome)
+            ) {
+              setDeliveryLat(null);
+              setDeliveryLng(null);
+              setDeliveryAccuracyM(null);
+            }
+            setBairroId(id);
+            setBairroNome(nome);
+            setBairroTaxa(taxa);
+            setBairroTempo(tempo);
+          }}
+          onDeliveryCepChange={(value) => {
+            const currentCep = normalizeCepDigits(deliveryCep);
+            const nextCep = normalizeCepDigits(value);
+            if (
+              deliveryLat != null
+              && deliveryLng != null
+              && currentCep !== nextCep
+            ) {
+              setDeliveryLat(null);
+              setDeliveryLng(null);
+              setDeliveryAccuracyM(null);
+            }
+            setDeliveryCep(value);
+          }}
           onNameChange={setCustomerName} onPhoneChange={setCustomerPhone} onCpfChange={setCustomerCpf}
-          onDeliveryAddressChange={setDeliveryAddress} onDeliveryReferenceChange={setDeliveryReference}
+          onDeliveryAddressChange={(value) => {
+            setDeliveryAddress(value);
+            setDeliveryLat(null);
+            setDeliveryLng(null);
+            setDeliveryAccuracyM(null);
+          }} onDeliveryReferenceChange={setDeliveryReference}
           onDeliveryRecipientChange={setDeliveryRecipient}
-          onContinue={() => setStep('payment')} onBack={() => setStep('cart')}
+          onContinue={() => setStep('payment')} onBack={() => {
+            sessionStorage.removeItem(ACTIVE_ORDER_STORAGE_KEY);
+            setStep('cart');
+          }}
+          deviceOwnedKiosk={deviceOwnedKiosk}
         />
       )}
       {step === 'payment' && (
@@ -290,19 +804,36 @@ const Index = () => {
           cart={cart} customerName={customerName} customerPhone={customerPhone} customerCpf={customerCpf}
           orderType={orderType} deliveryAddress={deliveryAddress}
           deliveryReference={deliveryReference} deliveryRecipient={deliveryRecipient}
-          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo}
+          bairroId={bairroId} bairroNome={bairroNome} deliveryFee={bairroTaxa} bairroTempo={bairroTempo} deliveryCep={deliveryCep}
+          deliveryLat={deliveryLat} deliveryLng={deliveryLng} deliveryAccuracyM={deliveryAccuracyM}
           appliedCoupon={appliedCoupon}
           scheduledFor={scheduledFor}
-          onBack={() => setStep('checkout')} onDone={handlePaymentDone}
+          tableToken={tableToken} tableLabel={tableLabel}
+          deviceOwnedKiosk={deviceOwnedKiosk}
+          onBack={() => setStep('checkout')}
+          onScheduleAnotherDay={() => {
+            setResumePaymentAfterSchedule(true);
+            setOpenScheduleOnCart(true);
+            setStep('cart');
+          }}
+          onBackToCart={() => {
+            setResumePaymentAfterSchedule(false);
+            setOpenScheduleOnCart(false);
+            setStep('cart');
+          }}
+          onDone={handlePaymentDone}
         />
       )}
-      {step === 'tracking' && trackingOrderId && (
-        <TotemSuccess orderId={trackingOrderId} onRelease={async () => {
-          await supabase.auth.signOut();
-          resetOrder();
-        }} />
+      {deviceOwnedKiosk && step === 'tracking' && trackingOrderId && (
+        <TotemSuccess
+          orderId={trackingOrderId}
+          scheduledFor={scheduledFor}
+          onRelease={() => {
+            resetOrder();
+          }}
+        />
       )}
-      {step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
+      {!deviceOwnedKiosk && step !== 'landing' && step !== 'payment' && step !== 'tracking' && (
         <PartnersFooter orgId={orgId} />
       )}
     </div>

@@ -1,0 +1,26 @@
+name: Verification Round 18 - Orders Ready Flow
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Assert hardened ready flow and concurrency guard
+        run: |
+          grep -q "ready:{label:'🔔 Pronto'" src/components/admin/OrdersPanel.tsx
+          grep -q "updateStatus(order.id,'ready')" src/components/admin/OrdersPanel.tsx
+          grep -q "eq('status',order.status)" src/components/admin/OrdersPanel.tsx
+          grep -q "updated.status!==status" src/components/admin/OrdersPanel.tsx
+          grep -q "'pending','preparing','ready','out_for_delivery'" src/components/admin/OrdersPanel.tsx
+          grep -q "if(status==='ready')" src/components/admin/OrdersPanel.tsx
+          grep -q "await callPassword" src/components/admin/OrdersPanel.tsx
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

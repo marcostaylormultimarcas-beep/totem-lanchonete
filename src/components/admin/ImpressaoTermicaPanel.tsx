@@ -50,14 +50,14 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
       .select('*')
       .eq('organization_id', organizationId)
       .maybeSingle();
-    if (data) setCfg(data as any);
+    if (data) setCfg(prev => ({ ...prev, ...(data as any), agent_token: '' }));
     else {
       // create row to get token
       const { data: created } = await supabase
         .from('configuracoes_impressao')
         .insert({ organization_id: organizationId })
         .select('*').single();
-      if (created) setCfg(created as any);
+      if (created) setCfg(prev => ({ ...prev, ...(created as any), agent_token: '' }));
     }
     const { count } = await supabase
       .from('orders')
@@ -97,20 +97,30 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
     else toast.success('Configuração salva');
   };
 
-  const testPrint = async () => {
-    if (!organizationId) return;
-    if (!cfg.printer_ip) { toast.error('Configure o IP da impressora primeiro'); return; }
+  const testAgent = async () => {
+    if (!cfg.agent_token) {
+      toast.error('Por segurança, gere/renove o token nesta sessão antes de testar o agente.');
+      return;
+    }
     setTesting(true);
-    const { error } = await supabase.from('logs_impressao' as any).insert({
-      organization_id: organizationId,
-      status: 'test_requested',
-      message: 'Teste de impressão solicitado pelo painel',
-      printer_ip: cfg.printer_ip,
-    });
-    setTesting(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Teste enviado! Verifique a impressora. O agente vai imprimir um ticket de teste em alguns segundos.');
-    load();
+    try {
+      const endpoint = getSupabaseFunctionsHostUrl('print-agent');
+      const response = await fetch(`${endpoint}/auth`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-agent-token': cfg.agent_token },
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        toast.error('O agente não autenticou com este token.');
+        return;
+      }
+      toast.success('Token do agente autenticado com sucesso.');
+    } catch (error) {
+      console.error('[print-agent] auth test', error);
+      toast.error('Não foi possível testar o agente.');
+    } finally {
+      setTesting(false);
+    }
   };
 
 
@@ -126,11 +136,13 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
   };
 
   const copyToken = () => {
+    if (!cfg.agent_token) { toast.error('Renove o token para exibi-lo nesta sessão.'); return; }
     navigator.clipboard.writeText(cfg.agent_token);
     toast.success('Token copiado');
   };
 
   const downloadAgent = () => {
+    if (!cfg.agent_token) { toast.error('Renove o token antes de baixar um novo agente configurado.'); return; }
     const endpoint = getSupabaseFunctionsHostUrl('print-agent');
     const script = `// ${BRAND_NAME} — Agente Local de Impressão Térmica
 // Requisitos: Node.js 18+ (já tem fetch nativo). Não precisa instalar nada.
@@ -140,6 +152,7 @@ const ImpressaoTermicaPanel = ({ organizationId }: Props) => {
 import net from 'node:net';
 
 const ENDPOINT = '${endpoint}';
+const APP_ORIGIN = ${JSON.stringify(window.location.origin)};
 const TOKEN    = '${cfg.agent_token}';
 const PRINTER_IP   = '${cfg.printer_ip || '192.168.0.100'}';
 const PRINTER_PORT = ${cfg.printer_port || 9100};
@@ -150,7 +163,7 @@ const log = (...a) => console.log(new Date().toISOString(), '-', ...a);
 async function call(action, body) {
   const r = await fetch(ENDPOINT + '/' + action, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-agent-token': TOKEN },
+    headers: { 'content-type': 'application/json', 'x-agent-token': TOKEN, 'x-app-origin': APP_ORIGIN },
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
@@ -318,10 +331,10 @@ loop();
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Salvar configuração
           </button>
-          <button onClick={testPrint} disabled={testing || !cfg.printer_ip}
+          <button onClick={testAgent} disabled={testing || !cfg.agent_token}
             className="touch-btn px-5 py-2.5 rounded-xl bg-muted hover:bg-muted/70 inline-flex items-center gap-2 disabled:opacity-50">
             {testing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            Teste de impressão
+            Testar autenticação do agente
           </button>
         </div>
       </div>
@@ -330,11 +343,12 @@ loop();
       <div className="bg-card rounded-2xl p-6 border border-border space-y-4">
         <h3 className="font-semibold flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-primary" /> Token do agente local</h3>
         <p className="text-sm text-muted-foreground">
-          Este token autentica o agente desktop instalado no PC da loja. Mantenha-o seguro — quem tiver acesso pode receber seus pedidos para impressão.
+          Este token autentica o agente desktop instalado no PC da loja. Por segurança, o valor bruto não fica salvo no banco e só é exibido logo após uma renovação.
         </p>
 
         <div className="flex items-center gap-2">
           <input readOnly value={cfg.agent_token}
+            placeholder="Token protegido — renove para exibir um novo"
             className="flex-1 px-3 py-2 rounded-lg bg-background border border-input font-mono text-xs" />
           <button onClick={copyToken} className="touch-btn px-3 py-2 rounded-lg bg-muted hover:bg-muted/70 inline-flex items-center gap-1">
             <Copy className="w-4 h-4" /> Copiar

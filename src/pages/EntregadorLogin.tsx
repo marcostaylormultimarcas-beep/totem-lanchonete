@@ -6,6 +6,23 @@ import { toast } from 'sonner';
 
 const STORAGE_KEY = 'entregador_session';
 
+const removeStoredSession = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Storage indisponível não pode derrubar login/logout.
+  }
+};
+
+const persistEntregadorSession = (session: EntregadorSession) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export interface EntregadorSession {
   id: string;
   name: string;
@@ -13,17 +30,42 @@ export interface EntregadorSession {
   organization_id: string;
   org_slug: string;
   org_name: string;
-  password: string;
+  session_token: string;
+  expires_at?: string;
 }
 
 export const getEntregadorSession = (): EntregadorSession | null => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    if (!raw) return null;
+    const session = JSON.parse(raw) as EntregadorSession;
+    const validIdentity = Boolean(
+      session
+      && typeof session.id === 'string'
+      && typeof session.organization_id === 'string'
+      && typeof session.org_slug === 'string'
+      && typeof session.session_token === 'string'
+      && session.session_token.length >= 32,
+    );
+    if (!validIdentity) {
+      removeStoredSession();
+      return null;
+    }
+    if (session.expires_at) {
+      const expiresAt = Date.parse(session.expires_at);
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        removeStoredSession();
+        return null;
+      }
+    }
+    return session;
+  } catch {
+    removeStoredSession();
+    return null;
+  }
 };
 
-export const clearEntregadorSession = () => localStorage.removeItem(STORAGE_KEY);
+export const clearEntregadorSession = () => removeStoredSession();
 
 const EntregadorLogin = () => {
   const navigate = useNavigate();
@@ -34,35 +76,98 @@ const EntregadorLogin = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (getEntregadorSession()) navigate('/entregador');
-  }, [navigate]);
+    const stored = getEntregadorSession();
+    if (!stored) return;
+
+    const requestedSlug = (slug || '').trim().toLowerCase();
+    const storedSlug = stored.org_slug.trim().toLowerCase();
+    if (requestedSlug && requestedSlug !== storedSlug) {
+      clearEntregadorSession();
+      return;
+    }
+
+    navigate('/entregador', { replace: true });
+  }, [navigate, slug]);
+
+  useEffect(() => {
+    if (slug != null) setOrgSlug(slug);
+  }, [slug]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!orgSlug || !username || !password) {
+    if (loading) return;
+
+    const cleanOrgSlug = orgSlug.trim().toLowerCase();
+    const cleanUsername = username.trim();
+    if (!cleanOrgSlug || !cleanUsername || !password) {
       toast.error('Preencha todos os campos.');
       return;
     }
+
     setLoading(true);
-    const { data, error } = await supabase.rpc('entregador_login' as any, {
-      _org_slug: orgSlug.trim().toLowerCase(),
-      _username: username.trim(),
-      _password: password,
-    });
-    setLoading(false);
-    const res: any = data;
-    if (error || !res?.ok) {
-      const msg: Record<string, string> = {
-        org_not_found: 'Loja não encontrada.',
-        invalid_credentials: 'Usuário ou senha inválidos.',
+    try {
+      const { data, error } = await supabase.rpc('entregador_login_session' as any, {
+        _org_slug: cleanOrgSlug,
+        _username: cleanUsername,
+        _password: password,
+      });
+      if (error) {
+        console.error('[EntregadorLogin] login RPC failed:', error);
+        toast.error('Não foi possível entrar agora. Verifique a conexão e tente novamente.');
+        return;
+      }
+
+      const res: any = data;
+      if (!res?.ok) {
+        if (res?.reason === 'too_many_attempts') {
+          const minutes = Math.max(1, Math.ceil(Number(res?.retry_after_seconds || 600) / 60));
+          toast.error(`Muitas tentativas incorretas. Aguarde cerca de ${minutes} minuto(s) e tente novamente.`);
+          return;
+        }
+        if (res?.reason === 'invalid_credentials' && res?.remaining_attempts != null) {
+          toast.error(`Usuário ou senha inválidos. Restam ${res.remaining_attempts} tentativa(s).`);
+          return;
+        }
+        if (res?.reason === 'inactive_driver' || res?.reason === 'organization_unavailable') {
+          toast.error('Seu acesso de entregador está indisponível. Fale com o administrador da loja.');
+          return;
+        }
+        toast.error('Usuário ou senha inválidos.');
+        return;
+      }
+
+      const session: EntregadorSession = {
+        ...res.entregador,
+        session_token: String(res.session_token || ''),
+        expires_at: res.expires_at ? String(res.expires_at) : undefined,
       };
-      toast.error(msg[res?.reason] || 'Falha ao entrar.');
-      return;
+
+      if (!session.id || !session.organization_id || !session.org_slug || session.session_token.length < 32) {
+        console.error('[EntregadorLogin] invalid session payload received');
+        toast.error('Não foi possível iniciar uma sessão segura. Tente novamente.');
+        return;
+      }
+
+      if (!persistEntregadorSession(session)) {
+        try {
+          await supabase.rpc('entregador_logout_session' as any, {
+            _session_token: session.session_token,
+          });
+        } catch {
+          // O token expira no servidor; não navegue sem conseguir persistir a sessão local.
+        }
+        toast.error('O navegador bloqueou o armazenamento da sessão. Libere o armazenamento do site e tente novamente.');
+        return;
+      }
+
+      toast.success(`Bem-vindo, ${session.name || cleanUsername}!`);
+      navigate('/entregador', { replace: true });
+    } catch (error) {
+      console.error('[EntregadorLogin] login request failed:', error);
+      toast.error('Não foi possível entrar agora. Verifique a conexão e tente novamente.');
+    } finally {
+      setLoading(false);
     }
-    const session: EntregadorSession = { ...res.entregador, password };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
-    toast.success(`Bem-vindo, ${res.entregador.name}!`);
-    navigate('/entregador');
   };
 
   return (

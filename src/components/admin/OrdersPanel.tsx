@@ -1,638 +1,211 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
-import { Clock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing, MapPin } from 'lucide-react';
+import { Clock, CalendarClock, UtensilsCrossed, Truck, CheckCircle2, XCircle, RefreshCw, Printer, Bell, BellOff, Filter, KeyRound, AlertTriangle, FileText, Receipt, X, BellRing, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import OrderPrintReceipt from './OrderPrintReceipt';
 import FeatureGate from '@/components/FeatureGate';
 import { useOrderAlertSound } from '@/hooks/useOrderAlertSound';
 import LiveDeliveryMap from '@/components/LiveDeliveryMap';
 import { geocodeAddress } from '@/lib/cep';
+import { MAX_EXACT_DESTINATION_ACCURACY_M } from '@/lib/deliveryRouting';
 
 type PrintFormat = 'cupom' | 'a4';
 const PRINT_PREF_KEY = 'print_format_pref';
 
+interface Order { id:string; order_number:string; customer_name:string; customer_phone:string; order_type:string; delivery_address:string|null; delivery_reference:string|null; delivery_recipient:string|null; items:any[]; total:number; status:string; created_at:string; scheduled_for?:string|null; nfe_status?:string; nfe_numero?:string; nfe_url?:string; status_reembolso?:string; delivery_code?:string; entregador_id?:string|null; delivery_lat?:number|null; delivery_lng?:number|null; delivery_accuracy_m?:number|null; delivery_assigned_at?:string|null; delivery_started_at?:string|null; delivery_issue_reason?:string|null; delivery_issue_at?:string|null; payment_status?:string|null; payment_method?:string|null; table_id?:string|null; table_session_id?:string|null; table_label?:string; }
+interface Entregador { id:string; name:string; active:boolean; }
 
-interface Order {
-  id: string;
-  order_number: string;
-  customer_name: string;
-  customer_phone: string;
-  order_type: string;
-  delivery_address: string | null;
-  delivery_reference: string | null;
-  delivery_recipient: string | null;
-  items: any[];
-  total: number;
-  status: string;
-  created_at: string;
-  nfe_status?: string;
-  nfe_numero?: string;
-  nfe_url?: string;
-  status_reembolso?: string;
-  delivery_code?: string;
-  entregador_id?: string | null;
-}
-
-interface Entregador {
-  id: string;
-  name: string;
-  active: boolean;
-}
-
-const REFUND_LABEL: Record<string, { label: string; cls: string }> = {
-  none: { label: '', cls: '' },
-  auto_eligible: { label: '💸 Reembolso automático', cls: 'bg-success/15 text-success border-success/30' },
-  manual_required: { label: '⚠️ Reembolso manual (aprovar)', cls: 'bg-accent/15 text-accent border-accent/30' },
-  processing: { label: '⏳ Reembolso em processamento', cls: 'bg-blue-400/15 text-blue-400 border-blue-400/30' },
-  refunded: { label: '✅ Reembolsado', cls: 'bg-success/15 text-success border-success/30' },
-  failed: { label: '❌ Reembolso falhou', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+const REFUND_LABEL: Record<string,{label:string;cls:string}> = {
+ none:{label:'',cls:''}, auto_eligible:{label:'💸 Reembolso automático',cls:'bg-success/15 text-success border-success/30'}, manual_required:{label:'⚠️ Reembolso manual (aprovar)',cls:'bg-accent/15 text-accent border-accent/30'}, processing:{label:'⏳ Reembolso em processamento',cls:'bg-blue-400/15 text-blue-400 border-blue-400/30'}, refunded:{label:'✅ Reembolsado',cls:'bg-success/15 text-success border-success/30'}, failed:{label:'❌ Reembolso falhou',cls:'bg-destructive/15 text-destructive border-destructive/30'}
+};
+const STATUS_CONFIG: Record<string,{label:string;color:string;bg:string}> = {
+ pending:{label:'⏳ Pendente',color:'text-accent',bg:'bg-accent/20'}, preparing:{label:'👨‍🍳 Preparando',color:'text-primary',bg:'bg-primary/20'}, ready:{label:'🔔 Pronto',color:'text-amber-400',bg:'bg-amber-400/20'}, out_for_delivery:{label:'🛵 Saiu p/ Entrega',color:'text-blue-400',bg:'bg-blue-400/20'}, delivered:{label:'✅ Entregue',color:'text-success',bg:'bg-success/20'}, cancelled:{label:'❌ Cancelado',color:'text-destructive',bg:'bg-destructive/20'}
+};
+const PAYMENT_CONFIG: Record<string,{label:string;cls:string}> = {
+ pending:{label:'💳 Pagamento pendente',cls:'bg-amber-400/15 text-amber-400 border-amber-400/30'},
+ paid:{label:'✅ Pago',cls:'bg-success/15 text-success border-success/30'},
+ failed:{label:'❌ Pagamento falhou',cls:'bg-destructive/15 text-destructive border-destructive/30'},
+ refunded:{label:'↩️ Reembolsado',cls:'bg-blue-400/15 text-blue-400 border-blue-400/30'},
+ legacy:{label:'⚪ Pagamento legado',cls:'bg-muted text-muted-foreground border-border'}
 };
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  pending: { label: '⏳ Pendente', color: 'text-accent', bg: 'bg-accent/20' },
-  preparing: { label: '👨‍🍳 Preparando', color: 'text-primary', bg: 'bg-primary/20' },
-  out_for_delivery: { label: '🛵 Saiu p/ Entrega', color: 'text-blue-400', bg: 'bg-blue-400/20' },
-  delivered: { label: '✅ Entregue', color: 'text-success', bg: 'bg-success/20' },
-  cancelled: { label: '❌ Cancelado', color: 'text-destructive', bg: 'bg-destructive/20' },
+const OrdersPanel=({organizationId}:{organizationId:string|null})=>{
+ const [orders,setOrders]=useState<Order[]>([]); const currentOrders=useRef<Order[]>(orders); currentOrders.current=orders; const ordersRequestSeq=useRef(0); const currentOrganizationId=useRef(organizationId); currentOrganizationId.current=organizationId; const [filter,setFilter]=useState<'active'|'scheduled'|'all'>('active'); const [printOrder,setPrintOrder]=useState<Order|null>(null); const [printFormat,setPrintFormat]=useState<PrintFormat>('cupom'); const [pendingPrintOrder,setPendingPrintOrder]=useState<Order|null>(null); const [storeName,setStoreName]=useState(''); const [entregadores,setEntregadores]=useState<Entregador[]>([]); const [lowStockIds,setLowStockIds]=useState<Set<string>>(new Set()); const [registeredTableLabels,setRegisteredTableLabels]=useState<string[]>([]); const [showFilters,setShowFilters]=useState(false); const [dateFrom,setDateFrom]=useState(''); const [dateTo,setDateTo]=useState(''); const [productQuery,setProductQuery]=useState(''); const [onlyLowStock,setOnlyLowStock]=useState(false); const [tableFilter,setTableFilter]=useState('all'); const [trackOrder,setTrackOrder]=useState<Order|null>(null); const [trackRider,setTrackRider]=useState<{lat:number;lng:number;updatedAt:string}|null>(null); const [trackDest,setTrackDest]=useState<{lat:number;lng:number}|null>(null); const [statusUpdating,setStatusUpdating]=useState<Set<string>>(new Set()); const [passwordCalling,setPasswordCalling]=useState<Set<string>>(new Set()); const updateStatusInFlight=useRef<Set<string>>(new Set()); const returnDeliveryInFlight=useRef<Set<string>>(new Set()); const confirmPaymentInFlight=useRef<Set<string>>(new Set()); const callPasswordInFlight=useRef<Set<string>>(new Set()); const [schedulingLeadMin,setSchedulingLeadMin]=useState(30); const [deliveryAssignmentMode,setDeliveryAssignmentMode]=useState<'manual'|'free'>('manual'); const [nowTick,setNowTick]=useState(()=>Date.now());
+ const trustedDeliveryDestination=(o:Order)=>{if(typeof o.delivery_lat!=='number'||typeof o.delivery_lng!=='number'||!Number.isFinite(o.delivery_lat)||!Number.isFinite(o.delivery_lng)||o.delivery_lat< -90||o.delivery_lat>90||o.delivery_lng< -180||o.delivery_lng>180)return null;if(typeof o.delivery_accuracy_m!=='number'||!Number.isFinite(o.delivery_accuracy_m)||o.delivery_accuracy_m<=0||o.delivery_accuracy_m>MAX_EXACT_DESTINATION_ACCURACY_M)return null;return{lat:o.delivery_lat,lng:o.delivery_lng}};
+ useEffect(()=>{if(!trackOrder||!trackOrder.entregador_id)return;let cancelled=false;const exact=trustedDeliveryDestination(trackOrder);if(exact)setTrackDest(exact);else if(trackOrder.delivery_address)geocodeAddress(trackOrder.delivery_address).then(coords=>{if(!cancelled&&coords)setTrackDest(coords)});const load=async()=>{const{data,error}=await supabase.from('entregadores' as any).select('ultima_lat,ultima_lng,ultima_localizacao_at').eq('id',trackOrder.entregador_id).maybeSingle();if(error){console.error('delivery live location',error);return}const r:any=data;if(!cancelled&&r?.ultima_lat!=null&&r?.ultima_lng!=null)setTrackRider({lat:Number(r.ultima_lat),lng:Number(r.ultima_lng),updatedAt:r.ultima_localizacao_at});};void load();const ch=supabase.channel(`track-${trackOrder.entregador_id}`).on('postgres_changes',{event:'UPDATE',schema:'public',table:'entregadores',filter:`id=eq.${trackOrder.entregador_id}`},(p:any)=>{const r=p.new;if(r?.ultima_lat!=null&&r?.ultima_lng!=null)setTrackRider({lat:Number(r.ultima_lat),lng:Number(r.ultima_lng),updatedAt:r.ultima_localizacao_at})}).subscribe();return()=>{cancelled=true;supabase.removeChannel(ch)}},[trackOrder]);
+ const closeTrack=()=>{setTrackOrder(null);setTrackRider(null);setTrackDest(null)};
+ const openTrack=(order:Order)=>{setTrackRider(null);setTrackDest(null);setTrackOrder(order)};
+ useEffect(()=>{if(!trackOrder)return;const fresh=orders.find(o=>o.id===trackOrder.id);if(!fresh||fresh.status!=='out_for_delivery'||fresh.entregador_id!==trackOrder.entregador_id)closeTrack()},[orders,trackOrder?.id,trackOrder?.entregador_id]);
+ useEffect(()=>{
+  let cancelled=false;
+  setStoreName('');
+  setEntregadores([]);
+  setLowStockIds(new Set());
+  setSchedulingLeadMin(30);
+  setDeliveryAssignmentMode('manual');
+  if(!organizationId)return()=>{cancelled=true};
+
+  const loadSettings=async()=>{
+   try{
+    const result=await supabase.from('settings').select('store_name,scheduling_preparation_lead_min,delivery_assignment_mode').eq('organization_id',organizationId).maybeSingle();
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap settings',error);return}
+    const s:any=data;
+    setStoreName(s?.store_name||'');
+    setSchedulingLeadMin(Math.max(0,Math.min(360,Number(s?.scheduling_preparation_lead_min??30))));
+    setDeliveryAssignmentMode(s?.delivery_assignment_mode==='free'?'free':'manual');
+   }catch(error){if(!cancelled)console.error('orders bootstrap settings',error)}
+  };
+
+  const loadEntregadores=async()=>{
+   try{
+    const result=await supabase.from('entregadores' as any).select('id,name,active').eq('organization_id',organizationId).eq('active',true);
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap entregadores',error);return}
+    setEntregadores(((data as any[])||[]) as Entregador[]);
+   }catch(error){if(!cancelled)console.error('orders bootstrap entregadores',error)}
+  };
+
+  const loadLowStock=async()=>{
+   try{
+    const result=await supabase.from('products').select('id').eq('organization_id',organizationId).eq('manage_stock',true).lte('stock_quantity',5);
+    if(cancelled)return;
+    const{data,error}=result;
+    if(error){console.error('orders bootstrap low stock',error);return}
+    setLowStockIds(new Set(((data as any[])||[]).map((p:any)=>p.id)));
+   }catch(error){if(!cancelled)console.error('orders bootstrap low stock',error)}
+  };
+
+  void loadSettings();
+  void loadEntregadores();
+  void loadLowStock();
+  return()=>{cancelled=true};
+ },[organizationId]);
+ useEffect(()=>{let cancelled=false;setRegisteredTableLabels([]);setTableFilter('all');if(!organizationId)return()=>{cancelled=true};const loadTables=async()=>{try{const{data,error}=await supabase.rpc('visionfood_admin_tables',{_org:organizationId});if(cancelled)return;if(error){console.error('visionfood_admin_tables (orders filter)',error);return}const labels=((Array.isArray(data)?data:[]) as Array<{label?:string;active?:boolean}>).filter(t=>t.active!==false&&typeof t.label==='string'&&t.label.trim()).map(t=>t.label!.trim());setRegisteredTableLabels(labels)}catch(error){if(!cancelled)console.error('visionfood_admin_tables (orders filter)',error)}};void loadTables();return()=>{cancelled=true}},[organizationId]);
+ const openPrintDialog=(o:Order)=>setPendingPrintOrder(o); const doPrint=(o:Order,f:PrintFormat)=>{try{localStorage.setItem(PRINT_PREF_KEY,f)}catch{}setPrintFormat(f);setPrintOrder(o);setPendingPrintOrder(null);const cleanup=()=>{setPrintOrder(null);window.removeEventListener('afterprint',cleanup)};window.addEventListener('afterprint',cleanup);requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(()=>{document.body.classList.add(f==='cupom'?'printing-cupom':'printing-a4');window.print();setTimeout(()=>{document.body.classList.remove('printing-cupom','printing-a4');setPrintOrder(null)},800)},120)))};
+ useEffect(()=>{try{const s=localStorage.getItem(PRINT_PREF_KEY) as PrintFormat|null;if(s==='cupom'||s==='a4')setPrintFormat(s)}catch{}},[]);
+ const fetchOrders=async()=>{const requestSeq=++ordersRequestSeq.current;if(!organizationId){if(requestSeq===ordersRequestSeq.current)setOrders([]);return}let q=supabase.from('orders').select('*').eq('organization_id',organizationId).order('created_at',{ascending:false});if(filter==='active'||filter==='scheduled')q=q.in('status',['pending','preparing','ready','out_for_delivery']);if(filter==='scheduled')q=q.not('scheduled_for','is',null);if(dateFrom)q=q.gte('created_at',new Date(`${dateFrom}T00:00:00`).toISOString());if(dateTo)q=q.lte('created_at',new Date(`${dateTo}T23:59:59.999`).toISOString());const{data,error}=await q.limit(200);if(requestSeq!==ordersRequestSeq.current)return;if(error){console.error('fetchOrders',error);toast.error('Não foi possível carregar os pedidos.');return}if(data)setOrders(data as Order[])};
+ useEffect(()=>{let active=true;const refresh=()=>{if(active)void fetchOrders()};refresh();if(!organizationId)return()=>{active=false};const ch=supabase.channel('admin-orders-'+organizationId).on('postgres_changes',{event:'*',schema:'public',table:'orders',filter:`organization_id=eq.${organizationId}`},refresh).subscribe();const timer=window.setInterval(()=>{if(!active)return;setNowTick(Date.now());void fetchOrders()},30000);return()=>{active=false;window.clearInterval(timer);supabase.removeChannel(ch)}},[filter,organizationId,dateFrom,dateTo]);
+ const tableLabels=useMemo(()=>Array.from(new Set([...registeredTableLabels,...orders.map(o=>o.table_label||'').filter(Boolean)])).sort((a,b)=>a.localeCompare(b,'pt-BR')),[orders,registeredTableLabels]);
+ const scheduledReleaseAt=(o:Order)=>{if(!o.scheduled_for)return null;const d=new Date(o.scheduled_for);if(Number.isNaN(d.getTime()))return null;return new Date(d.getTime()-schedulingLeadMin*60000)}; const isScheduledWaiting=(o:Order)=>{const r=scheduledReleaseAt(o);return Boolean(r&&r.getTime()>nowTick&&!['delivered','cancelled'].includes(o.status))}; const formatScheduled=(value?:string|null)=>{if(!value)return'';const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}; const filteredOrders=useMemo(()=>orders.filter(o=>{const items=(o.items as any[])||[];const waiting=isScheduledWaiting(o);if(filter==='active'&&waiting)return false;if(filter==='scheduled'&&!waiting)return false;if(tableFilter!=='all'&&(o.table_label||'')!==tableFilter)return false;if(productQuery.trim()){const q=productQuery.trim().toLowerCase();if(!items.some(it=>(it.name||'').toLowerCase().includes(q)))return false}if(onlyLowStock&&!items.some(it=>{const p=it.product_id||it.id;return p&&lowStockIds.has(p)}))return false;return true}),[orders,filter,productQuery,onlyLowStock,lowStockIds,tableFilter,nowTick,schedulingLeadMin]);
+ const assignEntregador=async(id:string,eid:string|null)=>{if(statusUpdating.has(id))return;const assignmentOrganizationId=organizationId;setStatusUpdating(s=>new Set(s).add(id));try{const{data,error}=await supabase.rpc('assign_entregador' as any,{_order_id:id,_entregador_id:eid});if(currentOrganizationId.current!==assignmentOrganizationId)return;const r:any=data;const validSuccess=r?.ok===true&&r?.order_id===id&&(r?.entregador_id??null)===eid&&typeof r?.idempotent==='boolean';if(error||!validSuccess){const reason=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';const msg:Record<string,string>={delivery_in_progress:'A entrega já saiu da loja. Use “Devolver à fila” antes de trocar o entregador.',status_locked:'Este pedido não permite mais alterar o entregador.',entregador_invalid:'Entregador inválido ou inativo.',forbidden:'Sem permissão para alterar esta entrega.'};toast.error(msg[reason]||'Falha ao atribuir entregador.');return}toast.success(eid?'Entregador reservado para o pedido. Ele iniciará a entrega após retirar na loja.':deliveryAssignmentMode==='free'?'Pedido liberado para os outros entregadores.':'Atribuição removida.');await fetchOrders()}catch(error){if(currentOrganizationId.current===assignmentOrganizationId){console.error('assign_entregador',error);toast.error('Falha ao atribuir entregador.')}}finally{setStatusUpdating(s=>{const n=new Set(s);n.delete(id);return n})}};
+ const returnDeliveryToQueue=async(id:string)=>{if(returnDeliveryInFlight.current.has(id)||statusUpdating.has(id))return;const reason=prompt('Motivo para devolver esta entrega à fila:');if(reason==null)return;const clean=reason.trim();if(clean.length<3){toast.error('Informe um motivo com pelo menos 3 caracteres.');return}if(!confirm('Confirme somente se o pedido físico já retornou à loja e está disponível para outro entregador. Continuar?'))return;returnDeliveryInFlight.current.add(id);const returnOrganizationId=organizationId;setStatusUpdating(s=>new Set(s).add(id));try{const{data,error}=await supabase.rpc('visionfood_return_delivery_to_queue' as any,{_order_id:id,_reason:clean});if(currentOrganizationId.current!==returnOrganizationId)return;const r:any=data;const validSuccess=r?.ok===true&&r?.status==='ready'&&r?.returned_to_queue===true;if(error||!validSuccess){const reasonCode=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';const msg:Record<string,string>={not_out_for_delivery:'Esta entrega não está mais em rota.',driver_missing:'O pedido não possui entregador atribuído.',reason_required:'Informe o motivo.',forbidden:'Sem permissão para devolver esta entrega à fila.'};toast.error(msg[reasonCode]||'Não foi possível devolver a entrega à fila.');await fetchOrders();return}toast.success(deliveryAssignmentMode==='free'?'Entrega devolvida à disputa livre.':'Entrega voltou para “Pronto” e aguarda outro entregador.');closeTrack();await fetchOrders()}catch(error){if(currentOrganizationId.current===returnOrganizationId){console.error('visionfood_return_delivery_to_queue',error);toast.error('Não foi possível devolver a entrega à fila.');await fetchOrders()}}finally{returnDeliveryInFlight.current.delete(id);setStatusUpdating(s=>{const n=new Set(s);n.delete(id);return n})}};
+ const confirmPayment=async(id:string)=>{if(confirmPaymentInFlight.current.has(id)||statusUpdating.has(id))return;if(!confirm('Confirmar que este pagamento foi recebido?'))return;confirmPaymentInFlight.current.add(id);const paymentOrganizationId=organizationId;setStatusUpdating(s=>new Set(s).add(id));try{const{data,error}=await supabase.rpc('confirm_order_payment' as any,{_order_id:id});if(currentOrganizationId.current!==paymentOrganizationId)return;const r:any=data;const validConfirmed=r?.ok===true&&r?.already_paid!==true&&r?.order_id===id&&r?.payment_status==='paid';const validAlreadyPaid=r?.ok===true&&r?.already_paid===true&&Object.prototype.hasOwnProperty.call(r,'payment_confirmed_at')&&(r.payment_confirmed_at===null||typeof r.payment_confirmed_at==='string');if(error||(!validConfirmed&&!validAlreadyPaid)){console.error('confirm_order_payment',error||r);const reason=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';toast.error('Não foi possível confirmar o pagamento.');if(reason==='order_cancelled'||reason==='payment_status_locked')await fetchOrders();return}const latestOrder=currentOrders.current.find(o=>o.id===id);if(latestOrder&&(latestOrder.status==='cancelled'||!['pending','paid'].includes(latestOrder.payment_status||'legacy')))return;if(latestOrder?.payment_status!=='paid')setOrders(cur=>cur.map(o=>o.id===id&&o.status!=='cancelled'&&o.payment_status==='pending'?{...o,payment_status:'paid'}:o));toast.success(validAlreadyPaid?'Pagamento já estava confirmado.':'Pagamento confirmado.')}catch(error){if(currentOrganizationId.current===paymentOrganizationId){console.error('confirm_order_payment',error);toast.error('Não foi possível confirmar o pagamento.');await fetchOrders()}}finally{confirmPaymentInFlight.current.delete(id);setStatusUpdating(s=>{const n=new Set(s);n.delete(id);return n})}};
+ const callPassword=async(o:Order):Promise<boolean>=>{if(callPasswordInFlight.current.has(o.id))return false;const callOrganizationId=organizationId;if(!callOrganizationId){toast.error('Organização não identificada para chamar a senha.');return false}const numero=String(o.order_number??'').trim();if(!numero){toast.error('Pedido sem número de senha válido.');return false}callPasswordInFlight.current.add(o.id);setPasswordCalling(s=>new Set(s).add(o.id));try{const{error}=await(supabase.from('senhas_chamadas' as any).insert({organization_id:callOrganizationId,numero,tipo:'normal'}) as any);if(currentOrganizationId.current!==callOrganizationId)return false;if(error){toast.error('Pedido ficou pronto, mas a senha não pôde ser chamada na TV.');console.error('callPassword',error);return false}toast.success(`🔔 Senha #${numero} chamada na TV`);return true}catch(error){if(currentOrganizationId.current===callOrganizationId){toast.error('Pedido ficou pronto, mas a senha não pôde ser chamada na TV.');console.error('callPassword',error)}return false}finally{callPasswordInFlight.current.delete(o.id);setPasswordCalling(s=>{const n=new Set(s);n.delete(o.id);return n})}};
+ const isDeliveryOrder=(orderType:string)=>orderType==='delivery'||orderType==='viagem';
+ const allowedTransition=(o:Order,next:string)=>{if(next==='cancelled')return !['delivered','cancelled'].includes(o.status);if(o.status==='pending')return next==='preparing';if(o.status==='preparing')return next==='ready';if(o.status==='ready'&&!isDeliveryOrder(o.order_type))return next==='delivered';return false};
+ const processDeliveredLoyalty=(order:Order,loyaltyOrganizationId:string)=>{
+  void(async()=>{
+   try{
+    const{data,error}=await supabase.rpc('grant_loyalty_stamp' as any,{_order_id:order.id});
+    if(currentOrganizationId.current!==loyaltyOrganizationId)return;
+    if(error){console.error('grant_loyalty_stamp',error);return}
+    const r:any=data;
+    const knownReasons=['unauthenticated','order_not_found','forbidden','order_not_delivered','payment_not_confirmed','inactive','not_started','expired','no_phone','eligible_amount_unknown','below_minimum','no_points','identity_conflict'];
+    if(r?.ok!==true){
+     const reason=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';
+     if(!knownReasons.includes(reason))console.warn('grant_loyalty_stamp malformed/unknown response',r);
+     return
+    }
+    if(r?.already_stamped===true){
+     const validAlreadyStamped=r?.awarded===false&&typeof r?.points_awarded==='number'&&Number.isFinite(r.points_awarded)&&Number.isInteger(r.points_awarded)&&r.points_awarded>=0&&typeof r?.balance==='number'&&Number.isFinite(r.balance)&&Number.isInteger(r.balance)&&r.balance>=0&&(r?.eligible_amount==null||(typeof r.eligible_amount==='number'&&Number.isFinite(r.eligible_amount)&&r.eligible_amount>=0));
+     if(!validAlreadyStamped)console.warn('grant_loyalty_stamp malformed idempotent response',r);
+     return
+    }
+    const validAward=r?.awarded===true&&typeof r?.points_awarded==='number'&&Number.isFinite(r.points_awarded)&&Number.isInteger(r.points_awarded)&&r.points_awarded>0&&typeof r?.balance==='number'&&Number.isFinite(r.balance)&&Number.isInteger(r.balance)&&r.balance>=0&&typeof r?.eligible_amount==='number'&&Number.isFinite(r.eligible_amount)&&r.eligible_amount>=0&&['spend','order'].includes(r?.earning_mode);
+    if(!validAward){console.warn('grant_loyalty_stamp malformed success response',r);return}
+    toast.success(`⭐ ${order.customer_name||'Cliente'} recebeu +${r.points_awarded} pontos. Saldo: ${r.balance} pts.`)
+   }catch(error){
+    if(currentOrganizationId.current===loyaltyOrganizationId)console.error('grant_loyalty_stamp',error)
+   }
+  })()
+ };
+ const updateStatus=async(id:string,status:string,motivo?:string)=>{
+  const order=orders.find(o=>o.id===id);
+  if(!order){toast.error('Pedido não encontrado no painel. Atualize a lista e tente novamente.');return}
+  if(statusUpdating.has(id)||updateStatusInFlight.current.has(id))return;
+  if(!allowedTransition(order,status)){toast.error(`Transição inválida: ${STATUS_CONFIG[order.status]?.label||order.status} → ${STATUS_CONFIG[status]?.label||status}.`);return}
+  const statusOrganizationId=organizationId;
+  if(!statusOrganizationId){toast.error('Organização não identificada.');return}
+  updateStatusInFlight.current.add(id);
+  setStatusUpdating(s=>new Set(s).add(id));
+  try{
+   if(status==='cancelled'){
+    const{data,error}=await supabase.rpc('cancelar_pedido' as any,{_order_id:id,_motivo:motivo??null});
+    if(currentOrganizationId.current!==statusOrganizationId)return;
+    const r:any=data;
+    const reason=r?.ok===false&&typeof r?.reason==='string'?r.reason:'';
+    const refundStatusValid=['none','auto_eligible','manual_required'].includes(r?.status_reembolso);
+    const validAlreadyCancelled=r?.ok===true&&r?.already_cancelled===true&&(refundStatusValid||r?.status_reembolso==null);
+    const validCancelled=r?.ok===true&&r?.already_cancelled!==true&&r?.order_id===id&&r?.previous_status===order.status&&refundStatusValid&&typeof r?.stock_restocked==='boolean'&&typeof r?.ingredient_stock_restocked==='boolean';
+    if(error||(!validCancelled&&!validAlreadyCancelled)){
+     console.error('cancelar_pedido',error||r);
+     const msg:Record<string,string>={unauthenticated:'Sua sessão não está mais válida. Entre novamente antes de cancelar o pedido.',forbidden:'Sem permissão para cancelar este pedido.',admin_only:'A partir do preparo, apenas o lojista pode cancelar.',reason_required:'Informe um motivo (mín. 3 caracteres).',status_locked:'Pedido não pode mais ser cancelado pelo cliente.',already_delivered:'Pedido já entregue — não pode ser cancelado.',not_found:'Pedido não encontrado.'};
+     toast.error(error?'Não foi possível cancelar o pedido.':msg[reason]||'Falha ao cancelar.');
+     await fetchOrders();
+     return
+    }
+    if(validAlreadyCancelled){
+     await fetchOrders();
+     if(currentOrganizationId.current!==statusOrganizationId)return;
+     toast.success('Pedido já estava cancelado.');
+     return
+    }
+    const latestOrder=currentOrders.current.find(o=>o.id===id);
+    if(!latestOrder||(latestOrder.status!==order.status&&latestOrder.status!=='cancelled')){
+     await fetchOrders();
+     return
+    }
+    setOrders(cur=>cur.map(o=>o.id===id&&o.status===order.status?{...o,status:'cancelled'}:o));
+    const ref=r.status_reembolso==='auto_eligible'?' Reembolso automático elegível.':r.status_reembolso==='manual_required'?' Reembolso requer aprovação manual.':'';
+    toast.success('Pedido cancelado e estoque devolvido.'+ref);
+    return
+   }
+   const{data:statusResult,error}=await supabase.rpc('visionfood_update_order_status',{_order_id:id,_expected_status:order.status,_next_status:status});
+   if(currentOrganizationId.current!==statusOrganizationId)return;
+   const sr:any=statusResult;
+   const validSuccess=sr?.ok===true&&sr?.order_id===id&&sr?.previous_status===order.status&&sr?.status===status;
+   if(error||!validSuccess){
+    console.error('visionfood_update_order_status',error||sr);
+    const reason=sr?.ok===false&&typeof sr?.reason==='string'?sr.reason:'';
+    const msg:Record<string,string>={unauthenticated:'Sua sessão não está mais válida. Entre novamente antes de alterar o pedido.',status_changed:'O status do pedido mudou. Atualize a lista antes de tentar novamente.',invalid_transition:'Essa mudança de status não é permitida.',driver_start_required:'A saída para entrega deve ser iniciada pelo app do entregador.',delivery_code_required:'Entregas devem ser finalizadas pelo entregador com código de 4 dígitos e localização.',scheduled_not_released:'Este pedido ainda está aguardando o horário agendado. Ele será liberado automaticamente na antecedência configurada.',forbidden:'Sem permissão para alterar este pedido.',not_found:'Pedido não encontrado.'};
+    toast.error(msg[reason]||'O status não pôde ser atualizado.');
+    await fetchOrders();
+    return
+   }
+   const latestOrder=currentOrders.current.find(o=>o.id===id);
+   if(!latestOrder||(latestOrder.status!==order.status&&latestOrder.status!==status)){await fetchOrders();return}
+   setOrders(cur=>cur.map(o=>o.id===id&&o.status===order.status?{...o,status}:o));
+   if(status==='ready'){toast.success('Pedido marcado como Pronto.');await callPassword({...order,status})}
+   if(status==='delivered')processDeliveredLoyalty({...order,status},statusOrganizationId);
+  }catch(error){
+   if(currentOrganizationId.current===statusOrganizationId){
+    if(status==='cancelled'){
+     console.error('cancelar_pedido',error);
+     toast.error('Não foi possível cancelar o pedido.');
+    }else{
+     console.error('visionfood_update_order_status',error);
+     toast.error('O status não pôde ser atualizado.')
+    }
+    await fetchOrders()
+   }
+  }finally{
+   updateStatusInFlight.current.delete(id);
+   setStatusUpdating(s=>{const n=new Set(s);n.delete(id);return n})
+  }
+ };
+ const hasPending=orders.some(o=>o.status==='pending'&&!isScheduledWaiting(o));const{needsUnlock,muted,setMuted,unlock}=useOrderAlertSound(hasPending);
+ return <div className="px-4 space-y-4">
+ {needsUnlock&&hasPending&&<button onClick={unlock} className="w-full bg-accent/15 border border-accent/40 text-accent rounded-lg px-3 py-2 text-sm font-semibold animate-pulse">🔔 Clique em qualquer lugar da tela para ativar os alertas sonoros de novos pedidos</button>}
+ <div className="flex gap-2 items-center flex-wrap"><button onClick={()=>setMuted(m=>!m)} className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${muted?'bg-muted text-muted-foreground border-border':hasPending?'bg-accent/20 text-accent border-accent/40 animate-pulse':'bg-foreground/5 text-foreground border-border'}`}>{muted?<BellOff className="w-4 h-4"/>:<Bell className="w-4 h-4"/>}<span className="hidden sm:inline">{muted?'Mutado':'Alertas'}</span></button><div className="flex gap-2 flex-wrap"><button onClick={()=>setFilter('active')} className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter==='active'?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground'}`}>Ativos</button><button onClick={()=>setFilter('scheduled')} className={`touch-btn px-4 py-2 rounded-lg text-sm flex items-center gap-1 ${filter==='scheduled'?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground'}`}><CalendarClock className="w-4 h-4"/> Agendados</button><button onClick={()=>setFilter('all')} className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter==='all'?'bg-primary text-primary-foreground':'bg-muted text-muted-foreground'}`}>Todos</button></div><select value={tableFilter} onChange={e=>setTableFilter(e.target.value)} className="bg-muted border rounded-lg px-2 py-2 text-sm"><option value="all">Todas as mesas</option>{tableLabels.map(label=><option key={label} value={label}>{label}</option>)}</select><button onClick={()=>setShowFilters(s=>!s)} className="touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border"><Filter className="w-4 h-4"/> Filtros</button><button onClick={fetchOrders} className="ml-auto p-2"><RefreshCw className="w-5 h-5"/></button></div>
+ {showFilters&&<div className="kiosk-card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border border-primary/30"><div><label className="text-[11px] font-bold">De</label><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="w-full bg-muted border rounded-lg px-2 py-1.5 text-sm"/></div><div><label className="text-[11px] font-bold">Até</label><input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="w-full bg-muted border rounded-lg px-2 py-1.5 text-sm"/></div><div><label className="text-[11px] font-bold">Produto contém</label><input value={productQuery} onChange={e=>setProductQuery(e.target.value)} className="w-full bg-muted border rounded-lg px-2 py-1.5 text-sm"/></div><label className="flex items-center gap-2"><input type="checkbox" checked={onlyLowStock} onChange={e=>setOnlyLowStock(e.target.checked)}/><AlertTriangle className="w-4 h-4"/> Só com estoque baixo</label></div>}
+ {filteredOrders.length===0&&<div className="text-center py-12 text-muted-foreground"><Clock className="w-12 h-12 mx-auto mb-3 opacity-50"/><p>Nenhum pedido encontrado</p></div>}
+ {filteredOrders.map(order=>{const cfg=STATUS_CONFIG[order.status]||STATUS_CONFIG.pending;const isDelivery=isDeliveryOrder(order.order_type);const busy=statusUpdating.has(order.id)||passwordCalling.has(order.id);const scheduledWaiting=isScheduledWaiting(order);const releaseAt=scheduledReleaseAt(order);return <div key={order.id} className="kiosk-card p-4 space-y-3"><div className="flex justify-between"><div className="flex gap-2"><span className="text-primary font-black text-lg">#{order.order_number}</span><span className={`text-xs font-bold px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>{order.scheduled_for&&<span className="text-xs font-black px-2 py-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">📅 {scheduledWaiting?'AGENDADO':'AGENDADO LIBERADO'}</span>}</div><span className="text-xs text-muted-foreground">{new Date(order.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span></div>{order.scheduled_for&&<div className={`rounded-xl border p-3 text-sm ${scheduledWaiting?'border-violet-500/40 bg-violet-500/10':'border-success/30 bg-success/5'}`}><p className="font-black flex items-center gap-2"><CalendarClock className="w-4 h-4"/> Pedido agendado para {formatScheduled(order.scheduled_for)}</p>{scheduledWaiting&&releaseAt&&<p className="text-xs text-muted-foreground mt-1">Entra na operação às {releaseAt.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} ({schedulingLeadMin} min de antecedência).</p>}{isDelivery&&order.entregador_id&&scheduledWaiting&&<p className="text-xs text-blue-300 mt-1">🛵 Entregador pré-atribuído. O pedido só aparecerá no app dele quando for liberado.</p>}</div>}<div className="text-sm"><p>👤 <b>{order.customer_name}</b> — {order.customer_phone}</p><p>{isDelivery?'🛵 Entrega':order.table_label?`🍽️ ${order.table_label}`:'📍 Comer no Local'}</p>{isDelivery&&order.delivery_address&&<p>📌 {order.delivery_address}</p>}</div>{(()=>{const pay=PAYMENT_CONFIG[order.payment_status||'legacy']||PAYMENT_CONFIG.legacy;return <div className="flex items-center gap-2 flex-wrap"><span className={`text-xs font-bold px-2 py-1 rounded-full border ${pay.cls}`}>{pay.label}</span>{order.payment_status==='pending'&&order.status!=='cancelled'&&<button disabled={busy} onClick={()=>confirmPayment(order.id)} className="touch-btn text-xs px-2 py-1 rounded-lg border border-success/40 text-success disabled:opacity-50">Confirmar pagamento</button>}</div>})()}<div className="text-xs bg-muted/50 rounded-lg p-2">{(order.items||[]).map((i:any,k:number)=><p key={k}>{i.quantity}x {i.name} — {formatCurrency(i.total)}</p>)}</div>{isDelivery&&!['cancelled','delivered','out_for_delivery'].includes(order.status)&&deliveryAssignmentMode==='manual'&&<div className="space-y-1"><div className="flex gap-2 text-xs"><select value={order.entregador_id||''} disabled={busy} onChange={e=>assignEntregador(order.id,e.target.value||null)} className="flex-1 bg-muted border rounded-lg px-2 py-1.5"><option value="">— Não atribuído —</option>{entregadores.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div><p className="text-[10px] text-muted-foreground">{scheduledWaiting?'Você pode pré-atribuir agora; o entregador só receberá quando chegar a janela operacional.':order.entregador_id?'Pedido reservado. O entregador confirma “Retirei · Iniciar entrega” no próprio app após pegar o pedido.':'Modo manual: escolha o entregador. A atribuição reserva o pedido, mas ainda não marca como saiu para entrega.'}</p></div>}{isDelivery&&deliveryAssignmentMode==='free'&&order.status==='ready'&&!order.entregador_id&&!scheduledWaiting&&<div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-300 font-bold">⚡ Disputa livre: este pedido está disponível no app dos entregadores. O primeiro que aceitar reserva a entrega; ela só vira “Saiu para entrega” quando ele confirmar a retirada.</div>}{isDelivery&&order.status==='ready'&&order.entregador_id&&!scheduledWaiting&&<div className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-300 font-bold space-y-2"><p>🛵 Pedido reservado para {entregadores.find(e=>e.id===order.entregador_id)?.name||'o entregador'}. Aguardando retirada e início pelo app do entregador.</p>{deliveryAssignmentMode==='free'&&<button disabled={busy} onClick={()=>assignEntregador(order.id,null)} className="w-full rounded-lg border border-blue-400/40 bg-blue-400/10 px-3 py-2 text-blue-200 disabled:opacity-50">Liberar para outro entregador</button>}</div>}{isDelivery&&order.status==='out_for_delivery'&&order.delivery_issue_reason&&<div className="rounded-lg border-2 border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs"><p className="font-black text-amber-300">⚠️ Problema informado pelo entregador</p><p className="text-foreground mt-1">{order.delivery_issue_reason}</p>{order.delivery_issue_at&&<p className="text-muted-foreground mt-1">{new Date(order.delivery_issue_at).toLocaleString('pt-BR')}</p>}</div>}<div className="flex justify-between"><b className="text-primary">{formatCurrency(order.total)}</b><FeatureGate feature="print_receipt" label="Impressão" inline><button onClick={()=>openPrintDialog(order)} className="touch-btn py-2 px-3 rounded-lg border flex gap-1"><Printer className="w-4 h-4"/> Imprimir</button></FeatureGate></div>{!['delivered','cancelled'].includes(order.status)&&<div className="flex gap-2 flex-wrap">{order.status==='pending'&&<button disabled={busy||scheduledWaiting} title={scheduledWaiting?'Aguardando a janela do agendamento':''} onClick={()=>updateStatus(order.id,'preparing')} className="flex-1 touch-btn py-2 rounded-lg bg-primary/20 text-primary disabled:opacity-50"><UtensilsCrossed className="inline w-4 h-4"/> Preparando</button>}{order.status==='preparing'&&<button disabled={busy} onClick={()=>updateStatus(order.id,'ready')} className="flex-1 touch-btn py-2 rounded-lg bg-amber-400/20 text-amber-400 disabled:opacity-50"><BellRing className="inline w-4 h-4"/> Pronto</button>}{!isDelivery&&order.status==='ready'&&<button disabled={busy} onClick={()=>updateStatus(order.id,'delivered')} className="flex-1 touch-btn py-2 rounded-lg bg-success/20 text-success disabled:opacity-50"><CheckCircle2 className="inline w-4 h-4"/> Retirado</button>}{isDelivery&&order.status==='out_for_delivery'&&<div className="flex-1 rounded-lg border border-success/30 bg-success/5 px-3 py-2 text-xs text-success font-semibold">🔐 A entrega é finalizada no app do entregador com GPS + código de 4 dígitos.</div>}{order.status==='ready'&&!scheduledWaiting&&<button disabled={busy} onClick={()=>callPassword(order)} className="touch-btn py-2 px-3 rounded-lg bg-amber-500 text-white disabled:opacity-50"><BellRing className="inline w-4 h-4"/> Rechamar Senha</button>}<button disabled={busy} onClick={()=>{const post=['preparing','ready','out_for_delivery'].includes(order.status);if(post){const m=prompt('Motivo do cancelamento (obrigatório a partir do preparo):');if(!m||m.trim().length<3)return;updateStatus(order.id,'cancelled',m.trim())}else if(confirm('Cancelar este pedido? O estoque será devolvido.'))updateStatus(order.id,'cancelled')}} className="touch-btn py-2 px-3 rounded-lg bg-destructive/20 text-destructive disabled:opacity-50"><XCircle className="w-4 h-4"/></button></div>}{order.status==='out_for_delivery'&&order.entregador_id&&<div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><button onClick={()=>openTrack(order)} className="w-full touch-btn py-2.5 rounded-lg bg-amber-500 text-black font-black"><MapPin className="inline w-4 h-4"/> Ver Moto em Tempo Real</button><button disabled={busy} onClick={()=>returnDeliveryToQueue(order.id)} className="w-full touch-btn py-2.5 rounded-lg border border-blue-500/40 bg-blue-500/10 text-blue-300 font-bold disabled:opacity-50"><RefreshCw className="inline w-4 h-4"/> Pedido voltou à loja · devolver à fila</button></div>}</div>})}
+ {trackOrder&&<div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={closeTrack}><div className="bg-zinc-950 rounded-2xl w-full max-w-3xl p-4" onClick={e=>e.stopPropagation()}><button onClick={closeTrack} className="float-right"><X/></button><h3 className="text-lg font-black text-amber-400">Rastreio em tempo real</h3><LiveDeliveryMap rider={trackRider} destination={trackDest?{...trackDest,label:trackOrder.delivery_address||'Destino'}:null} height={460}/></div></div>}
+ <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat==='a4'?'print-a4':'print-cupom'}/>{pendingPrintOrder&&<div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4" onClick={()=>setPendingPrintOrder(null)}><div className="kiosk-card w-full max-w-md p-5" onClick={e=>e.stopPropagation()}><h3 className="text-lg font-black mb-4">Formato de Impressão</h3><div className="grid gap-3"><button onClick={()=>doPrint(pendingPrintOrder,'cupom')} className="p-4 rounded-xl border"><Receipt className="inline w-5 h-5"/> Térmica (58/80mm)</button><button onClick={()=>doPrint(pendingPrintOrder,'a4')} className="p-4 rounded-xl border"><FileText className="inline w-5 h-5"/> Folha A4</button></div></div></div>}
+ </div>
 };
-
-const OrdersPanel = ({ organizationId }: { organizationId: string | null }) => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [filter, setFilter] = useState<'active' | 'all'>('active');
-  const [printOrder, setPrintOrder] = useState<Order | null>(null);
-  const [printFormat, setPrintFormat] = useState<PrintFormat>('cupom');
-  const [pendingPrintOrder, setPendingPrintOrder] = useState<Order | null>(null);
-
-  const [storeName, setStoreName] = useState<string>('');
-  const [entregadores, setEntregadores] = useState<Entregador[]>([]);
-  const [lowStockIds, setLowStockIds] = useState<Set<string>>(new Set());
-
-  // Advanced filters
-  const [showFilters, setShowFilters] = useState(false);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [productQuery, setProductQuery] = useState('');
-  const [onlyLowStock, setOnlyLowStock] = useState(false);
-
-  // Live tracking modal
-  const [trackOrder, setTrackOrder] = useState<Order | null>(null);
-  const [trackRider, setTrackRider] = useState<{ lat: number; lng: number; updatedAt: string } | null>(null);
-  const [trackDest, setTrackDest] = useState<{ lat: number; lng: number } | null>(null);
-
-  useEffect(() => {
-    if (!trackOrder || !trackOrder.entregador_id) return;
-    let cancelled = false;
-    const load = async () => {
-      const { data } = await supabase
-        .from('entregadores' as any)
-        .select('last_lat,last_lng,last_location_at')
-        .eq('id', trackOrder.entregador_id)
-        .maybeSingle();
-      const row: any = data;
-      if (!cancelled && row?.last_lat != null && row?.last_lng != null) {
-        setTrackRider({ lat: Number(row.last_lat), lng: Number(row.last_lng), updatedAt: row.last_location_at });
-      }
-    };
-    load();
-    // geocode destino
-    if (trackOrder.delivery_address) {
-      geocodeAddress(trackOrder.delivery_address).then(c => { if (!cancelled && c) setTrackDest(c); });
-    }
-    const ch = supabase
-      .channel(`track-${trackOrder.entregador_id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'entregadores',
-        filter: `id=eq.${trackOrder.entregador_id}`,
-      }, (payload: any) => {
-        const r = payload.new;
-        if (r?.last_lat != null && r?.last_lng != null) {
-          setTrackRider({ lat: Number(r.last_lat), lng: Number(r.last_lng), updatedAt: r.last_location_at });
-        }
-      })
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(ch); };
-  }, [trackOrder]);
-
-  const closeTrack = () => { setTrackOrder(null); setTrackRider(null); setTrackDest(null); };
-
-  useEffect(() => {
-    if (!organizationId) { setStoreName(''); setEntregadores([]); return; }
-    supabase.from('settings').select('store_name').eq('organization_id', organizationId).maybeSingle()
-      .then(({ data }) => setStoreName((data as any)?.store_name || ''));
-    supabase.from('entregadores' as any).select('id,name,active').eq('organization_id', organizationId).eq('active', true)
-      .then(({ data }) => setEntregadores(((data as any[]) || []) as Entregador[]));
-    supabase.from('products').select('id').eq('organization_id', organizationId).eq('manage_stock', true)
-      .lte('stock_quantity', 5)
-      .then(({ data }) => setLowStockIds(new Set(((data as any[]) || []).map((p: any) => p.id))));
-  }, [organizationId]);
-
-  const openPrintDialog = (order: Order) => {
-    setPendingPrintOrder(order);
-  };
-
-  const doPrint = (order: Order, format: PrintFormat) => {
-    try { localStorage.setItem(PRINT_PREF_KEY, format); } catch {}
-    setPrintFormat(format);
-    setPrintOrder(order);
-    setPendingPrintOrder(null);
-    const cleanup = () => {
-      setPrintOrder(null);
-      window.removeEventListener('afterprint', cleanup);
-    };
-    window.addEventListener('afterprint', cleanup);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          // Garante classe no body antes da impressão
-          document.body.classList.add(format === 'cupom' ? 'printing-cupom' : 'printing-a4');
-          window.print();
-          // Fallback se afterprint não disparar (alguns browsers)
-          setTimeout(() => {
-            document.body.classList.remove('printing-cupom', 'printing-a4');
-            setPrintOrder(null);
-          }, 800);
-        }, 120);
-      });
-    });
-  };
-
-  // Restaura preferência ao montar
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(PRINT_PREF_KEY) as PrintFormat | null;
-      if (saved === 'cupom' || saved === 'a4') setPrintFormat(saved);
-    } catch {}
-  }, []);
-
-
-  const fetchOrders = async () => {
-    if (!organizationId) { setOrders([]); return; }
-    let query = supabase.from('orders').select('*').eq('organization_id', organizationId).order('created_at', { ascending: false });
-    if (filter === 'active') {
-      query = query.in('status', ['pending', 'preparing', 'out_for_delivery']);
-    }
-    if (dateFrom) query = query.gte('created_at', new Date(dateFrom).toISOString());
-    if (dateTo) {
-      const end = new Date(dateTo); end.setHours(23, 59, 59, 999);
-      query = query.lte('created_at', end.toISOString());
-    }
-    const { data } = await query.limit(200);
-    if (data) setOrders(data as Order[]);
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    if (!organizationId) return;
-
-    const channel = supabase
-      .channel('admin-orders-' + organizationId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `organization_id=eq.${organizationId}` }, () => {
-        fetchOrders();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [filter, organizationId, dateFrom, dateTo]);
-
-  // Client-side product/low-stock filter
-  const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
-      const items = (o.items as any[]) || [];
-      if (productQuery.trim()) {
-        const q = productQuery.trim().toLowerCase();
-        if (!items.some(it => (it.name || '').toLowerCase().includes(q))) return false;
-      }
-      if (onlyLowStock) {
-        if (!items.some(it => {
-          const pid = it.product_id || it.id;
-          return pid && lowStockIds.has(pid);
-        })) return false;
-      }
-      return true;
-    });
-  }, [orders, productQuery, onlyLowStock, lowStockIds]);
-
-  const assignEntregador = async (orderId: string, entregadorId: string | null) => {
-    const { toast } = await import('sonner');
-    const { data, error } = await supabase.rpc('assign_entregador' as any, {
-      _order_id: orderId,
-      _entregador_id: entregadorId,
-    });
-    const res: any = data;
-    if (error || !res?.ok) {
-      toast.error('Falha ao atribuir entregador.');
-      return;
-    }
-    toast.success(entregadorId ? 'Entregador atribuído.' : 'Atribuição removida.');
-    fetchOrders();
-  };
-
-  const updateStatus = async (id: string, status: string, motivo?: string) => {
-    const { toast } = await import('sonner');
-
-    if (status === 'cancelled') {
-      const { data, error } = await supabase.rpc('cancelar_pedido' as any, { _order_id: id, _motivo: motivo ?? null });
-      const res: any = data;
-      if (error) {
-        console.error('cancelar_pedido', error);
-        toast.error('Não foi possível cancelar o pedido.');
-        return;
-      }
-      if (res?.ok) {
-        if (res.already_cancelled) {
-          toast.success('Pedido já estava cancelado.');
-        } else {
-          const ref = res.status_reembolso === 'auto_eligible'
-            ? ' Reembolso automático elegível.'
-            : res.status_reembolso === 'manual_required'
-              ? ' Reembolso requer aprovação manual.'
-              : '';
-          toast.success('Pedido cancelado e estoque devolvido.' + ref);
-        }
-      } else {
-        const msg: Record<string, string> = {
-          forbidden: 'Sem permissão para cancelar este pedido.',
-          admin_only: 'A partir do preparo, apenas o lojista pode cancelar.',
-          reason_required: 'Informe um motivo (mín. 3 caracteres).',
-          status_locked: 'Pedido não pode mais ser cancelado pelo cliente.',
-          already_delivered: 'Pedido já entregue — não pode ser cancelado.',
-          not_found: 'Pedido não encontrado.',
-        };
-        toast.error(msg[res?.reason] || 'Falha ao cancelar.');
-      }
-      return;
-    }
-
-    await supabase.from('orders').update({ status }).eq('id', id);
-
-    // 🔔 Quando o pedido vira "Pronto", dispara senha na TV do salão
-    // (toca o som + pisca o número no painel /senhas)
-    if (status === 'ready') {
-      const order = orders.find(o => o.id === id);
-      if (order) {
-        await callPassword(order);
-      }
-    }
-
-    if (status === 'delivered') {
-      const order = orders.find(o => o.id === id);
-      const { data, error } = await supabase.rpc('grant_loyalty_stamp' as any, { _order_id: id });
-      const res: any = data;
-      if (error) {
-        console.error('grant_loyalty_stamp', error);
-      } else if (res?.ok) {
-        if (res.completed) {
-          toast.success(`🎉 ${order?.customer_name || 'Cliente'} completou o cartão! Prêmio gerado (código ${res.codigo}).`);
-        } else {
-          toast.success(`+1 carimbo (${res.carimbos}/${res.meta}) para ${order?.customer_name || 'cliente'}.`);
-        }
-      } else if (res?.reason && !['below_minimum', 'no_phone', 'inactive', 'already_stamped'].includes(res.reason)) {
-        console.warn('Carimbo não concedido:', res?.reason);
-      }
-    }
-  };
-
-  const callPassword = async (order: Order) => {
-    if (!organizationId) return;
-    const numero = String(order.order_number || '').trim();
-    if (!numero) return;
-    const { error } = await (supabase.from('senhas_chamadas' as any).insert({
-      organization_id: organizationId,
-      numero,
-      tipo: 'normal',
-    }) as any);
-    if (error) {
-      toast.error('Erro ao chamar senha');
-      console.error(error);
-    } else {
-      toast.success(`🔔 Senha #${numero} chamada na TV`);
-    }
-  };
-
-  const hasPending = orders.some(o => o.status === 'pending');
-  const { needsUnlock, muted, setMuted, unlock } = useOrderAlertSound(hasPending);
-
-  return (
-    <div className="px-4 space-y-4">
-      {needsUnlock && hasPending && (
-        <button
-          onClick={unlock}
-          className="w-full bg-accent/15 border border-accent/40 text-accent rounded-lg px-3 py-2 text-sm font-semibold animate-pulse"
-        >
-          🔔 Clique em qualquer lugar da tela para ativar os alertas sonoros de novos pedidos
-        </button>
-      )}
-
-      <div className="flex gap-2 items-center flex-wrap">
-        <button
-          onClick={() => setMuted(m => !m)}
-          className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${
-            muted
-              ? 'bg-muted text-muted-foreground border-border'
-              : hasPending
-                ? 'bg-accent/20 text-accent border-accent/40 animate-pulse'
-                : 'bg-foreground/5 text-foreground border-border'
-          }`}
-          title={muted ? 'Reativar alertas' : 'Silenciar alertas'}
-        >
-          {muted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-          <span className="hidden sm:inline">{muted ? 'Mutado' : 'Alertas'}</span>
-        </button>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setFilter('active')}
-            className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'active' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-          >
-            Ativos
-          </button>
-          <button
-            onClick={() => setFilter('all')}
-            className={`touch-btn px-4 py-2 rounded-lg text-sm ${filter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-          >
-            Todos
-          </button>
-        </div>
-        <button
-          onClick={() => setShowFilters(s => !s)}
-          className={`touch-btn px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 border ${showFilters ? 'bg-primary/20 text-primary border-primary/30' : 'bg-foreground/5 text-foreground border-border'}`}
-        >
-          <Filter className="w-4 h-4" /> Filtros
-        </button>
-        <button onClick={fetchOrders} className="ml-auto p-2 text-muted-foreground hover:text-foreground">
-          <RefreshCw className="w-5 h-5" />
-        </button>
-      </div>
-
-      {showFilters && (
-        <div className="kiosk-card p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border border-primary/30">
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase">De</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
-          </div>
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase">Até</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
-          </div>
-          <div>
-            <label className="text-[11px] font-bold text-muted-foreground uppercase">Produto contém</label>
-            <input value={productQuery} onChange={e => setProductQuery(e.target.value)} placeholder="ex: x-burger" className="w-full bg-muted border border-border rounded-lg px-2 py-1.5 text-sm" />
-          </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={onlyLowStock} onChange={e => setOnlyLowStock(e.target.checked)} />
-              <AlertTriangle className="w-4 h-4 text-accent" /> Só com estoque baixo
-            </label>
-          </div>
-          <div className="sm:col-span-2 lg:col-span-4 flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">{filteredOrders.length} de {orders.length} pedidos</p>
-            <button
-              onClick={() => { setDateFrom(''); setDateTo(''); setProductQuery(''); setOnlyLowStock(false); }}
-              className="text-xs text-primary underline"
-            >Limpar filtros</button>
-          </div>
-        </div>
-      )}
-
-      {filteredOrders.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p>Nenhum pedido encontrado</p>
-        </div>
-      )}
-
-      {filteredOrders.map(order => {
-        const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-        const isDelivery = order.order_type === 'delivery';
-        const hasLowStockItem = ((order.items as any[]) || []).some(it => (it.product_id || it.id) && lowStockIds.has(it.product_id || it.id));
-        return (
-          <div key={order.id} className="kiosk-card p-4 space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-primary font-black text-lg">#{order.order_number}</span>
-                <span className={`text-xs font-bold px-2 py-1 rounded-full ${cfg.bg} ${cfg.color}`}>
-                  {cfg.label}
-                </span>
-                {hasLowStockItem && (
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-accent/15 text-accent border border-accent/30 flex items-center gap-1">
-                    <AlertTriangle className="w-3 h-3" /> Estoque baixo
-                  </span>
-                )}
-                {order.nfe_status && order.nfe_status !== 'none' && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border flex items-center gap-1 ${
-                    order.nfe_status === 'issued' ? 'bg-success/15 text-success border-success/30'
-                    : order.nfe_status === 'pending' ? 'bg-accent/15 text-accent border-accent/30'
-                    : 'bg-destructive/15 text-destructive border-destructive/30'
-                  }`}>
-                    📄 NFe {order.nfe_status === 'issued' ? `#${order.nfe_numero || '—'}` : order.nfe_status}
-                  </span>
-                )}
-                {order.status === 'cancelled' && order.status_reembolso && order.status_reembolso !== 'none' && REFUND_LABEL[order.status_reembolso] && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${REFUND_LABEL[order.status_reembolso].cls}`}>
-                    {REFUND_LABEL[order.status_reembolso].label}
-                  </span>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {new Date(order.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            </div>
-
-            <div className="text-sm space-y-1">
-              <p>👤 <span className="font-semibold">{order.customer_name}</span> — {order.customer_phone}</p>
-              {!isDelivery ? (
-                <p>📍 Comer no Local</p>
-              ) : (
-                <div className="bg-blue-400/10 border border-blue-400/30 rounded-lg p-2 space-y-1 mt-1">
-                  <p className="text-blue-400 font-bold text-xs uppercase tracking-wide flex items-center gap-1">
-                    <Truck className="w-3 h-3" /> Entrega
-                  </p>
-                  {order.delivery_address && <p>📌 <span className="font-semibold">Endereço:</span> {order.delivery_address}</p>}
-                  {order.delivery_reference && <p>🧭 <span className="font-semibold">Referência:</span> {order.delivery_reference}</p>}
-                  {order.delivery_recipient && <p>👥 <span className="font-semibold">Recebe:</span> {order.delivery_recipient}</p>}
-                  {order.delivery_code && order.status !== 'delivered' && order.status !== 'cancelled' && (
-                    <p className="flex items-center gap-1.5 text-orange-400 font-bold pt-1">
-                      <KeyRound className="w-3.5 h-3.5" /> Código: <span className="text-lg tracking-[0.3em]">{order.delivery_code}</span>
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="text-xs space-y-0.5 bg-muted/50 rounded-lg p-2">
-              {(order.items as any[]).map((item: any, i: number) => {
-                if (item.sold_by_weight && item.weight_kg) {
-                  const kg = Number(item.weight_kg).toFixed(3).replace('.', ',');
-                  const pk = Number(item.price_per_kg || item.price || 0);
-                  return (
-                    <p key={i} className="text-amber-400">
-                      ⚖️ {item.name} — {kg} kg × {formatCurrency(pk)}/kg = <span className="font-bold">{formatCurrency(item.total)}</span>
-                    </p>
-                  );
-                }
-                return <p key={i}>{item.quantity}x {item.name} — {formatCurrency(item.total)}</p>;
-              })}
-            </div>
-
-            {isDelivery && order.status !== 'cancelled' && order.status !== 'delivered' && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">🛵 Entregador:</span>
-                <select
-                  value={order.entregador_id || ''}
-                  onChange={e => assignEntregador(order.id, e.target.value || null)}
-                  className="flex-1 bg-muted border border-border rounded-lg px-2 py-1.5 text-sm"
-                >
-                  <option value="">— Não atribuído —</option>
-                  {entregadores.map(e => (
-                    <option key={e.id} value={e.id}>{e.name}</option>
-                  ))}
-                </select>
-                {entregadores.length === 0 && (
-                  <span className="text-[10px] text-muted-foreground">Cadastre na aba "Entregadores"</span>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-black text-primary">{formatCurrency(order.total)}</span>
-              <FeatureGate feature="print_receipt" label="Impressão" inline>
-                <button
-                  onClick={() => openPrintDialog(order)}
-                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-foreground/5 hover:bg-foreground/10 border border-border flex items-center gap-1.5 font-semibold"
-                >
-                  <Printer className="w-4 h-4" /> Imprimir
-                </button>
-              </FeatureGate>
-            </div>
-
-
-            {order.status !== 'delivered' && order.status !== 'cancelled' && (
-              <div className="flex gap-2 flex-wrap">
-                {order.status === 'pending' && (
-                  <button
-                    onClick={() => updateStatus(order.id, 'preparing')}
-                    className="flex-1 touch-btn py-2 rounded-lg text-sm bg-primary/20 text-primary border border-primary/30 flex items-center justify-center gap-1"
-                  >
-                    <UtensilsCrossed className="w-4 h-4" /> Preparando
-                  </button>
-                )}
-                {(order.status === 'pending' || order.status === 'preparing') && (
-                  <button
-                    onClick={() => updateStatus(order.id, 'out_for_delivery')}
-                    className="flex-1 touch-btn py-2 rounded-lg text-sm bg-blue-400/20 text-blue-400 border border-blue-400/30 flex items-center justify-center gap-1"
-                  >
-                    <Truck className="w-4 h-4" /> Saiu p/ Entrega
-                  </button>
-                )}
-                {order.status !== 'delivered' && (
-                  <button
-                    onClick={() => updateStatus(order.id, 'delivered')}
-                    className="flex-1 touch-btn py-2 rounded-lg text-sm bg-success/20 text-success border border-success/30 flex items-center justify-center gap-1"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> Entregue
-                  </button>
-                )}
-                <button
-                  onClick={() => callPassword(order)}
-                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-white border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.4)] hover:brightness-110 flex items-center justify-center gap-1 font-bold"
-                  title="Chamar / Rechamar senha na TV"
-                >
-                  <BellRing className="w-4 h-4" /> Chamar Senha
-                </button>
-                <button
-                  onClick={() => {
-                    const postPrep = order.status === 'preparing' || order.status === 'out_for_delivery';
-                    if (postPrep) {
-                      const motivo = prompt('Motivo do cancelamento (obrigatório a partir do preparo):');
-                      if (!motivo || motivo.trim().length < 3) return;
-                      updateStatus(order.id, 'cancelled', motivo.trim());
-                    } else {
-                      if (confirm('Cancelar este pedido? O estoque será devolvido.')) {
-                        updateStatus(order.id, 'cancelled');
-                      }
-                    }
-                  }}
-                  className="touch-btn py-2 px-3 rounded-lg text-sm bg-destructive/20 text-destructive border border-destructive/30 flex items-center justify-center gap-1"
-                  title="Cancelar pedido"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-
-            {order.status === 'out_for_delivery' && order.entregador_id && (
-              <button
-                onClick={() => setTrackOrder(order)}
-                className="w-full touch-btn py-2.5 rounded-lg text-sm bg-gradient-to-r from-amber-500 to-orange-600 text-black font-black border border-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.5)] hover:brightness-110 flex items-center justify-center gap-2"
-              >
-                <MapPin className="w-4 h-4" /> 📍 Ver Moto em Tempo Real
-              </button>
-            )}
-          </div>
-        );
-      })}
-
-      {trackOrder && (
-        <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={closeTrack}>
-          <div className="bg-zinc-950 border border-amber-500/40 rounded-2xl w-full max-w-3xl p-4 shadow-[0_0_40px_-5px_rgba(245,158,11,0.5)]" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-lg font-black text-amber-400 flex items-center gap-2">
-                  <MapPin className="w-5 h-5" /> Rastreio em tempo real
-                </h3>
-                <p className="text-xs text-zinc-400">Pedido #{trackOrder.order_number} • {trackOrder.customer_name}</p>
-              </div>
-              <button onClick={closeTrack} className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400"><X className="w-4 h-4" /></button>
-            </div>
-            <LiveDeliveryMap
-              rider={trackRider}
-              destination={trackDest ? { ...trackDest, label: trackOrder.delivery_address || 'Destino' } : null}
-              height={460}
-            />
-            <p className="text-[11px] text-zinc-500 text-center mt-2">
-              {trackRider
-                ? `🛵 Última posição: ${trackRider.updatedAt ? new Date(trackRider.updatedAt).toLocaleTimeString('pt-BR') : '—'}`
-                : '⏳ Aguardando o entregador iniciar o rastreio no app...'}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <OrderPrintReceipt order={printOrder} storeName={storeName} formatClass={printFormat === 'a4' ? 'print-a4' : 'print-cupom'} />
-
-      {pendingPrintOrder && (
-        <div className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setPendingPrintOrder(null)}>
-          <div className="kiosk-card w-full max-w-md p-5 border border-primary/40" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start justify-between mb-1">
-              <h3 className="text-lg font-black">Formato de Impressão</h3>
-              <button onClick={() => setPendingPrintOrder(null)} className="p-1 rounded hover:bg-muted"><X className="w-4 h-4" /></button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">Pedido #{pendingPrintOrder.order_number} — escolha o formato.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                onClick={() => doPrint(pendingPrintOrder, 'cupom')}
-                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'cupom' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
-              >
-                <div className="flex items-center gap-2 font-bold"><Receipt className="w-5 h-5 text-primary" /> Térmica (58/80mm)</div>
-                <p className="text-[11px] text-muted-foreground">Cupom estreito, sem margens, ideal para impressora térmica.</p>
-                {printFormat === 'cupom' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
-              </button>
-              <button
-                onClick={() => doPrint(pendingPrintOrder, 'a4')}
-                className={`p-4 rounded-xl border text-left transition flex flex-col gap-1.5 ${printFormat === 'a4' ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'}`}
-              >
-                <div className="flex items-center gap-2 font-bold"><FileText className="w-5 h-5 text-primary" /> Folha A4</div>
-                <p className="text-[11px] text-muted-foreground">Layout centralizado, fontes maiores, margens para papel comum.</p>
-                {printFormat === 'a4' && <span className="text-[10px] text-primary font-bold">★ Preferida</span>}
-              </button>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-3 text-center">Sua escolha será lembrada para os próximos pedidos.</p>
-          </div>
-        </div>
-      )}
-    </div>
-
-  );
-};
-
 export default OrdersPanel;

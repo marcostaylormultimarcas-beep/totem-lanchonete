@@ -16,6 +16,8 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
   const total = Number(order.total || 0);
   const discount = Math.max(0, subtotal - total);
   const created = new Date(order.created_at);
+  const scheduled = order.scheduled_for ? new Date(order.scheduled_for) : null;
+  const scheduledValid = scheduled && !Number.isNaN(scheduled.getTime()) ? scheduled : null;
 
   const content = (
     <div id="print-receipt-area" className={`print-receipt ${formatClass}`}>
@@ -25,6 +27,11 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
           {created.toLocaleDateString('pt-BR')} {created.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
         </p>
         <p className="pr-order-num">PEDIDO #{order.order_number}</p>
+        {scheduledValid && (
+          <p style={{ fontWeight: 900, fontSize: '1.1em', marginTop: 6 }}>
+            AGENDADO: {scheduledValid.toLocaleDateString('pt-BR')} às {scheduledValid.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </p>
+        )}
       </div>
 
       <div className="pr-divider" />
@@ -34,9 +41,10 @@ const OrderPrintReceipt = ({ order, storeName, formatClass = 'print-cupom' }: Pr
         {order.customer_phone && <p><strong>Telefone:</strong> {order.customer_phone}</p>}
         <p>
           <strong>Tipo:</strong>{' '}
-          {order.order_type === 'delivery' ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL'}
+          {order.order_type === 'delivery' || order.order_type === 'viagem' ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL'}
         </p>
-        {order.order_type === 'delivery' && (
+        {order.table_label && <p><strong>Mesa:</strong> {order.table_label}</p>}
+        {(order.order_type === 'delivery' || order.order_type === 'viagem') && (
           <div className="pr-delivery">
             {order.delivery_address && <p><strong>Endereço:</strong> {order.delivery_address}</p>}
             {order.delivery_reference && <p><strong>Referência:</strong> {order.delivery_reference}</p>}

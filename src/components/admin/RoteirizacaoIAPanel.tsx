@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { triggerOutForDeliveryPush } from '@/lib/onesignal';
 import { Loader2, Sparkles, Truck, MapPin, Clock, Route, Send, Bike, AlertTriangle } from 'lucide-react';
 // Mapa removido — usamos apenas lógica de agrupamento por bairro + link Google Maps.
 
@@ -45,8 +44,9 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
       supabase.from('orders')
         .select('id,order_number,customer_name,customer_phone,delivery_address,bairro_nome,delivery_distance_km,created_at,total,status,order_type')
         .eq('organization_id', organizationId)
-        .eq('status', 'preparing')
-        .eq('order_type', 'delivery')
+        .eq('status', 'ready')
+        .is('entregador_id', null)
+        .in('order_type', ['delivery', 'viagem'])
         .order('delivery_distance_km', { ascending: true, nullsFirst: false }),
       supabase.from('entregadores').select('id,name,active').eq('organization_id', organizationId).eq('active', true),
       supabase.from('settings').select('cep_lat,cep_lng').eq('organization_id', organizationId).maybeSingle(),
@@ -155,14 +155,29 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
     setDispatching(route.id);
     try {
       const ids = route.orders.map(o => o.id);
-      const { error } = await supabase
-        .from('orders')
-        .update({ status: 'out_for_delivery', entregador_id: route.entregadorId, updated_at: new Date().toISOString() })
-        .in('id', ids);
-      if (error) { alert('Erro ao despachar: ' + error.message); setDispatching(null); return; }
-
-      // Push para clientes (best-effort)
-      await triggerOutForDeliveryPush(route.orders.map(o => o.customer_phone));
+      const { data: dispatchResult, error } = await supabase.rpc('visionfood_dispatch_orders' as any, {
+        _order_ids: ids,
+        _entregador_id: route.entregadorId,
+      });
+      const result: any = dispatchResult;
+      if (error || !result?.ok) {
+        const reasons: Record<string, string> = {
+          status_changed: 'Algum pedido mudou de status antes do despacho.',
+          not_delivery_order: 'A rota contém pedido que não é de entrega.',
+          cross_organization_order: 'A rota contém pedido de outra organização.',
+          order_not_found: 'Algum pedido da rota não foi encontrado.',
+          entregador_invalid: 'Entregador inválido ou inativo.',
+        already_assigned: 'Um dos pedidos já está atribuído a outro entregador.',
+          forbidden: 'Sem permissão para despachar esta rota.',
+        };
+        alert(error ? 'Erro ao despachar: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar a rota.'));
+        await loadAll();
+        setRoutes([]);
+        setGenerated(false);
+        setDispatching(null);
+        return;
+      }
+      if (Number(result.count || 0) !== ids.length) { alert('O banco não confirmou todos os pedidos da rota. Atualize e tente novamente.'); await loadAll(); setRoutes([]); setGenerated(false); return; }
 
       // Atualiza UI
       setRoutes(rs => rs.filter(r => r.id !== route.id));
@@ -224,7 +239,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
           ) : orders.length === 0 ? (
             <div className="text-center text-xs text-zinc-500 py-8">
               <Truck className="w-8 h-8 mx-auto mb-2 opacity-40" />
-              Nenhum pedido em preparo aguardando rota.
+              Nenhum pedido pronto aguardando rota.
             </div>
           ) : (
             <div className="space-y-2">
@@ -337,7 +352,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
                     className="px-3 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-amber-500 to-yellow-600 text-zinc-950 inline-flex items-center gap-1 disabled:opacity-40"
                   >
                     {dispatching === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                    VINCULAR & ENVIAR
+                    RESERVAR ROTA
                   </button>
                 </div>
               </div>
@@ -347,7 +362,7 @@ const RoteirizacaoIAPanel = ({ organizationId }: { organizationId: string | null
           {entregadores.length === 0 && (
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3 text-xs text-zinc-400 flex items-center gap-2">
               <Bike className="w-4 h-4 text-amber-400" />
-              Cadastre motoboys ativos na aba <b className="text-zinc-200">Entregadores</b> para conseguir despachar rotas.
+              Cadastre motoboys ativos na aba <b className="text-zinc-200">Entregadores</b> para reservar rotas.
             </div>
           )}
         </section>

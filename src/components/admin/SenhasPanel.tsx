@@ -16,11 +16,10 @@ interface Props {
 }
 
 const SENHA_PREFIX_KEY = 'senhas_prefix';
-const SENHA_COUNTER_KEY = 'senhas_counter';
 
 const SenhasPanel = ({ organizationId, orgSlug }: Props) => {
   const [prefix, setPrefix] = useState<string>(() => localStorage.getItem(SENHA_PREFIX_KEY) || 'A');
-  const [counter, setCounter] = useState<number>(() => Number(localStorage.getItem(SENHA_COUNTER_KEY) || '0'));
+  const [counter, setCounter] = useState<number>(0);
   const [manualNumero, setManualNumero] = useState('');
   const [list, setList] = useState<SenhaRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +27,6 @@ const SenhasPanel = ({ organizationId, orgSlug }: Props) => {
   const [callingPref, setCallingPref] = useState(false);
 
   useEffect(() => { localStorage.setItem(SENHA_PREFIX_KEY, prefix); }, [prefix]);
-  useEffect(() => { localStorage.setItem(SENHA_COUNTER_KEY, String(counter)); }, [counter]);
 
   const load = async () => {
     if (!organizationId) { setList([]); setLoading(false); return; }
@@ -64,18 +62,27 @@ const SenhasPanel = ({ organizationId, orgSlug }: Props) => {
     try {
       let numero = (numeroForcado || '').trim();
       if (!numero) {
-        const next = counter + 1;
-        numero = `${prefix}${String(next).padStart(3, '0')}`;
-        setCounter(next);
+        const { data, error } = await supabase.rpc('chamar_proxima_senha', {
+          _organization_id: organizationId,
+          _prefixo: prefix,
+          _tipo: tipo,
+        });
+        if (error) throw error;
+        const chamada = data?.[0];
+        if (!chamada?.numero) throw new Error('Resposta inválida ao chamar senha');
+        numero = chamada.numero;
+        const numericPart = Number(numero.replace(/^\D+/, ''));
+        if (Number.isFinite(numericPart)) setCounter(numericPart);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        const { error } = await supabase.from('senhas_chamadas').insert({
+          organization_id: organizationId,
+          numero,
+          tipo,
+          called_by: user?.id || null,
+        });
+        if (error) throw error;
       }
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('senhas_chamadas').insert({
-        organization_id: organizationId,
-        numero,
-        tipo,
-        called_by: user?.id || null,
-      });
-      if (error) throw error;
       setManualNumero('');
       toast.success(`Senha ${numero} chamada!`);
     } catch (e: any) {
@@ -100,8 +107,14 @@ const SenhasPanel = ({ organizationId, orgSlug }: Props) => {
     load();
   };
 
-  const resetContador = () => {
+  const resetContador = async () => {
+    if (!organizationId) return;
     if (!confirm('Zerar contador de senhas?')) return;
+    const { error } = await supabase.rpc('reset_senha_counter' as any, {
+      _organization_id: organizationId,
+      _prefixo: prefix,
+    });
+    if (error) { toast.error(error.message || 'Erro ao zerar contador'); return; }
     setCounter(0);
     toast.success('Contador zerado.');
   };

@@ -31,36 +31,61 @@ export async function createPdvSession(orgSlug: string, username: string, passwo
 }
 
 export async function validatePdvSession(sessionToken: string) {
-  const { data, error } = await rpc("pdv_session_context", { _token: sessionToken });
-  if (error) return null;
+  const { data, error } = await rpc("pdv_resume_session_v2", { _session_token: sessionToken });
+  if (error) throw error;
   const res = data as any;
   return res?.ok ? res : null;
 }
 
 export async function revokePdvSession(sessionToken: string) {
-  try { await rpc("pdv_revoke_session", { _token: sessionToken }); } catch {}
+  try { await rpc("pdv_logout_v2", { _session_token: sessionToken }); } catch {}
+}
+
+function removeStorageItem(storage: Storage, key: string) {
+  try { storage.removeItem(key); } catch {}
 }
 
 export function savePdvSession(session: PdvSession) {
-  sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(session));
-  localStorage.removeItem("pdv_session_v1");
+  try { sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(session)); } catch {}
+  removeStorageItem(localStorage, "pdv_session_v1");
 }
 
 export function readPdvSession(): PdvSession | null {
   try {
     const raw = sessionStorage.getItem(PDV_SESSION_KEY);
     if (!raw) return null;
+
     const value = JSON.parse(raw);
-    if (!value?.operador || !value?.sessionToken) return null;
+    const operador = value?.operador;
+    const validOperator =
+      operador &&
+      typeof operador.id === "string" &&
+      typeof operador.name === "string" &&
+      typeof operador.username === "string" &&
+      typeof operador.organization_id === "string" &&
+      typeof operador.org_slug === "string" &&
+      typeof operador.org_name === "string";
+    const validSession =
+      validOperator &&
+      typeof value?.sessionToken === "string" &&
+      value.sessionToken.length > 0 &&
+      (value.caixaId == null || typeof value.caixaId === "string");
+
+    if (!validSession) {
+      removeStorageItem(sessionStorage, PDV_SESSION_KEY);
+      return null;
+    }
+
     return value as PdvSession;
   } catch {
+    removeStorageItem(sessionStorage, PDV_SESSION_KEY);
     return null;
   }
 }
 
 export function clearPdvSession() {
-  sessionStorage.removeItem(PDV_SESSION_KEY);
-  localStorage.removeItem("pdv_session_v1");
+  removeStorageItem(sessionStorage, PDV_SESSION_KEY);
+  removeStorageItem(localStorage, "pdv_session_v1");
 }
 
 export const pdvRpc = {

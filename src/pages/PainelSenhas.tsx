@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
+import { fetchPublicCalledTickets } from '@/lib/publicCalledTickets';
 
 interface SenhaRow {
   id: string;
@@ -82,43 +83,40 @@ const PainelSenhas = () => {
   useEffect(() => {
     if (!slug) return;
     (async () => {
-      const { data } = await supabase.from('organizations').select('id, name').eq('slug', slug).maybeSingle();
+      const data = await fetchPublicOrganization({ slug });
       if (data) { setOrgId(data.id); setStoreName(data.name); }
     })();
   }, [slug]);
 
-  // Carrega últimas + realtime
+  // Feed público mínimo por polling; evita expor campos internos da linha via Realtime.
   useEffect(() => {
     if (!orgId) return;
-    const load = async () => {
-      const { data } = await supabase
-        .from('senhas_chamadas')
-        .select('id, numero, tipo, called_at')
-        .eq('organization_id', orgId)
-        .order('called_at', { ascending: false })
-        .limit(5);
-      if (data) {
-        setSenhas(data as SenhaRow[]);
-        if (data[0]) lastIdRef.current = data[0].id;
-      }
-    };
-    load();
+    let cancelled = false;
 
-    const channel = supabase
-      .channel(`senhas-${orgId}`)
-      .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'senhas_chamadas', filter: `organization_id=eq.${orgId}` },
-        (payload: any) => {
-          const novo = payload.new as SenhaRow;
-          if (lastIdRef.current === novo.id) return;
-          lastIdRef.current = novo.id;
-          setSenhas(prev => [novo, ...prev].slice(0, 5));
+    const load = async (notifyNew = false) => {
+      try {
+        const data = await fetchPublicCalledTickets(orgId, 5);
+        if (cancelled) return;
+        const latest = data[0] as SenhaRow | undefined;
+        const isNew = Boolean(notifyNew && latest && lastIdRef.current && latest.id !== lastIdRef.current);
+        setSenhas(data as SenhaRow[]);
+        if (latest) lastIdRef.current = latest.id;
+        if (isNew) {
           setFlash(true);
           playChime();
           setTimeout(() => setFlash(false), 1200);
-        })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+        }
+      } catch (error) {
+        if (!cancelled) console.warn('[PainelSenhas] public feed error:', error);
+      }
+    };
+
+    load(false);
+    const pollId = window.setInterval(() => load(true), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(pollId);
+    };
   }, [orgId]);
 
   // Web Audio precisa de gesto do usuário (autoplay policy)

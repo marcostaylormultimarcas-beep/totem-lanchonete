@@ -1,15 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, CheckCircle2, Clock, Truck, UtensilsCrossed, X } from 'lucide-react';
+import { ArrowLeft, CalendarClock, CheckCircle2, Clock, Loader2, PackageCheck, RefreshCw, Truck, UtensilsCrossed, X } from 'lucide-react';
 
 interface OrderTrackingProps {
   orderId: string;
   onClose: () => void;
 }
 
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
+  new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+
 const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
   pending: { title: '🧾 Pedido recebido', body: 'Recebemos seu pedido! Em breve começaremos o preparo.' },
-  preparing: { title: '👨‍🍳 Preparando seu pedido', body: 'Seu pedido já está sendo preparado com carinho.' },
+  preparing: { title: '👨‍🍳 Preparando seu pedido', body: 'Seu pedido já está sendo preparado.' },
+  ready: { title: '🔔 Pedido pronto', body: 'Seu pedido ficou pronto e aguarda a próxima etapa.' },
   out_for_delivery: { title: '🚀 Saiu para entrega!', body: 'Seu pedido está a caminho. Já já chega aí!' },
   delivered: { title: '✅ Pedido entregue', body: 'Pedido entregue. Bom apetite!' },
   cancelled: { title: '❌ Pedido cancelado', body: 'Seu pedido foi cancelado.' },
@@ -29,74 +39,212 @@ const notifyStatus = (status: string, orderNumber: string) => {
       renotify: true,
     } as any);
     setTimeout(() => n.close(), 8000);
-    // pequeno beep de atenção
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.value = 880; g.gain.value = 0.05;
-      o.start(); o.stop(ctx.currentTime + 0.18);
-    } catch {}
-  } catch (e) { console.warn('notify err', e); }
+  } catch (e) {
+    console.warn('notify err', e);
+  }
 };
 
-const STEPS = [
-  { key: 'pending', label: 'Pedido Recebido', icon: Clock, color: 'text-muted-foreground' },
-  { key: 'preparing', label: 'Preparando', icon: UtensilsCrossed, color: 'text-accent' },
-  { key: 'out_for_delivery', label: 'Saiu para Entrega', icon: Truck, color: 'text-blue-400' },
-  { key: 'delivered', label: 'Entregue', icon: CheckCircle2, color: 'text-success' },
+const ALL_STEPS = [
+  { key: 'pending', label: 'Pedido Recebido', icon: Clock },
+  { key: 'preparing', label: 'Preparando', icon: UtensilsCrossed },
+  { key: 'ready', label: 'Pronto', icon: PackageCheck },
+  { key: 'out_for_delivery', label: 'Saiu para Entrega', icon: Truck },
+  { key: 'delivered', label: 'Entregue', icon: CheckCircle2 },
 ];
 
 const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
-  const [status, setStatus] = useState('pending');
+  const [status, setStatus] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
+  const [orderType, setOrderType] = useState('');
+  const [scheduledFor, setScheduledFor] = useState('');
   const [showDeliveryAlert, setShowDeliveryAlert] = useState(false);
-
-  // Solicita permissão de notificação ao abrir o tracking
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [notFound, setNotFound] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   useEffect(() => {
+    let active = true;
     let lastStatus = '';
-    // Fetch initial order
-    const fetchOrder = async () => {
-      const { data } = await supabase.from('orders').select('status, order_number').eq('id', orderId).single();
-      if (data) {
-        setStatus(data.status);
-        setOrderNumber(data.order_number);
-        lastStatus = data.status;
+    let pollTimer: number | undefined;
+    let requestVersion = 0;
+    const channel = supabase
+      .channel(`customer-order-track-${orderId}-${Math.random().toString(36).slice(2, 8)}`);
+
+    const fetchOrder = async (initial = false) => {
+      const requestId = ++requestVersion;
+      if (initial) {
+        setLoading(true);
+        setLoadError('');
+        setNotFound(false);
+      }
+
+      try {
+        const { data, error } = await withTimeout(
+          supabase.rpc('visionfood_public_order_tracking', {
+            _order_id: orderId,
+          }),
+          10000,
+          'order_tracking_timeout',
+        );
+        if (!active || requestId !== requestVersion) return;
+
+        const result: any = data;
+        if (error) throw error;
+        if (!result?.ok) {
+          const reason = String(result?.reason || '');
+          if (reason === 'not_found' || reason === 'invalid_order') {
+            setNotFound(true);
+            setLoadError('');
+          } else if (initial) {
+            setLoadError('Não foi possível consultar o andamento do pedido agora. Tente novamente.');
+          }
+          return;
+        }
+
+        const newStatus = String(result.status || 'pending');
+        const newNumber = String(result.order_number || '');
+        const changed = Boolean(lastStatus && newStatus !== lastStatus);
+
+        setStatus(newStatus);
+        setOrderNumber(newNumber);
+        setOrderType(String(result.order_type || ''));
+        setScheduledFor(String(result.scheduled_for || ''));
+        setNowTick(Date.now());
+        setLoadError('');
+        setNotFound(false);
+
+        if (changed) notifyStatus(newStatus, newNumber);
+
+        if (changed && newStatus === 'out_for_delivery') {
+          setShowDeliveryAlert(true);
+          window.setTimeout(() => {
+            if (active) setShowDeliveryAlert(false);
+          }, 5000);
+        }
+
+        lastStatus = newStatus;
+
+        if (newStatus === 'delivered' || newStatus === 'cancelled') {
+          if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = undefined;
+          }
+        }
+      } catch (error) {
+        if (!active || requestId !== requestVersion) return;
+        console.error('[OrderTracking] load failed:', error);
+        if (initial) {
+          setLoadError('Não foi possível consultar o andamento do pedido agora. Verifique a conexão e tente novamente.');
+          setNotFound(false);
+        } else {
+          console.warn('[OrderTracking] background refresh failed; keeping the last known status visible.');
+        }
+      } finally {
+        if (initial && active && requestId === requestVersion) setLoading(false);
       }
     };
-    fetchOrder();
 
-    // Subscribe to realtime changes
-    const channel = supabase
-      .channel(`order-${orderId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'orders',
-        filter: `id=eq.${orderId}`,
-      }, (payload) => {
-        const newStatus = payload.new.status as string;
-        const newNumber = (payload.new.order_number as string) || orderNumber;
-        setStatus(newStatus);
-        if (newStatus !== lastStatus) {
-          notifyStatus(newStatus, newNumber);
-          lastStatus = newStatus;
+    void fetchOrder(true);
+
+    channel
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+        () => { void fetchOrder(false); },
+      )
+      .subscribe((realtimeStatus) => {
+        if (realtimeStatus === 'CHANNEL_ERROR' || realtimeStatus === 'TIMED_OUT') {
+          console.warn('[OrderTracking] realtime unavailable, polling fallback remains active:', realtimeStatus);
         }
-        if (newStatus === 'out_for_delivery') {
-          setShowDeliveryAlert(true);
-          setTimeout(() => setShowDeliveryAlert(false), 5000);
-        }
+      });
+
+    // Fallback for anonymous tracking or mobile websocket suspension.
+    pollTimer = window.setInterval(() => void fetchOrder(false), 15000);
+
+    return () => {
+      active = false;
+      requestVersion += 1;
+      if (pollTimer) window.clearInterval(pollTimer);
+      void supabase.removeChannel(channel);
+    };
+  }, [orderId, retryKey]);
+
+  const scheduledDate = scheduledFor ? new Date(scheduledFor) : null;
+  const validScheduledDate = scheduledDate && !Number.isNaN(scheduledDate.getTime()) ? scheduledDate : null;
+  const waitingForScheduledTime = Boolean(
+    validScheduledDate
+      && validScheduledDate.getTime() > nowTick
+      && status === 'pending',
+  );
+  const scheduledLabel = validScheduledDate
+    ? validScheduledDate.toLocaleString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
       })
-      .subscribe();
+    : '';
 
-    return () => { supabase.removeChannel(channel); };
-  }, [orderId]);
+  const steps = useMemo(() => {
+    const base = ['delivery', 'viagem'].includes(orderType)
+      ? ALL_STEPS
+      : ALL_STEPS.filter(step => step.key !== 'out_for_delivery');
+
+    if (!waitingForScheduledTime) return base;
+    return base.map(step => step.key === 'pending'
+      ? { ...step, label: 'Pedido Agendado', icon: CalendarClock }
+      : step);
+  }, [orderType, waitingForScheduledTime]);
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
+        <div className="kiosk-card p-6 max-w-sm w-full text-center space-y-3">
+          <Loader2 className="w-8 h-8 text-primary animate-spin mx-auto" />
+          <p className="text-sm text-muted-foreground">Carregando andamento do pedido...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
+        <div className="kiosk-card p-6 max-w-sm w-full text-center space-y-4">
+          <RefreshCw className="w-12 h-12 text-primary mx-auto" />
+          <h2 className="text-xl font-bold">Não foi possível acompanhar o pedido</h2>
+          <p className="text-muted-foreground text-sm">{loadError}</p>
+          <button
+            onClick={() => setRetryKey(key => key + 1)}
+            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl"
+          >
+            Tentar novamente
+          </button>
+          <button onClick={onClose} className="touch-btn w-full bg-muted text-foreground py-3 rounded-xl">
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (notFound) {
+    return (
+      <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
+        <div className="kiosk-card p-6 max-w-sm w-full text-center space-y-4">
+          <X className="w-12 h-12 text-muted-foreground mx-auto" />
+          <h2 className="text-xl font-bold">Pedido não encontrado</h2>
+          <p className="text-muted-foreground text-sm">O link pode estar incorreto ou o pedido já saiu da janela de acompanhamento.</p>
+          <button onClick={onClose} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl">
+            Voltar ao Início
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (status === 'cancelled') {
     return (
@@ -113,7 +261,7 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
     );
   }
 
-  const currentIdx = STEPS.findIndex(s => s.key === status);
+  const currentIdx = steps.findIndex(s => s.key === status);
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-6">
@@ -123,11 +271,22 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="text-center flex-1">
-          <h2 className="text-xl font-bold">Acompanhe seu Pedido</h2>
-          <p className="text-primary font-black text-2xl mt-1">#{orderNumber}</p>
+            <h2 className="text-xl font-bold">{waitingForScheduledTime ? 'Pedido Agendado' : 'Acompanhe seu Pedido'}</h2>
+            <p className="text-primary font-black text-2xl mt-1">#{orderNumber}</p>
           </div>
           <div className="w-5" aria-hidden="true" />
         </div>
+
+        {waitingForScheduledTime && scheduledLabel && (
+          <div className="rounded-xl border border-primary/35 bg-primary/10 p-4 text-center">
+            <CalendarClock className="w-7 h-7 text-primary mx-auto mb-2" />
+            <p className="font-black text-foreground">Agendado para</p>
+            <p className="text-sm text-primary font-bold capitalize mt-1">{scheduledLabel}</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Seu pedido foi recebido e ficará aguardando o horário agendado antes do início do preparo.
+            </p>
+          </div>
+        )}
 
         {showDeliveryAlert && (
           <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-3 text-center animate-pulse">
@@ -137,8 +296,8 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
         )}
 
         <div className="space-y-0">
-          {STEPS.map((step, idx) => {
-            const isActive = idx <= currentIdx;
+          {steps.map((step, idx) => {
+            const isActive = currentIdx >= 0 && idx <= currentIdx;
             const isCurrent = idx === currentIdx;
             const StepIcon = step.icon;
             return (
@@ -149,7 +308,7 @@ const OrderTracking = ({ orderId, onClose }: OrderTrackingProps) => {
                   }`}>
                     <StepIcon className={`w-5 h-5 ${isCurrent ? 'text-primary' : isActive ? 'text-success' : 'text-muted-foreground'}`} />
                   </div>
-                  {idx < STEPS.length - 1 && (
+                  {idx < steps.length - 1 && (
                     <div className={`w-0.5 h-8 transition-all duration-500 ${isActive ? 'bg-success' : 'bg-border'}`} />
                   )}
                 </div>

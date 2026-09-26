@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Clock, Lock, Crown } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { useOrgId } from '@/contexts/OrgContext';
 import { useStoreStatus } from '@/hooks/useStoreStatus';
+import QRCode from 'react-qr-code';
 
 interface LandingScreenProps {
   onStart: () => void;
@@ -23,20 +24,18 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
 
   useEffect(() => {
     if (!orgId) return;
+    let cancelled = false;
     const fetchSettings = async () => {
-      const { data } = await supabase.from('settings').select('store_name').eq('organization_id', orgId).maybeSingle();
-      if (data?.store_name) setStoreName(data.store_name);
+      try {
+        const data = await fetchPublicStorefrontConfig(orgId);
+        if (!cancelled && data.store_name) setStoreName(data.store_name);
+      } catch (error) {
+        if (!cancelled) console.warn('[Landing] storefront config error:', error);
+      }
     };
     fetchSettings();
-
-    const channel = supabase
-      .channel('landing-settings-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, (payload: any) => {
-        const d = payload.new;
-        if (d?.store_name) setStoreName(d.store_name);
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const pollId = window.setInterval(fetchSettings, 30000);
+    return () => { cancelled = true; window.clearInterval(pollId); };
   }, [orgId]);
 
   const canOrder = status.open || status.schedulingEnabled;
@@ -44,7 +43,6 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
   const allowClick = canOrder && !status.loading;
 
   const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=0&data=${encodeURIComponent(currentUrl)}`;
 
   return (
     <div
@@ -95,7 +93,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
         {/* QR Code */}
         <div className="flex flex-col items-center gap-2">
           <div className="bg-white rounded-2xl p-3 border-2 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.3)]">
-            <img src={qrSrc} alt="QR Code do cardápio" className="w-32 h-32 md:w-36 md:h-36 block" />
+            <QRCode value={currentUrl || '/'} size={144} aria-label="QR Code do cardápio" className="w-32 h-32 md:w-36 md:h-36 block" />
           </div>
           <p className="text-zinc-400 text-[11px] uppercase tracking-[0.25em]">Aponte a câmera</p>
         </div>
@@ -114,7 +112,7 @@ const LandingScreen = ({ onStart }: LandingScreenProps) => {
               <>
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span className="text-amber-400 font-semibold text-sm">
-                  {status.emergencyClosed ? status.message : 'Fechado agora'}
+                  {status.emergencyClosed || status.specialClosure ? status.message : 'Fechado agora'}
                   {status.nextOpenAt && !status.emergencyClosed ? ` · abre ${fmtTime(status.nextOpenAt)}` : ''}
                 </span>
               </>

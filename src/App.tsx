@@ -6,14 +6,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OrgProvider, KioskSlugSync } from "@/contexts/OrgContext";
 import SupportChat from "@/components/support/SupportChat";
+import RuntimeErrorBoundary from "@/components/RuntimeErrorBoundary";
+import Auth from "./pages/Auth.tsx";
+import OrderHistory from "./pages/OrderHistory.tsx";
 
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Login = lazy(() => import("./pages/Login.tsx"));
 const Home = lazy(() => import("./pages/Home.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const Admin = lazy(() => import("./pages/Admin.tsx"));
-const Auth = lazy(() => import("./pages/Auth.tsx"));
-const OrderHistory = lazy(() => import("./pages/OrderHistory.tsx"));
 const TrackOrder = lazy(() => import("./pages/TrackOrder.tsx"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
 const FiscalReceipt = lazy(() => import("./pages/FiscalReceipt.tsx"));
@@ -49,8 +50,18 @@ const App = () => {
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <RuntimeErrorBoundary homeHref="/">
           <OrgProvider>
-            <Suspense fallback={<div className="min-h-screen bg-background" aria-busy="true" />}>
+            <Suspense
+              fallback={
+                <div className="min-h-screen bg-background flex items-center justify-center px-6" aria-busy="true">
+                  <div className="text-center space-y-3">
+                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="text-sm text-muted-foreground">Carregando...</p>
+                  </div>
+                </div>
+              }
+            >
               <Routes>
                 {/* Página principal pública: cardápio da lanchonete */}
                 <Route path="/" element={<Index />} />
@@ -88,6 +99,7 @@ const App = () => {
             </Suspense>
             <SupportChat />
           </OrgProvider>
+          </RuntimeErrorBoundary>
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>

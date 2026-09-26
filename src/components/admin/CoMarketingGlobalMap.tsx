@@ -15,19 +15,14 @@ const CoMarketingGlobalMap = () => {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('parcerias' as any).select('*').order('updated_at', { ascending: false });
-      const list = (data || []) as any as Row[];
-      const ids = Array.from(new Set(list.flatMap(r => [r.org_origem, r.org_parceira])));
-      if (ids.length) {
-        const { data: orgs } = await supabase.from('organizations').select('id,name,city').in('id', ids);
-        const map = new Map((orgs || []).map((o: any) => [o.id, o]));
-        list.forEach(r => {
-          const a: any = map.get(r.org_origem); const b: any = map.get(r.org_parceira);
-          r.origem_name = a?.name; r.origem_city = a?.city;
-          r.parceira_name = b?.name; r.parceira_city = b?.city;
-        });
+      const { data, error } = await supabase.rpc('comarketing_global_map' as any);
+      if (error) {
+        console.error('Co-Marketing global map:', error);
+        setRows([]);
+        setLoading(false);
+        return;
       }
-      setRows(list);
+      setRows((data || []) as any as Row[]);
       setLoading(false);
     })();
   }, []);

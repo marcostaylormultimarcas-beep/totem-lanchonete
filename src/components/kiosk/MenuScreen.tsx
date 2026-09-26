@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, ShoppingCart, Plus, Search } from 'lucide-react';
 import { getItemTotal, CartItem, Product, CategoryItem, isByWeight } from '@/data/store';
-import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicCatalog } from '@/lib/publicCatalog';
+import { fetchPublicCombo } from '@/lib/publicCombo';
 import ProductModal from './ProductModal';
 import UpsellPopup from './UpsellPopup';
 import { formatCurrency } from '@/data/store';
@@ -15,6 +17,7 @@ interface MenuScreenProps {
   onBack: () => void;
   initialProduct?: Product | null;
   onInitialProductHandled?: () => void;
+  deviceOwnedKiosk?: boolean;
 }
 
 const DEFAULT_CATEGORIES: CategoryItem[] = [
@@ -23,7 +26,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
-const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled }: MenuScreenProps) => {
+const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onInitialProductHandled, deviceOwnedKiosk = false }: MenuScreenProps) => {
   const orgId = useOrgId();
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [activeCategory, setActiveCategory] = useState<string>('hamburgueres');
@@ -31,30 +34,67 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const [showUpsell, setShowUpsell] = useState(false);
   const [pendingItem, setPendingItem] = useState<CartItem | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [combo, setCombo] = useState({ name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤' });
+  const [comboProduct, setComboProduct] = useState<Product | null>(null);
   const [balancaBaud, setBalancaBaud] = useState(9600);
 
   const fetchData = useCallback(async () => {
     if (!orgId) return;
-    const [{ data: prods }, { data: settingsData }] = await Promise.all([
-      supabase.from('products').select('*').eq('organization_id', orgId),
-      supabase.from('settings').select('combo, categories, balanca_baud_rate, balanca_modelo').eq('organization_id', orgId).maybeSingle(),
+    const [prods, settingsData, publicCombo] = await Promise.all([
+      fetchPublicCatalog(orgId).catch(error => {
+        console.warn('[Menu] public catalog error:', error);
+        return [];
+      }),
+      fetchPublicStorefrontConfig(orgId).catch(error => {
+        console.warn('[Menu] storefront config error:', error);
+        return {};
+      }),
+      fetchPublicCombo(orgId).catch(error => {
+        console.warn('[Menu] public combo error:', error);
+        return null;
+      }),
     ]);
-    if (prods) {
-      setProducts(prods.map((p: any) => ({
-        id: p.id, name: p.name, price: Number(p.price), category: p.category,
-        image: p.image, removableIngredients: (p.removable_ingredients as string[]) || [],
-        extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
-        ingredients: (p.ingredients as string[]) || [], description: p.description || '',
-        soldByWeight: Boolean(p.sold_by_weight),
-        codigoBarras: p.codigo_barras || undefined,
-        prepTimeMin: Number(p.prep_time_min ?? 0),
-      })));
-    }
-    if (settingsData?.combo) setCombo(settingsData.combo as any);
-    const baud = Number((settingsData as any)?.balanca_baud_rate ?? 9600);
+    const mappedProducts = prods.map((p) => ({
+      id: p.id, name: p.name, price: Number(p.price), category: p.category,
+      image: p.image || '', removableIngredients: (p.removable_ingredients as string[]) || [],
+      extras: (p.extras as { name: string; price: number }[]) || [], isCombo: p.is_combo || false,
+      ingredients: (p.ingredients as string[]) || [], description: p.description || '',
+      soldByWeight: Boolean(p.sold_by_weight),
+      codigoBarras: p.codigo_barras || undefined,
+      prepTimeMin: Number(p.prep_time_min ?? 0),
+    })) as Product[];
+
+    const comboConfig = (settingsData.combo || {}) as { product_id?: string };
+    const linkedCombo = comboConfig.product_id
+      ? mappedProducts.find((product) => product.id === comboConfig.product_id && product.isCombo)
+      : null;
+    const authoritativeCombos = mappedProducts.filter(
+      (product) => product.isCombo && product.category === 'visionfood_combo',
+    );
+    const mappedPublicCombo = publicCombo ? ({
+      id: publicCombo.id,
+      name: publicCombo.name,
+      price: Number(publicCombo.price),
+      category: publicCombo.category,
+      image: publicCombo.image || '',
+      removableIngredients: (publicCombo.removable_ingredients as string[]) || [],
+      extras: (publicCombo.extras as { name: string; price: number }[]) || [],
+      isCombo: Boolean(publicCombo.is_combo),
+      ingredients: (publicCombo.ingredients as string[]) || [],
+      description: publicCombo.description || '',
+      soldByWeight: Boolean(publicCombo.sold_by_weight),
+      codigoBarras: publicCombo.codigo_barras || undefined,
+      prepTimeMin: Number(publicCombo.prep_time_min ?? 0),
+    }) as Product : null;
+
+    setComboProduct(
+      mappedPublicCombo
+      || linkedCombo
+      || (authoritativeCombos.length === 1 ? authoritativeCombos[0] : null),
+    );
+    setProducts(mappedProducts.filter((product) => !product.isCombo));
+    const baud = Number(settingsData.balanca_baud_rate ?? 9600);
     if (baud) setBalancaBaud(baud);
-    const cats = (settingsData as any)?.categories as CategoryItem[] | undefined;
+    const cats = settingsData.categories as CategoryItem[] | undefined;
     if (cats && cats.length > 0) {
       setCategories(cats);
       setActiveCategory(prev => cats.find(c => c.key === prev) ? prev : cats[0].key);
@@ -63,15 +103,11 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Atualização reativa: recarrega categorias/produtos quando o admin salva alterações.
+  // Catálogo e configurações públicas são atualizados por contratos RPC seguros.
   useEffect(() => {
     if (!orgId) return;
-    const channel = supabase
-      .channel('menu-live-' + orgId)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `organization_id=eq.${orgId}` }, () => { fetchData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products', filter: `organization_id=eq.${orgId}` }, () => { fetchData(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    const pollId = window.setInterval(fetchData, 30000);
+    return () => { window.clearInterval(pollId); };
   }, [orgId, fetchData]);
 
 
@@ -171,7 +207,10 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const cartTotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
 
   const handleAddItem = (item: CartItem) => {
-    if (item.product.category === 'hamburgueres' || item.product.category === 'pizzas') {
+    if (
+      comboProduct &&
+      (item.product.category === 'hamburgueres' || item.product.category === 'pizzas')
+    ) {
       setPendingItem(item);
       setShowUpsell(true);
     } else {
@@ -183,23 +222,15 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
   const handleUpsellAccept = () => {
     if (pendingItem) {
       onAddToCart(pendingItem);
-      const comboItem: CartItem = {
-        id: crypto.randomUUID(),
-        product: {
-          id: 'combo-' + Date.now(),
-          name: `Combo: ${combo.name}`,
-          price: combo.price,
-          category: 'bebidas',
-          image: (combo as any).image || combo.emoji,
-          removableIngredients: [],
-          extras: [],
-          isCombo: true,
-        },
-        quantity: 1,
-        removedIngredients: [],
-        selectedExtras: [],
-      };
-      onAddToCart(comboItem);
+      if (comboProduct) {
+        onAddToCart({
+          id: crypto.randomUUID(),
+          product: comboProduct,
+          quantity: 1,
+          removedIngredients: [],
+          selectedExtras: [],
+        });
+      }
     }
     setShowUpsell(false);
     setPendingItem(null);
@@ -244,7 +275,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
         </div>
 
         {/* Categorias iluminadas */}
-        <div className="flex gap-3 px-4 py-5 overflow-x-auto whitespace-nowrap">
+        <div className="flex gap-4 px-4 py-3 overflow-x-auto whitespace-nowrap">
           {categories.map(cat => {
             const active = activeCategory === cat.key;
             return (
@@ -254,7 +285,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
                 className="touch-btn flex flex-col items-center gap-2 flex-shrink-0 group"
               >
                 <span
-                  className={`relative w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-full flex items-center justify-center bg-zinc-900 border transition-all duration-300 overflow-hidden ${
+                  className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center bg-zinc-900 border transition-all duration-300 overflow-hidden ${
                     active
                       ? 'border-transparent scale-110 shadow-[0_0_18px_rgba(245,158,11,0.45)]'
                       : 'border-zinc-800 group-hover:border-amber-500/40'
@@ -267,9 +298,9 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
                 >
                   {cat.icon && (isUrl(cat.icon)
                     ? <img src={cat.icon} alt="" className="w-full h-full object-cover rounded-full" />
-                    : <span className={`text-3xl ${active ? 'scale-110' : ''} transition-transform`}>{cat.icon}</span>)}
+                    : <span className={`text-2xl sm:text-3xl ${active ? 'scale-110' : ''} transition-transform`}>{cat.icon}</span>)}
                 </span>
-                <span className={`text-xs font-semibold ${active ? 'text-amber-400' : 'text-zinc-400 group-hover:text-zinc-200'} transition-colors`}>
+                <span className={`text-[11px] sm:text-xs font-semibold ${active ? 'text-amber-400' : 'text-zinc-400 group-hover:text-zinc-200'} transition-colors`}>
                   {cat.label}
                 </span>
               </button>
@@ -278,41 +309,49 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
         </div>
 
         {/* Grid de produtos noturno */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-4 pb-6 flex-1 max-w-[1200px] mx-auto w-full">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 px-3 sm:px-4 pb-6 content-start auto-rows-max max-w-[1200px] mx-auto w-full">
           {filtered.map(product => {
             const isUrlImg = product.image.startsWith('http') || product.image.startsWith('/');
             return (
-              <div
+              <article
                 key={product.id}
-                className="group relative bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 rounded-2xl overflow-visible flex flex-col text-left transition-all hover:border-amber-500/50 hover:-translate-y-1 hover:shadow-[0_18px_40px_-10px_rgba(245,158,11,0.25)]"
+                className="group bg-zinc-900 border border-zinc-800/90 rounded-2xl overflow-hidden self-start text-left transition-all hover:border-amber-500/50 hover:shadow-[0_12px_28px_-14px_rgba(245,158,11,0.32)]"
               >
                 <button
                   onClick={() => setSelectedProduct(product)}
-                  className="w-full aspect-square bg-zinc-950/60 overflow-hidden block rounded-t-2xl"
+                  className="w-full aspect-[3/2] sm:aspect-[4/3] bg-zinc-950/60 overflow-hidden block"
                 >
                   {isUrlImg ? (
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                    <img src={product.image} alt={product.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   ) : (
-                    <span className="w-full h-full flex items-center justify-center text-7xl sm:text-8xl">{product.image}</span>
+                    <span className="w-full h-full flex items-center justify-center text-6xl sm:text-7xl">{product.image}</span>
                   )}
                 </button>
 
-                {/* Botão + flutuante */}
-                <button
-                  onClick={() => setSelectedProduct(product)}
-                  aria-label={`Adicionar ${product.name}`}
-                  className="absolute -bottom-4 right-3 w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-600 text-zinc-950 shadow-[0_8px_22px_rgba(245,158,11,0.55)] ring-2 ring-zinc-950 active:scale-90 hover:scale-105 transition-transform z-10"
-                >
-                  <Plus className="w-6 h-6" strokeWidth={3.5} />
-                </button>
+                <div className="p-3">
+                  <button onClick={() => setSelectedProduct(product)} className="w-full text-left">
+                    <span className="font-bold text-sm sm:text-base leading-tight line-clamp-1 text-white">{product.name}</span>
+                    {product.description && (
+                      <span className="block text-[11px] sm:text-xs text-zinc-500 mt-1 line-clamp-1">
+                        {product.description}
+                      </span>
+                    )}
+                  </button>
 
-                <div className="p-3 pb-4 flex flex-col gap-1">
-                  <span className="font-bold text-sm sm:text-base leading-tight line-clamp-2 text-white">{product.name}</span>
-                  <span className="text-amber-400 font-black text-lg sm:text-xl tracking-tight tabular-nums">
-                    {formatCurrency(product.price)}
-                  </span>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-amber-400 font-black text-lg sm:text-xl tracking-tight tabular-nums">
+                      {formatCurrency(product.price)}
+                    </span>
+                    <button
+                      onClick={() => setSelectedProduct(product)}
+                      aria-label={`Adicionar ${product.name}`}
+                      className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-600 text-zinc-950 shadow-[0_6px_16px_rgba(245,158,11,0.35)] active:scale-90 hover:scale-105 transition-transform"
+                    >
+                      <Plus className="w-5 h-5" strokeWidth={3} />
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -321,10 +360,15 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
       {/* Cart */}
       {cart.length > 0 && (
         <>
-          <div className="fixed bottom-0 left-0 right-0 bg-zinc-900/95 backdrop-blur border-t border-zinc-800 p-4 lg:hidden z-30">
-            <button onClick={onGoToCart} className="touch-btn w-full bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 shadow-[0_0_18px_rgba(245,158,11,0.35)] active:scale-[0.98] transition-transform">
-              <ShoppingCart className="w-5 h-5" />
-              Ver Carrinho ({cart.length} {cart.length === 1 ? 'item' : 'itens'}) — {formatCurrency(cartTotal)}
+          <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/92 backdrop-blur border-t border-zinc-800/80 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] lg:hidden z-30">
+            <button onClick={onGoToCart} className="touch-btn w-full max-w-md mx-auto bg-gradient-to-r from-amber-500 to-orange-600 text-zinc-950 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5 shadow-[0_6px_18px_rgba(245,158,11,0.22)] active:scale-[0.99] transition-transform">
+              <div className="w-8 h-8 rounded-full bg-black/10 flex items-center justify-center shrink-0">
+                <ShoppingCart className="w-[18px] h-[18px]" />
+              </div>
+              <span className="flex-1 min-w-0 text-left font-black text-sm sm:text-base truncate">
+                Carrinho · {cart.length} {cart.length === 1 ? 'item' : 'itens'}
+              </span>
+              <span className="font-black text-base sm:text-lg tabular-nums whitespace-nowrap">{formatCurrency(cartTotal)}</span>
             </button>
           </div>
           <div className="hidden lg:flex flex-col w-80 xl:w-96 border-l border-zinc-800 bg-zinc-950 p-4 gap-3 sticky top-0 h-screen overflow-y-auto">
@@ -354,10 +398,10 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
 
 
       {selectedProduct && (
-        <ProductModal product={selectedProduct} baudRate={balancaBaud} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
+        <ProductModal product={selectedProduct} baudRate={balancaBaud} deviceOwnedKiosk={deviceOwnedKiosk} onAdd={handleAddItem} onClose={() => setSelectedProduct(null)} />
       )}
-      {showUpsell && (
-        <UpsellPopup onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />
+      {showUpsell && comboProduct && (
+        <UpsellPopup combo={comboProduct} onAccept={handleUpsellAccept} onDecline={handleUpsellDecline} />
       )}
     </div>
   );

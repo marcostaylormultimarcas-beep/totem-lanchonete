@@ -31,6 +31,13 @@ const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): 
     );
   });
 
+const getReceiptItemQuantityLabel = (item: any) => {
+  const weightKg = Number(item?.weight_kg);
+  return Number.isFinite(weightKg) && weightKg > 0
+    ? `${weightKg.toFixed(3)} kg`
+    : `${item?.quantity}x`;
+};
+
 const FiscalReceipt = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<OrderRow | null>(null);
@@ -180,7 +187,7 @@ const FiscalReceipt = () => {
           <p className="font-bold mb-1">ITENS</p>
           {(Array.isArray(order.items) ? order.items : []).map((it: any, i: number) => (
             <div key={i} className="flex justify-between gap-2">
-              <span className="flex-1">{it.quantity}x {it.name}</span>
+              <span className="flex-1">{getReceiptItemQuantityLabel(it)} {it.name}</span>
               <span>{formatCurrency(Number(it.total || it.price * (it.quantity || 1) || 0))}</span>
             </div>
           ))}

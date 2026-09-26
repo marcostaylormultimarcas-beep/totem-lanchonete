@@ -278,6 +278,59 @@ describe('StartScreen favorites bottom navigation', () => {
   });
 
 
+  it('ignores an older storefront response that finishes after a newer banner refresh', async () => {
+    vi.useFakeTimers();
+
+    const config = (id: string, title: string) => ({
+      store_name: 'Loja Teste',
+      banners: [{ id, title, image: `https://cdn.test/${id}.jpg` }],
+      instagram_url: '',
+      whatsapp_number: '',
+      categories: [],
+      category_icons: {},
+    });
+
+    let resolveOlder!: (value: ReturnType<typeof config>) => void;
+    let resolveNewer!: (value: ReturnType<typeof config>) => void;
+    const olderResponse = new Promise<ReturnType<typeof config>>(resolve => {
+      resolveOlder = resolve;
+    });
+    const newerResponse = new Promise<ReturnType<typeof config>>(resolve => {
+      resolveNewer = resolve;
+    });
+
+    fetchPublicStorefrontConfigMock
+      .mockResolvedValueOnce(config('initial', 'Inicial'))
+      .mockReturnValueOnce(olderResponse)
+      .mockReturnValueOnce(newerResponse);
+
+    await renderScreen();
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+
+    await act(async () => {
+      resolveNewer(config('newest', 'Mais novo'));
+      await flushAsync();
+    });
+    expect(container.querySelector('img[alt="Mais novo"]')).toBeTruthy();
+
+    await act(async () => {
+      resolveOlder(config('stale', 'Antigo'));
+      await flushAsync();
+    });
+
+    expect(container.querySelector('img[alt="Mais novo"]')).toBeTruthy();
+    expect(container.querySelector('img[alt="Antigo"]')).toBeFalsy();
+  });
+
+
   it('rejects parseable null instead of crashing the storefront', async () => {
     localStorage.setItem('vf_favoritos', 'null');
 

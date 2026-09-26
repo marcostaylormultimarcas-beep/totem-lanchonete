@@ -280,7 +280,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                 <span className="text-3xl w-16 h-16 flex items-center justify-center flex-shrink-0">{item.product.image}</span>
               )}
               <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-sm">{item.quantity}x {item.product.name}</h4>
+                <h4 className="font-bold text-sm">{item.weightKg && item.weightKg > 0 ? `${item.weightKg.toFixed(3)} kg` : `${item.quantity}x`} {item.product.name}</h4>
                 {item.removedIngredients.length > 0 && (
                   <p className="text-xs text-secondary mt-1">Sem: {item.removedIngredients.join(', ')}</p>
                 )}

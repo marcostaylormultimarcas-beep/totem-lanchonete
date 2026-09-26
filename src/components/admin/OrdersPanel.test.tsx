@@ -289,7 +289,7 @@ describe('OrdersPanel fetchOrders lifecycle', () => {
             ...makeOrder('A-100', 'Cliente A'),
             order_type: 'delivery',
             delivery_address: 'Rua Teste, 100',
-            scheduled_for: '2099-09-27T18:00:00.000Z',
+            scheduled_for: '2020-09-27T18:00:00.000Z',
             payment_status: 'pending',
             items: [
               { name: 'Self-service', quantity: 1, weight_kg: 0.75, total: 31.17 },
@@ -313,7 +313,7 @@ describe('OrdersPanel fetchOrders lifecycle', () => {
     expect(container.textContent).toContain('R$ 56.72');
     expect(container.textContent).toContain('⏳ Pendente');
     expect(container.textContent).toContain('💳 Pagamento pendente');
-    expect(container.textContent).toContain('📅 AGENDADO');
+    expect(container.textContent).toContain('📅 AGENDADO LIBERADO');
     expect(container.textContent).toContain('🛵 Entrega');
     expect(container.textContent).toContain('📌 Rua Teste, 100');
     expect(container.textContent).toContain('🍽️ Mesa 7');

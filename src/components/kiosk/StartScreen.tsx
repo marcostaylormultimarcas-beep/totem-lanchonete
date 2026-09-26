@@ -24,6 +24,31 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
   { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
 ];
 
+function getInstagramHref(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!/^https?:\/\//i.test(trimmed) || /[\s\\]/.test(trimmed)) return '';
+  try {
+    const url = new URL(trimmed);
+    if (!['instagram.com', 'www.instagram.com'].includes(url.hostname)
+      || url.username || url.password || url.port
+      || !/^\/[a-zA-Z0-9_](?:[a-zA-Z0-9_.]{0,28}[a-zA-Z0-9_])?\/?$/.test(url.pathname)
+      || url.pathname.includes('..')) return '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function getWhatsappHref(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!/^\+?[\d\s().-]+$/.test(trimmed)) return '';
+  const digits = trimmed.replace(/\D/g, '');
+  // The settings field requires a country code; never guess or add one here.
+  return /^[1-9]\d{7,14}$/.test(digits) ? `https://wa.me/${digits}` : '';
+}
+
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0, deviceOwnedKiosk = false }: StartScreenProps) => {
   const orgId = useOrgId();
   const { config: primeConfig } = useVisionPrimeConfig(orgId);
@@ -36,7 +61,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [instagramUrl, setInstagramUrl] = useState('');
-  const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [whatsappHref, setWhatsappHref] = useState('');
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('vf_favoritos') || '[]');
@@ -69,8 +94,8 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         if (cancelled || requestGeneration !== latestRequestGeneration) return;
         setStoreName(data.store_name || 'VisionFood');
         setBanners((data.banners as BannerItem[]) || []);
-        setInstagramUrl(data.instagram_url || '');
-        setWhatsappNumber(data.whatsapp_number || '');
+        setInstagramUrl(getInstagramHref(data.instagram_url));
+        setWhatsappHref(getWhatsappHref(data.whatsapp_number));
         const cats = data.categories as CategoryItem[] | undefined;
         if (cats && cats.length > 0) setCategories(cats);
         else if (data.category_icons) {
@@ -452,14 +477,14 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       )}
 
       {/* Social/footer */}
-      {(instagramUrl || whatsappNumber) && (
+      {(instagramUrl || whatsappHref) && (
         <div className="px-5 mt-8 vf-fade-in">
           <div className="vf-chip rounded-2xl px-4 py-4 max-w-md mx-auto">
             <div className="text-center">
               <div className="text-sm font-bold text-white">Siga e fale conosco</div>
               <div className="text-[11px] text-zinc-500 mt-1">Acompanhe novidades ou chame a loja</div>
             </div>
-            <div className={`mt-3 grid gap-2 ${instagramUrl && whatsappNumber ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            <div className={`mt-3 grid gap-2 ${instagramUrl && whatsappHref ? 'grid-cols-2' : 'grid-cols-1'}`}>
               {instagramUrl && (
                 <a
                   href={instagramUrl}
@@ -472,9 +497,9 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
                   Instagram
                 </a>
               )}
-              {whatsappNumber && (
+              {whatsappHref && (
                 <a
-                  href={`https://wa.me/${whatsappNumber.replace(/\D/g, '')}`}
+                  href={whatsappHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="min-h-11 rounded-xl border border-white/[0.06] bg-zinc-900/70 px-3 flex items-center justify-center gap-2 text-sm font-semibold text-zinc-200 hover:border-[#FF7A00]/35 hover:text-white active:scale-[0.98] transition"

@@ -273,6 +273,55 @@ describe('OrdersPanel fetchOrders lifecycle', () => {
     expect(container.textContent).not.toContain('#A-100');
     expect(container.textContent).not.toContain('Cliente A');
   });
+
+  it('renders weighted item mass while preserving unit items, authoritative totals and order controls', async () => {
+    await act(async () => {
+      root.render(<OrdersPanel organizationId="org-a" />);
+      await flushAsync();
+    });
+
+    expect(orderRequests).toHaveLength(1);
+
+    await act(async () => {
+      orderRequests[0].deferred.resolve({
+        data: [
+          {
+            ...makeOrder('A-100', 'Cliente A'),
+            order_type: 'delivery',
+            delivery_address: 'Rua Teste, 100',
+            scheduled_for: '2099-09-27T18:00:00.000Z',
+            payment_status: 'pending',
+            items: [
+              { name: 'Self-service', quantity: 1, weight_kg: 0.75, total: 31.17 },
+              { name: 'Refrigerante', quantity: 2, total: 25.55 },
+            ],
+            total: 56.72,
+          },
+          {
+            ...makeOrder('B-200', 'Cliente B'),
+            table_label: 'Mesa 7',
+          },
+        ],
+        error: null,
+      });
+      await flushAsync();
+    });
+
+    expect(container.textContent).toContain('0.750 kg Self-service — R$ 31.17');
+    expect(container.textContent).not.toContain('1x Self-service');
+    expect(container.textContent).toContain('2x Refrigerante — R$ 25.55');
+    expect(container.textContent).toContain('R$ 56.72');
+    expect(container.textContent).toContain('⏳ Pendente');
+    expect(container.textContent).toContain('💳 Pagamento pendente');
+    expect(container.textContent).toContain('📅 AGENDADO');
+    expect(container.textContent).toContain('🛵 Entrega');
+    expect(container.textContent).toContain('📌 Rua Teste, 100');
+    expect(container.textContent).toContain('🍽️ Mesa 7');
+    expect(container.textContent).toContain('Imprimir');
+    expect(container.textContent).toContain('Confirmar pagamento');
+    expect(container.querySelector('select')).toBeTruthy();
+  });
+
 });
 
 

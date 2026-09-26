@@ -121,6 +121,7 @@ describe('StartScreen favorites bottom navigation', () => {
       await act(async () => root.unmount());
       container.remove();
     }
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -214,6 +215,68 @@ describe('StartScreen favorites bottom navigation', () => {
       container.querySelectorAll('button[aria-label="Remover dos favoritos"]'),
     ).toHaveLength(0);
   });
+
+  it('keeps a visible banner when a storefront refresh shrinks the banner list', async () => {
+    vi.useFakeTimers();
+
+    const banner = (id: string, title: string) => ({
+      id,
+      title,
+      image: `https://cdn.test/${id}.jpg`,
+    });
+
+    fetchPublicStorefrontConfigMock
+      .mockResolvedValueOnce({
+        store_name: 'Loja Teste',
+        banners: [
+          banner('banner-a', 'Banner A'),
+          banner('banner-b', 'Banner B'),
+          banner('banner-c', 'Banner C'),
+          banner('banner-d', 'Banner D'),
+        ],
+        instagram_url: '',
+        whatsapp_number: '',
+        categories: [],
+        category_icons: {},
+      })
+      .mockResolvedValue({
+        store_name: 'Loja Teste',
+        banners: [banner('banner-a', 'Banner A')],
+        instagram_url: '',
+        whatsapp_number: '',
+        categories: [],
+        category_icons: {},
+      });
+
+    await renderScreen();
+
+    const fourthIndicator = container.querySelector(
+      'button[aria-label="Banner 4"]',
+    ) as HTMLButtonElement | null;
+    expect(fourthIndicator).toBeTruthy();
+
+    await act(async () => {
+      fourthIndicator!.click();
+      await flushAsync();
+    });
+
+    expect(
+      container.querySelector('.vf-banner > button[aria-hidden="false"] img[alt="Banner D"]'),
+    ).toBeTruthy();
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await flushAsync();
+    });
+
+    expect(fetchPublicStorefrontConfigMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const visibleSlide = container.querySelector(
+      '.vf-banner > button[aria-hidden="false"]',
+    ) as HTMLButtonElement | null;
+    expect(visibleSlide).toBeTruthy();
+    expect(visibleSlide?.querySelector('img')?.getAttribute('alt')).toBe('Banner A');
+  });
+
 
   it('rejects parseable null instead of crashing the storefront', async () => {
     localStorage.setItem('vf_favoritos', 'null');

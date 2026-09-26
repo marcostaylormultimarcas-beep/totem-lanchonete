@@ -109,8 +109,6 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
   const customerDisplay = customerName.trim()
     ? [customerName.trim(), effectiveCustomerPhone].filter(Boolean).join(' — ')
     : 'Visitante';
-  const itemQuantityLabel = (item: CartItem) =>
-    item.weightKg && item.weightKg > 0 ? `${item.weightKg.toFixed(3)} kg` : `${item.quantity}x`;
 
   const quoteItems = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity, extras: item.selectedExtras.map(e => e.name), weight_kg: item.weightKg ?? null, removedIngredients: item.removedIngredients }));
   const normalizedDeliveryAccuracyM = typeof deliveryAccuracyM === 'number'
@@ -210,7 +208,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
     }
     msg += `\n📋 *PEDIDO:*\n─────────────────\n`;
     cart.forEach((item, i) => {
-      msg += `${i + 1}. ${itemQuantityLabel(item)} ${item.product.name} — ${formatCurrency(getItemTotal(item))}\n`;
+      msg += `${i + 1}. ${item.quantity}x ${item.product.name} — ${formatCurrency(getItemTotal(item))}\n`;
       if (item.removedIngredients.length > 0) msg += `   ❌ Sem: ${item.removedIngredients.join(', ')}\n`;
       if (item.selectedExtras.length > 0) msg += `   ✅ Extras: ${item.selectedExtras.map(e => `${e.name} (+${formatCurrency(e.price)})`).join(', ')}\n`;
     });
@@ -743,7 +741,7 @@ const PaymentScreen = ({ cart, customerName, customerPhone, customerCpf, orderTy
             <p className="text-sm text-muted-foreground">📋 Pedido</p>
             {cart.map((item, i) => (
               <div key={item.id} className="text-sm space-y-0.5">
-                <p className="font-semibold">{i + 1}. {itemQuantityLabel(item)} {item.product.name} — {formatCurrency(getItemTotal(item))}</p>
+                <p className="font-semibold">{i + 1}. {item.quantity}x {item.product.name} — {formatCurrency(getItemTotal(item))}</p>
                 {item.removedIngredients.length > 0 && <p className="text-destructive text-xs">❌ Sem: {item.removedIngredients.join(', ')}</p>}
                 {item.selectedExtras.length > 0 && <p className="text-success text-xs">✅ Extras: {item.selectedExtras.map(e => e.name).join(', ')}</p>}
               </div>

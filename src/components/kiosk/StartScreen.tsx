@@ -5,6 +5,7 @@ import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/d
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useOrgId } from '@/contexts/OrgContext';
+import { useVisionPrimeConfig } from '@/hooks/useVisionPrime';
 import ProductModal from './ProductModal';
 import LoyaltyCard from './LoyaltyCard';
 
@@ -25,6 +26,7 @@ const DEFAULT_CATEGORIES: CategoryItem[] = [
 
 const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCount = 0, deviceOwnedKiosk = false }: StartScreenProps) => {
   const orgId = useOrgId();
+  const { config: primeConfig } = useVisionPrimeConfig(orgId);
   const [storeName, setStoreName] = useState('VisionFood');
   const [categories, setCategories] = useState<CategoryItem[]>(DEFAULT_CATEGORIES);
   const [banners, setBanners] = useState<BannerItem[]>([]);
@@ -138,6 +140,10 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   const displayedProducts = showFavorites
     ? products.filter((product) => favorites.includes(product.id))
     : products.slice(0, 6);
+  const configuredPrimeFreeShippingMinimum = Number(primeConfig?.frete_gratis_minimo);
+  const primeFreeShippingMinimum = primeConfig?.ativo && Number.isFinite(configuredPrimeFreeShippingMinimum)
+    ? Math.max(0, configuredPrimeFreeShippingMinimum)
+    : null;
 
   useEffect(() => {
     setActiveBanner(prev => {
@@ -424,7 +430,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
       </section>
 
       {/* Promo card */}
-      {!showFavorites && (
+      {!showFavorites && primeFreeShippingMinimum !== null && (
       <div className="px-5 mt-7 vf-fade-in">
         <button onClick={onStart} className="w-full vf-chip rounded-2xl px-4 py-4 flex items-center gap-4 hover:border-[#FF7A00]/40 transition">
           <div className="w-11 h-11 rounded-full bg-[#FF7A00]/10 flex items-center justify-center text-[#FF7A00]">
@@ -432,7 +438,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           </div>
           <div className="flex-1 text-left">
             <div className="font-bold text-white text-sm">Frete Grátis</div>
-            <div className="text-[12px] text-zinc-400">Em pedidos acima de <span className="text-[#FF7A00] font-semibold">R$ 40,00</span></div>
+            <div className="text-[12px] text-zinc-400">
+              {primeFreeShippingMinimum > 0 ? (
+                <>Para membros Vision Prime a partir de <span className="text-[#FF7A00] font-semibold">{formatCurrency(primeFreeShippingMinimum)}</span></>
+              ) : (
+                <>Para membros Vision Prime em todos os pedidos</>
+              )}
+            </div>
           </div>
           <ChevronRight className="w-4 h-4 text-zinc-500" />
         </button>

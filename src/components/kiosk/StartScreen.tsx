@@ -94,11 +94,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   useEffect(() => {
     if (!orgId) { setLoading(false); return; }
     let cancelled = false;
+    let latestRequestGeneration = 0;
 
     const fetchProducts = async () => {
+      const requestGeneration = ++latestRequestGeneration;
       try {
         const data = await fetchPublicCatalog(orgId);
-        if (cancelled) return;
+        if (cancelled || requestGeneration !== latestRequestGeneration) return;
         const mapped: Product[] = data.map((p) => ({
           id: p.id,
           name: p.name,
@@ -114,15 +116,21 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
         }));
         setProducts(mapped.filter((product) => !product.isCombo));
       } catch (error) {
-        if (!cancelled) console.warn('[StartScreen] public catalog error:', error);
+        if (!cancelled && requestGeneration === latestRequestGeneration) {
+          console.warn('[StartScreen] public catalog error:', error);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && requestGeneration === latestRequestGeneration) setLoading(false);
       }
     };
 
     fetchProducts();
     const pollId = window.setInterval(fetchProducts, 30000);
-    return () => { cancelled = true; window.clearInterval(pollId); };
+    return () => {
+      cancelled = true;
+      latestRequestGeneration += 1;
+      window.clearInterval(pollId);
+    };
   }, [orgId]);
 
   const displayedProducts = showFavorites

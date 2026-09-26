@@ -106,4 +106,42 @@ describe('TableSelect request ordering', () => {
     expect(container.textContent).toContain('Mesa Nova');
     expect(container.textContent).not.toContain('Mesa Antiga');
   });
+
+  it('keeps an in-service table selectable', async () => {
+    const onSelectTable = vi.fn();
+    const inServiceTable = { id: 'mesa-ocupada', label: 'Mesa 12', in_service: true };
+
+    getKioskCompanionTablesMock.mockResolvedValue({
+      ok: true,
+      stale: false,
+      saved_at: '2026-09-25T20:03:00Z',
+      tables: [inServiceTable],
+    });
+
+    await act(async () => {
+      root.render(
+        <TableSelect
+          onSelectTable={onSelectTable}
+          onBalcony={vi.fn()}
+          onBack={vi.fn()}
+        />,
+      );
+      await flushAsync();
+    });
+
+    const tableButton = Array.from(container.querySelectorAll('button'))
+      .find(button => button.textContent?.includes('Mesa 12')) as HTMLButtonElement | undefined;
+
+    expect(tableButton).toBeTruthy();
+    expect(tableButton!.disabled).toBe(false);
+    expect(tableButton!.textContent).toContain('Em atendimento');
+
+    await act(async () => {
+      tableButton!.click();
+      await flushAsync();
+    });
+
+    expect(onSelectTable).toHaveBeenCalledWith(inServiceTable);
+  });
+
 });

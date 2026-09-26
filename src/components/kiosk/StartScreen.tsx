@@ -58,10 +58,13 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
+    let latestRequestGeneration = 0;
+
     const fetchSettings = async () => {
+      const requestGeneration = ++latestRequestGeneration;
       try {
         const data = await fetchPublicStorefrontConfig(orgId);
-        if (cancelled) return;
+        if (cancelled || requestGeneration !== latestRequestGeneration) return;
         setStoreName(data.store_name || 'VisionFood');
         setBanners((data.banners as BannerItem[]) || []);
         setInstagramUrl(data.instagram_url || '');
@@ -73,12 +76,19 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           setCategories(DEFAULT_CATEGORIES.map(c => ({ ...c, icon: icons[c.key] || c.icon })));
         }
       } catch (error) {
-        if (!cancelled) console.warn('[StartScreen] storefront config error:', error);
+        if (!cancelled && requestGeneration === latestRequestGeneration) {
+          console.warn('[StartScreen] storefront config error:', error);
+        }
       }
     };
+
     fetchSettings();
     const pollId = window.setInterval(fetchSettings, 30000);
-    return () => { cancelled = true; window.clearInterval(pollId); };
+    return () => {
+      cancelled = true;
+      latestRequestGeneration += 1;
+      window.clearInterval(pollId);
+    };
   }, [orgId]);
 
   useEffect(() => {

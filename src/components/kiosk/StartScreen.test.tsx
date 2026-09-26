@@ -2,7 +2,7 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -40,6 +40,11 @@ vi.mock('@/components/kiosk/ProductModal', () => ({
 }));
 
 import StartScreen from '@/components/kiosk/StartScreen';
+
+function RouteProbe() {
+  const location = useLocation();
+  return <output data-testid="route-probe">{location.pathname}</output>;
+}
 
 const CATALOG = [
   {
@@ -86,6 +91,7 @@ describe('StartScreen favorites bottom navigation', () => {
       root.render(
         <MemoryRouter initialEntries={['/loja/demo']}>
           <StartScreen onStart={vi.fn()} {...props} />
+          <RouteProbe />
         </MemoryRouter>,
       );
       await flushAsync();
@@ -999,6 +1005,55 @@ describe('StartScreen favorites bottom navigation', () => {
     expect(container.querySelector('a[aria-label="Abrir Instagram"]')).toBeNull();
     expect(container.querySelector('a[aria-label="Abrir WhatsApp"]')).toBeNull();
     expect(container.textContent).not.toContain('Siga e fale conosco');
+  });
+
+  it.each(['Pedidos', 'Perfil'])('navigates the bottom %s link to /meus-pedidos by click', async (label) => {
+    await renderScreen();
+
+    const bottomNav = container.querySelector('nav');
+    const link = Array.from(bottomNav?.querySelectorAll('a') || []).find(
+      anchor => anchor.textContent?.trim() === label,
+    ) as HTMLAnchorElement | undefined;
+    expect(link).toBeTruthy();
+    expect(link!.getAttribute('href')).toBe('/meus-pedidos');
+
+    await act(async () => {
+      link!.click();
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="route-probe"]')?.textContent).toBe('/meus-pedidos');
+  });
+
+  it('navigates the footer Painel link to /admin by click', async () => {
+    await renderScreen();
+
+    const panelLink = Array.from(container.querySelectorAll('a')).find(
+      anchor => anchor.textContent?.trim() === 'Painel',
+    ) as HTMLAnchorElement | undefined;
+    expect(panelLink).toBeTruthy();
+    expect(panelLink!.getAttribute('href')).toBe('/admin');
+
+    await act(async () => {
+      panelLink!.click();
+      await flushAsync();
+    });
+
+    expect(container.querySelector('[data-testid="route-probe"]')?.textContent).toBe('/admin');
+  });
+
+  it('hides Pedidos, Perfil and Painel in device-owned kiosk while preserving Início, Buscar and Favoritos', async () => {
+    await renderScreen({ deviceOwnedKiosk: true });
+
+    const bottomNav = container.querySelector('nav');
+    const navText = Array.from(bottomNav?.querySelectorAll('button, a') || []).map(
+      element => element.textContent?.trim(),
+    );
+
+    expect(navText).toEqual(expect.arrayContaining(['Início', 'Buscar', 'Favoritos']));
+    expect(navText).not.toContain('Pedidos');
+    expect(navText).not.toContain('Perfil');
+    expect(Array.from(container.querySelectorAll('a')).some(anchor => anchor.textContent?.trim() === 'Painel')).toBe(false);
   });
 
   it('keeps the valid channel when the other is malformed', async () => {

@@ -14,7 +14,14 @@ interface OrderRow {
   total: number;
   status: string;
   created_at: string;
-  items: Array<{ name: string; quantity: number; total?: number; price?: number }>;
+  items: Array<{
+    name: string;
+    quantity: number;
+    total?: number;
+    price?: number;
+    sold_by_weight?: boolean;
+    weight_kg?: number;
+  }>;
 }
 
 interface LowStockProduct {
@@ -170,12 +177,24 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
 
   const periodStats = useMemo(() => {
     const totalRevenue = periodOrders.reduce((s, o) => s + Number(o.total || 0), 0);
-    const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
+    const productMap = new Map<string, { name: string; quantity: number; revenue: number; soldByWeight: boolean }>();
     periodOrders.forEach(o => {
       (o.items || []).forEach(it => {
-        const cur = productMap.get(it.name) || { name: it.name, quantity: 0, revenue: 0 };
-        cur.quantity += Number(it.quantity || 0);
-        cur.revenue += Number(it.total || (it.price || 0) * (it.quantity || 0));
+        const weightKg = Number(it.weight_kg || 0);
+        const isWeighted = it.sold_by_weight === true && weightKg > 0;
+        const rankingQuantity = isWeighted ? weightKg : Number(it.quantity || 0);
+        const cur = productMap.get(it.name) || {
+          name: it.name,
+          quantity: 0,
+          revenue: 0,
+          soldByWeight: isWeighted,
+        };
+        cur.quantity += rankingQuantity;
+        const itemRevenue = it.total != null
+          ? Number(it.total)
+          : isWeighted ? 0 : Number(it.price || 0) * Number(it.quantity || 0);
+        cur.revenue += Number.isFinite(itemRevenue) ? itemRevenue : 0;
+        if (isWeighted) cur.soldByWeight = true;
         productMap.set(it.name, cur);
       });
     });
@@ -435,7 +454,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
                     <span className="text-[#FF7A00] mr-1.5 font-black">#{i + 1}</span>{p.name}
                   </span>
                   <span className="text-zinc-400 ml-2 whitespace-nowrap">
-                    {p.quantity}x · <span className="text-emerald-400">{formatCurrency(p.revenue)}</span>
+                    {p.soldByWeight ? `${p.quantity.toFixed(3)} kg` : `${p.quantity}x`} · <span className="text-emerald-400">{formatCurrency(p.revenue)}</span>
                   </span>
                 </div>
                 <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">

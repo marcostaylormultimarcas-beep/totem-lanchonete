@@ -77,8 +77,10 @@ describe("recipe stock weighted SQL contract", () => {
 
   it("uses weight_kg=1.250 for a sold_by_weight product", () => {
     expect(expectedRecipeAmount(0.2, true, 1, 1.25)).toBeCloseTo(0.25, 10);
-    expect(consumeSql).toContain("needed:=greatest(coalesce(rec.quantidade,0),0)*multiplier;");
-    expect(restockSql).toContain("amount:=greatest(coalesce(rec.quantidade,0),0)*multiplier;");
+    expect(consumeSql).toContain("ingredient_need as (");
+    expect(consumeSql).toContain("needed:=rec.needed;");
+    expect(restockSql).toContain("ingredient_amount as (");
+    expect(restockSql).toContain("estoque_atual=estoque_atual+rec.amount");
   });
 
   it("keeps mixed unit and weighted items on independent multipliers", () => {
@@ -102,7 +104,8 @@ describe("recipe stock weighted SQL contract", () => {
     expect(restored).toBeCloseTo(consumed, 10);
     expect(restockSql).toContain("weight:=nullif(item->>'weight_kg','')::numeric;");
     expect(restockSql).toContain("select coalesce(p.sold_by_weight,false)");
-    expect(restockSql).toContain("amount:=greatest(coalesce(rec.quantidade,0),0)*multiplier;");
+    expect(restockSql).toContain("ingredient_amount as (");
+    expect(restockSql).toContain("estoque_atual=estoque_atual+rec.amount");
   });
 
   it("fails closed for sold_by_weight without a valid weight instead of using quantity=1 as one kilogram", () => {

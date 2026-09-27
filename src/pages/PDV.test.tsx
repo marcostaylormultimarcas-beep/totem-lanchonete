@@ -7130,6 +7130,237 @@ describe("PDV DevolucaoModal audit", () => {
     await setReason(reason);
   }
 
+
+  it("preserves weighted order fields and renders kg beside unit quantities", async () => {
+    const unitProductId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({
+              total: 42.5,
+              items: [
+                {
+                  product_id: productUuid,
+                  name: "Queijo por peso",
+                  quantity: 1,
+                  price: 30,
+                  weight_kg: 0.75,
+                  price_per_kg: 30,
+                  sold_by_weight: true,
+                  total: 22.5,
+                },
+                {
+                  product_id: unitProductId,
+                  name: "Produto unitário",
+                  quantity: 2,
+                  price: 10,
+                  sold_by_weight: false,
+                  total: 20,
+                },
+              ],
+            }),
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    const text = refundModal().textContent ?? "";
+    expect(text).toContain("Queijo por peso");
+    expect(text).toContain("0.750 kg");
+    expect(text).toContain("Produto unitário");
+    expect(text).toContain("2x");
+  });
+
+  it("submits a partial weighted refund in kg together with a unit item using exact cents", async () => {
+    const unitProductId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const baseImplementation = rpcMock.getMockImplementation();
+    rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+      if (name === "pdv_buscar_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order: validOrder({
+              total: 42.5,
+              items: [
+                {
+                  product_id: productUuid,
+                  name: "Queijo por peso",
+                  quantity: 1,
+                  price: 30,
+                  weight_kg: 0.75,
+                  price_per_kg: 30,
+                  sold_by_weight: true,
+                  total: 22.5,
+                },
+                {
+                  product_id: unitProductId,
+                  name: "Produto unitário",
+                  quantity: 2,
+                  price: 10,
+                  sold_by_weight: false,
+                  total: 20,
+                },
+              ],
+            }),
+          },
+          error: null,
+        });
+      }
+      if (name === "pdv_devolver_pedido_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: orderUuid,
+            valor_devolucao: 17.5,
+            items: [
+              {
+                product_id: productUuid,
+                name: "Queijo por peso",
+                quantity: 1,
+                weight_kg: 0.25,
+                price_per_kg: 30,
+                sold_by_weight: true,
+                total: 7.5,
+              },
+              {
+                product_id: unitProductId,
+                name: "Produto unitário",
+                quantity: 1,
+                price: 10,
+                sold_by_weight: false,
+                total: 10,
+              },
+            ],
+          },
+          error: null,
+        });
+      }
+      return baseImplementation!(name, ...args);
+    });
+
+    await renderMain();
+    await openRefundModal();
+    await searchOrder();
+
+    const weightInput = refundModal().querySelector<HTMLInputElement>(
+      `input[data-refund-weight-kg="${productUuid}"]`,
+    );
+    expect(weightInput).not.toBeNull();
+    await setInputValue(weightInput!, "0.250");
+
+    const unitRow = refundModal().querySelector<HTMLElement>(
+      `[data-refund-product-id="${unitProductId}"]`,
+    );
+    expect(unitRow).not.toBeNull();
+    const unitPlus = unitRow!.querySelector<HTMLButtonElement>("button[data-refund-increment]");
+    expect(unitPlus).not.toBeNull();
+    await act(async () => {
+      unitPlus!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+
+    await setReason("Devolução parcial");
+    await act(async () => {
+      buttonWithText("Confirmar devolução").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(refundCalls()).toContainEqual([
+      "pdv_devolver_pedido_v2",
+      {
+        _session_token: savedSession.sessionToken,
+        _caixa_id: openCaixaId,
+        _order_id: orderUuid,
+        _items_devolvidos: [
+          {
+            product_id: productUuid,
+            quantity: 1,
+            weight_kg: 0.25,
+          },
+          {
+            product_id: unitProductId,
+            quantity: 1,
+          },
+        ],
+        _valor_devolucao: 17.5,
+        _motivo: "Devolução parcial",
+      },
+    ]);
+  });
+
+  it.each([0, -0.001, Number.NaN, Number.POSITIVE_INFINITY])(
+    "fails closed on invalid authoritative weighted order weight: %s",
+    async (weightKg) => {
+      const baseImplementation = rpcMock.getMockImplementation();
+      rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+        if (name === "pdv_buscar_pedido_v2") {
+          return Promise.resolve({
+            data: {
+              ok: true,
+              order: validOrder({
+                total: 22.5,
+                items: [
+                  {
+                    product_id: productUuid,
+                    name: "Queijo por peso",
+                    quantity: 1,
+                    price: 30,
+                    weight_kg: weightKg,
+                    price_per_kg: 30,
+                    sold_by_weight: true,
+                    total: 22.5,
+                  },
+                ],
+              }),
+            },
+            error: null,
+          });
+        }
+        return baseImplementation!(name, ...args);
+      });
+
+      await renderMain();
+      await openRefundModal();
+      await searchOrder();
+
+      expect(refundModal().textContent).not.toContain("Queijo por peso");
+      expect(refundCalls()).toHaveLength(0);
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "Resposta inválida ao buscar o pedido. Tente novamente.",
+      );
+    },
+  );
+
+  it("ships an additive server-authoritative weighted refund migration contract", () => {
+    const sql = readFileSync(
+      "supabase/migrations/20260927020000_visionfood_v2_pdv_weight_refund_contract.sql",
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.pdv_devolver_pedido_v2");
+    expect(sql).toContain("weight_kg");
+    expect(sql).toContain("price_per_kg");
+    expect(sql).toContain("sold_by_weight");
+    expect(sql).toContain("return_weight_exceeds_available");
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("client_requested_value");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("SET search_path");
+    expect(sql).toContain("REVOKE ALL ON FUNCTION public.pdv_devolver_pedido_v2");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.pdv_devolver_pedido_v2");
+  });
+
   it("opens and closes the refund modal without issuing a refund RPC", async () => {
     await renderMain();
     await openRefundModal();

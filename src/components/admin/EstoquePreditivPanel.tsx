@@ -79,7 +79,9 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
       const dia = fmtDate(new Date(o.created_at));
       for (const it of items as any[]) {
         const pid = it?.product_id || it?.product?.id || it?.id;
-        const qty = Number(it?.quantity || 1);
+        const weightKg = Number(it?.weight_kg || 0);
+        const isWeighted = it?.sold_by_weight === true && weightKg > 0;
+        const qty = isWeighted ? weightKg : Number(it?.quantity || 1);
         if (!pid) continue;
         const receitas = byProduct.get(pid);
         if (!receitas) continue;

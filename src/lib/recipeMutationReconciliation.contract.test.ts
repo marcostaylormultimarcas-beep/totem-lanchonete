@@ -205,6 +205,34 @@ describe("recipe mutation immediate availability reconciliation SQL contract", (
     );
   });
 
+  it("prelocks OLD/NEW ingredient rows before any product prelock", () => {
+    const ingredientPrelock = syncRecipeSql.indexOf(
+      "perform i.id from public.ingredientes i",
+    );
+    const productPrelock = syncRecipeSql.indexOf(
+      "perform p.id from public.products p",
+    );
+
+    expect(ingredientPrelock).toBeGreaterThan(-1);
+    expect(productPrelock).toBeGreaterThan(ingredientPrelock);
+    expect(syncRecipeSql.slice(ingredientPrelock, productPrelock)).toContain(
+      "order by i.id for update of i",
+    );
+  });
+
+  it("includes both OLD and NEW ingredients in the deterministic ingredient prelock", () => {
+    const ingredientPrelock = syncRecipeSql.indexOf(
+      "perform i.id from public.ingredientes i",
+    );
+    const productPrelock = syncRecipeSql.indexOf(
+      "perform p.id from public.products p",
+    );
+    const lockSlice = syncRecipeSql.slice(ingredientPrelock, productPrelock);
+
+    expect(lockSlice).toContain("i.id=old_ingredient");
+    expect(lockSlice).toContain("i.id=new_ingredient");
+  });
+
   it("prelocks every product that OLD/NEW recipe reconciliation can touch before the first product sync", () => {
     const prelock = syncRecipeSql.indexOf("perform p.id from public.products p");
     const firstSync = syncRecipeSql.indexOf(

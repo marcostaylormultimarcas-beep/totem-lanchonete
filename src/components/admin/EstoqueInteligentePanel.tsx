@@ -50,23 +50,19 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const [linkIng, setLinkIng] = useState<string>('');
   const [linkQty, setLinkQty] = useState<number>(1);
 
-  const [webhook, setWebhook] = useState('');
-
   const load = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const [i, r, p, a, s] = await Promise.all([
+    const [i, r, p, a] = await Promise.all([
       supabase.from('ingredientes' as any).select('*').eq('organization_id', organizationId).order('nome'),
       supabase.from('receitas' as any).select('*').eq('organization_id', organizationId),
       supabase.from('products').select('id,name,available').eq('organization_id', organizationId).order('name'),
       supabase.from('alertas_estoque' as any).select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(20),
-      supabase.from('settings').select('estoque_webhook_url').eq('organization_id', organizationId).maybeSingle(),
     ]);
     setIngs((i.data as any) || []);
     setRecs((r.data as any) || []);
     setProds((p.data as any) || []);
     setAlerts((a.data as any) || []);
-    setWebhook(((s.data as any)?.estoque_webhook_url) || '');
     setLoading(false);
   };
 
@@ -141,14 +137,6 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
     if (error) { toast.error(error.message); load(); }
   };
 
-  const saveWebhook = async () => {
-    if (!organizationId) return;
-    const { error } = await supabase.from('settings').update({ estoque_webhook_url: webhook } as any)
-      .eq('organization_id', organizationId);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Webhook salvo');
-  };
-
   return (
     <div className="space-y-6">
       <div className="bg-card rounded-2xl p-6 border border-border">
@@ -160,19 +148,6 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
           Cadastre ingredientes, vincule receitas aos produtos e o sistema desconta automaticamente a cada pedido.
           Quando um ingrediente acaba, os produtos relacionados são bloqueados no totem.
         </p>
-      </div>
-
-      {/* Webhook */}
-      <div className="bg-card rounded-2xl p-6 border border-border">
-        <h3 className="font-semibold mb-2">Alerta de ruptura (Webhook)</h3>
-        <p className="text-xs text-muted-foreground mb-3">
-          URL chamada quando um produto for desativado por falta de ingrediente. Suporta Push, WhatsApp ou qualquer endpoint próprio.
-        </p>
-        <div className="flex gap-2">
-          <input className="flex-1 px-3 py-2 rounded-lg bg-background border border-input text-sm"
-            placeholder="https://seu-webhook.com/alerta" value={webhook} onChange={(e) => setWebhook(e.target.value)} />
-          <button onClick={saveWebhook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm">Salvar</button>
-        </div>
       </div>
 
       {/* Cadastro de ingrediente */}

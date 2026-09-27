@@ -898,10 +898,7 @@ const AdminPage = () => {
           if (stockQuantityChanged) {
             // Compare-and-swap prevents an absolute admin adjustment from
             // overwriting a checkout/restock committed after the form loaded.
-            updateQuery = updateQuery.eq(
-              'stock_quantity',
-              Number(editingProduct.stockQuantity ?? 0),
-            );
+            updateQuery = updateQuery.eq('stock_quantity', Number(editingProduct.stockQuantity ?? 0));
           }
 
           const result = await updateQuery.select().maybeSingle();

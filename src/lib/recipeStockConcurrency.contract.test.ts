@@ -77,8 +77,8 @@ describe("recipe stock concurrency SQL contract", () => {
     expect(consumeSql).toContain(
       "group by coalesce(r.ingrediente_id,r.ingredient_id)",
     );
-    expect(consumeSql).toContain(
-      "sum(greatest(coalesce(r.quantidade,0),0)*u.multiplier)",
+    expect(consumeSql).toMatch(
+      /sum\(\s*greatest\(coalesce\(r\.quantidade,0\),0\)\s*\*\s*u\.multiplier\s*\)/,
     );
   });
 
@@ -93,8 +93,8 @@ describe("recipe stock concurrency SQL contract", () => {
   it("aggregates shared ingredient restock instead of replaying stale duplicate snapshots", () => {
     expect(restockSql).toContain("with product_usage as (");
     expect(restockSql).toContain("ingredient_amount as (");
-    expect(restockSql).toContain(
-      "sum(greatest(coalesce(r.quantidade,0),0)*u.multiplier)",
+    expect(restockSql).toMatch(
+      /sum\(\s*greatest\(coalesce\(r\.quantidade,0\),0\)\s*\*\s*u\.multiplier\s*\)/,
     );
   });
 

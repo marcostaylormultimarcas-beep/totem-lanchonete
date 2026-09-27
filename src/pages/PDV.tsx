@@ -3283,6 +3283,10 @@ type PdvRefundItem = {
   name: string;
   quantity: number;
   price: number;
+  weight_kg: number | null;
+  price_per_kg: number | null;
+  sold_by_weight: boolean;
+  total: number;
 };
 
 type PdvRefundOrder = {
@@ -3307,6 +3311,24 @@ function pdvMoneyToSafeCents(value: unknown): number | null {
   }
 
   return cents;
+}
+
+function pdvRefundWeightToMilliKg(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  const scaled = value * 1000;
+  const milliKg = Math.round(scaled);
+  if (
+    !Number.isSafeInteger(milliKg) ||
+    milliKg <= 0 ||
+    Math.abs(scaled - milliKg) > 1e-7
+  ) {
+    return null;
+  }
+
+  return milliKg;
 }
 
 function parsePdvRefundOrder(value: unknown): PdvRefundOrder | null {
@@ -3340,25 +3362,87 @@ function parsePdvRefundOrder(value: unknown): PdvRefundOrder | null {
       typeof item.product_id === "string" ? item.product_id.trim() : "";
     const quantity = item.quantity;
     const priceCents = pdvMoneyToSafeCents(item.price);
+    const soldRaw = item.sold_by_weight;
 
     if (
       !PDV_UUID_PATTERN.test(productId) ||
       typeof quantity !== "number" ||
       !Number.isSafeInteger(quantity) ||
       quantity <= 0 ||
-      priceCents === null
+      priceCents === null ||
+      (soldRaw != null && typeof soldRaw !== "boolean")
     ) {
+      return null;
+    }
+
+    const soldByWeight =
+      soldRaw === true || (soldRaw == null && item.weight_kg != null);
+    const name =
+      typeof item.name === "string" && item.name.trim()
+        ? item.name.trim()
+        : "Produto";
+
+    if (soldByWeight) {
+      if (quantity !== 1) return null;
+
+      const weightMilliKg = pdvRefundWeightToMilliKg(item.weight_kg);
+      const pricePerKgCents = pdvMoneyToSafeCents(
+        item.price_per_kg == null ? item.price : item.price_per_kg,
+      );
+      const lineTotalCents = pdvMoneyToSafeCents(item.total);
+
+      if (
+        weightMilliKg === null ||
+        pricePerKgCents === null ||
+        lineTotalCents === null ||
+        priceCents !== pricePerKgCents
+      ) {
+        return null;
+      }
+
+      const numerator = pricePerKgCents * weightMilliKg;
+      if (!Number.isSafeInteger(numerator)) return null;
+      const expectedTotalCents = Math.round(numerator / 1000);
+      if (
+        !Number.isSafeInteger(expectedTotalCents) ||
+        lineTotalCents !== expectedTotalCents
+      ) {
+        return null;
+      }
+
+      items.push({
+        product_id: productId,
+        name,
+        quantity: 1,
+        price: priceCents / 100,
+        weight_kg: weightMilliKg / 1000,
+        price_per_kg: pricePerKgCents / 100,
+        sold_by_weight: true,
+        total: lineTotalCents / 100,
+      });
+      continue;
+    }
+
+    if (item.weight_kg != null || item.price_per_kg != null) return null;
+
+    const expectedTotalCents = priceCents * quantity;
+    if (!Number.isSafeInteger(expectedTotalCents)) return null;
+
+    const lineTotalCents =
+      item.total == null ? expectedTotalCents : pdvMoneyToSafeCents(item.total);
+    if (lineTotalCents === null || lineTotalCents !== expectedTotalCents) {
       return null;
     }
 
     items.push({
       product_id: productId,
-      name:
-        typeof item.name === "string" && item.name.trim()
-          ? item.name.trim()
-          : "Produto",
+      name,
       quantity,
       price: priceCents / 100,
+      weight_kg: null,
+      price_per_kg: null,
+      sold_by_weight: false,
+      total: lineTotalCents / 100,
     });
   }
 
@@ -3380,21 +3464,34 @@ function calculatePdvRefundTotal(
   let totalCents = 0;
 
   for (const item of items) {
-    const quantity = selected[item.product_id] ?? 0;
-    if (
-      !Number.isSafeInteger(quantity) ||
-      quantity < 0 ||
-      quantity > item.quantity
-    ) {
+    const selectedValue = selected[item.product_id] ?? 0;
+    if (!Number.isSafeInteger(selectedValue) || selectedValue < 0) {
       return null;
     }
 
-    const priceCents = pdvMoneyToSafeCents(item.price);
-    if (priceCents === null) return null;
+    let lineCents = 0;
+    if (item.sold_by_weight) {
+      const maxMilliKg = pdvRefundWeightToMilliKg(item.weight_kg);
+      const pricePerKgCents = pdvMoneyToSafeCents(item.price_per_kg);
+      if (
+        maxMilliKg === null ||
+        pricePerKgCents === null ||
+        selectedValue > maxMilliKg
+      ) {
+        return null;
+      }
 
-    const lineCents = priceCents * quantity;
+      const numerator = pricePerKgCents * selectedValue;
+      if (!Number.isSafeInteger(numerator)) return null;
+      lineCents = Math.round(numerator / 1000);
+    } else {
+      if (selectedValue > item.quantity) return null;
+      const priceCents = pdvMoneyToSafeCents(item.price);
+      if (priceCents === null) return null;
+      lineCents = priceCents * selectedValue;
+    }
+
     if (!Number.isSafeInteger(lineCents)) return null;
-
     totalCents += lineCents;
     if (!Number.isSafeInteger(totalCents)) return null;
   }
@@ -3612,6 +3709,39 @@ function DevolucaoModal({
     });
   };
 
+  const changeRefundWeight = (
+    productId: string,
+    rawValue: string,
+    maxMilliKg: number,
+  ) => {
+    if (
+      !PDV_UUID_PATTERN.test(productId) ||
+      !Number.isSafeInteger(maxMilliKg) ||
+      maxMilliKg <= 0
+    ) {
+      return;
+    }
+
+    const normalized = rawValue.trim().replace(",", ".");
+    if (normalized === "" || normalized === "0" || normalized === "0.0" || normalized === "0.00" || normalized === "0.000") {
+      setSelected((current) => ({ ...current, [productId]: 0 }));
+      return;
+    }
+
+    if (!/^\d+(?:\.\d{1,3})?$/.test(normalized)) {
+      setSelected((current) => ({ ...current, [productId]: -1 }));
+      return;
+    }
+
+    const milliKg = pdvRefundWeightToMilliKg(Number(normalized));
+    if (milliKg === null || milliKg > maxMilliKg) {
+      setSelected((current) => ({ ...current, [productId]: -1 }));
+      return;
+    }
+
+    setSelected((current) => ({ ...current, [productId]: milliKg }));
+  };
+
   const valorTotal = useMemo(
     () => calculatePdvRefundTotal(items, selected),
     [items, selected],
@@ -3621,12 +3751,27 @@ function DevolucaoModal({
     if (refundingRef.current || searchingRef.current) return;
     if (!order) return;
 
-    const devolvidos = items
-      .map((item) => ({
-        product_id: item.product_id,
-        quantity: selected[item.product_id] ?? 0,
-      }))
-      .filter((item) => item.quantity > 0);
+    const devolvidos = items.flatMap((item) => {
+      const selectedValue = selected[item.product_id] ?? 0;
+      if (selectedValue <= 0) return [];
+
+      if (item.sold_by_weight) {
+        return [
+          {
+            product_id: item.product_id,
+            quantity: 1,
+            weight_kg: selectedValue / 1000,
+          },
+        ];
+      }
+
+      return [
+        {
+          product_id: item.product_id,
+          quantity: selectedValue,
+        },
+      ];
+    });
 
     if (devolvidos.length === 0) {
       toast.error("Selecione ao menos 1 item");
@@ -3717,6 +3862,7 @@ function DevolucaoModal({
 
         if (
           reason === "return_quantity_exceeds_available" ||
+          reason === "return_weight_exceeds_available" ||
           reason === "nothing_left_to_refund" ||
           reason === "duplicate_return_item"
         ) {
@@ -3737,10 +3883,13 @@ function DevolucaoModal({
           reason === "invalid_return" ||
           reason === "invalid_return_item" ||
           reason === "invalid_return_quantity" ||
+          reason === "invalid_return_weight" ||
+          reason === "invalid_refund_history" ||
           reason === "item_not_in_order" ||
           reason === "invalid_original_items" ||
           reason === "invalid_original_item" ||
           reason === "invalid_original_price" ||
+          reason === "invalid_original_weight" ||
           reason === "invalid_original_total"
         ) {
           toast.error("Devolução rejeitada. Busque o pedido novamente.");
@@ -3797,21 +3946,65 @@ function DevolucaoModal({
           </div>
           <div className="space-y-1.5 max-h-60 overflow-y-auto">
             {items.map((item) => {
-              const max = item.quantity;
               const current = selected[item.product_id] ?? 0;
+
+              if (item.sold_by_weight) {
+                const maxMilliKg = pdvRefundWeightToMilliKg(item.weight_kg);
+                const currentKg =
+                  current > 0 && Number.isSafeInteger(current)
+                    ? (current / 1000).toFixed(3)
+                    : "";
+
+                return (
+                  <div
+                    key={item.product_id}
+                    data-refund-product-id={item.product_id}
+                    className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 flex items-center gap-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-white truncate">{item.name}</div>
+                      <div className="text-xs text-zinc-500">
+                        {item.weight_kg!.toFixed(3)} kg • {fmt(item.price_per_kg!)} / kg • {fmt(item.total)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        data-refund-weight-kg={item.product_id}
+                        value={currentKg}
+                        onChange={(event) =>
+                          changeRefundWeight(
+                            item.product_id,
+                            event.target.value,
+                            maxMilliKg ?? 0,
+                          )
+                        }
+                        inputMode="decimal"
+                        placeholder="0.000"
+                        aria-label={`Peso a devolver de ${item.name}`}
+                        className="w-20 bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-sm text-right text-white focus:border-amber-500 outline-none"
+                      />
+                      <span className="text-xs text-zinc-400">kg</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              const max = item.quantity;
               return (
                 <div
                   key={item.product_id}
+                  data-refund-product-id={item.product_id}
                   className="bg-zinc-950 border border-zinc-800 rounded-lg p-2 flex items-center gap-2"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-sm text-white truncate">{item.name}</div>
                     <div className="text-xs text-zinc-500">
-                      {fmt(item.price)} × até {max}
+                      {item.quantity}x • {fmt(item.price)} cada
                     </div>
                   </div>
                   <button
                     onClick={() => toggleQty(item.product_id, -1, max)}
+                    data-refund-decrement
                     className="w-7 h-7 rounded-md bg-zinc-800"
                   >
                     <Minus className="w-3.5 h-3.5 mx-auto" />
@@ -3819,6 +4012,7 @@ function DevolucaoModal({
                   <div className="w-6 text-center text-sm font-bold">{current}</div>
                   <button
                     onClick={() => toggleQty(item.product_id, 1, max)}
+                    data-refund-increment
                     className="w-7 h-7 rounded-md bg-zinc-800"
                   >
                     <Plus className="w-3.5 h-3.5 mx-auto" />

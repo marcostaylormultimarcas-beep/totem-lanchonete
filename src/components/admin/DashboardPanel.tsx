@@ -29,6 +29,7 @@ interface LowStockProduct {
   name: string;
   stock_quantity: number;
   low_stock_threshold: number;
+  sold_by_weight: boolean;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -122,7 +123,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
           .order('created_at', { ascending: false })
           .limit(6),
         (supabase.from('products') as any)
-          .select('id, name, stock_quantity, low_stock_threshold, manage_stock')
+          .select('id, name, stock_quantity, low_stock_threshold, manage_stock, sold_by_weight')
           .eq('organization_id', organizationId)
           .eq('manage_stock', true),
         supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
@@ -379,7 +380,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   p.stock_quantity <= 0 ? 'bg-red-500/15 text-red-400' : 'bg-[#FF7A00]/15 text-[#FF7A00]'
                 }`}>
-                  {p.stock_quantity <= 0 ? 'Esgotado' : `${p.stock_quantity} restante${p.stock_quantity !== 1 ? 's' : ''}`}
+                  {p.stock_quantity <= 0 ? 'Esgotado' : (p.sold_by_weight ? `${p.stock_quantity} kg` : `${p.stock_quantity} un`)}
                 </span>
               </div>
             ))}

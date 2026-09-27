@@ -13,7 +13,7 @@ const migrationFiles = readdirSync(migrationsDir)
   .sort();
 
 function latestFunctionDefinition(name: string): FunctionDefinition {
-  const needle = `create or replace function public.${name}`;
+  const needle = `create or replace function public.${name}(`;
   let latest: FunctionDefinition | null = null;
 
   for (const file of migrationFiles) {

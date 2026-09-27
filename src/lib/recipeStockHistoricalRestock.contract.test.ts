@@ -104,9 +104,23 @@ describe("recipe stock historical restock SQL contract", () => {
     expect(restockSql).toContain(
       "from public.visionfood_order_ingredient_stock_ledger",
     );
-    expect(restockSql).not.toContain("from public.receitas");
-    expect(restockSql).not.toContain("sold_by_weight");
-    expect(restockSql).not.toContain("weight_kg");
+    const restoreLoopStart = restockSql.indexOf(
+      "for rec in select l.ingredient_id, l.amount",
+    );
+    const completionMarker = restockSql.indexOf(
+      "set ingredient_stock_restocked_at=now()",
+    );
+    const restoreLoop = restockSql.slice(restoreLoopStart, completionMarker);
+
+    expect(restoreLoopStart).toBeGreaterThan(-1);
+    expect(completionMarker).toBeGreaterThan(restoreLoopStart);
+    expect(restoreLoop).toContain(
+      "from public.visionfood_order_ingredient_stock_ledger l",
+    );
+    expect(restoreLoop).not.toContain("from public.receitas");
+    expect(restoreLoop).not.toContain("sold_by_weight");
+    expect(restoreLoop).not.toContain("weight_kg");
+    expect(restoreLoop).toContain("set estoque_atual=estoque_atual+rec.amount");
   });
 
   it("fails closed when a committed legacy order has no historical snapshot", () => {

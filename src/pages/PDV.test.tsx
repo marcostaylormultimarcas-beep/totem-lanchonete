@@ -3542,14 +3542,12 @@ describe("PDV PIX request invalidation", () => {
       ],
       _cupom_code: "",
     });
-    expect(functionsInvokeMock).toHaveBeenCalledWith(
-      "mercadopago-create-pix",
-      expect.objectContaining({
-        body: expect.objectContaining({
-          amount: 22.5,
-        }),
-      }),
-    );
+    expect(functionsInvokeMock).toHaveBeenCalledWith("mercadopago-create-pix", {
+      body: {
+        intent_id: EDGE_INTENT_ID,
+        session_token: savedSession.sessionToken,
+      },
+    });
   });
 
   it("preserves the canonical weighted item through PIX finalization and receipt", async () => {

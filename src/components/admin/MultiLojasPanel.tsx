@@ -28,6 +28,7 @@ interface LowStockRow {
   name: string;
   stock_quantity: number;
   low_stock_threshold: number;
+  sold_by_weight: boolean;
 }
 
 const daysAgoISO = (days: number) => {
@@ -79,7 +80,7 @@ const MultiLojasPanel = ({ tier, userId }: { tier: 'master' | 'super'; userId: s
           .lte('created_at', toDate)
           .neq('status', 'cancelled'),
         (supabase.from('products') as any)
-          .select('id, organization_id, name, stock_quantity, low_stock_threshold, manage_stock')
+          .select('id, organization_id, name, stock_quantity, low_stock_threshold, manage_stock, sold_by_weight')
           .in('organization_id', ids)
           .eq('manage_stock', true),
       ]);
@@ -263,7 +264,7 @@ const MultiLojasPanel = ({ tier, userId }: { tier: 'master' | 'super'; userId: s
                     <p className="text-[10px] text-muted-foreground truncate">{org?.name || '—'}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${esgotado ? 'bg-destructive/20 text-destructive' : 'bg-amber-500/20 text-amber-400'}`}>
-                    {esgotado ? 'Esgotado' : `${p.stock_quantity} restante${p.stock_quantity !== 1 ? 's' : ''}`}
+                    {esgotado ? 'Esgotado' : (p.sold_by_weight ? `${p.stock_quantity} kg` : `${p.stock_quantity} un`)}
                   </span>
                 </div>
               );

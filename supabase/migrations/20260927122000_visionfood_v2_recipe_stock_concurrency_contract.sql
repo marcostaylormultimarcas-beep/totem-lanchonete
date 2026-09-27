@@ -82,6 +82,26 @@ begin
     );
   end loop;
 
+  -- Acquire the complete ingredient lock set before any ingredient UPDATE can
+  -- fire availability/alert triggers. PERFORM runs the locking query to
+  -- completion; the later FOR UPDATE still supplies the post-wait row value
+  -- used for the stock calculation.
+  perform i.id
+  from public.ingredientes i
+  where i.organization_id=new.organization_id
+    and exists(
+      select 1
+      from public.receitas r
+      join jsonb_each(product_usage) u
+        on coalesce(r.product_id,r.produto_id)=u.key::uuid
+      where r.organization_id=new.organization_id
+        and coalesce(r.ingrediente_id,r.ingredient_id)=i.id
+        and greatest(coalesce(r.quantidade,0),0)>0
+        and u.value::text::numeric>0
+    )
+  order by i.id
+  for update of i;
+
   -- Aggregate all recipe contributions by ingredient before locking. This
   -- handles repeated cart lines, different products sharing an ingredient and
   -- legacy alias-column duplicates without replaying stale stock snapshots.
@@ -275,6 +295,24 @@ begin
       );
     end loop;
 
+    -- Match checkout's global lock order before any ingredient UPDATE fires
+    -- availability/alert triggers.
+    perform i.id
+    from public.ingredientes i
+    where i.organization_id=o.organization_id
+      and exists(
+        select 1
+        from public.receitas r
+        join jsonb_each(product_usage) u
+          on coalesce(r.product_id,r.produto_id)=u.key::uuid
+        where r.organization_id=o.organization_id
+          and coalesce(r.ingrediente_id,r.ingredient_id)=i.id
+          and greatest(coalesce(r.quantidade,0),0)>0
+          and u.value::text::numeric>0
+      )
+    order by i.id
+    for update of i;
+
     for rec in
       with product_usage as (
         select
@@ -323,4 +361,198 @@ end
 $$;
 
 revoke all on function public.visionfood_restock_recipe_stock(uuid)
+  from public,anon,authenticated;
+
+
+-- Ingredient stock updates can synchronize several related products. Keep those
+-- product row mutations ordered as well, so two different ingredient updates do
+-- not acquire the same related product rows in opposite orders.
+create or replace function public.visionfood_sync_ingredient_state(
+  _organization_id uuid,
+  _ingredient_id uuid,
+  _source_product_id uuid default null
+)
+returns void
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+  ing record;
+  v_product_id uuid;
+  v_has_recipe boolean;
+begin
+  if _organization_id is null or _ingredient_id is null then
+    return;
+  end if;
+
+  select
+    i.id,
+    i.nome,
+    coalesce(i.estoque_atual,0) as estoque_atual,
+    coalesce(i.estoque_minimo,0) as estoque_minimo
+  into ing
+  from public.ingredientes i
+  where i.id=_ingredient_id
+    and i.organization_id=_organization_id;
+
+  if not found then
+    return;
+  end if;
+
+  for v_product_id in
+    select distinct coalesce(r.product_id,r.produto_id)
+    from public.receitas r
+    where r.organization_id=_organization_id
+      and coalesce(r.ingrediente_id,r.ingredient_id)=_ingredient_id
+      and coalesce(r.product_id,r.produto_id) is not null
+    order by coalesce(r.product_id,r.produto_id)
+  loop
+    perform public.visionfood_sync_product_recipe_availability(
+      _organization_id,
+      v_product_id
+    );
+  end loop;
+
+  select exists(
+    select 1
+    from public.receitas r
+    where r.organization_id=_organization_id
+      and coalesce(r.ingrediente_id,r.ingredient_id)=_ingredient_id
+      and coalesce(r.product_id,r.produto_id) is not null
+      and greatest(coalesce(r.quantidade,0),0)>0
+  )
+  into v_has_recipe;
+
+  if not v_has_recipe then
+    update public.alertas_estoque
+       set resolvido=true
+     where organization_id=_organization_id
+       and ingrediente_id=_ingredient_id
+       and resolvido=false
+       and tipo in ('ruptura','minimo');
+    return;
+  end if;
+
+  if ing.estoque_atual<=0 then
+    update public.alertas_estoque
+       set resolvido=true
+     where organization_id=_organization_id
+       and ingrediente_id=_ingredient_id
+       and resolvido=false
+       and tipo='minimo';
+
+    if not exists(
+      select 1
+      from public.alertas_estoque a
+      where a.organization_id=_organization_id
+        and a.ingrediente_id=_ingredient_id
+        and a.resolvido=false
+        and a.tipo='ruptura'
+    ) then
+      insert into public.alertas_estoque(
+        organization_id,ingrediente_id,product_id,tipo,mensagem
+      )
+      values(
+        _organization_id,_ingredient_id,_source_product_id,'ruptura',
+        'Ingrediente "'||ing.nome||'" esgotado. Produtos relacionados foram bloqueados.'
+      );
+    end if;
+
+  elsif ing.estoque_atual<=ing.estoque_minimo then
+    update public.alertas_estoque
+       set resolvido=true
+     where organization_id=_organization_id
+       and ingrediente_id=_ingredient_id
+       and resolvido=false
+       and tipo='ruptura';
+
+    if not exists(
+      select 1
+      from public.alertas_estoque a
+      where a.organization_id=_organization_id
+        and a.ingrediente_id=_ingredient_id
+        and a.resolvido=false
+        and a.tipo='minimo'
+    ) then
+      insert into public.alertas_estoque(
+        organization_id,ingrediente_id,product_id,tipo,mensagem
+      )
+      values(
+        _organization_id,_ingredient_id,_source_product_id,'minimo',
+        'Ingrediente "'||ing.nome||'" atingiu o estoque mínimo.'
+      );
+    end if;
+
+  else
+    update public.alertas_estoque
+       set resolvido=true
+     where organization_id=_organization_id
+       and ingrediente_id=_ingredient_id
+       and resolvido=false
+       and tipo in ('ruptura','minimo');
+  end if;
+end
+$$;
+
+revoke all on function public.visionfood_sync_ingredient_state(uuid,uuid,uuid)
+  from public,anon,authenticated;
+
+
+-- Cancellation used to restore product stock before recipe stock, which inverted
+-- the checkout lock hierarchy (recipe ingredient -> product). Restore recipe
+-- ingredients first so cancellation follows the same hierarchy.
+create or replace function public.visionfood_finalize_order_cancellation()
+returns trigger
+language plpgsql
+security definer
+set search_path=''
+as $$
+declare
+  v_uid uuid:=auth.uid();
+  v_kind text;
+  v_reason text;
+  v_context_order text;
+begin
+  perform public.visionfood_restock_recipe_stock(new.id);
+  perform public.visionfood_restock_cancelled_order(new.id);
+
+  v_context_order:=current_setting('visionfood.cancel_order_id',true);
+
+  if v_context_order=new.id::text then
+    v_kind:=nullif(current_setting('visionfood.cancel_kind',true),'');
+    v_reason:=coalesce(current_setting('visionfood.cancel_reason',true),'');
+  else
+    v_kind:=case
+      when v_uid is not null
+           and public.usuario_dono_org(new.organization_id,v_uid)
+        then 'admin'
+      when v_uid is not null and new.user_id=v_uid
+        then 'customer'
+      else 'system'
+    end;
+    v_reason:='cancelamento por atualização direta protegida';
+  end if;
+
+  if not exists(
+    select 1
+    from public.order_cancellations c
+    where c.order_id=new.id
+  ) then
+    insert into public.order_cancellations(
+      order_id,organization_id,cancelled_by,cancelled_by_kind,
+      previous_status,reason
+    )
+    values(
+      new.id,new.organization_id,v_uid,
+      coalesce(v_kind,'system'),
+      old.status,coalesce(v_reason,'')
+    );
+  end if;
+
+  return new;
+end
+$$;
+
+revoke all on function public.visionfood_finalize_order_cancellation()
   from public,anon,authenticated;

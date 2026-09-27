@@ -7342,6 +7342,60 @@ describe("PDV DevolucaoModal audit", () => {
     },
   );
 
+  it.each(["0", "-0.250", "0.751", "not-a-weight"])(
+    "fails closed before refund RPC for invalid requested weight %s",
+    async (requestedWeight) => {
+      const baseImplementation = rpcMock.getMockImplementation();
+      rpcMock.mockImplementation((name: string, ...args: unknown[]) => {
+        if (name === "pdv_buscar_pedido_v2") {
+          return Promise.resolve({
+            data: {
+              ok: true,
+              order: validOrder({
+                total: 22.5,
+                items: [
+                  {
+                    product_id: productUuid,
+                    name: "Queijo por peso",
+                    quantity: 1,
+                    price: 30,
+                    weight_kg: 0.75,
+                    price_per_kg: 30,
+                    sold_by_weight: true,
+                    total: 22.5,
+                  },
+                ],
+              }),
+            },
+            error: null,
+          });
+        }
+        return baseImplementation!(name, ...args);
+      });
+
+      await renderMain();
+      await openRefundModal();
+      await searchOrder();
+
+      const weightInput = refundModal().querySelector<HTMLInputElement>(
+        `input[data-refund-weight-kg="${productUuid}"]`,
+      );
+      expect(weightInput).not.toBeNull();
+      await setInputValue(weightInput!, requestedWeight);
+      await setReason("Peso inválido");
+
+      await act(async () => {
+        buttonWithText("Confirmar devolução").dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+        await flushAsync();
+      });
+
+      expect(refundCalls()).toHaveLength(0);
+      expect(toastSuccessMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("ships an additive server-authoritative weighted refund migration contract", () => {
     const sql = readFileSync(
       "supabase/migrations/20260927020000_visionfood_v2_pdv_weight_refund_contract.sql",
@@ -7353,6 +7407,9 @@ describe("PDV DevolucaoModal audit", () => {
     expect(sql).toContain("price_per_kg");
     expect(sql).toContain("sold_by_weight");
     expect(sql).toContain("return_weight_exceeds_available");
+    expect(sql).toContain("invalid_refund_history");
+    expect(sql).toContain("available_weight := greatest(sold_weight - prior_weight, 0)");
+    expect(sql).toContain("calc_refund := least(calc_refund, remaining)");
     expect(sql).toContain("FOR UPDATE");
     expect(sql).toContain("client_requested_value");
     expect(sql).toContain("SECURITY DEFINER");

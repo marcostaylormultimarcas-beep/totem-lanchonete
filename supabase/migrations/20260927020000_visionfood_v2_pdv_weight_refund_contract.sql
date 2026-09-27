@@ -342,14 +342,384 @@ BEGIN
       SELECT
         count(*),
         count(*) FILTER (
-          WHERE coalesce(ri->>'weight_kg', '') ~ '^[0-9]+([.][0-9]{1,3})?$'
-            AND (ri->>'weight_kg')::numeric > 0
+          WHERE CASE
+            WHEN coalesce(ri->>'weight_kg', '') ~ '^[0-9]+([.][0-9]{1,3})?
+      INTO prior_match_count, prior_valid_weight_count, prior_weight
+      FROM public.caixa_movimentos cm
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof(cm.metadata->'items') = 'array'
+            THEN cm.metadata->'items'
+          ELSE '[]'::jsonb
+        END
+      ) ri
+      WHERE cm.organization_id = s.organization_id
+        AND cm.tipo = 'devolucao'
+        AND cm.pedido_id = o.id
+        AND ri->>'product_id' = pid::text;
+
+      IF prior_match_count <> prior_valid_weight_count THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_refund_history');
+      END IF;
+
+      available_weight := greatest(sold_weight - prior_weight, 0);
+
+      IF req_weight > available_weight THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'return_weight_exceeds_available',
+          'product_id', pid,
+          'sold_weight_kg', sold_weight,
+          'already_refunded_weight_kg', prior_weight,
+          'available_weight_kg', available_weight
+        );
+      END IF;
+
+      line_total := round(unit_price * req_weight, 2);
+      canon := canon || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', pid,
+          'name', item_name,
+          'quantity', 1,
+          'price', unit_price,
+          'weight_kg', req_weight,
+          'price_per_kg', unit_price,
+          'sold_by_weight', true,
+          'total', line_total
+        )
+      );
+      requested_gross := requested_gross + line_total;
+    ELSE
+      IF req->>'weight_kg' IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_return_weight');
+      END IF;
+
+      SELECT coalesce(sum(
+        CASE
+          WHEN (ri->>'quantity') ~ '^[0-9]+$'
+            THEN (ri->>'quantity')::bigint
+          ELSE 0
+        END
+      ), 0)
+      INTO prior_qty
+      FROM public.caixa_movimentos cm
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof(cm.metadata->'items') = 'array'
+            THEN cm.metadata->'items'
+          ELSE '[]'::jsonb
+        END
+      ) ri
+      WHERE cm.organization_id = s.organization_id
+        AND cm.tipo = 'devolucao'
+        AND cm.pedido_id = o.id
+        AND ri->>'product_id' = pid::text;
+
+      available_qty := greatest(oqty - prior_qty, 0);
+
+      IF qty::bigint > available_qty THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'return_quantity_exceeds_available',
+          'product_id', pid,
+          'sold_quantity', oqty,
+          'already_refunded_quantity', prior_qty,
+          'available_quantity', available_qty
+        );
+      END IF;
+
+      line_total := round(unit_price * qty, 2);
+      canon := canon || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', pid,
+          'name', item_name,
+          'quantity', qty,
+          'price', unit_price,
+          'weight_kg', NULL,
+          'price_per_kg', NULL,
+          'sold_by_weight', false,
+          'total', line_total
+        )
+      );
+      requested_gross := requested_gross + line_total;
+    END IF;
+  END LOOP;
+
+  SELECT coalesce(sum(valor), 0)
+    INTO prior_refund
+    FROM public.caixa_movimentos
+   WHERE organization_id = s.organization_id
+     AND tipo = 'devolucao'
+     AND pedido_id = o.id;
+
+  remaining := greatest(o.total - prior_refund, 0);
+  calc_refund := round(requested_gross * refund_factor, 2);
+  calc_refund := least(calc_refund, remaining);
+
+  IF calc_refund <= 0 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'nothing_left_to_refund');
+  END IF;
+
+  SELECT *
+    INTO op
+    FROM public.operadores_pdv
+   WHERE id = s.operador_id;
+
+  INSERT INTO public.caixa_movimentos(
+    caixa_id,
+    organization_id,
+    operador_id,
+    operador_nome,
+    tipo,
+    forma_pagamento,
+    valor,
+    motivo,
+    pedido_id,
+    metadata
+  )
+  VALUES(
+    c.id,
+    s.organization_id,
+    s.operador_id,
+    coalesce(op.name, op.nome, op.username, ''),
+    'devolucao',
+    coalesce(
+      o.forma_pagamento,
+      o.payment_method,
+      o.metodo_pagamento,
+      'dinheiro'
+    ),
+    calc_refund,
+    btrim(_motivo),
+    o.id,
+    jsonb_build_object(
+      'order_id', o.id,
+      'order_number', o.order_number,
+      'items', canon,
+      'gross_return_value', requested_gross,
+      'refund_factor', refund_factor,
+      'client_requested_value', _valor_devolucao
+    )
+  );
+
+  -- Stock/recomposition intentionally remains unchanged from Phase 264:
+  -- a financial return does not silently restore prepared product/ingredients.
+
+  UPDATE public.pdv_sessions
+     SET last_seen_at = now()
+   WHERE id = s.id;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'order_id', o.id,
+    'valor_devolucao', calc_refund,
+    'items', canon
+  );
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.pdv_devolver_pedido_v2(
+  text, uuid, uuid, jsonb, numeric, text
+) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.pdv_devolver_pedido_v2(
+  text, uuid, uuid, jsonb, numeric, text
+) TO anon, authenticated, service_role;
+
+              THEN (ri->>'weight_kg')::numeric > 0
+            ELSE false
+          END
         ),
         coalesce(sum(
           CASE
-            WHEN coalesce(ri->>'weight_kg', '') ~ '^[0-9]+([.][0-9]{1,3})?$'
-              AND (ri->>'weight_kg')::numeric > 0
-              THEN (ri->>'weight_kg')::numeric
+            WHEN coalesce(ri->>'weight_kg', '') ~ '^[0-9]+([.][0-9]{1,3})?
+      INTO prior_match_count, prior_valid_weight_count, prior_weight
+      FROM public.caixa_movimentos cm
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof(cm.metadata->'items') = 'array'
+            THEN cm.metadata->'items'
+          ELSE '[]'::jsonb
+        END
+      ) ri
+      WHERE cm.organization_id = s.organization_id
+        AND cm.tipo = 'devolucao'
+        AND cm.pedido_id = o.id
+        AND ri->>'product_id' = pid::text;
+
+      IF prior_match_count <> prior_valid_weight_count THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_refund_history');
+      END IF;
+
+      available_weight := greatest(sold_weight - prior_weight, 0);
+
+      IF req_weight > available_weight THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'return_weight_exceeds_available',
+          'product_id', pid,
+          'sold_weight_kg', sold_weight,
+          'already_refunded_weight_kg', prior_weight,
+          'available_weight_kg', available_weight
+        );
+      END IF;
+
+      line_total := round(unit_price * req_weight, 2);
+      canon := canon || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', pid,
+          'name', item_name,
+          'quantity', 1,
+          'price', unit_price,
+          'weight_kg', req_weight,
+          'price_per_kg', unit_price,
+          'sold_by_weight', true,
+          'total', line_total
+        )
+      );
+      requested_gross := requested_gross + line_total;
+    ELSE
+      IF req->>'weight_kg' IS NOT NULL THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_return_weight');
+      END IF;
+
+      SELECT coalesce(sum(
+        CASE
+          WHEN (ri->>'quantity') ~ '^[0-9]+$'
+            THEN (ri->>'quantity')::bigint
+          ELSE 0
+        END
+      ), 0)
+      INTO prior_qty
+      FROM public.caixa_movimentos cm
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof(cm.metadata->'items') = 'array'
+            THEN cm.metadata->'items'
+          ELSE '[]'::jsonb
+        END
+      ) ri
+      WHERE cm.organization_id = s.organization_id
+        AND cm.tipo = 'devolucao'
+        AND cm.pedido_id = o.id
+        AND ri->>'product_id' = pid::text;
+
+      available_qty := greatest(oqty - prior_qty, 0);
+
+      IF qty::bigint > available_qty THEN
+        RETURN jsonb_build_object(
+          'ok', false,
+          'reason', 'return_quantity_exceeds_available',
+          'product_id', pid,
+          'sold_quantity', oqty,
+          'already_refunded_quantity', prior_qty,
+          'available_quantity', available_qty
+        );
+      END IF;
+
+      line_total := round(unit_price * qty, 2);
+      canon := canon || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', pid,
+          'name', item_name,
+          'quantity', qty,
+          'price', unit_price,
+          'weight_kg', NULL,
+          'price_per_kg', NULL,
+          'sold_by_weight', false,
+          'total', line_total
+        )
+      );
+      requested_gross := requested_gross + line_total;
+    END IF;
+  END LOOP;
+
+  SELECT coalesce(sum(valor), 0)
+    INTO prior_refund
+    FROM public.caixa_movimentos
+   WHERE organization_id = s.organization_id
+     AND tipo = 'devolucao'
+     AND pedido_id = o.id;
+
+  remaining := greatest(o.total - prior_refund, 0);
+  calc_refund := round(requested_gross * refund_factor, 2);
+  calc_refund := least(calc_refund, remaining);
+
+  IF calc_refund <= 0 THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'nothing_left_to_refund');
+  END IF;
+
+  SELECT *
+    INTO op
+    FROM public.operadores_pdv
+   WHERE id = s.operador_id;
+
+  INSERT INTO public.caixa_movimentos(
+    caixa_id,
+    organization_id,
+    operador_id,
+    operador_nome,
+    tipo,
+    forma_pagamento,
+    valor,
+    motivo,
+    pedido_id,
+    metadata
+  )
+  VALUES(
+    c.id,
+    s.organization_id,
+    s.operador_id,
+    coalesce(op.name, op.nome, op.username, ''),
+    'devolucao',
+    coalesce(
+      o.forma_pagamento,
+      o.payment_method,
+      o.metodo_pagamento,
+      'dinheiro'
+    ),
+    calc_refund,
+    btrim(_motivo),
+    o.id,
+    jsonb_build_object(
+      'order_id', o.id,
+      'order_number', o.order_number,
+      'items', canon,
+      'gross_return_value', requested_gross,
+      'refund_factor', refund_factor,
+      'client_requested_value', _valor_devolucao
+    )
+  );
+
+  -- Stock/recomposition intentionally remains unchanged from Phase 264:
+  -- a financial return does not silently restore prepared product/ingredients.
+
+  UPDATE public.pdv_sessions
+     SET last_seen_at = now()
+   WHERE id = s.id;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'order_id', o.id,
+    'valor_devolucao', calc_refund,
+    'items', canon
+  );
+END
+$function$;
+
+REVOKE ALL ON FUNCTION public.pdv_devolver_pedido_v2(
+  text, uuid, uuid, jsonb, numeric, text
+) FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION public.pdv_devolver_pedido_v2(
+  text, uuid, uuid, jsonb, numeric, text
+) TO anon, authenticated, service_role;
+
+              THEN CASE
+                WHEN (ri->>'weight_kg')::numeric > 0
+                  THEN (ri->>'weight_kg')::numeric
+                ELSE 0
+              END
             ELSE 0
           END
         ), 0)

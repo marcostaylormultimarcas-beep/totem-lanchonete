@@ -22,7 +22,7 @@ describe("direct stock multi-store realtime contract", () => {
   it("subscribes to product changes instead of waiting for a manual reload or period change", () => {
     expect(source).toContain("table: 'products'");
     expect(source).toMatch(
-      /\.on\('postgres_changes',[\s\S]*?table:\s*'products'[\s\S]*?\(\)\s*=>\s*\{?[\s\S]*?refreshLowStock/,
+      /\.on\(\s*'postgres_changes',[\s\S]*?table:\s*'products'[\s\S]*?\(\)\s*=>\s*\{?[\s\S]*?refreshLowStock/,
     );
   });
 

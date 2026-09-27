@@ -205,6 +205,33 @@ describe("recipe mutation immediate availability reconciliation SQL contract", (
     );
   });
 
+  it("serializes recipe-writing statements before row-level reconciliation locks are acquired", () => {
+    expect(allMigrationsSql).toContain(
+      "create trigger trg_visionfood_lock_recipe_mutation_statement before insert or update or delete on public.receitas for each statement",
+    );
+
+    const statementLock = latestFunctionDefinition(
+      "visionfood_lock_recipe_mutation_statement",
+    );
+    const statementLockSql = normalized(statementLock.sql);
+
+    expect(statementLockSql).toContain(
+      "pg_catalog.pg_advisory_xact_lock",
+    );
+  });
+
+  it("uses a transaction-scoped recipe mutation gate so multiple statements in the same transaction keep the writer lock", () => {
+    const statementLock = latestFunctionDefinition(
+      "visionfood_lock_recipe_mutation_statement",
+    );
+    const statementLockSql = normalized(statementLock.sql);
+
+    expect(statementLockSql).toContain(
+      "pg_catalog.pg_advisory_xact_lock",
+    );
+    expect(statementLockSql).not.toContain("pg_advisory_lock(");
+  });
+
   it("prelocks OLD/NEW ingredient rows before any product prelock", () => {
     const ingredientPrelock = syncRecipeSql.indexOf(
       "perform i.id from public.ingredientes i",

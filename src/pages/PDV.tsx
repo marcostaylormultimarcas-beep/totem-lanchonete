@@ -40,6 +40,7 @@ type Product = {
   codigo_barras: string | null;
   available: boolean;
   image?: string | null;
+  sold_by_weight: boolean;
 };
 
 const PDV_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -228,12 +229,81 @@ function parsePdvPixStatusSuccess(
     paid: payload.paid,
   };
 }
+function pdvWeightToMilliKg(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const milliKg = Math.round(value * 1000);
+  return Number.isSafeInteger(milliKg) && milliKg > 0 ? milliKg : null;
+}
+
 type PdvPixSaleItem = {
   product_id: string;
   name: string;
   price: number;
   quantity: number;
+  weight_kg: number | null;
+  price_per_kg: number | null;
+  sold_by_weight: boolean;
+  total: number;
 };
+
+function parsePdvSaleItem(raw: unknown): PdvPixSaleItem | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const item = raw as Record<string, unknown>;
+  const productId = typeof item.product_id === "string" ? item.product_id.trim() : "";
+  const name = typeof item.name === "string" ? item.name.trim() : "";
+  const priceCents = pdvMoneyToSafeCents(item.price);
+  const quantity = typeof item.quantity === "number" ? item.quantity : Number.NaN;
+  const soldRaw = item.sold_by_weight;
+
+  if (
+    !PDV_UUID_PATTERN.test(productId) ||
+    !name ||
+    priceCents === null ||
+    !Number.isSafeInteger(quantity) ||
+    quantity <= 0 ||
+    quantity > 999 ||
+    (soldRaw != null && typeof soldRaw !== "boolean")
+  ) return null;
+
+  const soldByWeight = soldRaw === true || (soldRaw == null && item.weight_kg != null);
+  if (soldByWeight) {
+    if (quantity !== 1) return null;
+    const weight = typeof item.weight_kg === "number" ? item.weight_kg : Number.NaN;
+    const milliKg = pdvWeightToMilliKg(weight);
+    const pricePerKgCents = pdvMoneyToSafeCents(item.price_per_kg == null ? item.price : item.price_per_kg);
+    const totalCents = pdvMoneyToSafeCents(item.total);
+    if (milliKg === null || pricePerKgCents === null || totalCents === null) return null;
+    const numerator = pricePerKgCents * milliKg;
+    if (!Number.isSafeInteger(numerator)) return null;
+    const expectedCents = Math.round(numerator / 1000);
+    if (!Number.isSafeInteger(expectedCents) || expectedCents !== totalCents) return null;
+    return {
+      product_id: productId,
+      name,
+      price: priceCents / 100,
+      quantity: 1,
+      weight_kg: milliKg / 1000,
+      price_per_kg: pricePerKgCents / 100,
+      sold_by_weight: true,
+      total: totalCents / 100,
+    };
+  }
+
+  const expectedCents = priceCents * quantity;
+  if (!Number.isSafeInteger(expectedCents)) return null;
+  const totalCents = item.total == null ? expectedCents : pdvMoneyToSafeCents(item.total);
+  if (totalCents === null || totalCents !== expectedCents) return null;
+  return {
+    product_id: productId,
+    name,
+    price: priceCents / 100,
+    quantity,
+    weight_kg: null,
+    price_per_kg: null,
+    sold_by_weight: false,
+    total: totalCents / 100,
+  };
+}
 
 type PdvPixSaleSuccess = {
   idempotent: boolean;
@@ -285,36 +355,9 @@ function parsePdvPixSaleSuccess(
 
   const items: PdvPixSaleItem[] = [];
   for (const raw of payload.items) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const item = raw as Record<string, unknown>;
-    const productId =
-      typeof item.product_id === "string" ? item.product_id.trim() : "";
-    const name = typeof item.name === "string" ? item.name.trim() : "";
-    const price =
-      typeof item.price === "number" ? item.price : Number.NaN;
-    const quantity =
-      typeof item.quantity === "number" ? item.quantity : Number.NaN;
-    const priceCents = Math.round(price * 100);
-
-    if (
-      !PDV_UUID_PATTERN.test(productId) ||
-      !name ||
-      !Number.isFinite(price) ||
-      price < 0 ||
-      !Number.isSafeInteger(priceCents) ||
-      !Number.isSafeInteger(quantity) ||
-      quantity <= 0 ||
-      quantity > PDV_MAX_ITEM_QUANTITY
-    ) {
-      return null;
-    }
-
-    items.push({
-      product_id: productId,
-      name,
-      price,
-      quantity,
-    });
+    const parsedItem = parsePdvSaleItem(raw);
+    if (!parsedItem) return null;
+    items.push(parsedItem);
   }
 
   return {
@@ -374,32 +417,9 @@ function parsePdvNonPixSaleSuccess(
 
   const items: PdvPixSaleItem[] = [];
   for (const raw of payload.items) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-    const item = raw as Record<string, unknown>;
-    const productId =
-      typeof item.product_id === "string" ? item.product_id.trim() : "";
-    const name = typeof item.name === "string" ? item.name.trim() : "";
-    const priceCents = pdvMoneyToSafeCents(item.price);
-    const quantity =
-      typeof item.quantity === "number" ? item.quantity : Number.NaN;
-
-    if (
-      !PDV_UUID_PATTERN.test(productId) ||
-      !name ||
-      priceCents === null ||
-      !Number.isSafeInteger(quantity) ||
-      quantity <= 0 ||
-      quantity > PDV_MAX_ITEM_QUANTITY
-    ) {
-      return null;
-    }
-
-    items.push({
-      product_id: productId,
-      name,
-      price: priceCents / 100,
-      quantity,
-    });
+    const parsedItem = parsePdvSaleItem(raw);
+    if (!parsedItem) return null;
+    items.push(parsedItem);
   }
 
   return {
@@ -422,6 +442,7 @@ function pdvNonPixSaleReasonMessage(reason: unknown) {
     product_not_found: "Produto indisponível. Atualize o carrinho.",
     invalid_sale: "Venda rejeitada. Revise os itens e tente novamente.",
     invalid_quantity: "Venda rejeitada. Revise os itens e tente novamente.",
+    invalid_weight: "Venda rejeitada. Informe um peso válido para o produto.",
     invalid_product_id: "Venda rejeitada. Revise os itens e tente novamente.",
   };
 
@@ -447,6 +468,7 @@ function pdvPixIntentReasonMessage(reason: unknown) {
     invalid_cash_register: "Caixa inválido ou fechado. Reabra o caixa.",
     invalid_sale: "Carrinho inválido para gerar o PIX. Revise os itens.",
     invalid_quantity: "Carrinho inválido para gerar o PIX. Revise os itens.",
+    invalid_weight: "Informe um peso válido antes de gerar o PIX.",
     invalid_product_id: "Carrinho inválido para gerar o PIX. Revise os itens.",
     product_not_found: "Produto indisponível para gerar o PIX. Atualize o carrinho.",
     insufficient_stock: "Estoque insuficiente para gerar o PIX.",
@@ -479,6 +501,8 @@ function parsePdvCatalogProducts(value: unknown): Product[] | null {
     const validBarcode = item.codigo_barras === null || typeof item.codigo_barras === "string";
     const validImage = typeof item.image === "string";
     const validAvailability = item.available === true || item.available === null;
+    const validSoldByWeight =
+      item.sold_by_weight == null || typeof item.sold_by_weight === "boolean";
 
     if (
       !PDV_UUID_PATTERN.test(id) ||
@@ -489,7 +513,8 @@ function parsePdvCatalogProducts(value: unknown): Product[] | null {
       !Number.isSafeInteger(priceCents) ||
       !validBarcode ||
       !validImage ||
-      !validAvailability
+      !validAvailability ||
+      !validSoldByWeight
     ) {
       return null;
     }
@@ -502,6 +527,7 @@ function parsePdvCatalogProducts(value: unknown): Product[] | null {
       codigo_barras: item.codigo_barras as string | null,
       available: true,
       image: item.image as string,
+      sold_by_weight: item.sold_by_weight === true,
     });
   }
 
@@ -527,42 +553,56 @@ type CartItem = {
   name: string;
   price: number;
   quantity: number;
+  weight_kg: number | null;
+  price_per_kg: number | null;
+  sold_by_weight: boolean;
+  total: number;
 };
 
 const PDV_MAX_ITEM_QUANTITY = 999;
 
-export function calculatePdvSubtotal(
-  items: readonly { price: unknown; quantity: unknown }[],
-) {
-  let subtotalCents = 0;
+type PdvCalculableItem = {
+  price: unknown;
+  quantity: unknown;
+  weight_kg?: unknown;
+  sold_by_weight?: unknown;
+};
 
-  for (const item of items) {
-    if (
-      typeof item.price !== "number" ||
-      !Number.isFinite(item.price) ||
-      item.price < 0 ||
-      typeof item.quantity !== "number" ||
-      !Number.isSafeInteger(item.quantity) ||
-      item.quantity < 1 ||
-      item.quantity > PDV_MAX_ITEM_QUANTITY
-    ) {
-      continue;
-    }
+function calculatePdvLineTotal(item: PdvCalculableItem) {
+  if (typeof item.price !== "number" || !Number.isFinite(item.price) || item.price < 0) return 0;
+  const priceCents = Math.round(item.price * 100);
+  if (!Number.isSafeInteger(priceCents) || priceCents < 0) return 0;
 
-    // Accumulate in integer cents so floating-point drift cannot reach the subtotal.
-    // Invalid or unsafe local rows are isolated instead of poisoning the whole sum.
-    const priceCents = Math.round(item.price * 100);
-    if (!Number.isSafeInteger(priceCents) || priceCents < 0) continue;
-
-    const lineCents = priceCents * item.quantity;
-    if (!Number.isSafeInteger(lineCents)) continue;
-
-    const nextSubtotalCents = subtotalCents + lineCents;
-    if (!Number.isSafeInteger(nextSubtotalCents)) continue;
-
-    subtotalCents = nextSubtotalCents;
+  if (item.sold_by_weight === true) {
+    if (item.quantity !== 1) return 0;
+    const milliKg = pdvWeightToMilliKg(item.weight_kg);
+    if (milliKg === null) return 0;
+    const numerator = priceCents * milliKg;
+    if (!Number.isSafeInteger(numerator)) return 0;
+    const lineCents = Math.round(numerator / 1000);
+    return Number.isSafeInteger(lineCents) && lineCents >= 0 ? lineCents / 100 : 0;
   }
 
+  if (
+    typeof item.quantity !== "number" ||
+    !Number.isSafeInteger(item.quantity) ||
+    item.quantity < 1 ||
+    item.quantity > PDV_MAX_ITEM_QUANTITY
+  ) return 0;
+
+  const lineCents = priceCents * item.quantity;
+  return Number.isSafeInteger(lineCents) ? lineCents / 100 : 0;
+}
+
+export function calculatePdvSubtotal(items: readonly PdvCalculableItem[]) {
+  let subtotalCents = 0;
+  for (const item of items) {
+    const lineCents = Math.round(calculatePdvLineTotal(item) * 100);
+    if (!Number.isSafeInteger(lineCents) || lineCents < 0) continue;
+    const next = subtotalCents + lineCents;
+    if (!Number.isSafeInteger(next)) continue;
+    subtotalCents = next;
+  }
   return subtotalCents / 100;
 }
 
@@ -1455,6 +1495,7 @@ function PDVMain({
 
   const addToCart = (p: Product) => {
     const visibleItem = cart.find((item) => item.product_id === p.id);
+    if (visibleItem?.sold_by_weight) return true;
     if (visibleItem && visibleItem.quantity >= PDV_MAX_ITEM_QUANTITY) {
       toast.error(`Quantidade máxima por produto: ${PDV_MAX_ITEM_QUANTITY}.`);
       return false;
@@ -1464,26 +1505,30 @@ function PDVMain({
       const i = prev.findIndex((x) => x.product_id === p.id);
       if (i >= 0) {
         const current = prev[i];
-        if (current.quantity >= PDV_MAX_ITEM_QUANTITY) return prev;
-
-        const c = [...prev];
-        c[i] = {
+        if (current.sold_by_weight || current.quantity >= PDV_MAX_ITEM_QUANTITY) return prev;
+        const nextItem = {
           ...current,
           quantity: Math.min(PDV_MAX_ITEM_QUANTITY, current.quantity + 1),
         };
+        nextItem.total = calculatePdvLineTotal(nextItem);
+        const c = [...prev];
+        c[i] = nextItem;
         return c;
       }
 
-      return [
-        ...prev,
-        {
-          id: createPdvCartItemId(p.id),
-          product_id: p.id,
-          name: p.name,
-          price: p.price,
-          quantity: 1,
-        },
-      ];
+      const nextItem: CartItem = {
+        id: createPdvCartItemId(p.id),
+        product_id: p.id,
+        name: p.name,
+        price: p.price,
+        quantity: 1,
+        weight_kg: null,
+        price_per_kg: p.sold_by_weight ? p.price : null,
+        sold_by_weight: p.sold_by_weight,
+        total: 0,
+      };
+      nextItem.total = calculatePdvLineTotal(nextItem);
+      return [...prev, nextItem];
     });
 
     return true;
@@ -1519,6 +1564,7 @@ function PDVMain({
       if (duplicateIndex >= 0) return prev;
 
       const current = prev[index];
+      if (current.sold_by_weight) return prev;
       if (
         !Number.isSafeInteger(current.quantity) ||
         current.quantity < 1 ||
@@ -1534,7 +1580,30 @@ function PDVMain({
       if (nextQuantity > PDV_MAX_ITEM_QUANTITY) return prev;
 
       const next = [...prev];
-      next[index] = { ...current, quantity: nextQuantity };
+      const nextItem = { ...current, quantity: nextQuantity };
+      nextItem.total = calculatePdvLineTotal(nextItem);
+      next[index] = nextItem;
+      return next;
+    });
+  };
+
+  const changeWeight = (id: string, rawValue: string) => {
+    const text = rawValue.trim().replace(",", ".");
+    const parsed = text === "" ? null : Number(text);
+    const weight =
+      parsed != null && Number.isFinite(parsed) && parsed > 0
+        ? Math.round(parsed * 1000) / 1000
+        : null;
+
+    setCart((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index < 0) return prev;
+      const current = prev[index];
+      if (!current.sold_by_weight) return prev;
+      const nextItem = { ...current, weight_kg: weight, price_per_kg: current.price };
+      nextItem.total = calculatePdvLineTotal(nextItem);
+      const next = [...prev];
+      next[index] = nextItem;
       return next;
     });
   };
@@ -1599,6 +1668,11 @@ function PDVMain({
     [cupomDesc, subtotal],
   );
   const total = calculatePdvTotal(subtotal, desconto);
+  const hasInvalidWeightedItem = cart.some(
+    (item) =>
+      item.sold_by_weight &&
+      (item.quantity !== 1 || pdvWeightToMilliKg(item.weight_kg) === null),
+  );
 
   const aplicarCupom = async () => {
     const c = cupomCode.trim().toUpperCase();
@@ -1715,7 +1789,12 @@ function PDVMain({
   const pixDataRef = useRef<typeof pixData>(null);
 
   const pixItems = useMemo(
-    () => cart.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
+    () =>
+      cart.map((item) =>
+        item.sold_by_weight
+          ? { product_id: item.product_id, quantity: 1, weight_kg: item.weight_kg }
+          : { product_id: item.product_id, quantity: item.quantity },
+      ),
     [cart],
   );
   const pixCartSignature = useMemo(
@@ -1753,7 +1832,12 @@ function PDVMain({
 
     // Leaving PIX mode or losing a payable total invalidates both the visible
     // QR and any request that may already be in flight.
-    if (forma !== "pix" || !Number.isFinite(total) || total <= 0) {
+    if (
+      forma !== "pix" ||
+      !Number.isFinite(total) ||
+      total <= 0 ||
+      hasInvalidWeightedItem
+    ) {
       pixReqId.current += 1;
       clearPixData();
       setPixLoading(false);
@@ -2169,6 +2253,11 @@ function PDVMain({
     finalizeInFlightRef.current = true;
 
     try {
+      if (hasInvalidWeightedItem) {
+        toast.error("Informe um peso válido para o produto vendido por peso.");
+        return;
+      }
+
       if (forma === "pix") {
         if (!pixData?.intentId) {
           toast.error("Gere o PIX antes de finalizar");
@@ -2303,13 +2392,24 @@ function PDVMain({
 
       if (cart.length === 0) return toast.error("Carrinho vazio");
     setSaleLoading(true);
-    const items = cart.map((x) => ({
-      id: x.product_id,
-      product_id: x.product_id,
-      name: x.name,
-      price: x.price,
-      quantity: x.quantity,
-    }));
+    const items = cart.map((x) =>
+      x.sold_by_weight
+        ? {
+            id: x.product_id,
+            product_id: x.product_id,
+            name: x.name,
+            price: x.price,
+            quantity: 1,
+            weight_kg: x.weight_kg,
+          }
+        : {
+            id: x.product_id,
+            product_id: x.product_id,
+            name: x.name,
+            price: x.price,
+            quantity: x.quantity,
+          },
+    );
     const snapshot = [...cart];
     const snapSubtotal = subtotal;
     const snapDesconto = desconto;
@@ -2502,12 +2602,16 @@ function PDVMain({
     const canonicalDesconto = Number(res.desconto ?? snapDesconto);
     const canonicalTotal = Number(res.total ?? snapTotal);
     const canonicalItems = Array.isArray(res.items)
-      ? res.items.map((x: any) => ({
+      ? res.items.map((x: PdvPixSaleItem) => ({
           id: String(x.product_id),
           product_id: String(x.product_id),
           name: String(x.name || "Produto"),
-          price: Number(x.price) || 0,
-          quantity: Number(x.quantity) || 0,
+          price: x.price,
+          quantity: x.quantity,
+          weight_kg: x.weight_kg,
+          price_per_kg: x.price_per_kg,
+          sold_by_weight: x.sold_by_weight,
+          total: x.total,
         }))
       : snapshot;
     toast.success(`Venda registrada — ${fmt(canonicalTotal)}`);
@@ -2704,7 +2808,9 @@ function PDVMain({
                 <div className="text-sm font-semibold text-white line-clamp-2 min-h-[2.5rem]">
                   {p.name}
                 </div>
-                <div className="text-amber-400 font-bold mt-1">{fmt(p.price)}</div>
+                <div className="text-amber-400 font-bold mt-1">
+                  {fmt(p.price)}{p.sold_by_weight ? " / kg" : ""}
+                </div>
                 {p.codigo_barras && (
                   <div className="text-[10px] text-zinc-500 font-mono mt-0.5 truncate">
                     {p.codigo_barras}
@@ -2737,26 +2843,52 @@ function PDVMain({
               >
                 <div className="flex-1 min-w-0">
                   <div className="text-sm text-white font-semibold truncate">{it.name}</div>
-                  <div className="text-xs text-zinc-500">
-                    {fmt(it.price)} × {it.quantity} ={" "}
-                    <span className="text-amber-400 font-bold tabular-nums">
-                      {fmt(it.price * it.quantity)}
-                    </span>
-                  </div>
+                  {it.sold_by_weight ? (
+                    <div className="text-xs text-zinc-500 space-y-1">
+                      <div>{fmt(it.price)} / kg</div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0.001"
+                          step="0.001"
+                          value={it.weight_kg ?? ""}
+                          aria-label={`Peso em kg de ${it.name}`}
+                          onChange={(event) => changeWeight(it.id, event.target.value)}
+                          className="w-24 bg-zinc-950 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white tabular-nums"
+                        />
+                        <span>kg =</span>
+                        <span className="text-amber-400 font-bold tabular-nums">
+                          {fmt(calculatePdvLineTotal(it))}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-500">
+                      {fmt(it.price)} × {it.quantity} ={" "}
+                      <span className="text-amber-400 font-bold tabular-nums">
+                        {fmt(calculatePdvLineTotal(it))}
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={() => changeQty(it.id, -1)}
-                  className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <div className="w-6 text-center text-sm font-bold">{it.quantity}</div>
-                <button
-                  onClick={() => changeQty(it.id, 1)}
-                  className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
+                {!it.sold_by_weight && (
+                  <>
+                    <button
+                      onClick={() => changeQty(it.id, -1)}
+                      className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="w-6 text-center text-sm font-bold">{it.quantity}</div>
+                    <button
+                      onClick={() => changeQty(it.id, 1)}
+                      className="w-7 h-7 rounded-md bg-zinc-800/80 hover:bg-zinc-700 inline-flex items-center justify-center"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={() => removeItem(it.id)}
                   className="w-7 h-7 rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 inline-flex items-center justify-center"
@@ -2910,8 +3042,12 @@ function PDVMain({
             {lastReceipt.items.map((it, i) => (
               <div key={i} className="pr-item">
                 <div className="pr-item-row">
-                  <span>{it.quantity}x {it.name}</span>
-                  <span>{fmt(it.price * it.quantity)}</span>
+                  <span>
+                    {it.sold_by_weight && pdvWeightToMilliKg(it.weight_kg) !== null
+                      ? `${Number(it.weight_kg).toFixed(3)} kg`
+                      : `${it.quantity}x`} {it.name}
+                  </span>
+                  <span>{fmt(it.total)}</span>
                 </div>
               </div>
             ))}

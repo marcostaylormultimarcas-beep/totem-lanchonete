@@ -115,9 +115,8 @@ describe("recipe availability weighted SQL contract", () => {
   it("keeps every ingredient authoritative for the exact requested weight", () => {
     expect(exactWeightFits([0.2, 0.05], [0.15, 0.03], 0.5)).toBe(true);
     expect(exactWeightFits([0.2, 0.05], [0.15, 0.02], 0.5)).toBe(false);
-    expect(consumeRecipeSql).toContain(
-      "needed:=greatest(coalesce(rec.quantidade,0),0)*multiplier;",
-    );
+    expect(consumeRecipeSql).toContain("ingredient_need as (");
+    expect(consumeRecipeSql).toContain("needed:=rec.needed;");
     expect(consumeRecipeSql).toContain("for update of i");
   });
 

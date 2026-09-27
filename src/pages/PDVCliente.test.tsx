@@ -109,6 +109,49 @@ describe("PDVCliente mirror transport lifecycle", () => {
     expect(container.textContent).toContain("Loja Bloqueada Atualizada");
   });
 
+  it("renders weighted and unit items from the mirrored authoritative contract", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        ...payload("Loja Peso", 42.5),
+        subtotal: 42.5,
+        total: 42.5,
+        items: [
+          {
+            id: "weight-1",
+            name: "Produto por peso",
+            price: 30,
+            quantity: 1,
+            weight_kg: 0.75,
+            price_per_kg: 30,
+            sold_by_weight: true,
+            total: 22.5,
+          },
+          {
+            id: "unit-1",
+            name: "Produto comum",
+            price: 10,
+            quantity: 2,
+            weight_kg: null,
+            price_per_kg: null,
+            sold_by_weight: false,
+            total: 20,
+          },
+        ],
+      }),
+    );
+
+    await renderClient();
+
+    expect(container.textContent).toContain("0.750 kg");
+    expect(container.textContent).toContain("Produto por peso");
+    expect(container.textContent).toContain("R$ 22,50");
+    expect(container.textContent).toContain("2 × R$ 10,00");
+    expect(container.textContent).toContain("R$ 20,00");
+    expect(container.textContent).not.toContain("1 × R$ 30,00");
+  });
+
   it("closes the created BroadcastChannel on unmount", async () => {
     const constructorMock = vi.fn();
     const closeMock = vi.fn();

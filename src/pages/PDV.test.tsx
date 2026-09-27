@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
+import { readFileSync } from "node:fs";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -943,6 +944,35 @@ describe("PDV catalog loading", () => {
     expect(container.textContent).not.toContain("Carregando produtos");
   });
 
+  it("preserves the authoritative sold_by_weight catalog flag and labels price per kg", async () => {
+    const weightedProduct = {
+      ...validProduct,
+      name: "Produto por peso",
+      price: 30,
+      sold_by_weight: true,
+    };
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: catalogResponse([weightedProduct]),
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    await renderMain();
+
+    expect(container.textContent).toContain("Produto por peso");
+    expect(container.textContent).toContain("/ kg");
+  });
+
   it("keeps transport/PostgREST failures distinct from a valid empty catalog and does not expose backend details", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     rpcMock.mockImplementation((name: string) => {
@@ -1399,6 +1429,62 @@ describe("PDV subtotal calculation", () => {
         { price: Number.POSITIVE_INFINITY, quantity: 1 },
       ]),
     ).toBe(0);
+  });
+  it("calculates weighted and unit lines in cents without turning kilograms into quantity", () => {
+    const subtotal = calculatePdvSubtotal([
+      {
+        price: 30,
+        quantity: 1,
+        sold_by_weight: true,
+        weight_kg: 0.75,
+      } as any,
+      {
+        price: 10,
+        quantity: 2,
+        sold_by_weight: false,
+      } as any,
+    ]);
+
+    expect(subtotal).toBe(42.5);
+    expect(Number.isSafeInteger(Math.round(subtotal * 100))).toBe(true);
+  });
+
+  it.each([0, -0.25, Number.NaN, Number.POSITIVE_INFINITY])(
+    "fails closed for an invalid weighted line: %s kg",
+    (weight) => {
+      expect(
+        calculatePdvSubtotal([
+          {
+            price: 30,
+            quantity: 1,
+            sold_by_weight: true,
+            weight_kg: weight,
+          } as any,
+        ]),
+      ).toBe(0);
+    },
+  );
+});
+
+describe("PDV weighted RPC migration contract", () => {
+  it("keeps the existing security boundary while canonicalizing weighted catalog, sale and PIX items", () => {
+    const sql = readFileSync(
+      "supabase/migrations/20260927010000_visionfood_v2_pdv_weight_contract.sql",
+      "utf8",
+    );
+
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.pdv_catalog_v2");
+    expect(sql).toContain("'sold_by_weight', p.sold_by_weight");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.pdv_create_pix_intent_v2");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION public.pdv_registrar_venda_v2");
+    expect(sql).toContain("'weight_kg'");
+    expect(sql).toContain("'price_per_kg'");
+    expect(sql).toContain("'sold_by_weight'");
+    expect(sql).toContain("'total'");
+    expect(sql).toContain("SECURITY DEFINER");
+    expect(sql).toContain("SET search_path TO ''");
+    expect(sql).toContain("invalid_weight");
+    expect(sql).toContain("GRANT EXECUTE ON FUNCTION public.pdv_catalog_v2(text) TO anon, authenticated, service_role");
   });
 });
 
@@ -2597,6 +2683,229 @@ describe("PDV addToCart", () => {
 });
 
 
+describe("PDV weighted product end-to-end", () => {
+  let root: Root;
+  let container: HTMLDivElement;
+
+  const openCaixaId = "33333333-3333-3333-3333-333333333333";
+  const weightedProduct = {
+    id: "91919191-9191-4919-8919-919191919191",
+    name: "Produto por peso",
+    price: 30,
+    codigo_barras: "PESO0750",
+    available: null,
+    image: "",
+    sold_by_weight: true,
+  };
+  const unitProduct = {
+    id: "92929292-9292-4929-8929-929292929292",
+    name: "Produto comum",
+    price: 10,
+    codigo_barras: "UNIT0010",
+    available: null,
+    image: "",
+    sold_by_weight: false,
+  };
+
+  beforeEach(() => {
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    sessionStorage.setItem(PDV_SESSION_KEY, JSON.stringify(savedSession));
+
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [weightedProduct, unitProduct] },
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            order_id: "93939393-9393-4939-8939-939393939393",
+            order_number: "PDV-WEIGHT-1",
+            created_at: "2026-09-27T00:00:00.000Z",
+            subtotal: 42.5,
+            desconto: 0,
+            total: 42.5,
+            items: [
+              {
+                product_id: weightedProduct.id,
+                name: weightedProduct.name,
+                price: 30,
+                quantity: 1,
+                weight_kg: 0.75,
+                price_per_kg: 30,
+                sold_by_weight: true,
+                total: 22.5,
+              },
+              {
+                product_id: unitProduct.id,
+                name: unitProduct.name,
+                price: 10,
+                quantity: 2,
+                weight_kg: null,
+                price_per_kg: null,
+                sold_by_weight: false,
+                total: 20,
+              },
+            ],
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    if (container.isConnected) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+  });
+
+  async function renderMain() {
+    await act(async () => {
+      renderPdv(root);
+      await flushAsync();
+    });
+  }
+
+  function buttonWithText(label: string) {
+    const candidate = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent?.includes(label),
+    );
+    if (!candidate) throw new Error(`${label} button not rendered`);
+    return candidate;
+  }
+
+  async function clickProduct(name: string) {
+    await act(async () => {
+      buttonWithText(name).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  async function setWeight(value: string) {
+    const input = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Peso em kg de Produto por peso"]',
+    );
+    if (!input) throw new Error("Weighted product input not rendered");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+
+    await act(async () => {
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+  }
+
+  it("preserves weight through a mixed cash sale, canonical response, mirror and thermal receipt", async () => {
+    vi.spyOn(window, "print").mockImplementation(() => {});
+    await renderMain();
+    await clickProduct(weightedProduct.name);
+    await setWeight("0.750");
+    await clickProduct(unitProduct.name);
+    await clickProduct(unitProduct.name);
+
+    const mirror = JSON.parse(
+      localStorage.getItem("pdv_cliente_mirror_v1") || "null",
+    );
+    expect(mirror.subtotal).toBe(42.5);
+    expect(mirror.total).toBe(42.5);
+    expect(mirror.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          product_id: weightedProduct.id,
+          quantity: 1,
+          weight_kg: 0.75,
+          price_per_kg: 30,
+          sold_by_weight: true,
+          total: 22.5,
+        }),
+        expect.objectContaining({
+          product_id: unitProduct.id,
+          quantity: 2,
+          sold_by_weight: false,
+          total: 20,
+        }),
+      ]),
+    );
+
+    await act(async () => {
+      buttonWithText("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    expect(rpcMock).toHaveBeenCalledWith(
+      "pdv_registrar_venda_v2",
+      expect.objectContaining({
+        _items: expect.arrayContaining([
+          expect.objectContaining({
+            product_id: weightedProduct.id,
+            quantity: 1,
+            weight_kg: 0.75,
+          }),
+          expect.objectContaining({
+            product_id: unitProduct.id,
+            quantity: 2,
+          }),
+        ]),
+        _total: 42.5,
+      }),
+    );
+
+    const receipt = container.querySelector("#print-receipt-area");
+    expect(receipt?.textContent).toContain("0.750 kg Produto por peso");
+    expect(receipt?.textContent).toContain("2x Produto comum");
+    expect(receipt?.textContent).toContain("R$ 22,50");
+    expect(receipt?.textContent).not.toContain("1x Produto por peso");
+  });
+
+  it.each(["0", "-0.250"])(
+    "fails closed before the sale RPC for invalid weight %s",
+    async (value) => {
+      await renderMain();
+      await clickProduct(weightedProduct.name);
+      await setWeight(value);
+
+      await act(async () => {
+        buttonWithText("Finalizar venda").dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+        await flushAsync();
+      });
+
+      expect(
+        rpcMock.mock.calls.filter(([name]) => name === "pdv_registrar_venda_v2"),
+      ).toHaveLength(0);
+    },
+  );
+});
+
+
 describe("PDV customer mirror BroadcastChannel lifecycle", () => {
   let root: Root;
   let container: HTMLDivElement;
@@ -3171,6 +3480,171 @@ describe("PDV PIX request invalidation", () => {
     ).toHaveLength(1);
   });
 
+
+  it("sends weight_kg in the PIX intent and uses the same weighted amount", async () => {
+    const weightedProduct = { ...product, price: 30, sold_by_weight: true };
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [weightedProduct] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: { ok: true, intent_id: EDGE_INTENT_ID, amount: 22.5 },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(EDGE_INTENT_ID, 22.5),
+      error: null,
+    });
+
+    await renderMain();
+    await clickProduct();
+
+    const input = container.querySelector<HTMLInputElement>(
+      `input[aria-label="Peso em kg de ${product.name}"]`,
+    );
+    if (!input) throw new Error("Weighted PIX input not rendered");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+    await act(async () => {
+      setter.call(input, "0.750");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    expect(rpcMock).toHaveBeenCalledWith("pdv_create_pix_intent_v2", {
+      _session_token: savedSession.sessionToken,
+      _caixa_id: openCaixaId,
+      _items: [
+        expect.objectContaining({
+          product_id: product.id,
+          quantity: 1,
+          weight_kg: 0.75,
+        }),
+      ],
+      _cupom_code: "",
+    });
+    expect(functionsInvokeMock).toHaveBeenCalledWith(
+      "mercadopago-create-pix",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          amount: 22.5,
+        }),
+      }),
+    );
+  });
+
+  it("preserves the canonical weighted item through PIX finalization and receipt", async () => {
+    const weightedProduct = { ...product, price: 30, sold_by_weight: true };
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "pdv_resume_session_v2") {
+        return Promise.resolve({
+          data: resumed({ caixa_aberto_id: openCaixaId }),
+          error: null,
+        });
+      }
+      if (name === "pdv_catalog_v2") {
+        return Promise.resolve({
+          data: { ok: true, products: [weightedProduct] },
+          error: null,
+        });
+      }
+      if (name === "pdv_create_pix_intent_v2") {
+        return Promise.resolve({
+          data: { ok: true, intent_id: EDGE_INTENT_ID, amount: 22.5 },
+          error: null,
+        });
+      }
+      if (name === "pdv_pix_status_v2") {
+        return Promise.resolve({
+          data: pixStatusSuccess(EDGE_INTENT_ID, "paid", { amount: 22.5 }),
+          error: null,
+        });
+      }
+      if (name === "pdv_registrar_venda_pix_v2") {
+        return Promise.resolve({
+          data: {
+            ok: true,
+            idempotent: false,
+            order_id: "94949494-9494-4949-8949-949494949494",
+            order_number: "PDV-PIX-WEIGHT-1",
+            created_at: "2026-09-27T00:00:00.000Z",
+            total: 22.5,
+            items: [
+              {
+                product_id: product.id,
+                name: product.name,
+                price: 30,
+                quantity: 1,
+                weight_kg: 0.75,
+                price_per_kg: 30,
+                sold_by_weight: true,
+                total: 22.5,
+              },
+            ],
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: { ok: true }, error: null });
+    });
+    functionsInvokeMock.mockResolvedValue({
+      data: edgeSuccessPayload(EDGE_INTENT_ID, 22.5),
+      error: null,
+    });
+    vi.spyOn(window, "print").mockImplementation(() => {});
+
+    await renderMain();
+    await clickProduct();
+
+    const input = container.querySelector<HTMLInputElement>(
+      `input[aria-label="Peso em kg de ${product.name}"]`,
+    );
+    if (!input) throw new Error("Weighted PIX input not rendered");
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    if (!setter) throw new Error("HTML input setter unavailable");
+    await act(async () => {
+      setter.call(input, "0.750");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await flushAsync();
+    });
+
+    await choosePayment("Pix");
+    await advancePixTimers(350);
+
+    await act(async () => {
+      button("Finalizar venda").dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await flushAsync();
+    });
+
+    const receipt = container.querySelector("#print-receipt-area");
+    expect(receipt?.textContent).toContain("0.750 kg Produto PIX");
+    expect(receipt?.textContent).toContain("R$ 22,50");
+    expect(receipt?.textContent).not.toContain("1x Produto PIX");
+  });
 
   it("invalidates an in-flight PIX intent when quantity changes and starts the replacement with the latest quantity", async () => {
     const firstIntent = deferred<{ data: unknown; error: null }>();

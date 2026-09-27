@@ -36,7 +36,8 @@ vi.mock('@/components/kiosk/LoyaltyCard', () => ({
 }));
 
 vi.mock('@/components/kiosk/ProductModal', () => ({
-  default: ({ product }: { product: { name: string } }) => `Product modal: ${product.name}`,
+  default: ({ product }: { product: { name: string; soldByWeight?: boolean } }) =>
+    `Product modal: ${product.name}${product.soldByWeight ? ' [weight]' : ''}`,
 }));
 
 import StartScreen from '@/components/kiosk/StartScreen';
@@ -72,6 +73,15 @@ const CATALOG = [
     ingredients: [],
     description: 'Descrição B',
     prep_time_min: 5,
+  },
+];
+
+const WEIGHT_CATALOG = [
+  {
+    ...CATALOG[0],
+    id: 'prod-weight',
+    name: 'Produto Pesado',
+    sold_by_weight: true,
   },
 ];
 
@@ -592,6 +602,48 @@ describe('StartScreen favorites bottom navigation', () => {
       expect(container.textContent).toContain(`Produto ${index}`);
     }
     expect(container.textContent).not.toContain('Produto 7');
+  });
+
+  it('preserves sold_by_weight as soldByWeight when selecting a product from the public catalog', async () => {
+    const onSelectProduct = vi.fn();
+    fetchPublicCatalogMock.mockResolvedValue(WEIGHT_CATALOG);
+
+    await renderScreen({ onSelectProduct });
+
+    const productHeading = Array.from(container.querySelectorAll('h3')).find(
+      heading => heading.textContent === 'Produto Pesado',
+    );
+    const productButton = productHeading?.closest('button') as HTMLButtonElement | null;
+    expect(productButton).toBeTruthy();
+
+    await act(async () => {
+      productButton!.click();
+      await flushAsync();
+    });
+
+    expect(onSelectProduct).toHaveBeenCalledTimes(1);
+    expect(onSelectProduct).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'prod-weight',
+      soldByWeight: true,
+    }));
+  });
+
+  it('does not quick-add a sold-by-weight product directly without a measured weight', async () => {
+    const onAddToCart = vi.fn();
+    fetchPublicCatalogMock.mockResolvedValue(WEIGHT_CATALOG);
+
+    await renderScreen({ onAddToCart });
+
+    const quickAdd = container.querySelector('button[title="Adicionar"]') as HTMLButtonElement | null;
+    expect(quickAdd).toBeTruthy();
+
+    await act(async () => {
+      quickAdd!.click();
+      await flushAsync();
+    });
+
+    expect(onAddToCart).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Product modal: Produto Pesado [weight]');
   });
 
   it('sends a card click to onSelectProduct exactly once', async () => {

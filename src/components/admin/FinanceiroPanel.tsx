@@ -113,11 +113,12 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
         }
       }
 
-      const directCostByProduct = new Map<string, { cost: number; soldByWeight: boolean }>();
+      const directCostByProduct = new Map<string, { cost: number | null; soldByWeight: boolean }>();
       for (const product of productRows || []) {
         const rawCost = product?.cost_price;
-        const cost = rawCost === null || rawCost === undefined ? null : Number(rawCost);
-        if (product?.id && cost !== null && Number.isFinite(cost) && cost >= 0) {
+        const parsedCost = rawCost === null || rawCost === undefined ? null : Number(rawCost);
+        const cost = parsedCost !== null && Number.isFinite(parsedCost) && parsedCost >= 0 ? parsedCost : null;
+        if (product?.id) {
           directCostByProduct.set(String(product.id), {
             cost,
             soldByWeight: Boolean(product.sold_by_weight),
@@ -150,6 +151,17 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
           }
 
           const productKey = String(productId);
+          const directCost = directCostByProduct.get(productKey);
+          const weightKg = Math.max(0, Number(item?.weight_kg ?? item?.weightKg ?? 0));
+          const costUnits = directCost?.soldByWeight === true
+            ? (Number.isFinite(weightKg) && weightKg > 0 ? weightKg : null)
+            : quantity;
+
+          if (costUnits === null) {
+            complete = false;
+            continue;
+          }
+
           const recipes = recipesByProduct.get(productKey);
           let recipeCost = 0;
           let recipeComplete = Boolean(recipes?.length);
@@ -166,14 +178,11 @@ const FinanceiroPanel = ({ organizationId }: { organizationId: string | null }) 
           }
 
           if (recipeComplete) {
-            cmv += recipeCost * quantity;
+            cmv += recipeCost * costUnits;
             continue;
           }
 
-          const directCost = directCostByProduct.get(productKey);
-          if (directCost) {
-            const weightKg = Math.max(0, Number(item?.weight_kg ?? item?.weightKg ?? 0));
-            const costUnits = directCost.soldByWeight && weightKg > 0 ? weightKg : quantity;
+          if (directCost?.cost !== null && directCost?.cost !== undefined) {
             cmv += directCost.cost * costUnits;
             continue;
           }

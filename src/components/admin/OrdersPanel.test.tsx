@@ -491,7 +491,7 @@ describe('OrdersPanel organization bootstrap lifecycle', () => {
     expect(requests.products.map(r => r.organizationId)).toEqual(['org-a', 'org-b']);
 
     await act(async () => {
-      requests.products[1].deferred.resolve({ data: [{ id: 'prod-b' }], error: null });
+      requests.products[1].deferred.resolve({ data: [{ id: 'prod-b', stock_quantity: 4, low_stock_threshold: 5 }], error: null });
       await flushAsync();
     });
 
@@ -513,7 +513,7 @@ describe('OrdersPanel organization bootstrap lifecycle', () => {
     expect(container.textContent).toContain('#B-200');
 
     await act(async () => {
-      requests.products[0].deferred.resolve({ data: [{ id: 'prod-a' }], error: null });
+      requests.products[0].deferred.resolve({ data: [{ id: 'prod-a', stock_quantity: 0, low_stock_threshold: 5 }], error: null });
       await flushAsync();
     });
 

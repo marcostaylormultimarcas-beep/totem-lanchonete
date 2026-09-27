@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Plus, ChevronRight, ShoppingCart, ClipboardList, Instagram, MessageCircle, Sparkles, Search, SlidersHorizontal, MapPin, Bell, Star, Clock, Heart, Home, User, Crown } from 'lucide-react';
-import { formatCurrency, Product, CartItem, BannerItem, CategoryItem } from '@/data/store';
+import { formatCurrency, Product, CartItem, BannerItem, CategoryItem, isByWeight } from '@/data/store';
 import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { fetchPublicCatalog } from '@/lib/publicCatalog';
 import { useOrgId } from '@/contexts/OrgContext';
@@ -141,6 +141,7 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
           isCombo: p.is_combo || false,
           ingredients: p.ingredients || [],
           description: p.description || '',
+          soldByWeight: Boolean(p.sold_by_weight),
           prepTimeMin: Number(p.prep_time_min ?? 0),
         }));
         setProducts(mapped.filter((product) => !product.isCombo));
@@ -207,6 +208,10 @@ const StartScreen = ({ onStart, onAddToCart, onGoToCart, onSelectProduct, cartCo
 
   const handleQuickAdd = (product: Product) => {
     if (onSelectProduct) { onSelectProduct(product); return; }
+    if (isByWeight(product)) {
+      setSelectedProduct(product);
+      return;
+    }
     if (onAddToCart) {
       const item: CartItem = { id: crypto.randomUUID(), product, quantity: 1, removedIngredients: [], selectedExtras: [] };
       onAddToCart(item);

@@ -66,7 +66,7 @@ describe("recipe stock weighted SQL contract", () => {
   it("uses quantity for a normal product with quantity=2", () => {
     expect(expectedRecipeAmount(0.2, false, 2)).toBeCloseTo(0.4, 10);
     expect(consumeSql).toContain("multiplier:=case when is_by_weight then weight else qty end;");
-    expect(restockSql).toContain("multiplier:=case when is_by_weight then weight else qty end;");
+    expect(restockSql).toContain("from public.visionfood_order_ingredient_stock_ledger");
   });
 
   it("uses weight_kg=0.750 for a sold_by_weight product", () => {
@@ -79,7 +79,7 @@ describe("recipe stock weighted SQL contract", () => {
     expect(expectedRecipeAmount(0.2, true, 1, 1.25)).toBeCloseTo(0.25, 10);
     expect(consumeSql).toContain("ingredient_need as (");
     expect(consumeSql).toContain("needed:=rec.needed;");
-    expect(restockSql).toContain("ingredient_amount as (");
+    expect(restockSql).toContain("order by l.ingredient_id");
     expect(restockSql).toContain("estoque_atual=estoque_atual+rec.amount");
   });
 
@@ -102,9 +102,12 @@ describe("recipe stock weighted SQL contract", () => {
     const consumed = expectedRecipeAmount(0.2, true, 1, 0.75);
     const restored = expectedRecipeAmount(0.2, true, 1, 0.75);
     expect(restored).toBeCloseTo(consumed, 10);
-    expect(restockSql).toContain("weight:=nullif(item->>'weight_kg','')::numeric;");
-    expect(restockSql).toContain("select coalesce(p.sold_by_weight,false)");
-    expect(restockSql).toContain("ingredient_amount as (");
+    expect(consumeSql).toContain(
+      "insert into public.visionfood_order_ingredient_stock_ledger",
+    );
+    expect(restockSql).toContain("from public.visionfood_order_ingredient_stock_ledger");
+    expect(restockSql).not.toContain("sold_by_weight");
+    expect(restockSql).not.toContain("weight_kg");
     expect(restockSql).toContain("estoque_atual=estoque_atual+rec.amount");
   });
 
@@ -112,13 +115,13 @@ describe("recipe stock weighted SQL contract", () => {
     expect(() => expectedRecipeAmount(0.2, true, 1)).toThrow("invalid_weight");
     expect(() => expectedRecipeAmount(0.2, true, 1, 0)).toThrow("invalid_weight");
     expect(consumeSql).toContain("raise exception 'invalid ingredient stock weight for product %',pid;");
-    expect(restockSql).toContain("raise exception 'invalid ingredient stock weight for product %',pid;");
+    expect(restockSql).toContain("missing ingredient stock snapshot");
   });
 
   it("keeps common products working without requiring weight_kg", () => {
     expect(expectedRecipeAmount(0.4, false, 3)).toBeCloseTo(1.2, 10);
     expect(consumeSql).toContain("qty:=coalesce(nullif(item->>'quantity','')::numeric,1);");
-    expect(restockSql).toContain("qty:=coalesce(nullif(item->>'quantity','')::numeric,1);");
+    expect(restockSql).toContain("from public.visionfood_order_ingredient_stock_ledger");
   });
 
   it("keeps ingredient stock idempotency markers and cancellation safety", () => {

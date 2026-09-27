@@ -87,28 +87,36 @@ describe("recipe stock historical restock SQL contract", () => {
     expect(recalculatedAsUnit).not.toBeCloseTo(historical, 10);
   });
 
-  it("persists the actual aggregated ingredient deltas on the order at checkout", () => {
-    expect(allMigrationsSql).toContain("ingredient_stock_deltas jsonb");
-    expect(consumeSql).toContain("new.ingredient_stock_deltas");
-    expect(consumeSql).toContain("'ingredient_id'");
-    expect(consumeSql).toContain("'amount'");
+  it("persists the actual aggregated ingredient deltas in a private historical ledger", () => {
+    expect(allMigrationsSql).toContain(
+      "create table if not exists public.visionfood_order_ingredient_stock_ledger",
+    );
+    expect(allMigrationsSql).toContain(
+      "primary key(order_id,ingredient_id)",
+    );
+    expect(consumeSql).toContain(
+      "insert into public.visionfood_order_ingredient_stock_ledger",
+    );
+    expect(consumeSql).toContain("new.ingredient_stock_snapshot_version:=1;");
   });
 
   it("restocks only from the immutable historical delta snapshot", () => {
-    expect(restockSql).toContain("o.ingredient_stock_deltas");
+    expect(restockSql).toContain(
+      "from public.visionfood_order_ingredient_stock_ledger",
+    );
     expect(restockSql).not.toContain("from public.receitas");
     expect(restockSql).not.toContain("sold_by_weight");
     expect(restockSql).not.toContain("weight_kg");
   });
 
   it("fails closed when a committed legacy order has no historical snapshot", () => {
-    expect(restockSql).toContain("o.ingredient_stock_deltas is null");
+    expect(restockSql).toContain("o.ingredient_stock_snapshot_version");
     expect(restockSql).toContain("missing ingredient stock snapshot");
   });
 
   it("prelocks every snapshotted ingredient in deterministic id order before mutation", () => {
     expect(restockSql).toContain(
-      "jsonb_array_elements(o.ingredient_stock_deltas)",
+      "join public.visionfood_order_ingredient_stock_ledger l",
     );
 
     const prelock = restockSql.indexOf("perform i.id from public.ingredientes i");
@@ -131,12 +139,15 @@ describe("recipe stock historical restock SQL contract", () => {
     expect(completionMarker).toBeGreaterThan(firstIngredientMutation);
   });
 
-  it("protects the historical delta snapshot from post-sale mutation", () => {
+  it("keeps the historical ledger private and outside mutable order payloads", () => {
     expect(allMigrationsSql).toContain(
-      "create trigger trg_visionfood_guard_ingredient_stock_deltas",
+      "alter table public.visionfood_order_ingredient_stock_ledger enable row level security",
     );
     expect(allMigrationsSql).toContain(
-      "ingredient stock snapshot is immutable",
+      "revoke all on table public.visionfood_order_ingredient_stock_ledger from public,anon,authenticated",
+    );
+    expect(allMigrationsSql).not.toContain(
+      "update public.visionfood_order_ingredient_stock_ledger",
     );
   });
 });

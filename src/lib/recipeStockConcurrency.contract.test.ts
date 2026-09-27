@@ -92,12 +92,14 @@ describe("recipe stock concurrency SQL contract", () => {
     expect(restockSql).toContain("order by i.id for update of i");
   });
 
-  it("aggregates shared ingredient restock instead of replaying stale duplicate snapshots", () => {
-    expect(restockSql).toContain("with product_usage as (");
-    expect(restockSql).toContain("ingredient_amount as (");
-    expect(restockSql).toMatch(
-      /sum\(\s*greatest\(coalesce\(r\.quantidade,0\),0\)\s*\*\s*u\.multiplier\s*\)/,
+  it("restocks each aggregated historical ingredient delta exactly once", () => {
+    expect(allMigrationsSql).toContain(
+      "primary key(order_id,ingredient_id)",
     );
+    expect(restockSql).toContain(
+      "from public.visionfood_order_ingredient_stock_ledger",
+    );
+    expect(restockSql).toContain("order by l.ingredient_id");
   });
 
   it("prelocks the complete ingredient set before consumption side effects can fire", () => {
@@ -144,9 +146,7 @@ describe("recipe stock concurrency SQL contract", () => {
     expect(consumeSql).toContain(
       "if is_by_weight and (weight is null or weight<=0) then",
     );
-    expect(restockSql).toContain(
-      "if is_by_weight and (weight is null or weight<=0) then",
-    );
+    expect(restockSql).toContain("missing ingredient stock snapshot");
   });
 
   it("keeps normal products on quantity while weighted products use weight_kg", () => {
@@ -154,7 +154,7 @@ describe("recipe stock concurrency SQL contract", () => {
       "multiplier:=case when is_by_weight then weight else qty end;",
     );
     expect(restockSql).toContain(
-      "multiplier:=case when is_by_weight then weight else qty end;",
+      "from public.visionfood_order_ingredient_stock_ledger",
     );
   });
 

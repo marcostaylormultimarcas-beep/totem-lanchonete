@@ -104,7 +104,16 @@ function buildReceipt(opts: {
     const qty = Number(it.quantity || 1);
     const tot = Number(it.total || 0);
     subtotal += tot;
-    ep.ln(line(`${qty}x ${String(it.name || '').slice(0, W - 12)}`, brl(tot)));
+
+    const weightKg = Number(it.weight_kg || 0);
+    const quantityLabel = it.sold_by_weight && Number.isFinite(weightKg) && weightKg > 0
+      ? `${weightKg.toFixed(3)} kg`
+      : `${qty}x`;
+    const amount = brl(tot);
+    const itemNameBudget = Math.max(0, W - quantityLabel.length - amount.length - 1);
+    const itemName = String(it.name || '').slice(0, Math.max(0, itemNameBudget - 1));
+    ep.ln(line(`${quantityLabel} ${itemName}`, amount));
+
     const unit = qty > 0 ? tot / qty : tot;
     ep.ln(`   un: ${brl(unit)}`);
     const removed: string[] = it.removedIngredients || [];

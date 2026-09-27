@@ -378,7 +378,7 @@ const MenuScreen = ({ cart, onAddToCart, onGoToCart, onBack, initialProduct, onI
             <div className="flex-1 space-y-2 overflow-y-auto">
               {cart.map(item => (
                 <div key={item.id} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-sm">
-                  <p className="font-semibold text-white">{item.quantity}x {item.product.name}</p>
+                  <p className="font-semibold text-white">{item.weightKg && item.weightKg > 0 ? `${item.weightKg.toFixed(3)} kg` : `${item.quantity}x`} {item.product.name}</p>
                   <p className="text-amber-400 font-bold">{formatCurrency(getItemTotal(item))}</p>
                 </div>
               ))}

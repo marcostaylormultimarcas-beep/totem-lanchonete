@@ -72,11 +72,13 @@ const OrdersPanel=({organizationId}:{organizationId:string|null})=>{
 
   const loadLowStock=async()=>{
    try{
-    const result=await supabase.from('products').select('id').eq('organization_id',organizationId).eq('manage_stock',true).lte('stock_quantity',5);
+    const result=await supabase.from('products').select('id,stock_quantity,low_stock_threshold').eq('organization_id',organizationId).eq('manage_stock',true);
     if(cancelled)return;
     const{data,error}=result;
     if(error){console.error('orders bootstrap low stock',error);return}
-    setLowStockIds(new Set(((data as any[])||[]).map((p:any)=>p.id)));
+    setLowStockIds(new Set(((data as any[])||[])
+      .filter((p:any)=>Number(p.stock_quantity)<=Number(p.low_stock_threshold))
+      .map((p:any)=>p.id)));
    }catch(error){if(!cancelled)console.error('orders bootstrap low stock',error)}
   };
 

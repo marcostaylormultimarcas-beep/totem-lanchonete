@@ -56,6 +56,8 @@ const finalizeCancel = latestFunctionDefinition("visionfood_finalize_order_cance
 
 const consumeSql = normalized(consume.sql);
 const restockSql = normalized(restock.sql);
+const syncIngredient = latestFunctionDefinition("visionfood_sync_ingredient_state");
+const syncIngredientSql = normalized(syncIngredient.sql);
 const finalizeCancelSql = normalized(finalizeCancel.sql);
 const allMigrationsSql = normalized(
   migrationFiles
@@ -96,6 +98,46 @@ describe("recipe stock concurrency SQL contract", () => {
     expect(restockSql).toMatch(
       /sum\(\s*greatest\(coalesce\(r\.quantidade,0\),0\)\s*\*\s*u\.multiplier\s*\)/,
     );
+  });
+
+  it("prelocks the complete ingredient set before consumption side effects can fire", () => {
+    const prelock = consumeSql.indexOf("perform i.id from public.ingredientes i");
+    const firstMutation = consumeSql.indexOf("update public.ingredientes");
+
+    expect(prelock).toBeGreaterThan(-1);
+    expect(firstMutation).toBeGreaterThan(prelock);
+    expect(consumeSql.slice(prelock, firstMutation)).toContain(
+      "order by i.id for update of i",
+    );
+  });
+
+  it("prelocks the complete ingredient set before cancellation restock side effects can fire", () => {
+    const prelock = restockSql.indexOf("perform i.id from public.ingredientes i");
+    const firstMutation = restockSql.indexOf("update public.ingredientes");
+
+    expect(prelock).toBeGreaterThan(-1);
+    expect(firstMutation).toBeGreaterThan(prelock);
+    expect(restockSql.slice(prelock, firstMutation)).toContain(
+      "order by i.id for update of i",
+    );
+  });
+
+  it("orders related product availability mutations deterministically", () => {
+    expect(syncIngredientSql).toContain(
+      "order by coalesce(r.product_id,r.produto_id)",
+    );
+  });
+
+  it("keeps cancellation on the same ingredient-to-product lock hierarchy as checkout", () => {
+    const recipeRestock = finalizeCancelSql.indexOf(
+      "perform public.visionfood_restock_recipe_stock(new.id);",
+    );
+    const productRestock = finalizeCancelSql.indexOf(
+      "perform public.visionfood_restock_cancelled_order(new.id);",
+    );
+
+    expect(recipeRestock).toBeGreaterThan(-1);
+    expect(productRestock).toBeGreaterThan(recipeRestock);
   });
 
   it("keeps sold_by_weight fail-closed instead of falling back to quantity=1", () => {

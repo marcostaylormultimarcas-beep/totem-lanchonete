@@ -828,6 +828,19 @@ const AdminPage = () => {
 
     const ingredientsList = form.ingredients.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
 
+    const parsedStockQuantity = form.soldByWeight ? parseFloat(form.stockQuantity) : parseInt(form.stockQuantity, 10);
+    const normalizedStockQuantity = Math.max(
+      0,
+      Number.isFinite(parsedStockQuantity) ? parsedStockQuantity : 0,
+    );
+    const parsedLowStockThreshold = form.soldByWeight
+      ? parseFloat(form.lowStockThreshold)
+      : parseInt(form.lowStockThreshold, 10);
+    const normalizedLowStockThreshold = Math.max(
+      0,
+      Number.isFinite(parsedLowStockThreshold) ? parsedLowStockThreshold : 0,
+    );
+
     const dbPayload: any = {
       organization_id: activeOrgId,
       name: form.name.trim(),
@@ -844,8 +857,8 @@ const AdminPage = () => {
       // para bloqueios automáticos por estoque insuficiente de ingredientes.
       available: editingProduct ? editingProduct.available !== false : true,
       manage_stock: form.manageStock,
-      stock_quantity: Math.max(0, parseInt(form.stockQuantity, 10) || 0),
-      low_stock_threshold: Math.max(0, parseInt(form.lowStockThreshold, 10) || 0),
+      stock_quantity: normalizedStockQuantity,
+      low_stock_threshold: normalizedLowStockThreshold,
       sold_by_weight: form.soldByWeight,
       codigo_barras: form.codigoBarras.trim() || null,
       data_vencimento: form.dataVencimento || null,
@@ -857,6 +870,15 @@ const AdminPage = () => {
     // Colunas que não podem ser removidas do payload (essenciais)
     const REQUIRED_PRODUCT_COLUMNS = new Set(['organization_id', 'name', 'price', 'category', 'image']);
     const payload: any = { ...dbPayload };
+    const stockQuantityChanged = Boolean(
+      editingProduct
+      && normalizedStockQuantity !== Number(editingProduct.stockQuantity ?? 0),
+    );
+    if (editingProduct && !stockQuantityChanged) {
+      // Do not resend a stale absolute stock value during unrelated edits.
+      // Checkout/restock may have changed it after this form was opened.
+      delete payload.stock_quantity;
+    }
     const droppedColumns: string[] = [];
 
     let data: any;
@@ -864,9 +886,41 @@ const AdminPage = () => {
       // Auto-cura: se o banco externo não tiver alguma coluna opcional (PGRST204),
       // removemos a coluna do payload e tentamos de novo.
       for (let attempt = 0; attempt < 12; attempt++) {
-        const { data: savedProduct, error } = editingProduct
-          ? await supabase.from('products').update(payload).eq('id', editingProduct.id).select().maybeSingle()
-          : await supabase.from('products').insert(payload).select().maybeSingle();
+        let savedProduct: any = null;
+        let error: any = null;
+
+        if (editingProduct) {
+          let updateQuery = supabase
+            .from('products')
+            .update(payload)
+            .eq('id', editingProduct.id);
+
+          if (stockQuantityChanged) {
+            // Compare-and-swap prevents an absolute admin adjustment from
+            // overwriting a checkout/restock committed after the form loaded.
+            updateQuery = updateQuery.eq(
+              'stock_quantity',
+              Number(editingProduct.stockQuantity ?? 0),
+            );
+          }
+
+          const result = await updateQuery.select().maybeSingle();
+          savedProduct = result.data;
+          error = result.error;
+
+          if (!error && stockQuantityChanged && !savedProduct) {
+            throw new Error('stock_quantity_conflict');
+          }
+        } else {
+          const result = await supabase
+            .from('products')
+            .insert(payload)
+            .select()
+            .maybeSingle();
+          savedProduct = result.data;
+          error = result.error;
+        }
+
         if (!error) { data = savedProduct; break; }
 
         const missing = error.code === 'PGRST204'
@@ -877,6 +931,10 @@ const AdminPage = () => {
         droppedColumns.push(missing);
       }
     } catch (err) {
+      if (err instanceof Error && err.message === 'stock_quantity_conflict') {
+        toast.error('O estoque mudou enquanto este produto estava aberto. Recarregue o produto e refaça o ajuste para não sobrescrever uma venda ou estorno.');
+        return;
+      }
       showDatabaseError('saveProduct', err);
       return;
     }
@@ -890,7 +948,9 @@ const AdminPage = () => {
     if (editingProduct) {
       setProducts(prev => prev.map(p => p.id === editingProduct.id ? {
         ...p, ...dbPayload, removableIngredients: removable, ingredients: ingredientsList, description: dbPayload.description,
-        manageStock: dbPayload.manage_stock, stockQuantity: dbPayload.stock_quantity, lowStockThreshold: dbPayload.low_stock_threshold,
+        manageStock: dbPayload.manage_stock,
+        stockQuantity: data ? Number((data as any).stock_quantity ?? dbPayload.stock_quantity) : dbPayload.stock_quantity,
+        lowStockThreshold: dbPayload.low_stock_threshold,
         costPrice: dbPayload.cost_price, markupPercent: dbPayload.markup_percent,
         soldByWeight: dbPayload.sold_by_weight,
         codigoBarras: dbPayload.codigo_barras || '',
@@ -1556,12 +1616,12 @@ const AdminPage = () => {
                 {form.manageStock && (
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Em estoque</label>
-                      <input type="number" min="0" value={form.stockQuantity} onChange={e => setForm({ ...form, stockQuantity: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                      <label className="text-xs text-muted-foreground mb-1 block">{form.soldByWeight ? 'Em estoque (kg)' : 'Em estoque (unidades)'}</label>
+                      <input type="number" min="0" step={form.soldByWeight ? '0.001' : '1'} value={form.stockQuantity} onChange={e => setForm({ ...form, stockQuantity: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground mb-1 block">Alerta abaixo de</label>
-                      <input type="number" min="0" value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
+                      <input type="number" min="0" step={form.soldByWeight ? '0.001' : '1'} value={form.lowStockThreshold} onChange={e => setForm({ ...form, lowStockThreshold: e.target.value })} className="w-full px-3 py-2 bg-background rounded-lg outline-none focus:ring-2 focus:ring-primary text-sm" />
                     </div>
                   </div>
                 )}

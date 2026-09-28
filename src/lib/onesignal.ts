@@ -1,8 +1,13 @@
 import { supabase } from '@/integrations/supabase/client';
 
 type OneSignalTags = Record<string, string>;
+type OneSignalPublicConfig = { appId: string };
 
 let sdkPromise: Promise<any | null> | null = null;
+let sdkPromiseAppId: string | null = null;
+let sdkPromiseStale = false;
+let initializedSdk: any | null = null;
+let initializedAppId: string | null = null;
 
 const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
 
@@ -12,6 +17,15 @@ export function normalizeOneSignalPhone(value: string): string {
     digits = `55${digits}`;
   }
   return digits;
+}
+
+async function readPublicConfig(): Promise<OneSignalPublicConfig | null> {
+  const { data, error } = await supabase.rpc('onesignal_public_config' as any);
+  const cfg: any = data;
+  if (error || !cfg?.ok || !cfg?.enabled || !cfg?.app_id) return null;
+
+  const appId = String(cfg.app_id).trim();
+  return appId ? { appId } : null;
 }
 
 async function loadSdkScript(): Promise<void> {
@@ -37,54 +51,101 @@ async function loadSdkScript(): Promise<void> {
   });
 }
 
+async function initializeSdk(appId: string): Promise<any | null> {
+  await loadSdkScript();
+
+  const w = window as any;
+  w.OneSignalDeferred = w.OneSignalDeferred || [];
+
+  return await new Promise<any | null>((resolve) => {
+    let settled = false;
+    const finish = (value: any | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const timer = window.setTimeout(() => finish(null), 10_000);
+
+    w.OneSignalDeferred.push(async (OneSignal: any) => {
+      if (settled) return;
+      window.clearTimeout(timer);
+
+      try {
+        await OneSignal.init({
+          appId,
+          notifyButton: { enable: false },
+          serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
+          serviceWorkerParam: { scope: '/onesignal/' },
+        });
+        finish(OneSignal);
+      } catch (err) {
+        console.warn('[OneSignal] Falha ao inicializar SDK:', err);
+        finish(null);
+      }
+    });
+  });
+}
+
+function warnAppIdChange(currentAppId: string, configuredAppId: string) {
+  console.warn(
+    '[OneSignal] App ID alterado durante a sessão; recarregue a página antes de usar o novo App ID.',
+    { currentAppId, configuredAppId },
+  );
+}
+
 async function getOneSignal(): Promise<any | null> {
   if (typeof window === 'undefined' || !window.isSecureContext) return null;
-  if (sdkPromise) return sdkPromise;
 
-  sdkPromise = (async () => {
-    const { data, error } = await supabase.rpc('onesignal_public_config' as any);
-    const cfg: any = data;
-    if (error || !cfg?.ok || !cfg?.enabled || !cfg?.app_id) return null;
+  const cfg = await readPublicConfig();
+  if (!cfg) {
+    if (sdkPromise) sdkPromiseStale = true;
+    return null;
+  }
 
-    await loadSdkScript();
+  if (initializedSdk) {
+    if (initializedAppId !== cfg.appId) {
+      warnAppIdChange(initializedAppId || '', cfg.appId);
+      return null;
+    }
+    return initializedSdk;
+  }
 
-    const w = window as any;
-    w.OneSignalDeferred = w.OneSignalDeferred || [];
+  if (sdkPromise) {
+    if (sdkPromiseAppId !== cfg.appId) {
+      sdkPromiseStale = true;
+      warnAppIdChange(sdkPromiseAppId || '', cfg.appId);
+      return null;
+    }
+    return sdkPromise;
+  }
 
-    return await new Promise<any | null>((resolve) => {
-      let settled = false;
-      const finish = (value: any | null) => {
-        if (settled) return;
-        settled = true;
-        resolve(value);
-      };
+  const appId = cfg.appId;
+  sdkPromiseAppId = appId;
+  sdkPromiseStale = false;
 
-      const timer = window.setTimeout(() => finish(null), 10_000);
-
-      w.OneSignalDeferred.push(async (OneSignal: any) => {
-        try {
-          await OneSignal.init({
-            appId: cfg.app_id,
-            notifyButton: { enable: false },
-            serviceWorkerPath: '/onesignal/OneSignalSDKWorker.js',
-            serviceWorkerParam: { scope: '/onesignal/' },
-          });
-          window.clearTimeout(timer);
-          finish(OneSignal);
-        } catch (err) {
-          console.warn('[OneSignal] Falha ao inicializar SDK:', err);
-          window.clearTimeout(timer);
-          finish(null);
-        }
-      });
-    });
-  })().catch((err) => {
+  const pending = initializeSdk(appId).catch((err) => {
     console.warn('[OneSignal] Inicialização indisponível:', err);
-    sdkPromise = null;
     return null;
   });
+  sdkPromise = pending;
 
-  return sdkPromise;
+  const OneSignal = await pending;
+  const stale = sdkPromiseStale;
+
+  if (sdkPromise === pending) {
+    sdkPromise = null;
+    sdkPromiseAppId = null;
+    sdkPromiseStale = false;
+  }
+
+  if (!OneSignal) return null;
+
+  initializedSdk = OneSignal;
+  initializedAppId = appId;
+
+  if (stale) return null;
+  return OneSignal;
 }
 
 export async function identifyOneSignalUser(

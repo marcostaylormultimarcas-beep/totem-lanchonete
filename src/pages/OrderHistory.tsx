@@ -8,6 +8,7 @@ import { formatCurrency } from '@/data/store';
 import { toast } from 'sonner';
 import { useOrgId } from '@/contexts/OrgContext';
 import LoyaltyCard from '@/components/kiosk/LoyaltyCard';
+import { logoutOneSignalUser } from '@/lib/onesignal';
 
 const withTimeout = <T,>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -224,6 +225,8 @@ const OrderHistory = () => {
     if (logoutInFlightRef.current) return;
     logoutInFlightRef.current = true;
     setLoggingOut(true);
+
+    await logoutOneSignalUser();
 
     try {
       const { error } = await withTimeout(

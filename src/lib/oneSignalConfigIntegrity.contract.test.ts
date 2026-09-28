@@ -73,7 +73,7 @@ describe("OneSignal configuration integrity contract", () => {
 
   it("does not silently accept a configured App ID whose stored API key is missing from Vault", () => {
     expect(configSql).toContain("api_key_required");
-    expect(configSql).toContain("exists(select 1 from vault.secrets");
+    expect(configSql).toMatch(/exists\(\s*select 1 from vault\.secrets/);
   });
 
   it("keeps the secret write server-side and returns only has_api_key metadata", () => {

@@ -23,8 +23,8 @@ const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, " ");
 describe("ingredient alerts realtime convergence contract", () => {
   it("keeps the authoritative alerts query ordered newest-first and capped at 20", () => {
     expect(panelSource).toContain(".from('alertas_estoque' as any)");
-    expect(panelSource).toContain(
-      ".order('created_at', { ascending: false }).limit(20)",
+    expect(panelSource).toMatch(
+      /\.order\('created_at',\s*\{\s*ascending:\s*false\s*\}\)[\s\S]*?\.limit\(20\)/,
     );
   });
 

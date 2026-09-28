@@ -61,6 +61,8 @@ const OneSignalPanel = () => {
           forbidden: 'Apenas o Super Admin pode alterar o OneSignal.',
           invalid_app_id: 'App ID inválido.',
           invalid_api_key: 'App API Key inválida.',
+          api_key_required_for_app_change: 'Ao trocar o App ID, informe também a App API Key correspondente.',
+          api_key_required: 'Informe uma App API Key válida para este App ID.',
         };
         toast.error(messages[result?.reason] || 'Não foi possível salvar a configuração.');
         return;

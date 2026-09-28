@@ -8,6 +8,16 @@ let sdkPromiseAppId: string | null = null;
 let sdkPromiseStale = false;
 let initializedSdk: any | null = null;
 let initializedAppId: string | null = null;
+let identityQueue: Promise<void> = Promise.resolve();
+
+function runSerializedIdentityTask<T>(task: () => Promise<T>): Promise<T> {
+  const run = identityQueue.then(task, task);
+  identityQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
 
@@ -148,6 +158,17 @@ async function getOneSignal(): Promise<any | null> {
   return OneSignal;
 }
 
+async function applyOneSignalIdentity(
+  OneSignal: any,
+  externalId: string,
+  tags: OneSignalTags,
+): Promise<void> {
+  await OneSignal.login(externalId);
+  if (Object.keys(tags).length) {
+    await OneSignal.User.addTags(tags);
+  }
+}
+
 export async function identifyOneSignalUser(
   externalId: string,
   tags: OneSignalTags = {},
@@ -155,43 +176,61 @@ export async function identifyOneSignalUser(
   const id = externalId.trim();
   if (!id) return false;
 
-  const OneSignal = await getOneSignal();
-  if (!OneSignal) return false;
+  return runSerializedIdentityTask(async () => {
+    const OneSignal = await getOneSignal();
+    if (!OneSignal) return false;
 
-  try {
-    await OneSignal.login(id);
-    if (Object.keys(tags).length) {
-      OneSignal.User.addTags(tags);
+    try {
+      await applyOneSignalIdentity(OneSignal, id, tags);
+      return true;
+    } catch (err) {
+      console.warn('[OneSignal] Falha ao identificar usuário:', err);
+      return false;
     }
-    return true;
-  } catch (err) {
-    console.warn('[OneSignal] Falha ao identificar usuário:', err);
-    return false;
-  }
+  });
 }
 
 export async function requestOneSignalPermission(
   externalId: string,
   tags: OneSignalTags = {},
 ): Promise<boolean> {
-  const OneSignal = await getOneSignal();
-  if (!OneSignal) return false;
+  const id = externalId.trim();
+  if (!id) return false;
 
-  try {
-    await OneSignal.login(externalId.trim());
-    if (Object.keys(tags).length) OneSignal.User.addTags(tags);
+  return runSerializedIdentityTask(async () => {
+    const OneSignal = await getOneSignal();
+    if (!OneSignal) return false;
 
-    if (!OneSignal.Notifications.permission) {
-      await OneSignal.Notifications.requestPermission();
+    try {
+      await applyOneSignalIdentity(OneSignal, id, tags);
+
+      if (!OneSignal.Notifications.permission) {
+        await OneSignal.Notifications.requestPermission();
+      }
+      if (OneSignal.Notifications.permission && !OneSignal.User.PushSubscription.optedIn) {
+        await OneSignal.User.PushSubscription.optIn();
+      }
+      return Boolean(OneSignal.Notifications.permission);
+    } catch (err) {
+      console.warn('[OneSignal] Falha ao ativar notificações:', err);
+      return false;
     }
-    if (OneSignal.Notifications.permission && !OneSignal.User.PushSubscription.optedIn) {
-      await OneSignal.User.PushSubscription.optIn();
+  });
+}
+
+export async function logoutOneSignalUser(): Promise<boolean> {
+  return runSerializedIdentityTask(async () => {
+    const OneSignal = initializedSdk || await getOneSignal();
+    if (!OneSignal) return false;
+
+    try {
+      await OneSignal.logout();
+      return true;
+    } catch (err) {
+      console.warn('[OneSignal] Falha ao encerrar identidade do usuário:', err);
+      return false;
     }
-    return Boolean(OneSignal.Notifications.permission);
-  } catch (err) {
-    console.warn('[OneSignal] Falha ao ativar notificações:', err);
-    return false;
-  }
+  });
 }
 
 /**

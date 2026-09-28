@@ -97,11 +97,11 @@ describe('OneSignal identity lifecycle contract', () => {
       return value;
     });
 
-    await flushMicrotasks();
-
-    expect(sdk.User.addTags).toHaveBeenCalledWith({
-      tipo: 'customer',
-      organization_id: 'org-a',
+    await vi.waitFor(() => {
+      expect(sdk.User.addTags).toHaveBeenCalledWith({
+        tipo: 'customer',
+        organization_id: 'org-a',
+      });
     });
     expect(settled).toBe(false);
 
@@ -126,7 +126,9 @@ describe('OneSignal identity lifecycle contract', () => {
       organization_id: 'org-b',
     });
 
-    await flushMicrotasks();
+    await vi.waitFor(() => {
+      expect(sdk.login).toHaveBeenCalled();
+    });
 
     expect(sdk.login).toHaveBeenCalledTimes(1);
     expect(sdk.login).toHaveBeenNthCalledWith(1, '5511111111111');

@@ -178,6 +178,34 @@ describe('OneSignal identity lifecycle contract', () => {
     expect(reload).toBeGreaterThan(logoutCall);
   });
 
+
+
+  it('detaches OneSignal identity in the shared complete sign-out helper before navigation', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src', 'lib', 'auth.ts'),
+      'utf8',
+    );
+
+    expect(source).toContain("import { logoutOneSignalUser } from '@/lib/onesignal'");
+    const logoutCall = source.indexOf('await logoutOneSignalUser()');
+    const reload = source.indexOf('window.location.replace(redirectTo)');
+
+    expect(logoutCall).toBeGreaterThan(-1);
+    expect(reload).toBeGreaterThan(logoutCall);
+  });
+
+  it('detaches OneSignal identity after a successful password-recovery sign-out', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src', 'pages', 'ResetPassword.tsx'),
+      'utf8',
+    );
+
+    expect(source).toContain("import { logoutOneSignalUser } from '@/lib/onesignal'");
+    expect(source).toMatch(
+      /const\s+signedOut\s*=\s*await\s+signOutRecoverySession\(\)[\s\S]*?if\s*\(!signedOut\)[\s\S]*?return;[\s\S]*?await\s+logoutOneSignalUser\(\)[\s\S]*?navigate\('\/auth'/,
+    );
+  });
+
   it('detaches a prior customer identity when a browser is cut over to device-owned kiosk mode', () => {
     const source = readFileSync(
       join(process.cwd(), 'src', 'pages', 'Index.tsx'),

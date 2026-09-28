@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { logoutOneSignalUser } from '@/lib/onesignal';
 import {
   clearPasswordRecoveryIntent,
   hasPasswordRecoveryIntent,
@@ -127,6 +128,7 @@ const ResetPassword = () => {
         return;
       }
 
+      await logoutOneSignalUser();
       toast.success('Senha atualizada com sucesso!');
       navigate('/auth', { replace: true });
     } catch (error) {

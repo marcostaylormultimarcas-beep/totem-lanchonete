@@ -13,6 +13,7 @@ import PaymentScreen from '@/components/kiosk/PaymentScreen';
 import TotemSuccess from '@/components/kiosk/TotemSuccess';
 import LandingScreen from '@/components/kiosk/LandingScreen';
 import NotificationBell from '@/components/kiosk/NotificationBell';
+import { logoutOneSignalUser } from '@/lib/onesignal';
 import PartnersFooter from '@/components/kiosk/PartnersFooter';
 import { CartItem, Product } from '@/data/store';
 import type { AppliedCoupon } from '@/components/kiosk/CartScreen';
@@ -347,8 +348,11 @@ const Index = () => {
           // Storage cleanup is synchronous and remains effective even when internet is down.
           clearKioskCustomerBrowserState();
           setIsAuthenticated(false);
-          // Best-effort revocation of only this browser session; device checkout never relies on it.
-          void supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+          // Best-effort revocation of this browser identity/session; device checkout never relies on it.
+          void (async () => {
+            await logoutOneSignalUser();
+            await supabase.auth.signOut({ scope: 'local' });
+          })().catch(() => undefined);
         } else if (status?.enrolled && status?.organization_id && status.organization_id !== orgId) {
           toast.error('Este totem está vinculado a outra loja. O modo offline por dispositivo foi bloqueado.');
         }

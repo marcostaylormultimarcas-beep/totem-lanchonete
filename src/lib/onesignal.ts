@@ -204,13 +204,19 @@ export async function requestOneSignalPermission(
     try {
       await applyOneSignalIdentity(OneSignal, id, tags);
 
-      if (!OneSignal.Notifications.permission) {
-        await OneSignal.Notifications.requestPermission();
+      let permissionGranted = Boolean(OneSignal.Notifications.permission);
+      if (!permissionGranted) {
+        permissionGranted = Boolean(
+          await OneSignal.Notifications.requestPermission(),
+        );
       }
-      if (OneSignal.Notifications.permission && !OneSignal.User.PushSubscription.optedIn) {
+      if (!permissionGranted) return false;
+
+      if (!OneSignal.User.PushSubscription.optedIn) {
         await OneSignal.User.PushSubscription.optIn();
       }
-      return Boolean(OneSignal.Notifications.permission);
+
+      return Boolean(OneSignal.User.PushSubscription.optedIn);
     } catch (err) {
       console.warn('[OneSignal] Falha ao ativar notificações:', err);
       return false;

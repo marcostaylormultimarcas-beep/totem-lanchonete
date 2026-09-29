@@ -39,4 +39,22 @@ describe('predictive stock push persistent cooldown contract', () => {
       /if\s+request_id\s+is\s+null[\s\S]*return[\s\S]*end\s+if;[\s\S]*insert\s+into\s+private\.onesignal_predictive_push_dedupe/i,
     );
   });
+
+  it('does not treat pg_net enqueue as delivery success', () => {
+    expect(sql).toMatch(
+      /visionfood_push_predictive_stock[\s\S]*net\._http_response[\s\S]*status_code/i,
+    );
+    expect(sql).toMatch(
+      /status_code\s*>=\s*200[\s\S]*status_code\s*<\s*300/i,
+    );
+    expect(sql).toMatch(
+      /timed_out[\s\S]*error_msg/i,
+    );
+  });
+
+  it('releases a predictive cooldown after an asynchronous HTTP failure', () => {
+    expect(sql).toMatch(
+      /net\._http_response[\s\S]*(status_code\s*>=\s*400|timed_out|error_msg)[\s\S]*delete\s+from\s+private\.onesignal_predictive_push_dedupe/i,
+    );
+  });
 });

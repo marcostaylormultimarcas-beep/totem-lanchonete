@@ -5,18 +5,17 @@ const oneSignalSource = readFileSync('src/lib/onesignal.ts', 'utf8');
 const panelSource = readFileSync('src/components/admin/EstoquePreditivPanel.tsx', 'utf8');
 
 describe('predictive stock push retry contract', () => {
-  it('reports success only when the backend confirms the notification was actually queued', () => {
+  it('reports success only after the asynchronous pg_net result is confirmed', () => {
     expect(oneSignalSource).toMatch(
       /triggerPredictiveStockAlert\([\s\S]*?\):\s*Promise<boolean>/,
     );
-    expect(oneSignalSource).toMatch(
-      /result\?\.ok\s*!==\s*true\s*\|\|\s*result\?\.queued\s*!==\s*true/,
-    );
-    expect(oneSignalSource).toMatch(/return\s+false;/);
-    expect(oneSignalSource).toMatch(/return\s+true;/);
+    expect(oneSignalSource).toContain('visionfood_predictive_push_result');
+    expect(oneSignalSource).toMatch(/result\?\.delivered\s*===\s*true/);
+    expect(oneSignalSource).toMatch(/result\?\.failed\s*===\s*true/);
+    expect(oneSignalSource).toMatch(/return\s+await\s+waitForPredictivePushResult/);
   });
 
-  it('does not mark an alert as pushed before queue confirmation', () => {
+  it('does not mark an alert as pushed before delivery confirmation', () => {
     expect(panelSource).toMatch(
       /const\s+queued\s*=\s*await\s+triggerPredictiveStockAlert\(/,
     );

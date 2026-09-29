@@ -511,8 +511,57 @@ export async function logoutOneSignalUser(): Promise<boolean> {
 
 /**
  * Alerta preditivo calculado no ADM. A API key nunca passa pelo navegador:
- * o RPC valida a organização e enfileira o envio no servidor.
+ * o RPC valida a organização e enfileira o envio no servidor. Como pg_net é
+ * assíncrono, sucesso só é reportado depois de uma resposta HTTP 2xx.
  */
+const PREDICTIVE_PUSH_CONFIRM_TIMEOUT_MS = 7_000;
+const PREDICTIVE_PUSH_POLL_MS = 250;
+
+const wait = (ms: number) => new Promise<void>((resolve) => {
+  window.setTimeout(resolve, ms);
+});
+
+async function waitForPredictivePushResult(
+  organizationId: string,
+  requestId: number,
+): Promise<boolean> {
+  const deadline = Date.now() + PREDICTIVE_PUSH_CONFIRM_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const { data, error } = await supabase.rpc(
+      'visionfood_predictive_push_result' as any,
+      {
+        _org: organizationId,
+        _request_id: requestId,
+      },
+    );
+    const result: any = data;
+
+    if (error || result?.ok !== true) {
+      console.warn(
+        '[OneSignal] Falha ao confirmar entrega do alerta preditivo:',
+        error?.message || result?.reason || 'result_check_failed',
+      );
+      return false;
+    }
+
+    if (result?.delivered === true) return true;
+
+    if (result?.failed === true || result?.pending !== true) {
+      console.warn(
+        '[OneSignal] Alerta preditivo rejeitado após enfileiramento:',
+        result?.reason || 'delivery_failed',
+      );
+      return false;
+    }
+
+    await wait(PREDICTIVE_PUSH_POLL_MS);
+  }
+
+  console.warn('[OneSignal] Confirmação do alerta preditivo expirou.');
+  return false;
+}
+
 export async function triggerPredictiveStockAlert(
   organizationId: string,
   ingredienteNome: string,
@@ -525,15 +574,29 @@ export async function triggerPredictiveStockAlert(
       _days_remaining: Math.max(1, Math.ceil(diasRestantes)),
     });
     const result: any = data;
+
     if (error) {
       console.warn('[OneSignal] Falha ao enfileirar alerta preditivo:', error.message);
       return false;
     }
+
     if (result?.ok !== true || result?.queued !== true) {
-      console.warn('[OneSignal] Alerta preditivo não enfileirado:', result?.reason || 'queue_not_confirmed');
+      console.warn(
+        '[OneSignal] Alerta preditivo não enfileirado:',
+        result?.reason || 'queue_not_confirmed',
+      );
       return false;
     }
-    return true;
+
+    if (result?.delivered === true) return true;
+
+    const requestId = Number(result?.request_id);
+    if (!Number.isSafeInteger(requestId) || requestId <= 0) {
+      console.warn('[OneSignal] request_id inválido ao confirmar alerta preditivo.');
+      return false;
+    }
+
+    return await waitForPredictivePushResult(organizationId, requestId);
   } catch (err: any) {
     console.warn('[OneSignal] Erro no alerta preditivo:', err?.message || err);
     return false;

@@ -25,12 +25,12 @@ describe('predictive stock push persistent cooldown contract', () => {
     );
   });
 
-  it('suppresses the same organization ingredient and day bucket for 24 hours', () => {
+  it('uses the 24-hour cooldown only after delivery was confirmed', () => {
     expect(sql).toMatch(
-      /last_queued_at[\s\S]*interval\s*'24\s+hours'/i,
+      /last_confirmed_at[\s\S]*interval\s*'24\s+hours'/i,
     );
     expect(sql).toMatch(
-      /'deduplicated'\s*,\s*true/i,
+      /'delivered'\s*,\s*true[\s\S]*'deduplicated'\s*,\s*true/i,
     );
   });
 
@@ -55,6 +55,22 @@ describe('predictive stock push persistent cooldown contract', () => {
   it('releases a predictive cooldown after an asynchronous HTTP failure', () => {
     expect(sql).toMatch(
       /net\._http_response[\s\S]*(status_code\s*>=\s*400|timed_out|error_msg)[\s\S]*delete\s+from\s+private\.onesignal_predictive_push_dedupe/i,
+    );
+  });
+
+  it('keeps an unconfirmed request pending only for a short grace window', () => {
+    expect(sql).toMatch(
+      /net\.http_request_queue[\s\S]*interval\s*'15\s+seconds'/i,
+    );
+    expect(sql).toContain('visionfood_predictive_push_result');
+  });
+
+  it('keeps the result RPC tenant-scoped and non-public', () => {
+    expect(sql).toMatch(
+      /visionfood_predictive_push_result[\s\S]*usuario_dono_org\(_org,u\)/i,
+    );
+    expect(sql).toMatch(
+      /revoke\s+all\s+on\s+function\s+public\.visionfood_predictive_push_result\(uuid,bigint\)[\s\S]*from\s+public,anon/i,
     );
   });
 });

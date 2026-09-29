@@ -273,7 +273,7 @@ begin
     );
 
   if app<>''
-     and app is distinct from previous_app_id
+     and app is distinct from coalesce(c.app_id,'')
      and key='' then
     return jsonb_build_object(
       'ok',false,

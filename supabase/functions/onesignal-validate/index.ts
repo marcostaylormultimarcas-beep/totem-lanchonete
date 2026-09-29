@@ -52,14 +52,14 @@ Deno.serve(async (req) => {
     if (appId && !appIdPattern.test(appId)) {
       return new Response(
         JSON.stringify({ ok: false, valid: false, reason: 'invalid_app_id' }),
-        { status: 400, headers: corsHeaders },
+        { headers: corsHeaders },
       );
     }
 
     if (apiKey && (apiKey.length < 20 || apiKey.length > 1000)) {
       return new Response(
         JSON.stringify({ ok: false, valid: false, reason: 'invalid_api_key' }),
-        { status: 400, headers: corsHeaders },
+        { headers: corsHeaders },
       );
     }
 
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
             valid: false,
             reason: 'api_key_required_for_app_change',
           }),
-          { status: 400, headers: corsHeaders },
+          { headers: corsHeaders },
         );
       }
 
@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
             valid: false,
             reason: 'api_key_required',
           }),
-          { status: 400, headers: corsHeaders },
+          { headers: corsHeaders },
         );
       }
 
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
           valid: false,
           reason: 'validation_unavailable',
         }),
-        { status: 503, headers: corsHeaders },
+        { headers: corsHeaders },
       );
     }
 
@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
               : 'credential_validation_failed',
           status: validationResponse.status,
         }),
-        { status: 400, headers: corsHeaders },
+        { headers: corsHeaders },
       );
     }
 

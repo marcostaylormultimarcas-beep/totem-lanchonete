@@ -23,6 +23,7 @@ const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
 
 const ADMIN_PUSH_CLIENT_INSTANCE_KEY = 'visionfood_onesignal_admin_client_instance_id';
 const ADMIN_PUSH_REGISTERED_KEY = 'visionfood_onesignal_admin_registered';
+const ADMIN_PUSH_REGISTRY_HEARTBEAT_MS = 12 * 60 * 60 * 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function readAdminPushClientInstanceId(): string | null {
@@ -437,8 +438,14 @@ export async function watchOneSignalAdminSubscription(
     OneSignal.Notifications.addEventListener('permissionChange', reconcile);
   }
 
+  const heartbeatTimer = window.setInterval(
+    reconcile,
+    ADMIN_PUSH_REGISTRY_HEARTBEAT_MS,
+  );
+
   return () => {
     disposed = true;
+    window.clearInterval(heartbeatTimer);
     if (watchesPush && typeof OneSignal.User?.PushSubscription?.removeEventListener === 'function') {
       OneSignal.User.PushSubscription.removeEventListener('change', reconcile);
     }

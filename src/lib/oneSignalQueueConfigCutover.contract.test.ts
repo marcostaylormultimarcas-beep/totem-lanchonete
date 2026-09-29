@@ -42,13 +42,13 @@ describe('OneSignal queue configuration cutover contract', () => {
     expect(queue).toContain("hashtextextended('visionfood:onesignal_config'");
   });
 
-  it('makes rotation fail fast while an old queue transaction still owns the shared guard', () => {
+  it('keeps rotation lock order config row -> generation guard and fails fast on an older direct queue', () => {
     const config = normalize(configSql);
-    const tryGuardAt = config.indexOf('pg_try_advisory_xact_lock(');
     const configRowLockAt = config.indexOf('for update');
+    const tryGuardAt = config.indexOf('pg_try_advisory_xact_lock(');
 
-    expect(tryGuardAt).toBeGreaterThanOrEqual(0);
-    expect(configRowLockAt).toBeGreaterThan(tryGuardAt);
+    expect(configRowLockAt).toBeGreaterThanOrEqual(0);
+    expect(tryGuardAt).toBeGreaterThan(configRowLockAt);
     expect(config).toContain("hashtextextended('visionfood:onesignal_config'");
     expect(config).toContain("'config_busy'");
   });

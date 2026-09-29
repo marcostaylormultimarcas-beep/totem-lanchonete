@@ -13,8 +13,6 @@ security definer
 set search_path=''
 as $$
 declare
-  u uuid:=auth.uid();
-  caller_role text:=coalesce(auth.role(),'');
   c private.onesignal_settings%rowtype;
   sid uuid;
   app text:=btrim(coalesce(_app_id,''));
@@ -22,11 +20,6 @@ declare
   previous_app_id text:='';
   has_key boolean:=false;
 begin
-  if caller_role<>'service_role'
-     and (u is null or not public.eh_super_admin(u)) then
-    return jsonb_build_object('ok',false,'reason','forbidden');
-  end if;
-
   if app<>'' and app !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     return jsonb_build_object('ok',false,'reason','invalid_app_id');
   end if;

@@ -247,7 +247,7 @@ export async function triggerPredictiveStockAlert(
   organizationId: string,
   ingredienteNome: string,
   diasRestantes: number,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const { data, error } = await supabase.rpc('visionfood_push_predictive_stock', {
       _org: organizationId,
@@ -257,12 +257,15 @@ export async function triggerPredictiveStockAlert(
     const result: any = data;
     if (error) {
       console.warn('[OneSignal] Falha ao enfileirar alerta preditivo:', error.message);
-      return;
+      return false;
     }
-    if (result?.ok === false) {
-      console.warn('[OneSignal] Alerta preditivo não enfileirado:', result.reason);
+    if (result?.ok !== true || result?.queued !== true) {
+      console.warn('[OneSignal] Alerta preditivo não enfileirado:', result?.reason || 'queue_not_confirmed');
+      return false;
     }
+    return true;
   } catch (err: any) {
     console.warn('[OneSignal] Erro no alerta preditivo:', err?.message || err);
+    return false;
   }
 }

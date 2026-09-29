@@ -91,14 +91,29 @@ describe("OneSignal configuration integrity contract", () => {
   it("surfaces the App ID/key mismatch to the Super Admin instead of showing a generic save failure", () => {
     expect(panelSource).toContain("api_key_required_for_app_change");
     expect(panelSource).toContain("api_key_required");
+    expect(panelSource).toContain("credential_mismatch");
+    expect(panelSource).toContain("A App API Key não pertence a este App ID.");
   });
 
-  it("validates the App ID and App API Key pair remotely before persisting it", () => {
-    expect(validatorSource).toContain("Authorization: `Key ${api_key}`");
-    expect(validatorSource).toContain("set_onesignal_config");
-    expect(validatorSource.indexOf("res.status === 200")).toBeLessThan(
-      validatorSource.indexOf("set_onesignal_config"),
+  it("validates the App ID and App API Key pair remotely before persisting a supplied key", () => {
+    expect(validatorSource).toContain("Authorization: `Key ${apiKey}`");
+    expect(validatorSource).toContain("validationResponse.status !== 200");
+
+    const validationGuard = validatorSource.indexOf(
+      "if (validationResponse.status !== 200)",
     );
+    const validatedPersist = validatorSource.lastIndexOf(
+      "admin.rpc('set_onesignal_config'",
+    );
+
+    expect(validationGuard).toBeGreaterThan(-1);
+    expect(validatedPersist).toBeGreaterThan(validationGuard);
+  });
+
+  it("fails closed when OneSignal credential validation is unavailable or rejected", () => {
+    expect(validatorSource).toContain("validation_unavailable");
+    expect(validatorSource).toContain("credential_mismatch");
+    expect(validatorSource).toContain("credential_validation_failed");
   });
 
   it("routes browser configuration writes through the credential validator instead of calling set_onesignal_config directly", () => {

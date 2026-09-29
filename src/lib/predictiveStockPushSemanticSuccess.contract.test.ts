@@ -31,7 +31,9 @@ const resultSql = latestFunctionDefinition('visionfood_predictive_push_result');
 describe('predictive stock push OneSignal semantic success contract', () => {
   it('does not confirm a 2xx response unless OneSignal returned a non-empty notification id', () => {
     for (const sql of [enqueueSql, resultSql]) {
-      expect(sql).toMatch(/net\._http_response[\s\S]*\.content/i);
+      expect(sql).toMatch(
+        /select[\s\S]*r\.content[\s\S]*from\s+net\._http_response\s+r/i,
+      );
       expect(sql).toMatch(/response_(body|payload)/i);
       expect(sql).toMatch(/->>\s*'id'/i);
       expect(sql).toMatch(/nullif\s*\(\s*btrim\s*\([^)]*->>\s*'id'/i);

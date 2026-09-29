@@ -18,6 +18,11 @@ const panelSource = readFileSync(
   "utf8",
 );
 
+const validatorSource = readFileSync(
+  join(root, "supabase", "functions", "onesignal-validate", "index.ts"),
+  "utf8",
+);
+
 function latestFunctionDefinition(name: string): FunctionDefinition {
   const needle = `create or replace function public.${name}(`;
   let latest: FunctionDefinition | null = null;
@@ -86,5 +91,23 @@ describe("OneSignal configuration integrity contract", () => {
   it("surfaces the App ID/key mismatch to the Super Admin instead of showing a generic save failure", () => {
     expect(panelSource).toContain("api_key_required_for_app_change");
     expect(panelSource).toContain("api_key_required");
+  });
+
+  it("validates the App ID and App API Key pair remotely before persisting it", () => {
+    expect(validatorSource).toContain("Authorization: `Key ${api_key}`");
+    expect(validatorSource).toContain("set_onesignal_config");
+    expect(validatorSource.indexOf("res.status === 200")).toBeLessThan(
+      validatorSource.indexOf("set_onesignal_config"),
+    );
+  });
+
+  it("routes browser configuration writes through the credential validator instead of calling set_onesignal_config directly", () => {
+    expect(panelSource).toContain("supabase.functions.invoke('onesignal-validate'");
+    expect(panelSource).not.toContain("supabase.rpc('set_onesignal_config'");
+  });
+
+  it("does not grant authenticated browsers a direct bypass around App ID/API key validation", () => {
+    expect(configSql).not.toMatch(/grant execute[\s\S]*to authenticated/);
+    expect(configSql).toMatch(/grant execute[\s\S]*to service_role/);
   });
 });

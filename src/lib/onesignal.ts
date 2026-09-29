@@ -21,6 +21,58 @@ function runSerializedIdentityTask<T>(task: () => Promise<T>): Promise<T> {
 
 const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
 
+const ADMIN_PUSH_CLIENT_INSTANCE_KEY = 'visionfood_onesignal_admin_client_instance_id';
+const ADMIN_PUSH_REGISTERED_KEY = 'visionfood_onesignal_admin_registered';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function readAdminPushClientInstanceId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(ADMIN_PUSH_CLIENT_INSTANCE_KEY)?.trim() || '';
+    return UUID_PATTERN.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function getOrCreateAdminPushClientInstanceId(): string | null {
+  const existing = readAdminPushClientInstanceId();
+  if (existing) return existing;
+  if (typeof window === 'undefined' || typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') {
+    return null;
+  }
+
+  try {
+    const clientInstanceId = crypto.randomUUID();
+    window.localStorage.setItem(ADMIN_PUSH_CLIENT_INSTANCE_KEY, clientInstanceId);
+    return clientInstanceId;
+  } catch {
+    return null;
+  }
+}
+
+function isAdminPushRegistered(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(ADMIN_PUSH_REGISTERED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setAdminPushRegistered(registered: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (registered) {
+      window.localStorage.setItem(ADMIN_PUSH_REGISTERED_KEY, '1');
+    } else {
+      window.localStorage.removeItem(ADMIN_PUSH_REGISTERED_KEY);
+    }
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
 export function normalizeOneSignalPhone(value: string): string {
   let digits = normalizeDigits(value);
 
@@ -242,6 +294,69 @@ export async function requestOneSignalPermission(
   });
 }
 
+async function unregisterAdminPushClient(
+  clientInstanceId: string,
+): Promise<boolean> {
+  const cid = clientInstanceId.trim();
+  if (!cid) return false;
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'visionfood_unregister_admin_push_client' as any,
+      { _client_instance_id: cid },
+    );
+    const result: any = data;
+
+    if (error || result?.ok !== true) {
+      console.warn(
+        '[OneSignal] Falha ao remover vínculo push administrativo do navegador:',
+        error?.message || result?.reason || 'unregistration_failed',
+      );
+      return false;
+    }
+
+    setAdminPushRegistered(false);
+    return true;
+  } catch (err: any) {
+    console.warn(
+      '[OneSignal] Erro ao remover vínculo push administrativo do navegador:',
+      err?.message || err,
+    );
+    return false;
+  }
+}
+
+async function unregisterLegacyAdminPushSubscription(
+  subscriptionId: string,
+): Promise<boolean> {
+  const sid = subscriptionId.trim();
+  if (!sid) return false;
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'visionfood_unregister_admin_push_subscription' as any,
+      { _subscription_id: sid },
+    );
+    const result: any = data;
+
+    if (error || result?.ok !== true) {
+      console.warn(
+        '[OneSignal] Falha ao remover vínculo push administrativo legado:',
+        error?.message || result?.reason || 'unregistration_failed',
+      );
+      return false;
+    }
+
+    return true;
+  } catch (err: any) {
+    console.warn(
+      '[OneSignal] Erro ao remover vínculo push administrativo legado:',
+      err?.message || err,
+    );
+    return false;
+  }
+}
+
 export async function syncOneSignalAdminSubscription(
   organizationId: string,
 ): Promise<boolean> {
@@ -253,39 +368,84 @@ export async function syncOneSignalAdminSubscription(
     if (!OneSignal) return false;
 
     try {
-      if (!OneSignal.User?.PushSubscription?.optedIn) return false;
+      const clientInstanceId = getOrCreateAdminPushClientInstanceId();
+      if (!clientInstanceId) return false;
 
+      const permissionGranted = Boolean(OneSignal.Notifications.permission);
+      const optedIn = Boolean(OneSignal.User?.PushSubscription?.optedIn);
       const subscriptionId = String(
-        OneSignal.User.PushSubscription.id || '',
+        OneSignal.User?.PushSubscription?.id || '',
       ).trim();
-      if (!subscriptionId) return false;
+
+      if (!permissionGranted || !optedIn || !subscriptionId) {
+        await unregisterAdminPushClient(clientInstanceId);
+        return false;
+      }
 
       const { data, error } = await supabase.rpc(
-        'visionfood_register_admin_push_subscription' as any,
+        'visionfood_reconcile_admin_push_subscription' as any,
         {
           _org: org,
           _subscription_id: subscriptionId,
+          _client_instance_id: clientInstanceId,
         },
       );
       const result: any = data;
 
       if (error || result?.ok !== true) {
         console.warn(
-          '[OneSignal] Falha ao vincular assinatura push administrativa:',
+          '[OneSignal] Falha ao reconciliar assinatura push administrativa:',
           error?.message || result?.reason || 'registration_failed',
         );
         return false;
       }
 
+      setAdminPushRegistered(true);
       return true;
     } catch (err: any) {
       console.warn(
-        '[OneSignal] Erro ao vincular assinatura push administrativa:',
+        '[OneSignal] Erro ao reconciliar assinatura push administrativa:',
         err?.message || err,
       );
       return false;
     }
   });
+}
+
+export async function watchOneSignalAdminSubscription(
+  organizationId: string,
+): Promise<() => void> {
+  const org = organizationId.trim();
+  if (!org) return () => undefined;
+
+  const OneSignal = await getOneSignal();
+  if (!OneSignal) return () => undefined;
+
+  let disposed = false;
+  const reconcile = () => {
+    if (disposed) return;
+    void syncOneSignalAdminSubscription(org);
+  };
+
+  const watchesPush = typeof OneSignal.User?.PushSubscription?.addEventListener === 'function';
+  const watchesPermission = typeof OneSignal.Notifications?.addEventListener === 'function';
+
+  if (watchesPush) {
+    OneSignal.User.PushSubscription.addEventListener('change', reconcile);
+  }
+  if (watchesPermission) {
+    OneSignal.Notifications.addEventListener('permissionChange', reconcile);
+  }
+
+  return () => {
+    disposed = true;
+    if (watchesPush && typeof OneSignal.User?.PushSubscription?.removeEventListener === 'function') {
+      OneSignal.User.PushSubscription.removeEventListener('change', reconcile);
+    }
+    if (watchesPermission && typeof OneSignal.Notifications?.removeEventListener === 'function') {
+      OneSignal.Notifications.removeEventListener('permissionChange', reconcile);
+    }
+  };
 }
 
 export async function logoutOneSignalUser(): Promise<boolean> {
@@ -297,24 +457,34 @@ export async function logoutOneSignalUser(): Promise<boolean> {
       const subscriptionId = String(
         OneSignal.User?.PushSubscription?.id || '',
       ).trim();
+      const clientInstanceId = readAdminPushClientInstanceId();
+      const hadAdminRegistration = isAdminPushRegistered();
+      let adminUnregistered = !hadAdminRegistration;
 
-      if (subscriptionId) {
+      if (hadAdminRegistration && clientInstanceId) {
+        adminUnregistered = await unregisterAdminPushClient(clientInstanceId);
+      }
+
+      if ((!adminUnregistered || !hadAdminRegistration) && subscriptionId) {
+        const legacyUnregistered = await unregisterLegacyAdminPushSubscription(
+          subscriptionId,
+        );
+        if (legacyUnregistered && hadAdminRegistration) {
+          setAdminPushRegistered(false);
+          adminUnregistered = true;
+        }
+      }
+
+      if (
+        hadAdminRegistration
+        && !adminUnregistered
+        && OneSignal.User?.PushSubscription?.optedIn
+      ) {
         try {
-          const { data, error } = await supabase.rpc(
-            'visionfood_unregister_admin_push_subscription' as any,
-            { _subscription_id: subscriptionId },
-          );
-          const result: any = data;
-
-          if (error || result?.ok !== true) {
-            console.warn(
-              '[OneSignal] Falha ao remover vínculo push administrativo:',
-              error?.message || result?.reason || 'unregistration_failed',
-            );
-          }
+          await OneSignal.User.PushSubscription.optOut();
         } catch (err) {
           console.warn(
-            '[OneSignal] Erro ao remover vínculo push administrativo:',
+            '[OneSignal] Falha ao desativar assinatura administrativa após erro de unregister:',
             err,
           );
         }

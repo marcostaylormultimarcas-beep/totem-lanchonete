@@ -299,16 +299,23 @@ export async function logoutOneSignalUser(): Promise<boolean> {
       ).trim();
 
       if (subscriptionId) {
-        const { data, error } = await supabase.rpc(
-          'visionfood_unregister_admin_push_subscription' as any,
-          { _subscription_id: subscriptionId },
-        );
-        const result: any = data;
+        try {
+          const { data, error } = await supabase.rpc(
+            'visionfood_unregister_admin_push_subscription' as any,
+            { _subscription_id: subscriptionId },
+          );
+          const result: any = data;
 
-        if (error || result?.ok !== true) {
+          if (error || result?.ok !== true) {
+            console.warn(
+              '[OneSignal] Falha ao remover vínculo push administrativo:',
+              error?.message || result?.reason || 'unregistration_failed',
+            );
+          }
+        } catch (err) {
           console.warn(
-            '[OneSignal] Falha ao remover vínculo push administrativo:',
-            error?.message || result?.reason || 'unregistration_failed',
+            '[OneSignal] Erro ao remover vínculo push administrativo:',
+            err,
           );
         }
       }

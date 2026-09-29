@@ -50,6 +50,7 @@ declare
   previous_app_id text;
   previous_subscription_ids jsonb;
   previous_audience_valid boolean:=false;
+  current_subscription_ids jsonb;
   current_app_id text;
   predictive_idempotency_key uuid;
   response_status integer;
@@ -205,8 +206,31 @@ begin
            and previous_idempotency_key is not null
            and previous_app_id=current_app_id
            and previous_audience_valid then
-          predictive_idempotency_key:=previous_idempotency_key;
-          subscription_ids:=previous_subscription_ids;
+          current_subscription_ids:=
+            private.visionfood_admin_push_subscription_ids(_org);
+
+          if previous_subscription_ids is distinct from current_subscription_ids then
+            if previous_queued_at > pg_catalog.clock_timestamp() - interval '24 hours' then
+              return jsonb_build_object(
+                'ok',true,
+                'queued',true,
+                'delivered',false,
+                'pending',true,
+                'deduplicated',true,
+                'reason','audience_changed_ambiguous_request',
+                'request_id',previous_request_id
+              );
+            end if;
+
+            delete from private.onesignal_predictive_push_dedupe d
+            where d.organization_id=_org
+              and d.ingredient_key=ingredient_key
+              and d.days_remaining=days
+              and d.request_id=previous_request_id;
+          else
+            predictive_idempotency_key:=previous_idempotency_key;
+            subscription_ids:=previous_subscription_ids;
+          end if;
         elsif retryable_response
            and previous_idempotency_key is not null
            and previous_app_id=current_app_id then
@@ -291,10 +315,33 @@ begin
         if previous_idempotency_key is not null
            and previous_app_id=current_app_id
            and previous_audience_valid then
-          -- Same App ID and exact audience snapshot: replay the same logical
-          -- OneSignal request, including the original subscription IDs.
-          predictive_idempotency_key:=previous_idempotency_key;
-          subscription_ids:=previous_subscription_ids;
+          current_subscription_ids:=
+            private.visionfood_admin_push_subscription_ids(_org);
+
+          if previous_subscription_ids is distinct from current_subscription_ids then
+            if previous_queued_at > pg_catalog.clock_timestamp() - interval '24 hours' then
+              return jsonb_build_object(
+                'ok',true,
+                'queued',true,
+                'delivered',false,
+                'pending',true,
+                'deduplicated',true,
+                'reason','audience_changed_ambiguous_request',
+                'request_id',previous_request_id
+              );
+            end if;
+
+            delete from private.onesignal_predictive_push_dedupe d
+            where d.organization_id=_org
+              and d.ingredient_key=ingredient_key
+              and d.days_remaining=days
+              and d.request_id=previous_request_id;
+          else
+            -- Same App ID and unchanged organization-scoped audience: replay
+            -- exactly the original OneSignal request.
+            predictive_idempotency_key:=previous_idempotency_key;
+            subscription_ids:=previous_subscription_ids;
+          end if;
         elsif previous_idempotency_key is not null
            and previous_app_id=current_app_id
            and previous_queued_at > pg_catalog.clock_timestamp() - interval '24 hours' then

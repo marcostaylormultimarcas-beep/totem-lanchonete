@@ -383,12 +383,15 @@ export async function syncOneSignalAdminSubscription(
         return false;
       }
 
+      if (!initializedAppId) return false;
+
       const { data, error } = await supabase.rpc(
         'visionfood_reconcile_admin_push_subscription' as any,
         {
           _org: org,
           _subscription_id: subscriptionId,
           _client_instance_id: clientInstanceId,
+          _app_id: initializedAppId,
         },
       );
       const result: any = data;

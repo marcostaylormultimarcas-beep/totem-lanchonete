@@ -61,15 +61,16 @@ describe('OneSignal admin audience isolation contract', () => {
 
   it('syncs the current OneSignal PushSubscription id only after authenticated admin context exists', () => {
     expect(oneSignalSource).toContain('syncOneSignalAdminSubscription');
-    expect(oneSignalSource).toContain('PushSubscription.id');
-    expect(oneSignalSource).toContain('visionfood_register_admin_push_subscription');
+    expect(oneSignalSource).toMatch(/PushSubscription\??\.id/);
+    expect(oneSignalSource).toContain('visionfood_reconcile_admin_push_subscription');
     expect(adminSource).toContain('syncOneSignalAdminSubscription(activeOrgId)');
   });
 
   it('unregisters the server-side admin subscription before detaching OneSignal identity on logout', () => {
+    expect(oneSignalSource).toContain('unregisterAdminPushClient');
     expect(oneSignalSource).toContain('visionfood_unregister_admin_push_subscription');
     expect(oneSignalSource).toMatch(
-      /logoutOneSignalUser[\s\S]*visionfood_unregister_admin_push_subscription[\s\S]*OneSignal\.logout\(\)/,
+      /logoutOneSignalUser[\s\S]*unregisterAdminPushClient[\s\S]*OneSignal\.logout\(\)/,
     );
   });
 });

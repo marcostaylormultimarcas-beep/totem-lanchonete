@@ -60,6 +60,17 @@ describe('predictive stock push audience snapshot idempotency contract', () => {
     expect(enqueueSql).toContain('legacy_audience_ambiguous_request');
   });
 
+  it('suppresses an ambiguous retry when the organization-scoped audience changed', () => {
+    expect(enqueueSql).toMatch(/current_subscription_ids\s+jsonb/i);
+    expect(enqueueSql).toContain('audience_changed_ambiguous_request');
+    expect(enqueueSql).toMatch(
+      /current_subscription_ids\s*:=\s*private\.visionfood_admin_push_subscription_ids\(_org\)/i,
+    );
+    expect(enqueueSql).toMatch(
+      /previous_subscription_ids[\s\S]*is distinct from[\s\S]*current_subscription_ids/i,
+    );
+  });
+
   it('keeps organization-scoped subscription-id targeting', () => {
     expect(enqueueSql).toContain('include_subscription_ids');
     expect(enqueueSql).toContain('private.visionfood_admin_push_subscription_ids(_org)');

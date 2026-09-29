@@ -13,7 +13,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
-import { identifyOneSignalUser, requestOneSignalPermission } from '@/lib/onesignal';
+import { identifyOneSignalUser, requestOneSignalPermission, syncOneSignalAdminSubscription } from '@/lib/onesignal';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
@@ -175,10 +175,12 @@ const AdminPage = () => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!active || !user) return;
-      await identifyOneSignalUser(`admin:${user.id}`, {
+      const identified = await identifyOneSignalUser(`admin:${user.id}`, {
         tipo: 'admin',
         organization_id: activeOrgId,
       });
+      if (!active || !identified) return;
+      await syncOneSignalAdminSubscription(activeOrgId);
     })();
     return () => { active = false; };
   }, [authenticated, activeOrgId]);
@@ -197,8 +199,17 @@ const AdminPage = () => {
       tipo: 'admin',
       organization_id: activeOrgId,
     });
-    if (ok) toast.success('Notificações push ativadas neste dispositivo.');
-    else toast.info('Push não foi ativado. Verifique a permissão de notificações do navegador.');
+    if (!ok) {
+      toast.info('Push não foi ativado. Verifique a permissão de notificações do navegador.');
+      return;
+    }
+
+    const synced = await syncOneSignalAdminSubscription(activeOrgId);
+    if (synced) {
+      toast.success('Notificações push ativadas neste dispositivo.');
+    } else {
+      toast.error('A permissão foi ativada, mas este dispositivo não pôde ser vinculado à loja.');
+    }
   };
 
   // Status de assinatura (com realtime) — bloqueia o painel se inadimplente/cancelado

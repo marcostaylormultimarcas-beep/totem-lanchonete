@@ -32,26 +32,27 @@ const predictiveSql = latestFunctionDefinition(
 );
 
 describe('predictive stock push admin-audience TOCTOU contract', () => {
-  it('holds a write-conflicting registry lock while selecting the authoritative audience', () => {
-    expect(audienceSql).toMatch(
+  it('locks the exact authoritative audience rows instead of the whole registry table', () => {
+    expect(audienceSql).not.toMatch(
       /lock\s+table\s+private\.onesignal_admin_push_subscriptions\s+in\s+share\s+row\s+exclusive\s+mode/i,
     );
-  });
-
-  it('takes the registry lock before cleanup or audience reads can observe subscription state', () => {
-    const lower = audienceSql.toLowerCase();
-    const lockAt = lower.indexOf(
-      'lock table private.onesignal_admin_push_subscriptions in share row exclusive mode',
+    expect(audienceSql).toMatch(
+      /select\s+s\.subscription_id[\s\S]*?order\s+by\s+s\.subscription_id[\s\S]*?for\s+share\s+of\s+s/i,
     );
-    const deleteAt = lower.indexOf('delete from private.onesignal_admin_push_subscriptions');
-    const selectAudienceAt = lower.indexOf('jsonb_agg(s.subscription_id');
-
-    expect(lockAt).toBeGreaterThanOrEqual(0);
-    expect(deleteAt).toBeGreaterThan(lockAt);
-    expect(selectAudienceAt).toBeGreaterThan(lockAt);
   });
 
-  it('keeps the audience-selection lock alive through the outer enqueue transaction', () => {
+  it('filters the locked rows by organization, current App ID and TTL before aggregation', () => {
+    expect(audienceSql).toContain('s.organization_id=_org');
+    expect(audienceSql).toContain('s.app_id=configured_app_id');
+    expect(audienceSql).toContain(
+      "s.updated_at > pg_catalog.clock_timestamp() - interval '30 days'",
+    );
+    expect(audienceSql).toMatch(
+      /jsonb_agg\(locked\.subscription_id\s+order\s+by\s+locked\.subscription_id\)/i,
+    );
+  });
+
+  it('keeps the audience-selection row locks alive through the outer enqueue transaction', () => {
     const lower = predictiveSql.toLowerCase();
     const audienceAt = lower.lastIndexOf(
       'private.visionfood_admin_push_subscription_ids(_org)',

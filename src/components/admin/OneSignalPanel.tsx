@@ -35,27 +35,33 @@ const OneSignalPanel = () => {
 
   const save = async () => {
     const normalizedAppId = appId.trim();
+    const normalizedApiKey = apiKey.trim();
+
     if (normalizedAppId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedAppId)) {
       toast.error('App ID inválido. Use o UUID exibido pelo OneSignal.');
       return;
     }
-    if (normalizedAppId && !hasApiKey && !apiKey.trim()) {
+    if (normalizedAppId && !hasApiKey && !normalizedApiKey) {
       toast.error('Informe a App API Key na primeira configuração.');
       return;
     }
 
     setSaving(true);
     try {
-      const { data, error } = await supabase.rpc('set_onesignal_config' as any, {
-        _app_id: normalizedAppId,
-        _api_key: apiKey.trim() || null,
+      const { data, error } = await supabase.functions.invoke('onesignal-validate', {
+        body: {
+          app_id: normalizedAppId,
+          api_key: normalizedApiKey || null,
+        },
       });
       const result: any = data;
+
       if (error) {
-        console.error('set_onesignal_config', error);
-        toast.error('Erro ao salvar a configuração OneSignal.');
+        console.error('onesignal-validate', error);
+        toast.error('Não foi possível validar as credenciais no OneSignal.');
         return;
       }
+
       if (!result?.ok) {
         const messages: Record<string, string> = {
           forbidden: 'Apenas o Super Admin pode alterar o OneSignal.',
@@ -63,13 +69,22 @@ const OneSignalPanel = () => {
           invalid_api_key: 'App API Key inválida.',
           api_key_required_for_app_change: 'Ao trocar o App ID, informe também a App API Key correspondente.',
           api_key_required: 'Informe uma App API Key válida para este App ID.',
+          credential_mismatch: 'A App API Key não pertence a este App ID.',
+          credential_validation_failed: 'O OneSignal recusou a validação dessas credenciais.',
+          validation_unavailable: 'Não foi possível validar as credenciais no OneSignal agora. Nenhuma alteração foi salva.',
+          save_failed: 'As credenciais foram validadas, mas não foi possível salvar a configuração.',
         };
         toast.error(messages[result?.reason] || 'Não foi possível salvar a configuração.');
         return;
       }
+
       setHasApiKey(Boolean(result.has_api_key));
       setApiKey('');
-      toast.success('OneSignal salvo com a chave protegida no Vault.');
+      toast.success(
+        result.saved === false
+          ? 'Configuração OneSignal já estava válida.'
+          : 'OneSignal validado e salvo com a chave protegida no Vault.',
+      );
       await load();
     } finally {
       setSaving(false);
@@ -84,7 +99,7 @@ const OneSignalPanel = () => {
           <h2 className="text-xl font-bold">Notificações Push (OneSignal)</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configuração global do VisionFood. A App API Key é armazenada no Vault e nunca é devolvida ao navegador.
+          Configuração global do VisionFood. A App API Key é validada contra o App ID e armazenada no Vault; ela nunca é devolvida ao navegador.
         </p>
       </div>
 
@@ -135,7 +150,7 @@ const OneSignalPanel = () => {
                 className="w-full mt-1 px-3 py-2 rounded-lg bg-background border border-input text-sm font-mono"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Por segurança, a chave já salva nunca é exibida. Digite uma nova chave somente para cadastrar ou substituir.
+                Por segurança, a chave já salva nunca é exibida. Uma nova chave só é persistida depois que o OneSignal confirma que ela pertence ao App ID informado.
               </p>
             </div>
 

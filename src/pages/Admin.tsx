@@ -13,7 +13,7 @@ import { useOrg } from '@/contexts/OrgContext';
 import { signOutCompletely } from '@/lib/auth';
 import FeatureGate from '@/components/FeatureGate';
 import InstallAppButton from '@/components/pwa/InstallAppButton';
-import { identifyOneSignalUser, requestOneSignalPermission, syncOneSignalAdminSubscription } from '@/lib/onesignal';
+import { identifyOneSignalUser, requestOneSignalPermission, syncOneSignalAdminSubscription, watchOneSignalAdminSubscription } from '@/lib/onesignal';
 import OneSignalPanel from '@/components/admin/OneSignalPanel';
 import OrgSwitcher from '@/components/admin/OrgSwitcher';
 import CrmPanel from '@/components/admin/CrmPanel';
@@ -168,21 +168,38 @@ const AdminPage = () => {
     fetch();
   }, [activeOrgId]);
 
-  // Identifica o administrador no OneSignal sem abrir prompt automaticamente.
+  // Identifica o administrador e mantém a registry backend alinhada ao estado vivo
+  // da PushSubscription sem abrir prompt automaticamente.
   useEffect(() => {
     if (!authenticated || !activeOrgId) return;
     let active = true;
+    let stopWatching: (() => void) | null = null;
+
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!active || !user) return;
+
       const identified = await identifyOneSignalUser(`admin:${user.id}`, {
         tipo: 'admin',
         organization_id: activeOrgId,
       });
       if (!active || !identified) return;
+
       await syncOneSignalAdminSubscription(activeOrgId);
+      if (!active) return;
+
+      const cleanup = await watchOneSignalAdminSubscription(activeOrgId);
+      if (!active) {
+        cleanup();
+        return;
+      }
+      stopWatching = cleanup;
     })();
-    return () => { active = false; };
+
+    return () => {
+      active = false;
+      stopWatching?.();
+    };
   }, [authenticated, activeOrgId]);
 
   const enableAdminPush = async () => {

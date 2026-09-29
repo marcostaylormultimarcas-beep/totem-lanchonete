@@ -23,9 +23,27 @@ const normalizeDigits = (value: string) => (value || '').replace(/\D/g, '');
 
 export function normalizeOneSignalPhone(value: string): string {
   let digits = normalizeDigits(value);
-  if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+
+  // Discagem internacional 00 + 55 + DDD + número.
+  if ((digits.length === 14 || digits.length === 15) && digits.startsWith('0055')) {
+    digits = digits.slice(2);
+  }
+
+  // Prefixo nacional 0 + DDD + número.
+  if ((digits.length === 11 || digits.length === 12) && digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+
+  // Prefixo de operadora 0XX + DDD + número.
+  if ((digits.length === 13 || digits.length === 14) && digits.startsWith('0')) {
+    digits = digits.slice(3);
+  }
+
+  // DDD + número sempre recebe o DDI 55, inclusive quando o próprio DDD é 55.
+  if (digits.length === 10 || digits.length === 11) {
     digits = `55${digits}`;
   }
+
   return digits;
 }
 

@@ -38,7 +38,7 @@ describe('OneSignal admin subscription registry lifecycle', () => {
   it('unregisters the persisted browser binding when permission or opt-in is no longer eligible', () => {
     expect(oneSignalSource).toContain('visionfood_unregister_admin_push_client');
     expect(oneSignalSource).toMatch(
-      /syncOneSignalAdminSubscription[\s\S]*Notifications\.permission[\s\S]*PushSubscription\.optedIn[\s\S]*unregisterAdminPushClient/,
+      /syncOneSignalAdminSubscription[\s\S]*Notifications\.permission[\s\S]*PushSubscription\??\.optedIn[\s\S]*unregisterAdminPushClient/,
     );
   });
 

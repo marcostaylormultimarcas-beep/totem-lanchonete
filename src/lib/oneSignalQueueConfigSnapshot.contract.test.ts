@@ -34,20 +34,21 @@ const deliverySql = latestFunctionDefinition('public', 'visionfood_push_delivery
 const ruptureSql = latestFunctionDefinition('public', 'visionfood_push_rupture_trigger');
 
 describe('OneSignal queue App ID/API key snapshot contract', () => {
-  it('locks the global configuration before reading the Vault secret', () => {
+  it('reads configuration and Vault from one MVCC statement before enqueue', () => {
     const queue = normalize(queueSql);
-    const configRead = queue.indexOf(
-      "from private.onesignal_settings where id='global' for share",
-    );
-    const vaultRead = queue.indexOf('from vault.decrypted_secrets');
-    const enqueue = queue.indexOf('net.http_post');
+    const settingsAt = queue.indexOf('from private.onesignal_settings');
+    const vaultAt = queue.indexOf('vault.decrypted_secrets', settingsAt);
+    const enqueueAt = queue.indexOf('net.http_post');
 
-    expect(configRead).toBeGreaterThanOrEqual(0);
-    expect(vaultRead).toBeGreaterThan(configRead);
-    expect(enqueue).toBeGreaterThan(vaultRead);
+    expect(settingsAt).toBeGreaterThanOrEqual(0);
+    expect(vaultAt).toBeGreaterThan(settingsAt);
+    expect(enqueueAt).toBeGreaterThan(vaultAt);
+    expect(queue.slice(0, enqueueAt)).toMatch(
+      /from private\.onesignal_settings\s+[a-z]+\s+(?:left\s+)?join\s+vault\.decrypted_secrets\s+[a-z]+/,
+    );
   });
 
-  it('serializes the queue snapshot with configuration rotation', () => {
+  it('keeps configuration rotation atomic at the writer', () => {
     const config = normalize(configSql);
 
     expect(config).toContain(
@@ -66,7 +67,7 @@ describe('OneSignal queue App ID/API key snapshot contract', () => {
 
   it('preserves caller targets, including include_subscription_ids', () => {
     expect(queueSql).toMatch(/\)\s*\|\|\s*_target/i);
-    expect(queueSql).toContain("'app_id',c.app_id");
+    expect(queueSql).toContain("'app_id',app_id");
     expect(queueSql).toContain("'data',coalesce(_data,'{}'::jsonb)");
   });
 });

@@ -34,8 +34,7 @@ begin
   --
   -- This stronger mode also serializes concurrent callers of this helper,
   -- avoiding lock-upgrade deadlocks when the cleanup below needs to DELETE.
-  lock table private.onesignal_admin_push_subscriptions
-    in share row exclusive mode;
+  lock table private.onesignal_admin_push_subscriptions in share row exclusive mode;
 
   if coalesce(configured_app_id,'')='' then
     delete from private.onesignal_admin_push_subscriptions s

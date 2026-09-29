@@ -27,6 +27,8 @@ function latestFunctionDefinition(schema: string, name: string): string {
 }
 
 const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ');
+const generationGuardPattern =
+  /hashtextextended\(\s*'visionfood:onesignal_config'\s*,\s*0\s*\)/;
 
 const queueSql = latestFunctionDefinition('public', 'visionfood_onesignal_queue');
 const configSql = latestFunctionDefinition('public', 'set_onesignal_config');
@@ -39,7 +41,7 @@ describe('OneSignal queue configuration cutover contract', () => {
 
     expect(guardAt).toBeGreaterThanOrEqual(0);
     expect(settingsAt).toBeGreaterThan(guardAt);
-    expect(queue).toContain("hashtextextended('visionfood:onesignal_config'");
+    expect(queue).toMatch(generationGuardPattern);
   });
 
   it('keeps rotation lock order config row -> generation guard and fails fast on an older direct queue', () => {
@@ -49,7 +51,7 @@ describe('OneSignal queue configuration cutover contract', () => {
 
     expect(configRowLockAt).toBeGreaterThanOrEqual(0);
     expect(tryGuardAt).toBeGreaterThan(configRowLockAt);
-    expect(config).toContain("hashtextextended('visionfood:onesignal_config'");
+    expect(config).toMatch(generationGuardPattern);
     expect(config).toContain("'config_busy'");
   });
 

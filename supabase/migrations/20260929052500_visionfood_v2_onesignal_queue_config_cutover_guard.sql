@@ -1,12 +1,16 @@
 -- Prevent a pre-rotation OneSignal credential snapshot from crossing a
--- successful configuration cutover while keeping rotation fail-fast.
+-- successful configuration cutover while keeping direct queue callers from
+-- blocking rotation indefinitely.
 --
 -- The queue uses a transaction-scoped shared advisory generation guard. This
 -- intentionally lives until the outer caller commits because pg_net requests
--- are only made visible after that commit. Configuration rotation takes the
--- matching exclusive guard with pg_try_advisory_xact_lock: if an older queue
--- transaction is still open, rotation returns config_busy immediately instead
--- of waiting behind delivery/rupture work.
+-- are only made visible after that commit.
+--
+-- Configuration rotation keeps the existing lock order used by administrative
+-- and predictive paths: settings row first, generation guard second. Once the
+-- row is locked FOR UPDATE, it tries the exclusive generation guard. If an
+-- older direct delivery/rupture queue transaction still owns the shared guard,
+-- rotation returns config_busy immediately instead of waiting behind it.
 --
 -- This preserves the previous liveness fix: visionfood_onesignal_queue does
 -- not take a row lock on private.onesignal_settings.
@@ -40,17 +44,20 @@ begin
     return jsonb_build_object('ok',false,'reason','invalid_api_key');
   end if;
 
-  -- Never let a successful cutover overtake a queue transaction that already
-  -- captured the previous credential generation. Failing fast avoids the
-  -- starvation/long wait that a conflicting settings-row lock caused.
-  if not pg_catalog.pg_try_advisory_xact_lock(config_guard) then
-    return jsonb_build_object('ok',false,'reason','config_busy');
-  end if;
-
+  -- Preserve the established config -> queue lock order. Predictive/admin
+  -- callers may already hold FOR SHARE on this row before they call the queue,
+  -- so rotation must not take the advisory guard first.
   select * into c
   from private.onesignal_settings
   where id='global'
   for update;
+
+  -- A direct queue caller does not lock the settings row. If one captured the
+  -- old credential generation first, fail this rotation immediately rather
+  -- than allowing a successful cutover to overtake that transaction.
+  if not pg_catalog.pg_try_advisory_xact_lock(config_guard) then
+    return jsonb_build_object('ok',false,'reason','config_busy');
+  end if;
 
   previous_app_id:=btrim(coalesce(c.app_id,''));
   sid:=c.api_key_secret_id;
@@ -156,8 +163,8 @@ declare
   );
 begin
   -- Hold the credential generation stable until the outer transaction commits.
-  -- Rotation never waits behind this guard: set_onesignal_config uses the
-  -- matching try-lock and returns config_busy instead.
+  -- A rotation that reaches its generation check uses the matching try-lock and
+  -- returns config_busy instead of waiting behind this direct queue caller.
   perform pg_catalog.pg_advisory_xact_lock_shared(config_guard);
 
   -- One SQL statement = one MVCC snapshot. The advisory guard additionally

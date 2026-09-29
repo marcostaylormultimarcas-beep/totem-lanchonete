@@ -242,12 +242,77 @@ export async function requestOneSignalPermission(
   });
 }
 
+export async function syncOneSignalAdminSubscription(
+  organizationId: string,
+): Promise<boolean> {
+  const org = organizationId.trim();
+  if (!org) return false;
+
+  return runSerializedIdentityTask(async () => {
+    const OneSignal = await getOneSignal();
+    if (!OneSignal) return false;
+
+    try {
+      if (!OneSignal.User?.PushSubscription?.optedIn) return false;
+
+      const subscriptionId = String(
+        OneSignal.User.PushSubscription.id || '',
+      ).trim();
+      if (!subscriptionId) return false;
+
+      const { data, error } = await supabase.rpc(
+        'visionfood_register_admin_push_subscription' as any,
+        {
+          _org: org,
+          _subscription_id: subscriptionId,
+        },
+      );
+      const result: any = data;
+
+      if (error || result?.ok !== true) {
+        console.warn(
+          '[OneSignal] Falha ao vincular assinatura push administrativa:',
+          error?.message || result?.reason || 'registration_failed',
+        );
+        return false;
+      }
+
+      return true;
+    } catch (err: any) {
+      console.warn(
+        '[OneSignal] Erro ao vincular assinatura push administrativa:',
+        err?.message || err,
+      );
+      return false;
+    }
+  });
+}
+
 export async function logoutOneSignalUser(): Promise<boolean> {
   return runSerializedIdentityTask(async () => {
     const OneSignal = initializedSdk || await getOneSignal();
     if (!OneSignal) return false;
 
     try {
+      const subscriptionId = String(
+        OneSignal.User?.PushSubscription?.id || '',
+      ).trim();
+
+      if (subscriptionId) {
+        const { data, error } = await supabase.rpc(
+          'visionfood_unregister_admin_push_subscription' as any,
+          { _subscription_id: subscriptionId },
+        );
+        const result: any = data;
+
+        if (error || result?.ok !== true) {
+          console.warn(
+            '[OneSignal] Falha ao remover vínculo push administrativo:',
+            error?.message || result?.reason || 'unregistration_failed',
+          );
+        }
+      }
+
       await OneSignal.logout();
       return true;
     } catch (err) {

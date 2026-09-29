@@ -31,6 +31,7 @@ declare
   response_error text;
   still_queued boolean:=false;
   advisory_key bigint;
+  subscription_ids jsonb;
 begin
   if u is null then
     return jsonb_build_object('ok',false,'reason','unauthenticated');
@@ -132,18 +133,20 @@ begin
     end if;
   end if;
 
+  subscription_ids:=private.visionfood_admin_push_subscription_ids(_org);
+
+  if jsonb_array_length(subscription_ids)=0 then
+    return jsonb_build_object(
+      'ok',true,
+      'queued',false,
+      'reason','no_admin_subscriptions'
+    );
+  end if;
+
   request_id:=public.visionfood_onesignal_queue(
     jsonb_build_object(
-      'filters',
-      jsonb_build_array(
-        jsonb_build_object(
-          'field','tag','key','tipo','relation','=','value','admin'
-        ),
-        jsonb_build_object('operator','AND'),
-        jsonb_build_object(
-          'field','tag','key','organization_id','relation','=','value',_org::text
-        )
-      )
+      'include_subscription_ids',
+      subscription_ids
     ),
     jsonb_build_object(
       'pt','🚨 Alerta de Estoque'

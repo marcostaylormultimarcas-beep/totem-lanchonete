@@ -45,7 +45,7 @@ describe('predictive stock push persistent cooldown contract', () => {
       /visionfood_push_predictive_stock[\s\S]*net\._http_response[\s\S]*status_code/i,
     );
     expect(sql).toMatch(
-      /status_code\s*>=\s*200[\s\S]*status_code\s*<\s*300/i,
+      /response_status\s*>=\s*200[\s\S]*response_status\s*<\s*300/i,
     );
     expect(sql).toMatch(
       /timed_out[\s\S]*error_msg/i,

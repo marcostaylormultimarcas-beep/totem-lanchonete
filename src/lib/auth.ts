@@ -4,12 +4,12 @@ import { logoutOneSignalUser } from '@/lib/onesignal';
 export type RoleTier = 'super' | 'master' | 'admin' | null;
 
 export async function signOutCompletely(redirectTo: string = '/') {
+  await logoutOneSignalUser();
   try {
     await supabase.auth.signOut();
   } catch (e) {
     console.error('signOut error', e);
   }
-  await logoutOneSignalUser();
   const version = localStorage.getItem('app_version');
   localStorage.clear();
   sessionStorage.clear();

@@ -61,7 +61,7 @@ describe('OneSignal Durable Outbox V2 phase 4 predictive cutover', () => {
     );
     expect(resultSql).toContain('_request_id bigint');
     expect(resultSql).toMatch(
-      /d\.request_id=_request_id[\s\S]*d\.outbox_id/i,
+      /select[\s\S]*d\.outbox_id[\s\S]*where[\s\S]*d\.request_id=_request_id/i,
     );
   });
 

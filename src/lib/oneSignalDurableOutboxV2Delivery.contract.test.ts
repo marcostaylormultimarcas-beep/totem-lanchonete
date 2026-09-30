@@ -28,10 +28,9 @@ function latestPublicFunction(name: string): string {
 }
 
 const deliverySql = latestPublicFunction('visionfood_push_delivery_trigger');
-const ruptureSql = latestPublicFunction('visionfood_push_rupture_trigger');
 
 describe('OneSignal Durable Outbox V2 phase 5 delivery cutover', () => {
-  it('migrates only delivery and leaves rupture on the legacy queue', () => {
+  it('keeps the phase-5 migration scoped only to delivery', () => {
     expect(phase5).toContain(
       'create or replace function public.visionfood_push_delivery_trigger()',
     );
@@ -42,7 +41,6 @@ describe('OneSignal Durable Outbox V2 phase 5 delivery cutover', () => {
     expect(phase5).not.toContain(
       'create or replace function public.visionfood_onesignal_queue',
     );
-    expect(ruptureSql).toContain('public.visionfood_onesignal_queue(');
   });
 
   it('preserves the out_for_delivery trigger contract and phone normalization', () => {

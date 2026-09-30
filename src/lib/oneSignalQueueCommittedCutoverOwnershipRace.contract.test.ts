@@ -35,11 +35,12 @@ describe('OneSignal pg_net ownership snapshot race contract', () => {
       configSql.indexOf('a.backend_xid=q.xmax'),
       configSql.indexOf('q.xmax=a.backend_xid'),
     );
+    const ownerStatementStart = configSql.lastIndexOf(';', ownerJoinAt) + 1;
     const ownerStatementEnd = configSql.indexOf(';', ownerJoinAt);
-    const timeoutAt = configSql.indexOf('q.timeout_milliseconds', ownerJoinAt);
+    const timeoutAt = configSql.indexOf('q.timeout_milliseconds');
 
     expect(ownerJoinAt).toBeGreaterThanOrEqual(0);
-    expect(timeoutAt).toBeGreaterThan(ownerJoinAt);
+    expect(timeoutAt).toBeGreaterThan(ownerStatementStart);
     expect(timeoutAt).toBeLessThan(ownerStatementEnd);
   });
 

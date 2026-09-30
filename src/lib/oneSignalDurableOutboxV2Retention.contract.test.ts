@@ -72,6 +72,15 @@ describe('OneSignal Durable Outbox V2 phase 9 retention safety', () => {
     expect(cleanup).toContain('result_observed_at=pg_catalog.clock_timestamp()');
   });
 
+  it('keeps an enqueue generation reference open until the producer transaction commits', () => {
+    const enqueue = latestFunctionDefinition(
+      'private',
+      'visionfood_onesignal_outbox_enqueue',
+    );
+
+    expect(enqueue).toContain('for key share of g');
+  });
+
   it('retires generations only when settings/outbox no longer reference them and only then deletes owned Vault secrets', () => {
     const cleanup = latestFunctionDefinition(
       'private',

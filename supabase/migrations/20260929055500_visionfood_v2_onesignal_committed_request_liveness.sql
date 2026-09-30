@@ -12,10 +12,13 @@
 --   * a remaining row locked by any non-pg_net session stays fail-closed because
 --     it can become sendable again after that locker releases it.
 --
--- Liveness for a genuine in-flight OneSignal request remains bounded by that
--- request's own timeout plus a 10 second worker/commit grace. Other non-OneSignal
--- requests in the same pg_net batch do not extend the OneSignal credential
--- barrier merely because they share the worker transaction.
+-- Ownership and liveness are classified in one SQL statement. That keeps q.xmax,
+-- the matching backend_xid/xact_start and the row's own timeout_milliseconds in
+-- one command snapshot, so a pg_net commit/abort/restart cannot make the function
+-- resolve one owner and then calculate the window from a later owner state.
+-- Every remaining old-generation row is evaluated independently; any unknown
+-- owner or any genuine pg_net owner still inside its bounded window keeps the
+-- rotation config_busy.
 
 create or replace function public.set_onesignal_config(
   _app_id text,
@@ -38,9 +41,9 @@ declare
     0
   );
   changes_generation boolean:=false;
-  worker_xid xid;
-  worker_xact_start timestamptz;
-  in_flight_timeout_ms integer:=0;
+  remaining_old_requests bigint:=0;
+  has_unowned_old_request boolean:=false;
+  has_live_old_request boolean:=false;
 begin
   if app<>'' and app !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
     return jsonb_build_object('ok',false,'reason','invalid_app_id');
@@ -88,76 +91,64 @@ begin
     using cancellable cdr
     where q.id=cdr.id;
 
-    -- If an old-generation row remains, prove that the exact tuple was claimed
-    -- by the pg_net worker. An unrelated pg_net transaction is not evidence of
-    -- ownership: q.xmax is the deleting/locking transaction id for this tuple.
-    if exists(
-      select 1
-      from net.http_request_queue q
-      where q.method='POST'
-        and q.url='https://api.onesignal.com/notifications'
-        and q.body is not null
-        and (
-          pg_catalog.convert_from(q.body,'UTF8')::jsonb
-          ->> 'app_id'
-        )=previous_app_id
-    ) then
-      worker_xid:=null;
-      worker_xact_start:=null;
+    -- Classify all rows that remain visible after cleanup in one statement.
+    -- q.xmax, the exact pg_net backend_xid/xact_start and q.timeout_milliseconds
+    -- therefore belong to the same command snapshot instead of three successive
+    -- snapshots that can observe different worker ownership.
+    select
+      pg_catalog.count(*),
+      pg_catalog.coalesce(
+        pg_catalog.bool_or(
+          a.backend_xid is null
+          or a.xact_start is null
+        ),
+        false
+      ),
+      pg_catalog.coalesce(
+        pg_catalog.bool_or(
+          a.backend_xid is not null
+          and a.xact_start is not null
+          and pg_catalog.statement_timestamp()
+                < a.xact_start
+                  + pg_catalog.make_interval(
+                      secs=>(
+                        pg_catalog.greatest(
+                          pg_catalog.coalesce(q.timeout_milliseconds,5000),
+                          5000
+                        )+10000
+                      )::double precision/1000.0
+                    )
+        ),
+        false
+      )
+      into
+        remaining_old_requests,
+        has_unowned_old_request,
+        has_live_old_request
+    from net.http_request_queue q
+    left join pg_catalog.pg_stat_activity a
+      on a.datname=pg_catalog.current_database()
+     and a.backend_type ilike '%pg_net%'
+     and a.backend_xid=q.xmax
+    where q.method='POST'
+      and q.url='https://api.onesignal.com/notifications'
+      and q.body is not null
+      and (
+        pg_catalog.convert_from(q.body,'UTF8')::jsonb
+        ->> 'app_id'
+      )=previous_app_id;
 
-      select a.backend_xid, a.xact_start
-        into worker_xid, worker_xact_start
-      from net.http_request_queue q
-      join pg_catalog.pg_stat_activity a
-        on a.datname=pg_catalog.current_database()
-       and a.backend_type ilike '%pg_net%'
-       and a.backend_xid=q.xmax
-      where q.method='POST'
-        and q.url='https://api.onesignal.com/notifications'
-        and q.body is not null
-        and (
-          pg_catalog.convert_from(q.body,'UTF8')::jsonb
-          ->> 'app_id'
-        )=previous_app_id
-      order by a.xact_start
-      limit 1;
-
-      -- A row skipped because some other session locked it is still a queued
-      -- request, not completed pg_net work. Rotating now could let that row be
-      -- transmitted later with the revoked generation after its locker exits.
-      if worker_xact_start is null then
-        return jsonb_build_object('ok',false,'reason','config_busy');
-      end if;
-
-      -- Bound only the OneSignal request(s) owned by this exact worker
-      -- transaction. A long unrelated request in the same curl_multi batch must
-      -- not create a false credential barrier after the OneSignal timeout has
-      -- elapsed.
-      select coalesce(pg_catalog.max(q.timeout_milliseconds),0)
-        into in_flight_timeout_ms
-      from net.http_request_queue q
-      where q.xmax=worker_xid
-        and q.method='POST'
-        and q.url='https://api.onesignal.com/notifications'
-        and q.body is not null
-        and (
-          pg_catalog.convert_from(q.body,'UTF8')::jsonb
-          ->> 'app_id'
-        )=previous_app_id;
-
-      -- A healthy VisionFood OneSignal request uses a 5 second pg_net timeout.
-      -- Keep a further 10 second margin for worker bookkeeping/commit. Once the
-      -- exact worker has exceeded that request-specific window, treat it as
-      -- broken work rather than blocking emergency credential rotation forever.
-      if pg_catalog.clock_timestamp()
-           < worker_xact_start
-             + pg_catalog.make_interval(
-                 secs=>(
-                   greatest(in_flight_timeout_ms,5000)+10000
-                 )::double precision/1000.0
-               ) then
-        return jsonb_build_object('ok',false,'reason','config_busy');
-      end if;
+    -- A row with no exact pg_net owner is still potentially sendable after its
+    -- current locker releases it, so remain fail-closed. For exact pg_net owners,
+    -- any request still inside its own timeout + 10 s grace keeps the barrier.
+    -- Only when every remaining exact owner has exceeded that bounded window may
+    -- emergency rotation proceed.
+    if remaining_old_requests>0
+       and (
+         has_unowned_old_request
+         or has_live_old_request
+       ) then
+      return jsonb_build_object('ok',false,'reason','config_busy');
     end if;
   end if;
 

@@ -52,9 +52,10 @@ describe('OneSignal committed pg_net row ownership contract', () => {
     expect(configSql).not.toMatch(/min\s*\(\s*a\.xact_start\s*\)/);
   });
 
-  it('fails closed when the remaining locked OneSignal row is not owned by pg_net', () => {
+  it('fails closed when a remaining locked OneSignal row has no exact pg_net owner', () => {
+    expect(configSql).toContain('has_unowned_old_request');
     expect(configSql).toMatch(
-      /if\s+worker_xact_start\s+is\s+null\s+then\s+return\s+jsonb_build_object\('ok',false,'reason','config_busy'\)/,
+      /if\s+remaining_old_requests>0\s+and\s+\(\s*has_unowned_old_request\s+or\s+has_live_old_request\s*\)\s+then\s+return\s+jsonb_build_object\('ok',false,'reason','config_busy'\)/,
     );
   });
 });

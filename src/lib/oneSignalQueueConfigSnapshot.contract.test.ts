@@ -60,8 +60,9 @@ describe('OneSignal queue App ID/API key snapshot contract', () => {
     expect(config).toContain('config_generation_id=excluded.config_generation_id');
   });
 
-  it('protects delivery and rupture callers at the queue boundary', () => {
-    expect(deliverySql).toContain('public.visionfood_onesignal_queue(');
+  it('keeps delivery on the durable config snapshot while rupture remains at the queue boundary', () => {
+    expect(deliverySql).toContain('private.visionfood_onesignal_outbox_enqueue(');
+    expect(deliverySql).not.toContain('public.visionfood_onesignal_queue(');
     expect(ruptureSql).toContain('public.visionfood_onesignal_queue(');
 
     expect(deliverySql).not.toContain('private.onesignal_settings');

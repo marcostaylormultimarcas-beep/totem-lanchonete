@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
 
-function latestFunctionDefinition(name: string): string {
-  const needle = `create or replace function public.${name}(`;
+function latestFunctionDefinition(schema: string, name: string): string {
+  const needle = `create or replace function ${schema}.${name}(`;
   let latest: string | null = null;
 
   for (const file of readdirSync(migrationsDir).filter((entry) => entry.endsWith('.sql')).sort()) {
@@ -13,15 +13,14 @@ function latestFunctionDefinition(name: string): string {
     const lowerSql = sql.toLowerCase();
     const start = lowerSql.lastIndexOf(needle.toLowerCase());
     if (start < 0) continue;
-
     const nextFunction = lowerSql.indexOf(
-      '\ncreate or replace function public.',
+      '\ncreate or replace function ',
       start + needle.length,
     );
     latest = sql.slice(start, nextFunction >= 0 ? nextFunction : sql.length);
   }
 
-  if (!latest) throw new Error(`Function ${name} was not found in migrations`);
+  if (!latest) throw new Error(`Function ${schema}.${name} was not found`);
   return latest;
 }
 
@@ -31,38 +30,46 @@ const allSql = readdirSync(migrationsDir)
   .map((entry) => readFileSync(join(migrationsDir, entry), 'utf8'))
   .join('\n');
 
-const enqueueSql = latestFunctionDefinition('visionfood_push_predictive_stock');
+const enqueueSql = latestFunctionDefinition('public', 'visionfood_push_predictive_stock');
+const outboxEnqueueSql = latestFunctionDefinition(
+  'private',
+  'visionfood_onesignal_outbox_enqueue',
+);
+const dispatchOneSql = latestFunctionDefinition(
+  'private',
+  'visionfood_onesignal_outbox_dispatch_one',
+);
 
 describe('predictive stock push App ID rotation idempotency contract', () => {
-  it('binds every predictive logical send to the OneSignal App ID that created it', () => {
+  it('keeps the predictive dedupe row bound to the App ID captured by its outbox', () => {
     expect(allSql).toMatch(
       /onesignal_predictive_push_dedupe[\s\S]*add column if not exists app_id text/i,
     );
-    expect(enqueueSql).toMatch(/previous_app_id\s+text/i);
-    expect(enqueueSql).toMatch(/current_app_id\s+text/i);
-  });
-
-  it('locks and reads the current App ID before deciding whether an old ambiguous request is retryable', () => {
     expect(enqueueSql).toMatch(
-      /from\s+private\.onesignal_settings[\s\S]*for\s+share/i,
-    );
-    expect(enqueueSql).toMatch(
-      /select[\s\S]*d\.app_id[\s\S]*into[\s\S]*previous_app_id/i,
+      /select o\.app_id[\s\S]*from private\.onesignal_outbox o[\s\S]*where o\.id=predictive_outbox_id/i,
     );
   });
 
-  it('never reuses an App A idempotency key in App B after rotation while the old result is ambiguous', () => {
-    expect(enqueueSql).toContain('app_rotated_ambiguous_request');
+  it('captures generation and App ID atomically in the durable enqueue', () => {
+    expect(outboxEnqueueSql).toMatch(
+      /select s\.config_generation_id,s\.app_id[\s\S]*join private\.onesignal_config_generations/i,
+    );
+    expect(outboxEnqueueSql).toContain('config_generation_id');
+  });
+
+  it('retries with the exact generation and App ID already frozen on the outbox row', () => {
+    expect(dispatchOneSql).toContain('claimed_generation_id');
+    expect(dispatchOneSql).toContain('claimed_app_id');
+    expect(dispatchOneSql).toContain('where g.id=claimed_generation_id');
+    expect(dispatchOneSql).toContain('and g.app_id=claimed_app_id');
     expect(enqueueSql).toMatch(
-      /previous_app_id[\s\S]*is distinct from[\s\S]*current_app_id[\s\S]*app_rotated_ambiguous_request/i,
+      /previous_outbox_id[\s\S]*visionfood_onesignal_outbox_dispatch_one/i,
     );
   });
 
-  it('preserves subscription-id targeting and persists the App ID with the idempotency key', () => {
-    expect(enqueueSql).toContain('include_subscription_ids');
-    expect(enqueueSql).not.toMatch(/included_segments|include_aliases|filters/i);
-    expect(enqueueSql).toMatch(
-      /insert\s+into\s+private\.onesignal_predictive_push_dedupe[\s\S]*app_id[\s\S]*idempotency_key/i,
-    );
+  it('does not rebuild ambiguous retry identity from the currently active App ID', () => {
+    expect(enqueueSql).not.toContain('previous_app_id');
+    expect(enqueueSql).not.toContain('current_app_id');
+    expect(enqueueSql).not.toContain('app_rotated_ambiguous_request');
   });
 });

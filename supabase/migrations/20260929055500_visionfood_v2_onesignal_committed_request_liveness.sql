@@ -1,21 +1,21 @@
--- Bound the committed-request cutover barrier so an orphaned/stalled pg_net
--- request cannot make OneSignal credential rotation permanently unavailable.
+-- Bound the committed-request cutover barrier without confusing an arbitrary
+-- queue-row locker with the pg_net worker that actually claimed the OneSignal
+-- request.
 --
 -- Normal safety is preserved:
 --   * configuration rotation still owns the settings row and exclusive
 --     generation advisory guard before touching the queue;
 --   * old-generation requests that are still merely queued are cancelled under
 --     FOR UPDATE SKIP LOCKED, so they cannot wake later with revoked credentials;
---   * a request already claimed by the pg_net worker remains visible by MVCC
---     while the worker transaction is in flight, and recent in-flight work still
---     returns config_busy.
+--   * a request DELETE-claimed by pg_net is identified by the tuple's xmax,
+--     which must match pg_stat_activity.backend_xid for the pg_net worker;
+--   * a remaining row locked by any non-pg_net session stays fail-closed because
+--     it can become sendable again after that locker releases it.
 --
--- Liveness is bounded without depending on a queue timestamp column (pg_net's
--- http_request_queue does not provide one). For a row that remains after the
--- SKIP LOCKED cleanup, use the pg_net worker transaction start plus that row's
--- own timeout_milliseconds, with a 10 second worker/commit grace. Once that
--- bounded window is exceeded (or no pg_net worker transaction exists), rotation
--- is allowed to proceed rather than being blocked indefinitely by broken work.
+-- Liveness for a genuine in-flight OneSignal request remains bounded by that
+-- request's own timeout plus a 10 second worker/commit grace. Other non-OneSignal
+-- requests in the same pg_net batch do not extend the OneSignal credential
+-- barrier merely because they share the worker transaction.
 
 create or replace function public.set_onesignal_config(
   _app_id text,
@@ -38,6 +38,7 @@ declare
     0
   );
   changes_generation boolean:=false;
+  worker_xid xid;
   worker_xact_start timestamptz;
   in_flight_timeout_ms integer:=0;
 begin
@@ -87,9 +88,9 @@ begin
     using cancellable cdr
     where q.id=cdr.id;
 
-    -- Anything still visible after the SKIP LOCKED delete is currently owned
-    -- by another transaction. In the normal pg_net path this is the worker's
-    -- DELETE ... RETURNING transaction around the HTTP attempt.
+    -- If an old-generation row remains, prove that the exact tuple was claimed
+    -- by the pg_net worker. An unrelated pg_net transaction is not evidence of
+    -- ownership: q.xmax is the deleting/locking transaction id for this tuple.
     if exists(
       select 1
       from net.http_request_queue q
@@ -101,17 +102,42 @@ begin
           ->> 'app_id'
         )=previous_app_id
     ) then
-      select pg_catalog.min(a.xact_start)
-        into worker_xact_start
-      from pg_catalog.pg_stat_activity a
-      where a.datname=pg_catalog.current_database()
-        and a.backend_type ilike '%pg_net%'
-        and a.xact_start is not null;
+      worker_xid:=null;
+      worker_xact_start:=null;
 
+      select a.backend_xid, a.xact_start
+        into worker_xid, worker_xact_start
+      from net.http_request_queue q
+      join pg_catalog.pg_stat_activity a
+        on a.datname=pg_catalog.current_database()
+       and a.backend_type ilike '%pg_net%'
+       and a.backend_xid=q.xmax
+      where q.method='POST'
+        and q.url='https://api.onesignal.com/notifications'
+        and q.body is not null
+        and (
+          pg_catalog.convert_from(q.body,'UTF8')::jsonb
+          ->> 'app_id'
+        )=previous_app_id
+      order by a.xact_start
+      limit 1;
+
+      -- A row skipped because some other session locked it is still a queued
+      -- request, not completed pg_net work. Rotating now could let that row be
+      -- transmitted later with the revoked generation after its locker exits.
+      if worker_xact_start is null then
+        return jsonb_build_object('ok',false,'reason','config_busy');
+      end if;
+
+      -- Bound only the OneSignal request(s) owned by this exact worker
+      -- transaction. A long unrelated request in the same curl_multi batch must
+      -- not create a false credential barrier after the OneSignal timeout has
+      -- elapsed.
       select coalesce(pg_catalog.max(q.timeout_milliseconds),0)
         into in_flight_timeout_ms
       from net.http_request_queue q
-      where q.method='POST'
+      where q.xmax=worker_xid
+        and q.method='POST'
         and q.url='https://api.onesignal.com/notifications'
         and q.body is not null
         and (
@@ -120,12 +146,10 @@ begin
         )=previous_app_id;
 
       -- A healthy VisionFood OneSignal request uses a 5 second pg_net timeout.
-      -- Keep a further 10 second margin for worker bookkeeping/commit. Only a
-      -- recent worker transaction may block rotation. A stopped worker, orphan
-      -- row, or worker transaction that has exceeded the request timeout plus
-      -- this grace cannot hold the credential cutover forever.
-      if worker_xact_start is not null
-         and pg_catalog.clock_timestamp()
+      -- Keep a further 10 second margin for worker bookkeeping/commit. Once the
+      -- exact worker has exceeded that request-specific window, treat it as
+      -- broken work rather than blocking emergency credential rotation forever.
+      if pg_catalog.clock_timestamp()
            < worker_xact_start
              + pg_catalog.make_interval(
                  secs=>(

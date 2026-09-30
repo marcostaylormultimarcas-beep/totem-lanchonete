@@ -64,8 +64,14 @@ const restockSql = normalized(
 const oneSignalRuptureSql = normalized(
   latestFunctionDefinition("visionfood_push_rupture_trigger").sql,
 );
-const oneSignalQueueSql = normalized(
-  latestFunctionDefinition("visionfood_onesignal_queue").sql,
+const durableOneSignalRuntimeSql = normalized(
+  readFileSync(
+    join(
+      migrationsDir,
+      "20260930101200_visionfood_v2_onesignal_durable_outbox_phase3.sql",
+    ),
+    "utf8",
+  ),
 );
 const normalizedMigrations = normalized(allMigrationsSql);
 
@@ -124,10 +130,10 @@ describe("ingredient rupture webhook truthfulness contract", () => {
     );
   });
 
-  it("keeps OneSignal on its fixed provider endpoint instead of the legacy per-store arbitrary URL", () => {
-    expect(oneSignalQueueSql).toContain(
+  it("keeps OneSignal transport on the fixed provider endpoint instead of the legacy per-store arbitrary URL", () => {
+    expect(durableOneSignalRuntimeSql).toContain(
       "url:='https://api.onesignal.com/notifications'",
     );
-    expect(oneSignalQueueSql).not.toContain("estoque_webhook_url");
+    expect(durableOneSignalRuntimeSql).not.toContain("estoque_webhook_url");
   });
 });

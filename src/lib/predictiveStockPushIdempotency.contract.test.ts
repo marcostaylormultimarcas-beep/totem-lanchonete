@@ -13,7 +13,6 @@ function latestFunctionDefinition(name: string): string {
     const lowerSql = sql.toLowerCase();
     const start = lowerSql.lastIndexOf(needle.toLowerCase());
     if (start < 0) continue;
-
     const nextFunction = lowerSql.indexOf(
       '\ncreate or replace function public.',
       start + needle.length,
@@ -34,39 +33,46 @@ const migrationSql = readdirSync(migrationsDir)
 const enqueueSql = latestFunctionDefinition('visionfood_push_predictive_stock');
 const resultSql = latestFunctionDefinition('visionfood_predictive_push_result');
 
-describe('predictive stock push retry idempotency contract', () => {
-  it('persists a OneSignal idempotency UUID for the logical predictive send', () => {
+describe('predictive stock push durable idempotency contract', () => {
+  it('persists the OneSignal idempotency UUID beside the durable outbox mapping', () => {
     expect(migrationSql).toMatch(
       /onesignal_predictive_push_dedupe[\s\S]*idempotency_key\s+uuid/i,
     );
-    expect(enqueueSql).toMatch(/previous_idempotency_key\s+uuid/i);
+    expect(migrationSql).toMatch(
+      /onesignal_predictive_push_dedupe[\s\S]*outbox_id\s+uuid/i,
+    );
     expect(enqueueSql).toMatch(/predictive_idempotency_key\s+uuid/i);
   });
 
-  it('sends the stable idempotency key with include_subscription_ids', () => {
-    expect(enqueueSql).toContain('include_subscription_ids');
+  it('freezes idempotency key and include_subscription_ids together at outbox enqueue', () => {
     expect(enqueueSql).toMatch(
-      /include_subscription_ids[\s\S]*idempotency_key[\s\S]*predictive_idempotency_key/i,
+      /visionfood_onesignal_outbox_enqueue\([\s\S]*include_subscription_ids[\s\S]*predictive_idempotency_key/i,
     );
     expect(enqueueSql).not.toMatch(/included_segments|include_aliases|filters/i);
   });
 
-  it('reuses the previous key after an ambiguous response instead of minting a new logical send', () => {
+  it('retries by dispatching the same outbox row instead of minting another logical request', () => {
     expect(enqueueSql).toMatch(
-      /previous_idempotency_key[\s\S]*predictive_idempotency_key\s*:=\s*previous_idempotency_key/i,
+      /outbox_status in \('pending','retry'\)[\s\S]*visionfood_onesignal_outbox_dispatch_one\([\s\S]*previous_outbox_id/i,
     );
     expect(enqueueSql).toMatch(
-      /insert\s+into\s+private\.onesignal_predictive_push_dedupe[\s\S]*idempotency_key/i,
+      /outbox_status in \('pending','sending','retry'\)[\s\S]*return jsonb_build_object/i,
     );
   });
 
-  it('keeps ambiguous response_missing state available for a safe same-key retry', () => {
-    const marker = resultSql.indexOf("'response_missing'");
-    expect(marker).toBeGreaterThan(0);
-
-    const responseMissingPath = resultSql.slice(Math.max(0, marker - 900), marker + 250);
-    expect(responseMissingPath).not.toMatch(
-      /delete\s+from\s+private\.onesignal_predictive_push_dedupe/i,
+  it('keeps result lookup bound to the same durable outbox identity', () => {
+    expect(resultSql).toMatch(
+      /d\.request_id=_request_id[\s\S]*predictive_outbox_id/i,
     );
+    expect(resultSql).toMatch(
+      /where o\.id=predictive_outbox_id[\s\S]*o\.organization_id=_org[\s\S]*o\.push_type='predictive_stock'/i,
+    );
+  });
+
+  it('never reads pg_net response/queue tables to decide predictive retry identity', () => {
+    for (const sql of [enqueueSql, resultSql]) {
+      expect(sql).not.toContain('net._http_response');
+      expect(sql).not.toContain('net.http_request_queue');
+    }
   });
 });

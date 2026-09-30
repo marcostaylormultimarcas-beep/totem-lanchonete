@@ -43,7 +43,7 @@ describe('OneSignal committed pg_net drain barrier liveness contract', () => {
     expect(configSql).toContain('pg_stat_activity');
     expect(configSql).toContain('xact_start');
     expect(configSql).toContain('timeout_milliseconds');
-    expect(configSql).toMatch(/clock_timestamp\(\)/);
+    expect(configSql).toMatch(/statement_timestamp\(\)/);
   });
 
   it('does not require a timestamp column that pg_net http_request_queue does not provide', () => {

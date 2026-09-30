@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
 
-function latestFunctionDefinition(name: string): string {
-  const needle = `create or replace function public.${name}(`;
+function latestFunctionDefinition(schema: string, name: string): string {
+  const needle = `create or replace function ${schema}.${name}(`;
   let latest: string | null = null;
 
   for (const file of readdirSync(migrationsDir).filter((entry) => entry.endsWith('.sql')).sort()) {
@@ -13,38 +13,41 @@ function latestFunctionDefinition(name: string): string {
     const lowerSql = sql.toLowerCase();
     const start = lowerSql.lastIndexOf(needle.toLowerCase());
     if (start < 0) continue;
-
     const nextFunction = lowerSql.indexOf(
-      '\ncreate or replace function public.',
+      '\ncreate or replace function ',
       start + needle.length,
     );
     latest = sql.slice(start, nextFunction >= 0 ? nextFunction : sql.length);
   }
 
-  if (!latest) throw new Error(`Function ${name} was not found in migrations`);
+  if (!latest) throw new Error(`Function ${schema}.${name} was not found`);
   return latest;
 }
 
-const enqueueSql = latestFunctionDefinition('visionfood_push_predictive_stock');
-const resultSql = latestFunctionDefinition('visionfood_predictive_push_result');
+const enqueueSql = latestFunctionDefinition('public', 'visionfood_push_predictive_stock');
+const resultSql = latestFunctionDefinition('public', 'visionfood_predictive_push_result');
+const reconcileSql = latestFunctionDefinition('private', 'visionfood_onesignal_outbox_reconcile');
 
 describe('predictive stock push OneSignal semantic success contract', () => {
-  it('does not confirm a 2xx response unless OneSignal returned a non-empty notification id', () => {
-    for (const sql of [enqueueSql, resultSql]) {
-      expect(sql).toMatch(
-        /select[\s\S]*r\.content[\s\S]*from\s+net\._http_response\s+r/i,
-      );
-      expect(sql).toMatch(/response_(body|payload)/i);
-      expect(sql).toMatch(/->>\s*'id'/i);
-      expect(sql).toMatch(/nullif\s*\(\s*btrim\s*\([^)]*->>\s*'id'/i);
-    }
+  it('centralizes semantic HTTP success in the durable outbox reconciler', () => {
+    expect(reconcileSql).toMatch(/response_status>=200[\s\S]*response_status<300/i);
+    expect(reconcileSql).toContain("response_payload->>'id'");
+    expect(reconcileSql).toContain("semantic_outcome='delivered'");
+    expect(reconcileSql).toContain("set status='delivered'");
   });
 
-  it('releases dedupe after a semantically unsuccessful 2xx response', () => {
+  it('public predictive RPCs trust only durable delivered/failed state', () => {
+    expect(enqueueSql).toMatch(
+      /outbox_status='delivered'[\s\S]*'delivered',true/i,
+    );
+    expect(resultSql).toMatch(
+      /outbox_status='delivered'[\s\S]*'delivered',true/i,
+    );
+    expect(resultSql).toMatch(
+      /outbox_status='failed'[\s\S]*'failed',true/i,
+    );
     for (const sql of [enqueueSql, resultSql]) {
-      expect(sql).toMatch(
-        /response_status\s*>=\s*200[\s\S]*response_status\s*<\s*300[\s\S]*delete\s+from\s+private\.onesignal_predictive_push_dedupe/i,
-      );
+      expect(sql).not.toContain('net._http_response');
     }
   });
 

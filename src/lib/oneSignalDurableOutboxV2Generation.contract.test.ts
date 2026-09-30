@@ -14,7 +14,7 @@ const predecessor = readFileSync(
 describe('OneSignal Durable Outbox V2 immutable config generation contract', () => {
   it('keeps the predecessor migration replayable before phase 2 runs', () => {
     expect(predecessor).toContain(
-      "set stats_fetch_consistency='none'\nas $$\ndeclare",
+      "set stats_fetch_consistency='none'\nas $function$\ndeclare",
     );
   });
 

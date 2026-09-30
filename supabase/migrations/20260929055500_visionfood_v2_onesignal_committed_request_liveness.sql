@@ -33,7 +33,7 @@ language plpgsql
 security definer
 set search_path=''
 set stats_fetch_consistency='none'
-as $
+as $function$
 declare
   c private.onesignal_settings%rowtype;
   sid uuid;
@@ -228,7 +228,7 @@ begin
     'has_api_key',has_key
   );
 end
-$$;
+$function$;
 
 revoke all on function public.set_onesignal_config(text,text)
   from public,anon,authenticated;

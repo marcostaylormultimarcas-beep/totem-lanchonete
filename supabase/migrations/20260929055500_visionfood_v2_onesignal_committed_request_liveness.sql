@@ -129,7 +129,7 @@ begin
            < worker_xact_start
              + pg_catalog.make_interval(
                  secs=>(
-                   pg_catalog.greatest(in_flight_timeout_ms,5000)+10000
+                   greatest(in_flight_timeout_ms,5000)+10000
                  )::double precision/1000.0
                ) then
         return jsonb_build_object('ok',false,'reason','config_busy');

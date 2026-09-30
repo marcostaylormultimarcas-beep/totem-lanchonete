@@ -33,13 +33,17 @@ describe('OneSignal committed pg_net request cutover contract', () => {
   it('checks the committed pg_net queue before publishing a credential cutover', () => {
     const generationGuardAt = configSql.indexOf('pg_try_advisory_xact_lock(');
     const requestQueueAt = configSql.indexOf('net.http_request_queue');
-    const vaultUpdateAt = configSql.indexOf('vault.update_secret(');
+    const vaultCreateAt = configSql.indexOf('vault.create_secret(');
+    const generationWriteAt = configSql.indexOf(
+      'insert into private.onesignal_config_generations',
+    );
     const configWriteAt = configSql.indexOf('insert into private.onesignal_settings');
 
     expect(generationGuardAt).toBeGreaterThanOrEqual(0);
     expect(requestQueueAt).toBeGreaterThan(generationGuardAt);
-    expect(vaultUpdateAt).toBeGreaterThan(requestQueueAt);
-    expect(configWriteAt).toBeGreaterThan(requestQueueAt);
+    expect(vaultCreateAt).toBeGreaterThan(requestQueueAt);
+    expect(generationWriteAt).toBeGreaterThan(vaultCreateAt);
+    expect(configWriteAt).toBeGreaterThan(generationWriteAt);
   });
 
   it('scopes the drain barrier to OneSignal requests from the previous App ID', () => {

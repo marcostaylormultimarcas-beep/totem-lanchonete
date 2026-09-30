@@ -58,14 +58,18 @@ describe('OneSignal queue configuration-lock liveness contract', () => {
   it('keeps configuration rotation ordered config -> Vault -> registry', () => {
     const config = normalize(configSql);
     const configLockAt = config.indexOf('for update');
-    const vaultWriteAt = config.indexOf('vault.update_secret');
+    const vaultWriteAt = config.indexOf('vault.create_secret');
+    const generationWriteAt = config.indexOf(
+      'insert into private.onesignal_config_generations',
+    );
     const registryDeleteAt = config.indexOf(
       'delete from private.onesignal_admin_push_subscriptions',
     );
 
     expect(configLockAt).toBeGreaterThanOrEqual(0);
     expect(vaultWriteAt).toBeGreaterThan(configLockAt);
-    expect(registryDeleteAt).toBeGreaterThan(vaultWriteAt);
+    expect(generationWriteAt).toBeGreaterThan(vaultWriteAt);
+    expect(registryDeleteAt).toBeGreaterThan(generationWriteAt);
   });
 
   it('keeps delivery and rupture free of an extra configuration pre-lock', () => {

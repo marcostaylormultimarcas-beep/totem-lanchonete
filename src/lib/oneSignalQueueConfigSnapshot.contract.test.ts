@@ -54,7 +54,10 @@ describe('OneSignal queue App ID/API key snapshot contract', () => {
     expect(config).toContain(
       "from private.onesignal_settings where id='global' for update",
     );
-    expect(config).toContain('vault.update_secret');
+    expect(config).not.toContain('vault.update_secret');
+    expect(config).toContain('vault.create_secret');
+    expect(config).toContain('insert into private.onesignal_config_generations');
+    expect(config).toContain('config_generation_id=excluded.config_generation_id');
   });
 
   it('protects delivery and rupture callers at the queue boundary', () => {

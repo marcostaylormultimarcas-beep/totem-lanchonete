@@ -227,7 +227,11 @@ create table if not exists private.onesignal_outbox_attempts (
     unique (outbox_id,attempt_no)
 );
 
-create unique index if not exists onesignal_outbox_attempts_request_uidx
+-- request_id is transport metadata, never the durable identity. Keep it
+-- searchable but not globally unique: if pg_net ever reuses an id, later
+-- reconciliation must treat multiple matches as ambiguous instead of binding
+-- the response to the wrong logical push.
+create index if not exists onesignal_outbox_attempts_request_idx
   on private.onesignal_outbox_attempts(pg_net_request_id)
   where pg_net_request_id is not null;
 

@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 const migrationsDir = join(process.cwd(), 'supabase', 'migrations');
 
-function latestFunctionDefinition(name: string): string {
-  const needle = `create or replace function public.${name}(`;
+function latestFunctionDefinition(schema: string, name: string): string {
+  const needle = `create or replace function ${schema}.${name}(`;
   let latest: string | null = null;
 
   for (const file of readdirSync(migrationsDir).filter((entry) => entry.endsWith('.sql')).sort()) {
@@ -13,15 +13,14 @@ function latestFunctionDefinition(name: string): string {
     const lowerSql = sql.toLowerCase();
     const start = lowerSql.lastIndexOf(needle.toLowerCase());
     if (start < 0) continue;
-
     const nextFunction = lowerSql.indexOf(
-      '\ncreate or replace function public.',
+      '\ncreate or replace function ',
       start + needle.length,
     );
     latest = sql.slice(start, nextFunction >= 0 ? nextFunction : sql.length);
   }
 
-  if (!latest) throw new Error(`Function ${name} was not found in migrations`);
+  if (!latest) throw new Error(`Function ${schema}.${name} was not found`);
   return latest;
 }
 
@@ -31,49 +30,46 @@ const allSql = readdirSync(migrationsDir)
   .map((entry) => readFileSync(join(migrationsDir, entry), 'utf8'))
   .join('\n');
 
-const enqueueSql = latestFunctionDefinition('visionfood_push_predictive_stock');
+const enqueueSql = latestFunctionDefinition('public', 'visionfood_push_predictive_stock');
+const outboxEnqueueSql = latestFunctionDefinition(
+  'private',
+  'visionfood_onesignal_outbox_enqueue',
+);
 
 describe('predictive stock push audience snapshot idempotency contract', () => {
-  it('persists the exact subscription-id audience that belongs to the logical OneSignal request', () => {
+  it('persists the organization-scoped subscription snapshot beside the durable mapping', () => {
     expect(allSql).toMatch(
       /onesignal_predictive_push_dedupe[\s\S]*add column if not exists subscription_ids jsonb/i,
     );
-    expect(enqueueSql).toMatch(/previous_subscription_ids\s+jsonb/i);
     expect(enqueueSql).toMatch(
-      /select[\s\S]*d\.subscription_ids[\s\S]*into[\s\S]*previous_subscription_ids/i,
+      /subscription_ids:=private\.visionfood_admin_push_subscription_ids\(_org\)/i,
     );
     expect(enqueueSql).toMatch(
-      /insert\s+into\s+private\.onesignal_predictive_push_dedupe[\s\S]*subscription_ids[\s\S]*idempotency_key/i,
-    );
-  });
-
-  it('reuses the stored audience whenever it reuses an ambiguous request idempotency key', () => {
-    expect(enqueueSql).toMatch(
-      /predictive_idempotency_key\s*:=\s*previous_idempotency_key\s*;[\s\S]*subscription_ids\s*:=\s*previous_subscription_ids\s*;/i,
-    );
-    expect(enqueueSql).toMatch(
-      /if\s+subscription_ids\s+is\s+null\s+then[\s\S]*visionfood_admin_push_subscription_ids\(_org\)/i,
+      /insert into private\.onesignal_predictive_push_dedupe[\s\S]*subscription_ids[\s\S]*outbox_id/i,
     );
   });
 
-  it('never reconstructs an unknown legacy audience for an ambiguous same-App retry', () => {
-    expect(enqueueSql).toContain('legacy_audience_ambiguous_request');
+  it('freezes the exact include_subscription_ids object in the outbox request', () => {
+    expect(enqueueSql).toMatch(
+      /visionfood_onesignal_outbox_enqueue\([\s\S]*jsonb_build_object\(\s*'include_subscription_ids'[\s\S]*subscription_ids/i,
+    );
+    expect(outboxEnqueueSql).toContain('existing.audience is distinct from _audience');
+    expect(outboxEnqueueSql).toContain('existing.payload is distinct from frozen_payload');
   });
 
-  it('suppresses an ambiguous retry when the organization-scoped audience changed', () => {
-    expect(enqueueSql).toMatch(/current_subscription_ids\s+jsonb/i);
-    expect(enqueueSql).toContain('audience_changed_ambiguous_request');
-    expect(enqueueSql).toMatch(
-      /current_subscription_ids\s*:=\s*private\.visionfood_admin_push_subscription_ids\(_org\)/i,
+  it('retries the stored outbox request without rebuilding audience from registry state', () => {
+    const existingPath = enqueueSql.slice(
+      enqueueSql.indexOf('if found then'),
+      enqueueSql.indexOf('subscription_ids:=private.visionfood_admin_push_subscription_ids(_org)'),
     );
-    expect(enqueueSql).toMatch(
-      /previous_subscription_ids[\s\S]*is distinct from[\s\S]*current_subscription_ids/i,
-    );
+
+    expect(existingPath).toContain('previous_outbox_id');
+    expect(existingPath).toContain('visionfood_onesignal_outbox_dispatch_one');
+    expect(existingPath).not.toContain('visionfood_admin_push_subscription_ids(_org)');
   });
 
-  it('keeps organization-scoped subscription-id targeting', () => {
+  it('keeps organization-scoped subscription-id targeting only', () => {
     expect(enqueueSql).toContain('include_subscription_ids');
-    expect(enqueueSql).toContain('private.visionfood_admin_push_subscription_ids(_org)');
     expect(enqueueSql).not.toMatch(/included_segments|include_aliases|filters/i);
   });
 });

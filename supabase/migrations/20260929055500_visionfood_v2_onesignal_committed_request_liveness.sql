@@ -19,6 +19,10 @@
 -- Every remaining old-generation row is evaluated independently; any unknown
 -- owner or any genuine pg_net owner still inside its bounded window keeps the
 -- rotation config_busy.
+--
+-- The function runs with stats_fetch_consistency=none so pg_stat_activity is not
+-- inherited from an earlier cached monitoring snapshot in the caller transaction.
+-- PostgreSQL restores the caller setting when the function exits.
 
 create or replace function public.set_onesignal_config(
   _app_id text,
@@ -28,7 +32,8 @@ returns jsonb
 language plpgsql
 security definer
 set search_path=''
-as $$
+set stats_fetch_consistency='none'
+as $
 declare
   c private.onesignal_settings%rowtype;
   sid uuid;

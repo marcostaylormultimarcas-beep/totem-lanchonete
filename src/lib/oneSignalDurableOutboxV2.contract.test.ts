@@ -54,7 +54,8 @@ describe('OneSignal Durable Outbox V2 base contract', () => {
     expect(migration).toContain('attempt_no integer not null');
     expect(migration).toContain('pg_net_request_id bigint');
     expect(migration).toContain('unique (outbox_id,attempt_no)');
-    expect(migration).toContain('onesignal_outbox_attempts_request_uidx');
+    expect(migration).toContain('onesignal_outbox_attempts_request_idx');
+    expect(migration).not.toContain('onesignal_outbox_attempts_request_uidx');
     expect(migration).toContain("semantic_outcome in ('delivered','retry','failed')");
   });
 

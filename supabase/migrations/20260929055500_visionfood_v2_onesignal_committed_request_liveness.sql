@@ -97,14 +97,14 @@ begin
     -- snapshots that can observe different worker ownership.
     select
       pg_catalog.count(*),
-      pg_catalog.coalesce(
+      coalesce(
         pg_catalog.bool_or(
           a.backend_xid is null
           or a.xact_start is null
         ),
         false
       ),
-      pg_catalog.coalesce(
+      coalesce(
         pg_catalog.bool_or(
           a.backend_xid is not null
           and a.xact_start is not null
@@ -112,8 +112,8 @@ begin
                 < a.xact_start
                   + pg_catalog.make_interval(
                       secs=>(
-                        pg_catalog.greatest(
-                          pg_catalog.coalesce(q.timeout_milliseconds,5000),
+                        greatest(
+                          coalesce(q.timeout_milliseconds,5000),
                           5000
                         )+10000
                       )::double precision/1000.0

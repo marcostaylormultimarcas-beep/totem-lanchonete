@@ -60,13 +60,12 @@ describe('OneSignal queue App ID/API key snapshot contract', () => {
     expect(config).toContain('config_generation_id=excluded.config_generation_id');
   });
 
-  it('keeps delivery on the durable config snapshot while rupture remains at the queue boundary', () => {
-    expect(deliverySql).toContain('private.visionfood_onesignal_outbox_enqueue(');
-    expect(deliverySql).not.toContain('public.visionfood_onesignal_queue(');
-    expect(ruptureSql).toContain('public.visionfood_onesignal_queue(');
-
-    expect(deliverySql).not.toContain('private.onesignal_settings');
-    expect(ruptureSql).not.toContain('private.onesignal_settings');
+  it('keeps delivery and rupture on the durable configuration snapshot', () => {
+    for (const sql of [deliverySql, ruptureSql]) {
+      expect(sql).toContain('private.visionfood_onesignal_outbox_enqueue(');
+      expect(sql).not.toContain('public.visionfood_onesignal_queue(');
+      expect(sql).not.toContain('private.onesignal_settings');
+    }
   });
 
   it('preserves caller targets, including include_subscription_ids', () => {

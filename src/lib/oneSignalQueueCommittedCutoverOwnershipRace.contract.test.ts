@@ -31,17 +31,13 @@ const configSql = normalize(latestFunctionDefinition('public', 'set_onesignal_co
 
 describe('OneSignal pg_net ownership snapshot race contract', () => {
   it('derives the exact pg_net owner and that row timeout in the same SQL statement', () => {
-    const ownerJoinAt = Math.max(
-      configSql.indexOf('a.backend_xid=q.xmax'),
-      configSql.indexOf('q.xmax=a.backend_xid'),
-    );
-    const ownerStatementStart = configSql.lastIndexOf(';', ownerJoinAt) + 1;
-    const ownerStatementEnd = configSql.indexOf(';', ownerJoinAt);
-    const timeoutAt = configSql.indexOf('q.timeout_milliseconds');
+    const classificationAt = configSql.indexOf('select pg_catalog.count(*)');
+    const classificationEnd = configSql.indexOf(';', classificationAt);
+    const classificationSql = configSql.slice(classificationAt, classificationEnd);
 
-    expect(ownerJoinAt).toBeGreaterThanOrEqual(0);
-    expect(timeoutAt).toBeGreaterThan(ownerStatementStart);
-    expect(timeoutAt).toBeLessThan(ownerStatementEnd);
+    expect(classificationAt).toBeGreaterThanOrEqual(0);
+    expect(classificationSql).toMatch(/a\.backend_xid\s*=\s*q\.xmax|q\.xmax\s*=\s*a\.backend_xid/);
+    expect(classificationSql).toContain('q.timeout_milliseconds');
   });
 
   it('does not rescan the queue by a worker xid captured by an earlier statement', () => {

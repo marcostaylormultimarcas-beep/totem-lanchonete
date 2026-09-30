@@ -81,9 +81,11 @@ describe("OneSignal configuration integrity contract", () => {
     expect(configSql).toMatch(/exists\(\s*select 1 from vault\.secrets/);
   });
 
-  it("keeps the secret write server-side and returns only has_api_key metadata", () => {
-    expect(configSql).toContain("vault.update_secret");
+  it("keeps secret rotation server-side without mutating the previous Vault credential", () => {
+    expect(configSql).not.toContain("vault.update_secret");
     expect(configSql).toContain("vault.create_secret");
+    expect(configSql).toContain("insert into private.onesignal_config_generations");
+    expect(configSql).toContain("config_generation_id=excluded.config_generation_id");
     expect(configSql).toContain("'has_api_key'");
     expect(configSql).not.toContain("'api_key',key");
   });

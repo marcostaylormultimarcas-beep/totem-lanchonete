@@ -2,8 +2,9 @@
 --
 -- Cut over the final legacy producer, stock rupture, to the durable outbox.
 -- Predictive and delivery remain on their phase-4/phase-5 durable paths. The
--- ingredient trigger contract, organization scope, OneSignal payload and
--- idempotency semantics stay unchanged; retries reuse the frozen durable row.
+-- ingredient trigger contract, organization scope, frozen admin audience,
+-- OneSignal payload and idempotency semantics stay unchanged; retries reuse
+-- the frozen durable row.
 
 create or replace function public.visionfood_push_rupture_trigger()
 returns trigger
@@ -12,11 +13,20 @@ security definer
 set search_path=''
 as $$
 declare
+  subscription_ids jsonb;
   rupture_idempotency_key uuid;
   rupture_outbox_id uuid;
 begin
   if coalesce(old.estoque_atual,0)<=0
      or coalesce(new.estoque_atual,0)>0 then
+    return new;
+  end if;
+
+  subscription_ids:=private.visionfood_admin_push_subscription_ids(
+    new.organization_id
+  );
+
+  if jsonb_array_length(subscription_ids)=0 then
     return new;
   end if;
 
@@ -29,16 +39,8 @@ begin
       'ingredient_stock',
       new.id::text||':stock_rupture',
       jsonb_build_object(
-        'filters',
-        jsonb_build_array(
-          jsonb_build_object(
-            'field','tag','key','tipo','relation','=','value','admin'
-          ),
-          jsonb_build_object('operator','AND'),
-          jsonb_build_object(
-            'field','tag','key','organization_id','relation','=','value',new.organization_id::text
-          )
-        )
+        'include_subscription_ids',
+        subscription_ids
       ),
       jsonb_build_object(
         'headings',

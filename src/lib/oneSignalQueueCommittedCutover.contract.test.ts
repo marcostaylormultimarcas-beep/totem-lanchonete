@@ -49,8 +49,12 @@ describe('OneSignal committed pg_net request cutover contract', () => {
     expect(configSql).toMatch(/app_id/);
   });
 
-  it('fails the rotation closed while an old-generation request is still visible', () => {
-    expect(configSql).toContain("'config_busy'");
-    expect(configSql).toMatch(/exists\s*\([^;]*net\.http_request_queue/);
+  it('fails the rotation closed while a remaining old-generation row is unsafe', () => {
+    expect(configSql).toContain('remaining_old_requests');
+    expect(configSql).toContain('has_unowned_old_request');
+    expect(configSql).toContain('has_live_old_request');
+    expect(configSql).toMatch(
+      /if\s+remaining_old_requests>0\s+and\s+\(\s*has_unowned_old_request\s+or\s+has_live_old_request\s*\)\s+then\s+return\s+jsonb_build_object\('ok',false,'reason','config_busy'\)/,
+    );
   });
 });

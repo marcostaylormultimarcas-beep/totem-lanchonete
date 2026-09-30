@@ -14,7 +14,10 @@ function latestFunctionDefinition(schema: string, name: string): string {
     const start = lowerSql.lastIndexOf(needle.toLowerCase());
     if (start < 0) continue;
 
-    const nextFunction = lowerSql.indexOf('\ncreate or replace function ', start + needle.length);
+    const nextFunction = lowerSql.indexOf(
+      '\ncreate or replace function ',
+      start + needle.length,
+    );
     latest = sql.slice(start, nextFunction >= 0 ? nextFunction : sql.length);
   }
 
@@ -52,15 +55,19 @@ describe('predictive stock push admin-audience TOCTOU contract', () => {
     );
   });
 
-  it('keeps the audience-selection row locks alive through the outer enqueue transaction', () => {
+  it('keeps the audience row locks alive through the durable enqueue transaction', () => {
     const lower = predictiveSql.toLowerCase();
     const audienceAt = lower.lastIndexOf(
       'private.visionfood_admin_push_subscription_ids(_org)',
     );
-    const queueAt = lower.indexOf('public.visionfood_onesignal_queue(');
+    const outboxAt = lower.indexOf(
+      'private.visionfood_onesignal_outbox_enqueue(',
+      audienceAt,
+    );
 
     expect(audienceAt).toBeGreaterThanOrEqual(0);
-    expect(queueAt).toBeGreaterThan(audienceAt);
+    expect(outboxAt).toBeGreaterThan(audienceAt);
     expect(predictiveSql).toContain('include_subscription_ids');
+    expect(predictiveSql).not.toContain('public.visionfood_onesignal_queue(');
   });
 });

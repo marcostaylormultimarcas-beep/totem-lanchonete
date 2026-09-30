@@ -60,12 +60,22 @@ describe('OneSignal Durable Outbox V2 phase 6 rupture cutover', () => {
     expect(phase6).not.toContain('create trigger');
   });
 
-  it('freezes the same organization-scoped admin audience and rupture payload', () => {
+  it('freezes the same registered organization-scoped admin audience and rupture payload', () => {
+    expect(ruptureSql).toContain(
+      'subscription_ids:=private.visionfood_admin_push_subscription_ids(',
+    );
+    expect(ruptureSql).toContain('new.organization_id');
+    expect(ruptureSql).toMatch(
+      /jsonb_array_length\(subscription_ids\)=0[\s\S]*return new;/i,
+    );
     expect(ruptureSql).toMatch(
       /visionfood_onesignal_outbox_enqueue\([\s\S]*new\.organization_id[\s\S]*'stock_rupture'[\s\S]*'ingredient_stock'/i,
     );
     expect(ruptureSql).toMatch(
-      /'filters'[\s\S]*'tipo'[\s\S]*'admin'[\s\S]*'organization_id'[\s\S]*new\.organization_id::text/i,
+      /'include_subscription_ids'[\s\S]*subscription_ids/i,
+    );
+    expect(ruptureSql).not.toMatch(
+      /'field'\s*,\s*'tag'[\s\S]*'key'\s*,\s*'tipo'[\s\S]*'value'\s*,\s*'admin'/i,
     );
     expect(ruptureSql).toContain("'pt','🚨 Ruptura de Estoque'");
     expect(ruptureSql).toContain(

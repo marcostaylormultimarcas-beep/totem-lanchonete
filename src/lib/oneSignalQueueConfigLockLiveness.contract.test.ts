@@ -72,12 +72,12 @@ describe('OneSignal queue configuration-lock liveness contract', () => {
     expect(registryDeleteAt).toBeGreaterThan(generationWriteAt);
   });
 
-  it('keeps migrated delivery and legacy rupture free of an extra configuration pre-lock', () => {
-    expect(deliverySql).toContain('private.visionfood_onesignal_outbox_enqueue(');
-    expect(deliverySql).toContain('private.visionfood_onesignal_outbox_dispatch_one(');
-    expect(deliverySql).not.toContain('public.visionfood_onesignal_queue(');
-    expect(ruptureSql).toContain('public.visionfood_onesignal_queue(');
-    expect(deliverySql).not.toContain('private.onesignal_settings');
-    expect(ruptureSql).not.toContain('private.onesignal_settings');
+  it('keeps migrated delivery and rupture free of an extra configuration pre-lock', () => {
+    for (const sql of [deliverySql, ruptureSql]) {
+      expect(sql).toContain('private.visionfood_onesignal_outbox_enqueue(');
+      expect(sql).toContain('private.visionfood_onesignal_outbox_dispatch_one(');
+      expect(sql).not.toContain('public.visionfood_onesignal_queue(');
+      expect(sql).not.toContain('private.onesignal_settings');
+    }
   });
 });

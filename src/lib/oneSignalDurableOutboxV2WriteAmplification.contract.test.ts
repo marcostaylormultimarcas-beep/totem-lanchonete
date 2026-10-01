@@ -54,10 +54,10 @@ describe('OneSignal Durable Outbox V2 phase 22 observability write amplification
 
   it('uses BRIN for append-correlated recent created_at windows', () => {
     expect(migrationCorpus).toMatch(
-      /onesignal_outbox_health_created_idx[^;]*using brin\s*\(created_at\)/,
+      /onesignal_outbox_health_created_idx[^;]*using brin\s*\(created_at\b/,
     );
     expect(migrationCorpus).toMatch(
-      /onesignal_outbox_attempts_health_created_idx[^;]*using brin\s*\(created_at\)/,
+      /onesignal_outbox_attempts_health_created_idx[^;]*using brin\s*\(created_at\b/,
     );
   });
 

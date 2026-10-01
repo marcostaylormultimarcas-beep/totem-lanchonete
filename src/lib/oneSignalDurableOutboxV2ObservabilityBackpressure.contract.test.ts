@@ -60,7 +60,7 @@ describe('OneSignal Durable Outbox V2 phase 10 observability/backpressure', () =
     expect(selection).toContain('response_priority');
     expect(selection).toContain('net._http_response');
     expect(selection).toContain('lease_priority');
-    expect(selection).toContain('for update skip locked');
+    expect(selection).toMatch(/for update(?: of x)? skip locked/);
   });
 
   it('drains multiple bounded batches per runner tick without creating an unbounded cron transaction', () => {
@@ -70,7 +70,7 @@ describe('OneSignal Durable Outbox V2 phase 10 observability/backpressure', () =
     );
 
     expect(runner).toContain('_max_rounds integer default');
-    expect(runner).toContain('greatest(1,least(coalesce(_max_rounds');
+    expect(runner).toMatch(/greatest\(\s*1,\s*least\(coalesce\(_max_rounds/);
     expect(runner).toContain('dispatch_rounds');
     expect(runner).toContain('exit when');
     expect(runner).toContain('rounds>=max_rounds');

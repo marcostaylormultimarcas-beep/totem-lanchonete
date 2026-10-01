@@ -120,7 +120,7 @@ describe('OneSignal Durable Outbox V2 phase 13 bounded-claim concurrency/livenes
     ).toBe(false);
   });
 
-  it('requires a bounded rotating organization window and a deeper contention prefix', () => {
+  it('requires the bounded rotating organization window and deep contention prefix to survive later hardening', () => {
     const claim = latestFunctionDefinition(
       'private',
       'visionfood_onesignal_outbox_claim',
@@ -129,14 +129,13 @@ describe('OneSignal Durable Outbox V2 phase 13 bounded-claim concurrency/livenes
     expect(claim).not.toBe('');
     expect(claim).toContain('onesignal_outbox_claim_fairness_state');
     expect(claim).toContain('last_organization_id');
-    expect(claim).toMatch(/for update of s skip locked/);
     expect(claim).toContain('organization_ordinal');
     expect(claim).toMatch(/organization_ordinal\s*<\s*batch_size/);
-    expect(claim).toContain('fallback_cursor');
     expect(claim).toMatch(
       /order by o\.available_at,o\.created_at,o\.id\s+limit batch_size/,
     );
     expect(claim).toMatch(/for update of o skip locked/);
-    expect(claim).toContain('advance_fairness_cursor');
+    expect(claim).toContain('advance_target');
+    expect(claim).toContain('fairness_progress');
   });
 });

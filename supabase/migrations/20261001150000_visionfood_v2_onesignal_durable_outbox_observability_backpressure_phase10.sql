@@ -485,6 +485,8 @@ declare
   deleted_generations integer:=0;
   deleted_vault_secrets integer:=0;
   deleted_cron_history integer:=0;
+  summarized_outbox_ranges integer:=0;
+  summarized_attempt_ranges integer:=0;
   g record;
   secret_name text;
 begin
@@ -495,7 +497,9 @@ begin
       'sealed_attempts',0,
       'deleted_outbox',0,
       'deleted_generations',0,
-      'deleted_vault_secrets',0
+      'deleted_vault_secrets',0,
+      'summarized_outbox_ranges',0,
+      'summarized_attempt_ranges',0
     );
   end if;
 
@@ -700,6 +704,33 @@ begin
 
   get diagnostics deleted_cron_history=row_count;
 
+  -- Phase 26: autosummarize uses a fixed, process-wide 256-item work queue.
+  -- With pages_per_range=8, a full queue represents only 2,048 heap pages,
+  -- versus 8,192 at the previous 32-page granularity. If a burst crosses
+  -- more boundaries than the queue can retain, dropped requests leave ranges
+  -- unsummarized; BRIN must then return every page in those ranges regardless
+  -- of the 5m/24h created_at scan key. Give the already low-frequency cleanup
+  -- job a queue-independent rescue path without putting summarization on the
+  -- 15s runner or the health read itself. The guards make this migration safe
+  -- before the later phase-21 migration creates the two BRIN indexes.
+  if pg_catalog.to_regclass(
+       'private.onesignal_outbox_health_created_idx'
+     ) is not null then
+    select pg_catalog.brin_summarize_new_values(
+      'private.onesignal_outbox_health_created_idx'::regclass
+    )
+      into summarized_outbox_ranges;
+  end if;
+
+  if pg_catalog.to_regclass(
+       'private.onesignal_outbox_attempts_health_created_idx'
+     ) is not null then
+    select pg_catalog.brin_summarize_new_values(
+      'private.onesignal_outbox_attempts_health_created_idx'::regclass
+    )
+      into summarized_attempt_ranges;
+  end if;
+
   return pg_catalog.jsonb_build_object(
     'ok',true,
     'busy',false,
@@ -713,7 +744,9 @@ begin
     'sealed_attempts',sealed_attempts,
     'deleted_outbox',deleted_outbox,
     'deleted_generations',deleted_generations,
-    'deleted_vault_secrets',deleted_vault_secrets
+    'deleted_vault_secrets',deleted_vault_secrets,
+    'summarized_outbox_ranges',summarized_outbox_ranges,
+    'summarized_attempt_ranges',summarized_attempt_ranges
   );
 end
 $$;

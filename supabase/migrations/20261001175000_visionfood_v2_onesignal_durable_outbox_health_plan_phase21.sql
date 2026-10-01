@@ -27,14 +27,16 @@ create index if not exists visionfood_onesignal_cron_history_job_start_idx
   on cron.job_run_details(jobid,start_time desc,runid desc);
 
 -- Existing claim/lease indexes already cover due pending/retry and sending
--- subsets. For append-correlated created_at windows use BRIN instead of a
--- per-row B-tree entry: health stays history-bounded without adding a hot
--- B-tree write to every enqueue. Autosummarize keeps new ranges selective;
--- an unsummarized range is conservative (rechecked), never incorrect.
+-- subsets. Retention eventually creates reusable old heap pages, so plain
+-- minmax with a wide page range can lose physical created_at correlation:
+-- one recent tuple reused into an old range makes the whole range lossy.
+-- Keep BRIN's low per-row write footprint, but use minmax-multi to preserve
+-- gaps between old/new timestamp clusters and an 8-page range to cap heap
+-- rechecks when recent rows are sparsely scattered by page reuse.
 create index if not exists onesignal_outbox_health_created_idx
   on private.onesignal_outbox
-  using brin(created_at)
-  with (pages_per_range=32,autosummarize=on);
+  using brin(created_at timestamptz_minmax_multi_ops(values_per_range=64))
+  with (pages_per_range=8,autosummarize=on);
 
 create index if not exists onesignal_outbox_health_failed_idx
   on private.onesignal_outbox(failed_at desc)
@@ -53,12 +55,14 @@ create index if not exists onesignal_outbox_health_attempted_idx
   on private.onesignal_outbox(last_attempt_at desc)
   where last_attempt_at is not null;
 
--- Attempts are append-correlated by created_at. BRIN bounds recent-window heap
--- reads with a tiny index footprint and avoids a B-tree insert per attempt.
+-- Attempts are append-correlated at first, but ON DELETE CASCADE from retained
+-- outbox rows also creates reusable old heap pages. Use the same minmax-multi
+-- + small-range policy so the 24h health window does not degenerate toward a
+-- broad lossy scan after sustained delete/reuse cycles.
 create index if not exists onesignal_outbox_attempts_health_created_idx
   on private.onesignal_outbox_attempts
-  using brin(created_at)
-  with (pages_per_range=32,autosummarize=on);
+  using brin(created_at timestamptz_minmax_multi_ops(values_per_range=64))
+  with (pages_per_range=8,autosummarize=on);
 
 -- Do not add a second unresolved-attempt index. Phase 3 already owns
 -- onesignal_outbox_attempts_unresolved_idx(submitted_at,id) for the exact

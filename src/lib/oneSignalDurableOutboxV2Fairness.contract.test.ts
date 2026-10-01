@@ -101,12 +101,12 @@ describe('OneSignal Durable Outbox V2 phase 11 organization fairness', () => {
     expect(reconcile).toContain('partition by prioritized.organization_id');
     expect(reconcile).toContain('response_priority');
     expect(reconcile).toContain('lease_priority');
-    expect(reconcile).toContain(
-      'order by prioritized.response_priority,prioritized.lease_priority,prioritized.submitted_at,prioritized.id',
+    expect(reconcile).toMatch(
+      /order by prioritized\.response_priority,prioritized\.lease_priority,\s*prioritized\.submitted_at,prioritized\.id/,
     );
     expect(reconcile).toContain('organization_rank');
-    expect(reconcile).toContain(
-      'order by ranked.organization_rank,ranked.response_priority,ranked.lease_priority,ranked.submitted_at,ranked.id',
+    expect(reconcile).toMatch(
+      /order by ranked\.organization_rank,ranked\.response_priority,\s*ranked\.lease_priority,ranked\.submitted_at,ranked\.id/,
     );
     expect(reconcile).toMatch(/for update of x skip locked/);
   });

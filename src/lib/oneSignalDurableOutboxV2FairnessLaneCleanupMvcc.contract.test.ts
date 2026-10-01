@@ -97,9 +97,8 @@ describe('OneSignal Durable Outbox V2 phase 17 fairness lane cleanup MVCC snapsh
 
     // A separate PL/pgSQL SELECT INTO cutoff followed by DELETE would allow a
     // later command snapshot to drift away from the cutoff snapshot.
-    expect(claim).not.toMatch(
-      /select .* into .*cutoff .*delete from private\.onesignal_outbox_claim_fairness_state/,
-    );
+    expect(claim).not.toContain('into pressure_cleanup_cutoff');
+    expect(claim).not.toContain('into idle_cleanup_cutoff');
   });
 
   it('cannot over-delete the soft pool when inserts commit after the cleanup snapshot', () => {

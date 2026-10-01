@@ -179,13 +179,23 @@ describe('OneSignal Durable Outbox V2 phase 16 fairness lane cleanup concurrency
       'visionfood_onesignal_outbox_claim',
     );
 
+    const pressureStart = claim.indexOf('pressure_cleanup_candidates as (');
+    const pressureEnd = claim.indexOf(
+      'delete from private.onesignal_outbox_claim_fairness_state',
+      pressureStart,
+    );
+    const pressureCandidates = claim.slice(pressureStart, pressureEnd);
+
+    const idleStart = claim.indexOf('idle_cleanup_candidates as (');
+    const idleEnd = claim.indexOf(
+      'delete from private.onesignal_outbox_claim_fairness_state',
+      idleStart,
+    );
+    const idleCandidates = claim.slice(idleStart, idleEnd);
+
     expect(claim).toMatch(/for update of s skip locked/);
-    expect(claim).not.toMatch(
-      /pressure_cleanup_candidates as \(.*offset.*for update of s skip locked.*\)/,
-    );
-    expect(claim).not.toMatch(
-      /idle_cleanup_candidates as \(.*offset.*for update of s skip locked.*\)/,
-    );
+    expect(pressureCandidates).not.toContain('offset');
+    expect(idleCandidates).not.toContain('offset');
     expect(claim).not.toContain(
       'lock table private.onesignal_outbox_claim_fairness_state',
     );

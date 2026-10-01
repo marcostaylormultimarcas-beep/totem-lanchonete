@@ -451,6 +451,20 @@ grant execute on function private.visionfood_onesignal_outbox_run_once(
   integer,integer,integer,integer,integer,integer
 ) to service_role;
 
+-- Phase 27 rescue cursor: internal maintenance state, never client writable.
+-- This migration has not been applied remotely; keep its cleanup definition
+-- self-contained and safe before the later BRIN index migration is installed.
+create table if not exists private.onesignal_brin_rescue_cursor (
+  index_name text primary key check (index_name in (
+    'private.onesignal_outbox_health_created_idx',
+    'private.onesignal_outbox_attempts_health_created_idx'
+  )),
+  index_oid oid not null,
+  next_page bigint not null default 0 check (next_page>=0)
+);
+alter table private.onesignal_brin_rescue_cursor enable row level security;
+revoke all on private.onesignal_brin_rescue_cursor from public,anon,authenticated,service_role;
+
 create or replace function private.visionfood_onesignal_outbox_cleanup(
   _terminal_retention interval default interval '30 days',
   _generation_retention interval default interval '45 days',
@@ -487,6 +501,19 @@ declare
   deleted_cron_history integer:=0;
   summarized_outbox_ranges integer:=0;
   summarized_attempt_ranges integer:=0;
+  rescue_name text;
+  rescue_index regclass;
+  rescue_heap regclass;
+  rescue_ppr integer;
+  rescue_pages bigint;
+  rescue_page bigint;
+  rescue_visits integer;
+  rescue_count integer;
+  rescue_deadline timestamptz;
+  rescue_lock_skips integer:=0;
+  rescue_total_visits integer:=0;
+  saved_lock_timeout text;
+  rescue_lock_timeout text;
   g record;
   secret_name text;
 begin
@@ -704,32 +731,76 @@ begin
 
   get diagnostics deleted_cron_history=row_count;
 
-  -- Phase 26: autosummarize uses a fixed, process-wide 256-item work queue.
-  -- With pages_per_range=8, a full queue represents only 2,048 heap pages,
-  -- versus 8,192 at the previous 32-page granularity. If a burst crosses
-  -- more boundaries than the queue can retain, dropped requests leave ranges
-  -- unsummarized; BRIN must then return every page in those ranges regardless
-  -- of the 5m/24h created_at scan key. Give the already low-frequency cleanup
-  -- job a queue-independent rescue path without putting summarization on the
-  -- 15s runner or the health read itself. The guards make this migration safe
-  -- before the later phase-21 migration creates the two BRIN indexes.
-  if pg_catalog.to_regclass(
-       'private.onesignal_outbox_health_created_idx'
-     ) is not null then
-    select pg_catalog.brin_summarize_new_values(
-      'private.onesignal_outbox_health_created_idx'::regclass
-    )
-      into summarized_outbox_ranges;
-  end if;
-
-  if pg_catalog.to_regclass(
-       'private.onesignal_outbox_attempts_health_created_idx'
-     ) is not null then
-    select pg_catalog.brin_summarize_new_values(
-      'private.onesignal_outbox_attempts_health_created_idx'::regclass
-    )
-      into summarized_attempt_ranges;
-  end if;
+  -- Phase 27: rescue is incremental, not a full-heap maintenance sweep after
+  -- DELETE. Count VISITS (even already summarized ranges) so an old prefix
+  -- cannot consume unbounded revmap work. At ppr=8: <=64 MiB heap per index.
+  -- 250ms is a cooperative budget, NOT a hard statement/I/O timeout; one range
+  -- may overrun it. Use a short lock wait and preserve stricter caller settings.
+  saved_lock_timeout:=pg_catalog.current_setting('lock_timeout');
+  rescue_lock_timeout:=case
+    when saved_lock_timeout::interval>interval '0'
+     and saved_lock_timeout::interval<interval '100 milliseconds'
+      then saved_lock_timeout
+    else '100ms'
+  end;
+  perform pg_catalog.set_config('lock_timeout',rescue_lock_timeout,true);
+  foreach rescue_name in array array[
+    'private.onesignal_outbox_health_created_idx',
+    'private.onesignal_outbox_attempts_health_created_idx'
+  ] loop
+    rescue_count:=0;
+    rescue_visits:=0;
+    -- A contended maintenance lock rolls back only this index's rescue work,
+    -- including its cursor. Retention already performed above can still commit.
+    begin
+      rescue_index:=pg_catalog.to_regclass(rescue_name);
+      if rescue_index is null then continue; end if;
+      select i.indrelid,
+        coalesce((select option_value::integer
+          from pg_catalog.pg_options_to_table(c.reloptions)
+          where option_name='pages_per_range'),128)
+        into rescue_heap,rescue_ppr
+      from pg_catalog.pg_index i
+      join pg_catalog.pg_class c on c.oid=i.indexrelid
+      join pg_catalog.pg_am am on am.oid=c.relam
+      where i.indexrelid=rescue_index and i.indisvalid and am.amname='brin';
+      if not found then continue; end if;
+      rescue_pages:=pg_catalog.pg_relation_size(rescue_heap)/
+        pg_catalog.current_setting('block_size')::bigint;
+      insert into private.onesignal_brin_rescue_cursor(index_name,index_oid)
+        values(rescue_name,rescue_index::oid)
+        on conflict (index_name) do nothing;
+      select case when c.index_oid=rescue_index::oid
+                       and c.next_page<rescue_pages
+                    then (c.next_page/rescue_ppr)*rescue_ppr else 0 end
+        into rescue_page
+      from private.onesignal_brin_rescue_cursor c
+      where c.index_name=rescue_name;
+      rescue_deadline:=pg_catalog.clock_timestamp()+interval '250 milliseconds';
+      while rescue_page<rescue_pages and rescue_visits<1024
+        and pg_catalog.clock_timestamp()<rescue_deadline loop
+        rescue_count:=rescue_count+
+          pg_catalog.brin_summarize_range(rescue_index,rescue_page);
+        rescue_page:=rescue_page+rescue_ppr;
+        rescue_visits:=rescue_visits+1;
+      end loop;
+      if rescue_page>=rescue_pages then rescue_page:=0; end if;
+      update private.onesignal_brin_rescue_cursor
+        set index_oid=rescue_index::oid,next_page=rescue_page
+        where index_name=rescue_name;
+    exception when lock_not_available then
+      rescue_lock_skips:=rescue_lock_skips+1;
+      rescue_count:=0;
+      rescue_visits:=0;
+    end;
+    rescue_total_visits:=rescue_total_visits+rescue_visits;
+    if rescue_name='private.onesignal_outbox_health_created_idx' then
+      summarized_outbox_ranges:=rescue_count;
+    else
+      summarized_attempt_ranges:=rescue_count;
+    end if;
+  end loop;
+  perform pg_catalog.set_config('lock_timeout',saved_lock_timeout,true);
 
   return pg_catalog.jsonb_build_object(
     'ok',true,
@@ -746,7 +817,9 @@ begin
     'deleted_generations',deleted_generations,
     'deleted_vault_secrets',deleted_vault_secrets,
     'summarized_outbox_ranges',summarized_outbox_ranges,
-    'summarized_attempt_ranges',summarized_attempt_ranges
+    'summarized_attempt_ranges',summarized_attempt_ranges,
+    'brin_rescue_range_visits',rescue_total_visits,
+    'brin_rescue_lock_skips',rescue_lock_skips
   );
 end
 $$;

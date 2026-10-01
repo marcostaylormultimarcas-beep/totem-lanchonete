@@ -117,15 +117,13 @@ describe('OneSignal Durable Outbox V2 phase 26 BRIN unsummarized burst audit', (
     );
 
     expect(cleanup).not.toBe('');
-    expect(cleanup).toMatch(
-      /brin_summarize_new_values\s*\(\s*'private\.onesignal_outbox_health_created_idx'::regclass\s*\)/,
-    );
-    expect(cleanup).toMatch(
-      /brin_summarize_new_values\s*\(\s*'private\.onesignal_outbox_attempts_health_created_idx'::regclass\s*\)/,
-    );
+    expect(cleanup).toContain("'private.onesignal_outbox_health_created_idx'");
+    expect(cleanup).toContain("'private.onesignal_outbox_attempts_health_created_idx'");
+    expect(cleanup).toContain('brin_summarize_range(rescue_index,rescue_page)');
+    expect(cleanup).toContain('private.onesignal_brin_rescue_cursor');
 
     // The existing cleanup job is deliberately low-frequency and therefore
-    // gives dropped autosummarize requests a bounded, queue-independent retry
+    // gives dropped autosummarize requests an incremental, queue-independent retry
     // path without putting heap summarization on the foreground 15s runner.
     expect(migrationCorpus).toContain(
       "'visionfood-onesignal-outbox-v2-cleanup', '*/10 * * * *'",

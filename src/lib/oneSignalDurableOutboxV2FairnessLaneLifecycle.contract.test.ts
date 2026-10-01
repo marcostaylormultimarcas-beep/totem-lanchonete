@@ -163,7 +163,7 @@ describe('OneSignal Durable Outbox V2 phase 15 fairness lane lifecycle', () => {
     expect(claim).toContain('lane_idle_ttl');
     expect(claim).toContain('cleanup_candidates as');
     expect(claim).toMatch(
-      /updated_at<pg_catalog\.clock_timestamp\(\)-lane_idle_ttl/,
+      /updated_at\s*<\s*pg_catalog\.clock_timestamp\(\)-lane_idle_ttl/,
     );
     expect(claim).toContain('offset lane_floor');
     expect(claim).toContain('limit lane_cleanup_batch');

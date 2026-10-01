@@ -64,7 +64,9 @@ describe('OneSignal Durable Outbox V2 phase 20 transaction-abort observability',
       'visionfood_onesignal_outbox_health',
     );
 
-    expect(health).toContain('attempt_count>0');
+    expect(health).toContain('o.last_attempt_at');
+    expect(health).toContain('o.delivered_at');
+    expect(health).toContain('o.failed_at');
     expect(health).toContain("'last_progress_at'");
     expect(health).toContain("'progress_lag_seconds'");
     expect(health).toContain("'progress_stalled'");

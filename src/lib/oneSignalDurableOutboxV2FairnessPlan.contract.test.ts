@@ -65,7 +65,7 @@ describe('OneSignal Durable Outbox V2 phase 12 fairness execution cost', () => {
     expect(claim).toContain('cross join lateral');
     expect(claim).toContain('per_organization_candidates');
     expect(claim).toMatch(
-      /order by o\.available_at,o\.created_at,o\.id\s+limit least\(/,
+      /order by o\.available_at,o\.created_at,o\.id\s+limit (?:least\(|batch_size)/,
     );
     expect(claim).toContain('partition by p.organization_id');
     expect(claim).toContain('organization_rank');

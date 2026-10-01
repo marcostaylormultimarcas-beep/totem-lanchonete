@@ -152,6 +152,28 @@ describe('OneSignal Durable Outbox V2 phase 15 fairness lane lifecycle', () => {
     expect(claim).toContain('last_organization_id=pg_catalog.coalesce(');
   });
 
+  it('requires hot excess lanes to compact even when steady traffic keeps them recent', () => {
+    const claim = latestFunctionDefinition(
+      'private',
+      'visionfood_onesignal_outbox_claim',
+    );
+
+    expect(claim).toContain('lane_soft_limit');
+    expect(claim).toContain('pressure_cleanup_candidates as');
+    expect(claim).toContain('offset lane_soft_limit');
+    expect(claim).toContain('using pressure_cleanup_candidates cleanup');
+
+    const softLimit = 32;
+    const cleanupBatch = 16;
+    const committedLanesAfterBurst = 65;
+    const removableUnlockedExcess = Math.min(
+      cleanupBatch,
+      committedLanesAfterBurst - 1 - softLimit,
+    );
+
+    expect(removableUnlockedExcess).toBe(16);
+  });
+
   it('requires bounded stale-lane cleanup that skips locks and retains a multi-lane floor', () => {
     const claim = latestFunctionDefinition(
       'private',
@@ -161,13 +183,16 @@ describe('OneSignal Durable Outbox V2 phase 15 fairness lane lifecycle', () => {
     expect(claim).toContain('lane_floor');
     expect(claim).toContain('lane_cleanup_batch');
     expect(claim).toContain('lane_idle_ttl');
-    expect(claim).toContain('cleanup_candidates as');
+    expect(claim).toContain('idle_cleanup_candidates as');
     expect(claim).toMatch(
       /updated_at\s*<\s*pg_catalog\.clock_timestamp\(\)-lane_idle_ttl/,
     );
     expect(claim).toContain('offset lane_floor');
     expect(claim).toContain('limit lane_cleanup_batch');
     expect(claim).toMatch(/for update of s skip locked/);
+    expect(claim).toContain(
+      'using idle_cleanup_candidates cleanup',
+    );
     expect(claim).toContain(
       'delete from private.onesignal_outbox_claim_fairness_state',
     );

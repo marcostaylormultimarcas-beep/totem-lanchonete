@@ -58,7 +58,10 @@ describe('OneSignal Durable Outbox V2 phase 21 health execution cost', () => {
       'onesignal_outbox_attempts_health_created_idx',
     );
     expect(migrationCorpus).toContain(
-      'onesignal_outbox_attempts_health_unresolved_idx',
+      'onesignal_outbox_attempts_unresolved_idx',
+    );
+    expect(health).toMatch(
+      /where x\.result_observed_at is null and x\.pg_net_request_id is not null/,
     );
   });
 
@@ -82,6 +85,6 @@ describe('OneSignal Durable Outbox V2 phase 21 health execution cost', () => {
   it('adds selective health indexes for recent terminal/progress windows instead of forcing terminal-history scans', () => {
     expect(migrationCorpus).toContain('onesignal_outbox_health_failed_idx');
     expect(migrationCorpus).toContain('onesignal_outbox_health_delivered_idx');
-    expect(migrationCorpus).toContain('onesignal_outbox_health_progress_idx');
+    expect(migrationCorpus).toContain('onesignal_outbox_health_attempted_idx');
   });
 });

@@ -27,9 +27,14 @@ create index if not exists visionfood_onesignal_cron_history_job_start_idx
   on cron.job_run_details(jobid,start_time desc,runid desc);
 
 -- Existing claim/lease indexes already cover due pending/retry and sending
--- subsets. Add only the missing access paths used by short health windows.
+-- subsets. For append-correlated created_at windows use BRIN instead of a
+-- per-row B-tree entry: health stays history-bounded without adding a hot
+-- B-tree write to every enqueue. Autosummarize keeps new ranges selective;
+-- an unsummarized range is conservative (rechecked), never incorrect.
 create index if not exists onesignal_outbox_health_created_idx
-  on private.onesignal_outbox(created_at desc);
+  on private.onesignal_outbox
+  using brin(created_at)
+  with (pages_per_range=32,autosummarize=on);
 
 create index if not exists onesignal_outbox_health_failed_idx
   on private.onesignal_outbox(failed_at desc)
@@ -41,17 +46,23 @@ create index if not exists onesignal_outbox_health_delivered_idx
   where status='delivered'
     and delivered_at is not null;
 
-create index if not exists onesignal_outbox_health_progress_idx
-  on private.onesignal_outbox(updated_at desc)
-  where attempt_count>0
-    and status in ('sending','retry','delivered','failed');
+-- updated_at changes in claim, dispatch persistence and reconcile, so indexing
+-- it would turn observability into write amplification on the hottest row path.
+-- last_attempt_at advances once per claim attempt and is otherwise stable.
+create index if not exists onesignal_outbox_health_attempted_idx
+  on private.onesignal_outbox(last_attempt_at desc)
+  where last_attempt_at is not null;
 
+-- Attempts are append-correlated by created_at. BRIN bounds recent-window heap
+-- reads with a tiny index footprint and avoids a B-tree insert per attempt.
 create index if not exists onesignal_outbox_attempts_health_created_idx
-  on private.onesignal_outbox_attempts(created_at desc);
+  on private.onesignal_outbox_attempts
+  using brin(created_at)
+  with (pages_per_range=32,autosummarize=on);
 
-create index if not exists onesignal_outbox_attempts_health_unresolved_idx
-  on private.onesignal_outbox_attempts(id)
-  where result_observed_at is null;
+-- Do not add a second unresolved-attempt index. Phase 3 already owns
+-- onesignal_outbox_attempts_unresolved_idx(submitted_at,id) for the exact
+-- runtime unresolved subset (result_observed_at IS NULL + request id present).
 
 create or replace function private.visionfood_onesignal_outbox_health()
 returns jsonb
@@ -179,11 +190,29 @@ begin
 
   terminal_5m:=delivered_5m+terminal_failed_5m;
 
-  select pg_catalog.max(o.updated_at)
-    into last_progress_at
-  from private.onesignal_outbox o
-  where o.attempt_count>0
-    and o.status in ('sending','retry','delivered','failed');
+  -- Durable progress is the newest attempt start or terminal observation.
+  -- This preserves the phase-20 stall signal while avoiding an index on
+  -- updated_at, which is rewritten multiple times per attempt lifecycle.
+  select greatest(
+    (
+      select pg_catalog.max(o.last_attempt_at)
+      from private.onesignal_outbox o
+      where o.last_attempt_at is not null
+    ),
+    (
+      select pg_catalog.max(o.delivered_at)
+      from private.onesignal_outbox o
+      where o.status='delivered'
+        and o.delivered_at is not null
+    ),
+    (
+      select pg_catalog.max(o.failed_at)
+      from private.onesignal_outbox o
+      where o.status='failed'
+        and o.failed_at is not null
+    )
+  )
+    into last_progress_at;
 
   -- Separate recent-attempt volume from unresolved-attempt pressure so each
   -- predicate can use its own narrow access path.
@@ -195,7 +224,8 @@ begin
   select pg_catalog.count(*)
     into unresolved_attempts
   from private.onesignal_outbox_attempts x
-  where x.result_observed_at is null;
+  where x.result_observed_at is null
+    and x.pg_net_request_id is not null;
 
   oldest_due_seconds:=coalesce(
     greatest(

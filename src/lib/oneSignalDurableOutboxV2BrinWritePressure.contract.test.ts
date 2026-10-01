@@ -88,18 +88,25 @@ describe('OneSignal Durable Outbox V2 phase 24 BRIN write/buffer pressure audit'
     expect(rangeIds(reusedPages, 32).size).toBe(1);
   });
 
-  it('keeps autosummarize enabled without adding synchronous manual summarization to runtime SQL', () => {
+  it('keeps autosummarize enabled without adding synchronous manual summarization to foreground runtime SQL', () => {
     for (const ddl of [outbox, attempts]) {
       expect(ddl).toContain('autosummarize=on');
     }
 
-    // A manual summarize call in enqueue/claim/reconcile would turn range
-    // maintenance into foreground write work. The branch intentionally relies
-    // on PostgreSQL autosummarize/VACUUM instead.
-    expect(migrationCorpus).not.toMatch(
+    // Phase 26 deliberately allows queue-independent summarization only inside
+    // the already low-frequency cleanup function. Strip every historical
+    // definition of that function, then keep the stronger invariant that no
+    // enqueue/claim/reconcile/runner/health (or any other migration SQL) may
+    // turn BRIN summarization into foreground work.
+    const withoutCleanup = migrationCorpus.replace(
+      /create or replace function private\.visionfood_onesignal_outbox_cleanup\([\s\S]*?\$\$;/g,
+      '',
+    );
+
+    expect(withoutCleanup).not.toMatch(
       /perform\s+pg_catalog\.brin_summarize_(?:range|new_values)\s*\(/,
     );
-    expect(migrationCorpus).not.toMatch(
+    expect(withoutCleanup).not.toMatch(
       /select\s+pg_catalog\.brin_summarize_(?:range|new_values)\s*\(/,
     );
   });

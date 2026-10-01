@@ -22,10 +22,13 @@
 --   * refresh lane recency as soon as an existing lane is acquired. This does
 --     not move last_organization_id, so cursor advancement remains coupled only
 --     to effective claims and still rolls back atomically with the claim;
---   * keep at least eight stale lanes, preserving a genuinely multi-lane pool;
---   * opportunistically delete at most sixteen additional lanes per claim only
---     after fifteen minutes of inactivity, using FOR UPDATE SKIP LOCKED so an
---     active/long-running lane is never waited on or deleted;
+--   * keep a soft pool of thirty-two lanes under sustained traffic and compact
+--     unlocked excess immediately in bounded chunks after a concurrency burst;
+--   * compact long-idle capacity further toward an eight-lane floor after
+--     fifteen minutes of inactivity;
+--   * both cleanup paths use FOR UPDATE SKIP LOCKED, so active/long-running
+--     lanes are never waited on or deleted and real concurrency can exceed the
+--     soft pool temporarily without serialization;
 --   * index updated_at,id for both lane reuse and bounded cleanup.
 --
 -- This migration is intentionally not applied remotely here.
@@ -57,6 +60,7 @@ declare
   fairness_lane_id bigint;
   claim_cursor uuid;
   lane_floor integer:=8;
+  lane_soft_limit integer:=32;
   lane_cleanup_batch integer:=16;
   lane_idle_ttl interval:=interval '15 minutes';
 begin
@@ -105,10 +109,27 @@ begin
     returning id into fairness_lane_id;
   end if;
 
-  -- Compact only idle excess lanes. Keep a multi-lane floor, delete a bounded
-  -- number per call, and SKIP LOCKED so cleanup neither blocks active claims
-  -- nor creates a new global serialization point.
-  with cleanup_candidates as (
+  -- First shrink historical peak capacity even under steady traffic. Preserve
+  -- the most-recently-used soft pool, delete only unlocked excess, and bound
+  -- work per call. Locked lanes survive regardless of rank, so real concurrent
+  -- demand can temporarily exceed lane_soft_limit without blocking.
+  with pressure_cleanup_candidates as (
+    select s.id
+    from private.onesignal_outbox_claim_fairness_state s
+    where s.id<>fairness_lane_id
+    order by s.updated_at desc,s.id desc
+    limit lane_cleanup_batch
+    offset lane_soft_limit
+    for update of s skip locked
+  )
+  delete from private.onesignal_outbox_claim_fairness_state s
+  using pressure_cleanup_candidates cleanup
+  where s.id=cleanup.id;
+
+  -- After traffic has cooled, compact old unlocked capacity further toward a
+  -- smaller multi-lane floor. This remains opportunistic and never waits on a
+  -- lane still owned by a long transaction.
+  with idle_cleanup_candidates as (
     select s.id
     from private.onesignal_outbox_claim_fairness_state s
     where s.id<>fairness_lane_id
@@ -120,7 +141,7 @@ begin
     for update of s skip locked
   )
   delete from private.onesignal_outbox_claim_fairness_state s
-  using cleanup_candidates cleanup
+  using idle_cleanup_candidates cleanup
   where s.id=cleanup.id;
 
   return query

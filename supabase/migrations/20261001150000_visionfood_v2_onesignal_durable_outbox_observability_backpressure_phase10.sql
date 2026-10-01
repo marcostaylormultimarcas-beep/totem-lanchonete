@@ -526,7 +526,6 @@ declare
   rescue_visit_limit integer;
   rescue_count integer;
   rescue_deadline timestamptz;
-  rescue_history_started_at timestamptz;
   rescue_lock_skips integer:=0;
   rescue_total_visits integer:=0;
   saved_lock_timeout text;
@@ -851,22 +850,18 @@ begin
         -- consumed one of the normal 1,024 visits, a tail arriving exactly at
         -- nominal capacity would grow by one range on every debt tick forever.
         rescue_visit_limit:=1025;
-        rescue_history_started_at:=pg_catalog.clock_timestamp();
+        -- Phase 32: keep the additive visit budget but do not extend the
+        -- cooperative call-start deadline after the forced historical visit.
+        -- Even a bounded refund can authorize a new brin_summarize_range call
+        -- after the original 250ms boundary. lock_timeout does not bound I/O
+        -- after lock acquisition, so that extra call can run into the next
+        -- 10-minute cleanup tick and delay retention commit.
         begin
           rescue_count:=rescue_count+
             pg_catalog.brin_summarize_range(rescue_index,rescue_page);
         exception when lock_not_available then
           rescue_lock_skips:=rescue_lock_skips+1;
         end;
-        -- Phase 31: the phase-30 visit is additive in time as well as count.
-        -- Refund only the time spent by the forced history call, capped at the
-        -- existing 100ms maintenance lock-wait envelope. Without this refund,
-        -- a just-binding 250ms deadline turns a debt tick into 1 history +
-        -- 1,023 tail visits even though the nominal tail capacity is 1,024.
-        rescue_deadline:=rescue_deadline+least(
-          pg_catalog.clock_timestamp()-rescue_history_started_at,
-          interval '100 milliseconds'
-        );
         -- A lock-skipped range must not pin either cursor forever. Advancing
         -- makes it eligible for a later historical wrap/retry.
         rescue_page:=rescue_page+rescue_ppr;

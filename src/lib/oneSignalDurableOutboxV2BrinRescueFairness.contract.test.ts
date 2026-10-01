@@ -103,6 +103,54 @@ function simulateTailFirst(
   return { backlog, summarizedNew, historyVisits };
 }
 
+function simulateTailFirstSchedule(
+  prefixRanges: number,
+  arrivals: number[],
+  budget: number,
+): SimResult {
+  let totalRanges = prefixRanges;
+  let tailPage = prefixRanges;
+  let historyCursor = 0;
+  const unsummarized = new Set<number>();
+  const backlog: number[] = [];
+  const summarizedNew: number[] = [];
+  const historyVisits: number[] = [];
+
+  for (const newRanges of arrivals) {
+    const before = totalRanges;
+    totalRanges += newRanges;
+    for (let range = before; range < totalRanges; range += 1) {
+      unsummarized.add(range);
+    }
+
+    const historyLimit = tailPage;
+    let visits = 0;
+    let summarized = 0;
+    let oldVisits = 0;
+
+    while (tailPage < totalRanges && visits < budget) {
+      if (unsummarized.delete(tailPage)) summarized += 1;
+      tailPage += 1;
+      visits += 1;
+    }
+
+    if (historyCursor >= historyLimit) historyCursor = 0;
+    while (historyCursor < historyLimit && visits < budget) {
+      if (unsummarized.delete(historyCursor)) summarized += 1;
+      else oldVisits += 1;
+      historyCursor += 1;
+      visits += 1;
+    }
+    if (historyCursor >= historyLimit) historyCursor = 0;
+
+    backlog.push(unsummarized.size);
+    summarizedNew.push(summarized);
+    historyVisits.push(oldVisits);
+  }
+
+  return { backlog, summarizedNew, historyVisits };
+}
+
 function simulateCurrent(
   prefixRanges: number,
   newRangesPerTick: number,
@@ -132,13 +180,19 @@ describe('Durable Outbox V2 phase 28 BRIN rescue fairness', () => {
     expect(result.historyVisits.every((visits) => visits <= 924)).toBe(true);
   });
 
-  it('remains capacity-bounded when arrivals exceed 1,024 ranges/tick', () => {
-    const overloaded = simulateTailFirst(3_000, 1_100, 6, 1_024);
-    expect(overloaded.backlog).toEqual([76, 152, 228, 304, 380, 456]);
+  it('remains capacity-bounded above 1,024 ranges/tick and drains after the burst stops', () => {
+    const overloaded = simulateTailFirstSchedule(
+      3_000,
+      [1_100, 1_100, 1_100, 1_100, 1_100, 1_100, 0],
+      1_024,
+    );
 
-    const drain = simulateTailFirst(3_000, 0, 1, 1_024);
-    expect(drain.backlog).toEqual([0]);
+    expect(overloaded.backlog).toEqual([76, 152, 228, 304, 380, 456, 0]);
+    expect(overloaded.historyVisits.slice(0, 6)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(overloaded.historyVisits[6]).toBeGreaterThan(0);
 
+    expect(cleanup).toContain('tail_page bigint');
+    expect(cleanup).toContain('rescue_history_limit');
     expect(cleanup).toContain('rescue_visits<1024');
   });
 });

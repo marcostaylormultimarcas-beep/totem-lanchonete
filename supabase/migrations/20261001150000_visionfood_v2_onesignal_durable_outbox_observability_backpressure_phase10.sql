@@ -464,10 +464,15 @@ create table if not exists private.onesignal_brin_rescue_cursor (
   -- First BRIN range that still belongs to the fresh-tail priority lane.
   -- NULL is accepted only for compatibility with a local phase-27 table that
   -- was created before this unapplied migration was amended.
-  tail_page bigint check (tail_page>=0)
+  tail_page bigint check (tail_page>=0),
+  -- Set when a saturated/deadline-bound tick gave history no scheduling
+  -- opportunity. The next tick repays one historical visit before tail bulk.
+  history_due boolean not null default false
 );
 alter table private.onesignal_brin_rescue_cursor
   add column if not exists tail_page bigint check (tail_page>=0);
+alter table private.onesignal_brin_rescue_cursor
+  add column if not exists history_due boolean not null default false;
 alter table private.onesignal_brin_rescue_cursor enable row level security;
 revoke all on private.onesignal_brin_rescue_cursor from public,anon,authenticated,service_role;
 
@@ -515,6 +520,8 @@ declare
   rescue_page bigint;
   rescue_tail_page bigint;
   rescue_history_limit bigint;
+  rescue_history_due boolean;
+  rescue_history_visits integer;
   rescue_visits integer;
   rescue_count integer;
   rescue_deadline timestamptz;
@@ -758,6 +765,8 @@ begin
   ] loop
     rescue_count:=0;
     rescue_visits:=0;
+    rescue_history_visits:=0;
+    rescue_history_due:=false;
     -- A contended maintenance lock rolls back only this index's rescue work,
     -- including its cursor. Retention already performed above can still commit.
     begin
@@ -811,8 +820,9 @@ begin
                 - 1024::bigint*rescue_ppr
             )
           else (c.tail_page/rescue_ppr)*rescue_ppr
-        end
-        into rescue_page,rescue_tail_page
+        end,
+        coalesce(c.history_due,false)
+        into rescue_page,rescue_tail_page,rescue_history_due
       from private.onesignal_brin_rescue_cursor c
       where c.index_name=rescue_name;
 
@@ -822,28 +832,64 @@ begin
       rescue_history_limit:=least(rescue_tail_page,rescue_pages);
       rescue_deadline:=pg_catalog.clock_timestamp()+interval '250 milliseconds';
 
+      if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
+
+      -- Phase 29 fairness debt: tail keeps bulk priority, but a tick that gave
+      -- history zero opportunities records debt. The following tick repays one
+      -- historical visit before tail bulk. This also alternates first progress
+      -- when a single summarize call can consume the cooperative deadline.
+      if rescue_history_due
+         and rescue_history_limit>0
+         and rescue_visits<1024
+         and pg_catalog.clock_timestamp()<rescue_deadline then
+        begin
+          rescue_count:=rescue_count+
+            pg_catalog.brin_summarize_range(rescue_index,rescue_page);
+        exception when lock_not_available then
+          rescue_lock_skips:=rescue_lock_skips+1;
+        end;
+        -- A lock-skipped range must not pin either cursor forever. Advancing
+        -- makes it eligible for a later historical wrap/retry.
+        rescue_page:=rescue_page+rescue_ppr;
+        rescue_visits:=rescue_visits+1;
+        rescue_history_visits:=rescue_history_visits+1;
+        if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
+      end if;
+
       while rescue_tail_page<rescue_pages and rescue_visits<1024
         and pg_catalog.clock_timestamp()<rescue_deadline loop
-        rescue_count:=rescue_count+
-          pg_catalog.brin_summarize_range(rescue_index,rescue_tail_page);
+        begin
+          rescue_count:=rescue_count+
+            pg_catalog.brin_summarize_range(rescue_index,rescue_tail_page);
+        exception when lock_not_available then
+          rescue_lock_skips:=rescue_lock_skips+1;
+        end;
         rescue_tail_page:=rescue_tail_page+rescue_ppr;
         rescue_visits:=rescue_visits+1;
       end loop;
 
-      if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
       while rescue_page<rescue_history_limit and rescue_visits<1024
         and pg_catalog.clock_timestamp()<rescue_deadline loop
-        rescue_count:=rescue_count+
-          pg_catalog.brin_summarize_range(rescue_index,rescue_page);
+        begin
+          rescue_count:=rescue_count+
+            pg_catalog.brin_summarize_range(rescue_index,rescue_page);
+        exception when lock_not_available then
+          rescue_lock_skips:=rescue_lock_skips+1;
+        end;
         rescue_page:=rescue_page+rescue_ppr;
         rescue_visits:=rescue_visits+1;
+        rescue_history_visits:=rescue_history_visits+1;
       end loop;
       if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
 
       update private.onesignal_brin_rescue_cursor
         set index_oid=rescue_index::oid,
             next_page=rescue_page,
-            tail_page=rescue_tail_page
+            tail_page=rescue_tail_page,
+            history_due=(
+              rescue_history_limit>0
+              and rescue_history_visits=0
+            )
         where index_name=rescue_name;
     exception when lock_not_available then
       rescue_lock_skips:=rescue_lock_skips+1;

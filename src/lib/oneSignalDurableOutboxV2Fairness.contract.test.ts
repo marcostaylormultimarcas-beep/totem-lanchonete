@@ -78,7 +78,7 @@ describe('OneSignal Durable Outbox V2 phase 11 organization fairness', () => {
 
     expect(claim).not.toBe('');
     expect(claim).toContain('row_number() over');
-    expect(claim).toContain('partition by o.organization_id');
+    expect(claim).toMatch(/partition by (?:o|p)\.organization_id/);
     expect(claim).toContain(
       'order by o.available_at,o.created_at,o.id',
     );

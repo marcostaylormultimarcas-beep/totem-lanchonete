@@ -58,9 +58,7 @@ describe('OneSignal Durable Outbox V2 phase 14 claim cursor atomicity/liveness',
     expect(phase13).toMatch(
       /select active_org\.organization_id from active_organizations active_org order by active_org\.organization_ordinal desc limit 1/,
     );
-    expect(phase13).not.toMatch(
-      /advance_fairness_cursor[\s\S]*from claimed/,
-    );
+    expect(phase13).not.toContain('served_organizations as');
 
     const previousCursor = 'org-000';
     const visitedOrganizations = ['org-001', 'org-002'];

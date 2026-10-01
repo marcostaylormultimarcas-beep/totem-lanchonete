@@ -523,6 +523,7 @@ declare
   rescue_history_due boolean;
   rescue_history_visits integer;
   rescue_visits integer;
+  rescue_visit_limit integer;
   rescue_count integer;
   rescue_deadline timestamptz;
   rescue_lock_skips integer:=0;
@@ -748,7 +749,9 @@ begin
 
   -- Phase 27: rescue is incremental, not a full-heap maintenance sweep after
   -- DELETE. Count VISITS (even already summarized ranges) so an old prefix
-  -- cannot consume unbounded revmap work. At ppr=8: <=64 MiB heap per index.
+  -- cannot consume unbounded revmap work. The normal cap remains 1,024 visits;
+  -- a phase-30 fairness-debt tick may add exactly one historical visit (1,025
+  -- total). At ppr=8 this is <=64.0625 MiB heap coverage per index.
   -- 250ms is a cooperative budget, NOT a hard statement/I/O timeout; one range
   -- may overrun it. Use a short lock wait and preserve stricter caller settings.
   saved_lock_timeout:=pg_catalog.current_setting('lock_timeout');
@@ -765,6 +768,7 @@ begin
   ] loop
     rescue_count:=0;
     rescue_visits:=0;
+    rescue_visit_limit:=1024;
     rescue_history_visits:=0;
     rescue_history_due:=false;
     -- A contended maintenance lock rolls back only this index's rescue work,
@@ -842,6 +846,10 @@ begin
          and rescue_history_limit>0
          and rescue_visits<1024
          and pg_catalog.clock_timestamp()<rescue_deadline then
+        -- Phase 30: the fairness repayment is an additive bounded visit. If it
+        -- consumed one of the normal 1,024 visits, a tail arriving exactly at
+        -- nominal capacity would grow by one range on every debt tick forever.
+        rescue_visit_limit:=1025;
         begin
           rescue_count:=rescue_count+
             pg_catalog.brin_summarize_range(rescue_index,rescue_page);
@@ -856,7 +864,7 @@ begin
         if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
       end if;
 
-      while rescue_tail_page<rescue_pages and rescue_visits<1024
+      while rescue_tail_page<rescue_pages and rescue_visits<rescue_visit_limit
         and pg_catalog.clock_timestamp()<rescue_deadline loop
         begin
           rescue_count:=rescue_count+
@@ -868,7 +876,7 @@ begin
         rescue_visits:=rescue_visits+1;
       end loop;
 
-      while rescue_page<rescue_history_limit and rescue_visits<1024
+      while rescue_page<rescue_history_limit and rescue_visits<rescue_visit_limit
         and pg_catalog.clock_timestamp()<rescue_deadline loop
         begin
           rescue_count:=rescue_count+

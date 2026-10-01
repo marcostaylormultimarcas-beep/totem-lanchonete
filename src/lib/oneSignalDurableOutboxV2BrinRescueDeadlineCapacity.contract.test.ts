@@ -85,7 +85,7 @@ describe('Durable Outbox V2 phase 31/32 BRIN rescue deadline safety', () => {
     expect(cleanup).toContain('rescue_visit_limit:=1025');
     expect(cleanup).not.toContain('rescue_history_started_at');
     expect(cleanup).not.toContain('rescue_deadline:=rescue_deadline+least(');
-    expect(cleanup).not.toContain("interval '100 milliseconds'");
+    expect(cleanup).toContain("interval '100 milliseconds'");
   });
 
   it('documents the deliberate just-binding capacity tradeoff after removing the unsafe time refund', () => {

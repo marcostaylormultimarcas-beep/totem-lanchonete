@@ -460,8 +460,14 @@ create table if not exists private.onesignal_brin_rescue_cursor (
     'private.onesignal_outbox_attempts_health_created_idx'
   )),
   index_oid oid not null,
-  next_page bigint not null default 0 check (next_page>=0)
+  next_page bigint not null default 0 check (next_page>=0),
+  -- First BRIN range that still belongs to the fresh-tail priority lane.
+  -- NULL is accepted only for compatibility with a local phase-27 table that
+  -- was created before this unapplied migration was amended.
+  tail_page bigint check (tail_page>=0)
 );
+alter table private.onesignal_brin_rescue_cursor
+  add column if not exists tail_page bigint check (tail_page>=0);
 alter table private.onesignal_brin_rescue_cursor enable row level security;
 revoke all on private.onesignal_brin_rescue_cursor from public,anon,authenticated,service_role;
 
@@ -507,6 +513,8 @@ declare
   rescue_ppr integer;
   rescue_pages bigint;
   rescue_page bigint;
+  rescue_tail_page bigint;
+  rescue_history_limit bigint;
   rescue_visits integer;
   rescue_count integer;
   rescue_deadline timestamptz;
@@ -767,26 +775,75 @@ begin
       if not found then continue; end if;
       rescue_pages:=pg_catalog.pg_relation_size(rescue_heap)/
         pg_catalog.current_setting('block_size')::bigint;
-      insert into private.onesignal_brin_rescue_cursor(index_name,index_oid)
-        values(rescue_name,rescue_index::oid)
-        on conflict (index_name) do nothing;
-      select case when c.index_oid=rescue_index::oid
-                       and c.next_page<rescue_pages
-                    then (c.next_page/rescue_ppr)*rescue_ppr else 0 end
-        into rescue_page
+      insert into private.onesignal_brin_rescue_cursor(
+        index_name,index_oid,next_page,tail_page
+      )
+      values(
+        rescue_name,
+        rescue_index::oid,
+        0,
+        greatest(
+          0::bigint,
+          ((rescue_pages+rescue_ppr-1)/rescue_ppr)*rescue_ppr
+            - 1024::bigint*rescue_ppr
+        )
+      )
+      on conflict (index_name) do nothing;
+
+      -- Phase 28 fairness: keep a separate fresh-tail cursor. A pure historical
+      -- cursor can spend entire ticks revisiting an already summarized prefix
+      -- while newly appended unsummarized ranges accumulate at EOF.
+      select
+        case
+          when c.index_oid=rescue_index::oid
+           and c.next_page<rescue_pages
+            then (c.next_page/rescue_ppr)*rescue_ppr
+          else 0
+        end,
+        case
+          when c.index_oid<>rescue_index::oid
+            or c.tail_page is null
+            or c.tail_page>
+              ((rescue_pages+rescue_ppr-1)/rescue_ppr)*rescue_ppr
+            then greatest(
+              0::bigint,
+              ((rescue_pages+rescue_ppr-1)/rescue_ppr)*rescue_ppr
+                - 1024::bigint*rescue_ppr
+            )
+          else (c.tail_page/rescue_ppr)*rescue_ppr
+        end
+        into rescue_page,rescue_tail_page
       from private.onesignal_brin_rescue_cursor c
       where c.index_name=rescue_name;
+
+      -- Do not let the historical pass consume ranges that were fresh at the
+      -- start of this tick. If the fresh tail is larger than the budget, its
+      -- cursor advances across ticks and backlog growth remains explicit.
+      rescue_history_limit:=least(rescue_tail_page,rescue_pages);
       rescue_deadline:=pg_catalog.clock_timestamp()+interval '250 milliseconds';
-      while rescue_page<rescue_pages and rescue_visits<1024
+
+      while rescue_tail_page<rescue_pages and rescue_visits<1024
+        and pg_catalog.clock_timestamp()<rescue_deadline loop
+        rescue_count:=rescue_count+
+          pg_catalog.brin_summarize_range(rescue_index,rescue_tail_page);
+        rescue_tail_page:=rescue_tail_page+rescue_ppr;
+        rescue_visits:=rescue_visits+1;
+      end loop;
+
+      if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
+      while rescue_page<rescue_history_limit and rescue_visits<1024
         and pg_catalog.clock_timestamp()<rescue_deadline loop
         rescue_count:=rescue_count+
           pg_catalog.brin_summarize_range(rescue_index,rescue_page);
         rescue_page:=rescue_page+rescue_ppr;
         rescue_visits:=rescue_visits+1;
       end loop;
-      if rescue_page>=rescue_pages then rescue_page:=0; end if;
+      if rescue_page>=rescue_history_limit then rescue_page:=0; end if;
+
       update private.onesignal_brin_rescue_cursor
-        set index_oid=rescue_index::oid,next_page=rescue_page
+        set index_oid=rescue_index::oid,
+            next_page=rescue_page,
+            tail_page=rescue_tail_page
         where index_name=rescue_name;
     exception when lock_not_available then
       rescue_lock_skips:=rescue_lock_skips+1;

@@ -333,7 +333,7 @@ begin
     limit 1
   ), fairness_progress as (
     update private.onesignal_outbox_claim_fairness_state s
-       set last_organization_id=pg_catalog.coalesce(
+       set last_organization_id=coalesce(
              progress.organization_id,
              s.last_organization_id
            ),

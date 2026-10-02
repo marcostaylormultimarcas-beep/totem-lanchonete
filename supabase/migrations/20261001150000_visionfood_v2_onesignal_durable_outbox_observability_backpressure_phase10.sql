@@ -769,9 +769,27 @@ begin
   -- aggregate envelope past its boundary the second index cannot authorize
   -- another multi-minute call and compound the retention commit delay.
   rescue_total_deadline:=pg_catalog.clock_timestamp()+interval '500 milliseconds';
+  -- Phase 36: the 500ms aggregate envelope is intentionally shared, so a
+  -- modest completion overrun by whichever index runs first can consume the
+  -- remainder and leave the second index with no call-start opportunity. Rotate
+  -- first position on the existing 10-minute cadence so sustained pressure
+  -- cannot starve the same BRIN index indefinitely. statement_timestamp() is
+  -- stable for the invocation; no new state, timeout, or transaction boundary.
   foreach rescue_name in array array[
-    'private.onesignal_outbox_health_created_idx',
-    'private.onesignal_outbox_attempts_health_created_idx'
+    case
+      when (
+        pg_catalog.floor(extract(epoch from pg_catalog.statement_timestamp())/600)::bigint%2
+      )=0
+        then 'private.onesignal_outbox_health_created_idx'
+      else 'private.onesignal_outbox_attempts_health_created_idx'
+    end,
+    case
+      when (
+        pg_catalog.floor(extract(epoch from pg_catalog.statement_timestamp())/600)::bigint%2
+      )=0
+        then 'private.onesignal_outbox_attempts_health_created_idx'
+      else 'private.onesignal_outbox_health_created_idx'
+    end
   ] loop
     rescue_count:=0;
     rescue_visits:=0;

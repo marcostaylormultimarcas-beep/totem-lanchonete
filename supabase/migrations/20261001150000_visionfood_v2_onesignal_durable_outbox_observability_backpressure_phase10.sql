@@ -526,6 +526,7 @@ declare
   rescue_visit_limit integer;
   rescue_count integer;
   rescue_deadline timestamptz;
+  rescue_total_deadline timestamptz;
   rescue_lock_skips integer:=0;
   rescue_total_visits integer:=0;
   saved_lock_timeout text;
@@ -762,6 +763,12 @@ begin
     else '100ms'
   end;
   perform pg_catalog.set_config('lock_timeout',rescue_lock_timeout,true);
+  -- Phase 35: each BRIN index keeps its own 250ms cooperative budget, but
+  -- both indexes share a 500ms aggregate call-start envelope. A final call
+  -- may still overrun after lock acquisition, but once that pushes the
+  -- aggregate envelope past its boundary the second index cannot authorize
+  -- another multi-minute call and compound the retention commit delay.
+  rescue_total_deadline:=pg_catalog.clock_timestamp()+interval '500 milliseconds';
   foreach rescue_name in array array[
     'private.onesignal_outbox_health_created_idx',
     'private.onesignal_outbox_attempts_health_created_idx'
@@ -845,7 +852,8 @@ begin
       if rescue_history_due
          and rescue_history_limit>0
          and rescue_visits<1024
-         and pg_catalog.clock_timestamp()<rescue_deadline then
+         and pg_catalog.clock_timestamp()<rescue_deadline
+         and pg_catalog.clock_timestamp()<rescue_total_deadline then
         -- Phase 30: the fairness repayment is an additive bounded visit. If it
         -- consumed one of the normal 1,024 visits, a tail arriving exactly at
         -- nominal capacity would grow by one range on every debt tick forever.
@@ -871,7 +879,8 @@ begin
       end if;
 
       while rescue_tail_page<rescue_pages and rescue_visits<rescue_visit_limit
-        and pg_catalog.clock_timestamp()<rescue_deadline loop
+        and pg_catalog.clock_timestamp()<rescue_deadline
+         and pg_catalog.clock_timestamp()<rescue_total_deadline loop
         begin
           rescue_count:=rescue_count+
             pg_catalog.brin_summarize_range(rescue_index,rescue_tail_page);
@@ -883,7 +892,8 @@ begin
       end loop;
 
       while rescue_page<rescue_history_limit and rescue_visits<rescue_visit_limit
-        and pg_catalog.clock_timestamp()<rescue_deadline loop
+        and pg_catalog.clock_timestamp()<rescue_deadline
+         and pg_catalog.clock_timestamp()<rescue_total_deadline loop
         begin
           rescue_count:=rescue_count+
             pg_catalog.brin_summarize_range(rescue_index,rescue_page);

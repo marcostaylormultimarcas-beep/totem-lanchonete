@@ -33,7 +33,7 @@ create sequence if not exists private.onesignal_outbox_claim_fairness_lane_seq;
 select pg_catalog.setval(
   'private.onesignal_outbox_claim_fairness_lane_seq'::regclass,
   pg_catalog.greatest(
-    pg_catalog.coalesce(
+    coalesce(
       (
         select pg_catalog.max(s.id)
         from private.onesignal_outbox_claim_fairness_state s
@@ -313,7 +313,7 @@ begin
     limit 1
   ), fairness_progress as (
     update private.onesignal_outbox_claim_fairness_state s
-       set last_organization_id=pg_catalog.coalesce(
+       set last_organization_id=coalesce(
              progress.organization_id,
              s.last_organization_id
            ),

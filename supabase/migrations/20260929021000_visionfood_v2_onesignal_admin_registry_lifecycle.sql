@@ -31,7 +31,7 @@ begin
     return jsonb_build_object('ok',false,'reason','unauthenticated');
   end if;
 
-  if _org is null or not public.usuario_dono_org(_org,u) then
+  if _org is null or not private.usuario_dono_org(_org,u) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
 
@@ -67,7 +67,7 @@ begin
     return jsonb_build_object('ok',false,'reason','unauthenticated');
   end if;
 
-  if _org is null or not public.usuario_dono_org(_org,u) then
+  if _org is null or not private.usuario_dono_org(_org,u) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
 
@@ -167,7 +167,7 @@ as $$
   from private.onesignal_admin_push_subscriptions s
   where s.organization_id=_org
     and s.client_instance_id is not null
-    and public.usuario_dono_org(_org,s.user_id);
+    and private.usuario_dono_org(_org,s.user_id);
 $$;
 
 revoke all on function private.visionfood_admin_push_subscription_ids(uuid)

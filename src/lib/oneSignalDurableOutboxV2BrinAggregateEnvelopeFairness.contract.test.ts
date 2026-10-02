@@ -22,10 +22,19 @@ const FINAL_CALL_POST_START_MS = 250.002;
 const TICKS = 8;
 
 function hasCrossIndexOrderRotation(): boolean {
-  return (
+  const wallClockRotation =
     cleanup.includes('pg_catalog.statement_timestamp()') &&
     cleanup.includes('extract(epoch from pg_catalog.statement_timestamp())') &&
-    cleanup.includes('/600') &&
+    cleanup.includes('/600');
+
+  const sequenceStableRotation =
+    cleanup.includes('priority_first_count') &&
+    cleanup.includes('c.priority_first_count+1') &&
+    cleanup.includes('rescue_first_name') &&
+    cleanup.includes('rescue_second_name');
+
+  return (
+    (wallClockRotation || sequenceStableRotation) &&
     (cleanup.match(/private\.onesignal_outbox_health_created_idx/g) ?? []).length >= 2 &&
     (cleanup.match(/private\.onesignal_outbox_attempts_health_created_idx/g) ?? []).length >= 2
   );

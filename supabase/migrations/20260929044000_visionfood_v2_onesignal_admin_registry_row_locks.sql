@@ -59,7 +59,7 @@ begin
       and s.client_instance_id is not null
       and s.app_id=configured_app_id
       and s.updated_at > pg_catalog.clock_timestamp() - interval '30 days'
-      and public.usuario_dono_org(_org,s.user_id)
+      and private.usuario_dono_org(_org,s.user_id)
     order by s.subscription_id
     for share of s
   ) locked;
@@ -96,7 +96,7 @@ begin
     return jsonb_build_object('ok',false,'reason','unauthenticated');
   end if;
 
-  if _org is null or not public.usuario_dono_org(_org,u) then
+  if _org is null or not private.usuario_dono_org(_org,u) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
 

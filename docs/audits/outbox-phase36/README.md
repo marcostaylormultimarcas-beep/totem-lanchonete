@@ -60,6 +60,8 @@ The audit model verifies:
 
 The contract test verifies the phase-35 500 ms aggregate guard remains present and requires cross-index order rotation tied to the 10-minute cadence.
 
-At the time this report was written, the repository's standard GitHub verification workflows for the runtime correction were still running. The deterministic phase-36 model itself passes locally.
+The repository's four standard verification workflows completed with the same pre-existing failure already present on base `d877a09bda61e5c2c57756060e9a717a5ecf89ab`: `oneSignalDurableOutboxV2BrinSingleCallOverrun.contract.test.ts` expects the phase-27 README to contain the exact literal `one range may overrun it`. The base Round-24 run had 108 passing files / 1 failing file and 1,194 passing tests / 1 failing test; the phase-36 correction run had 109 passing files / 1 failing file and 1,196 passing tests / 1 failing test. The new phase-36 contract itself passed. Because the identical phase-34 documentation assertion already failed on the requested base HEAD, it was not modified in this phase.
+
+The deterministic phase-36 model passes locally.
 
 No remote migration was applied. No manual deployment, merge, or ready-for-review action was performed.

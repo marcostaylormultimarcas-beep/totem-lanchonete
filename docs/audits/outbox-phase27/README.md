@@ -29,7 +29,7 @@ Edited the existing **unapplied** phase-10 migration, matching phase 26's locati
 - Use `brin_summarize_range` for at most 1,024 **visits per index**, including already summarized ranges.
 - Persist a per-index page cursor atomically with the cleanup transaction; reset for index recreation, out-of-range cursor after truncation, and wrap at EOF.
 - Derive actual pages-per-range from index options. For the deployed DDL shape (ppr=8, 8 KiB blocks), at most 64 MiB of heap coverage per index per tick, excluding metadata and possible internal retries.
-- Check a cooperative 250 ms deadline between calls per index. This is **not** a hard duration guarantee: a single range's I/O can overrun, and retention itself still has its pre-existing costs.
+- Check a cooperative 250 ms deadline between calls per index. This is **not** a hard duration guarantee: one range may overrun it because a single range's I/O can outlast the cooperative deadline, and retention itself still has its pre-existing costs.
 - Cap maintenance lock waits at 100 ms, preserving a stricter caller setting and restoring it afterwards. Catch only `55P03` in an index-local subtransaction: rollback its summaries/cursor, preserve prior retention, report a lock skip. Other errors and external cancellations propagate.
 - Cursor table is private, RLS-enabled and revoked from public/anon/authenticated/service_role; the existing SECURITY DEFINER maintenance function owns access.
 - Preserve existing summary counters; add visit and lock-skip counters. No enqueue/claim/runner/health summarization added.

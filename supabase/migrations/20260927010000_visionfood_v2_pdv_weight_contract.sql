@@ -177,7 +177,43 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'reason', 'invalid_quantity');
       END IF;
       weight_text := btrim(coalesce(item->>'weight_kg', ''));
-      IF weight_text !~ '^[0-9]+([.][0-9]{1,3})?
+      IF weight_text !~ '^[0-9]+([.][0-9]{1,3})?$' THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_weight');
+      END IF;
+      weight_kg := weight_text::numeric;
+      IF weight_kg <= 0 THEN
+        RETURN jsonb_build_object('ok', false, 'reason', 'invalid_weight');
+      END IF;
+      line_total := round(p.price * weight_kg, 2);
+      subtotal := subtotal + line_total;
+      canonical_items := canonical_items || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', p.id,
+          'name', p.name,
+          'price', p.price,
+          'quantity', 1,
+          'weight_kg', weight_kg,
+          'price_per_kg', p.price,
+          'sold_by_weight', true,
+          'total', line_total
+        )
+      );
+    ELSE
+      line_total := round(p.price * qty, 2);
+      subtotal := subtotal + line_total;
+      canonical_items := canonical_items || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', p.id,
+          'name', p.name,
+          'price', p.price,
+          'quantity', qty,
+          'weight_kg', NULL,
+          'price_per_kg', NULL,
+          'sold_by_weight', false,
+          'total', line_total
+        )
+      );
+    END IF;
   END LOOP;
 
   -- Validate direct product stock against the total quantity requested per
@@ -455,7 +491,43 @@ begin
         return jsonb_build_object('ok', false, 'reason', 'invalid_quantity');
       end if;
       weight_text := btrim(coalesce(item->>'weight_kg', ''));
-      if weight_text !~ '^[0-9]+([.][0-9]{1,3})?
+      if weight_text !~ '^[0-9]+([.][0-9]{1,3})?$' then
+        return jsonb_build_object('ok', false, 'reason', 'invalid_weight');
+      end if;
+      weight_kg := weight_text::numeric;
+      if weight_kg <= 0 then
+        return jsonb_build_object('ok', false, 'reason', 'invalid_weight');
+      end if;
+      line_total := round(p.price * weight_kg, 2);
+      subtotal := subtotal + line_total;
+      canonical_items := canonical_items || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', p.id,
+          'name', p.name,
+          'price', p.price,
+          'quantity', 1,
+          'weight_kg', weight_kg,
+          'price_per_kg', p.price,
+          'sold_by_weight', true,
+          'total', line_total
+        )
+      );
+    else
+      line_total := round(p.price * qty, 2);
+      subtotal := subtotal + line_total;
+      canonical_items := canonical_items || jsonb_build_array(
+        jsonb_build_object(
+          'product_id', p.id,
+          'name', p.name,
+          'price', p.price,
+          'quantity', qty,
+          'weight_kg', null,
+          'price_per_kg', null,
+          'sold_by_weight', false,
+          'total', line_total
+        )
+      );
+    end if;
   end loop;
 
   if code <> '' then

@@ -149,7 +149,7 @@ describe('OneSignal Durable Outbox V2 phase 15 fairness lane lifecycle', () => {
     // Cursor progress must remain guarded by an effective claim, preserving the
     // phase-14 atomicity fix even though lane recency rotates on every commit.
     expect(claim).toContain('from claimed effective_claim');
-    expect(claim).toContain('last_organization_id=pg_catalog.coalesce(');
+    expect(claim).toContain('last_organization_id=coalesce(');
   });
 
   it('requires hot excess lanes to compact even when steady traffic keeps them recent', () => {

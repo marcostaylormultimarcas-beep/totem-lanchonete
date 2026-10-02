@@ -32,7 +32,7 @@ create sequence if not exists private.onesignal_outbox_claim_fairness_lane_seq;
 
 select pg_catalog.setval(
   'private.onesignal_outbox_claim_fairness_lane_seq'::regclass,
-  pg_catalog.greatest(
+  greatest(
     coalesce(
       (
         select pg_catalog.max(s.id)

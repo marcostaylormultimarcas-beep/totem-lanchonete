@@ -23,8 +23,16 @@
 
 -- pg_cron does not provide a jobid/start_time access path by default. Health
 -- repeatedly asks for newest rows and bounded windows for one job.
-create index if not exists visionfood_onesignal_cron_history_job_start_idx
-  on cron.job_run_details(jobid,start_time desc,runid desc);
+do $
+begin
+  begin
+    execute 'create index if not exists visionfood_onesignal_cron_history_job_start_idx on cron.job_run_details(jobid,start_time desc,runid desc)';
+  exception
+    when insufficient_privilege then
+      raise notice 'Skipping cron.job_run_details health index: managed pg_cron table is owned by supabase_admin';
+  end;
+end
+$;
 
 -- Existing claim/lease indexes already cover due pending/retry and sending
 -- subsets. Retention eventually creates reusable old heap pages, so plain

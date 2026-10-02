@@ -65,7 +65,7 @@ begin
     return jsonb_build_object('ok',false,'reason','unauthenticated');
   end if;
 
-  if not public.usuario_dono_org(_org,u) then
+  if not private.usuario_dono_org(_org,u) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
 
@@ -397,7 +397,7 @@ begin
     return jsonb_build_object('ok',false,'reason','unauthenticated');
   end if;
 
-  if not public.usuario_dono_org(_org,u) then
+  if not private.usuario_dono_org(_org,u) then
     return jsonb_build_object('ok',false,'reason','forbidden');
   end if;
 

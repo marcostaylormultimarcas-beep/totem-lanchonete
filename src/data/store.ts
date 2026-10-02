@@ -2,6 +2,10 @@ export interface Product {
   id: string;
   name: string;
   price: number;
+  /** Custo direto por unidade; para produtos por peso, custo por kg. */
+  costPrice?: number | null;
+  /** Percentual de acréscimo sobre o custo usado como apoio de precificação. */
+  markupPercent?: number | null;
   category: string;
   image: string;
   removableIngredients: string[];
@@ -9,6 +13,10 @@ export interface Product {
   isCombo?: boolean;
   ingredients?: string[];
   description?: string;
+  /** Disponibilidade real do produto no catálogo/totem. */
+  available?: boolean;
+  /** Indica bloqueio automático causado por estoque insuficiente de ingredientes. */
+  ingredientStockBlocked?: boolean;
   manageStock?: boolean;
   stockQuantity?: number;
   lowStockThreshold?: number;

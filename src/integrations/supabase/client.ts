@@ -6,9 +6,13 @@ import {
   SUPABASE_URL,
   purgeForeignSupabaseSessions,
 } from '@/config/supabaseConfig';
+import { capturePasswordRecoveryIntentFromUrl } from '@/lib/passwordRecovery';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
+
+// Capture recovery intent before supabase-js consumes the implicit-flow URL fragment.
+capturePasswordRecoveryIntentFromUrl();
 
 // Remove sessões de projetos antigos antes de inicializar (evita "Invalid API key").
 purgeForeignSupabaseSessions();

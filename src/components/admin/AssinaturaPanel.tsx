@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft, CreditCard, ShieldAlert, ExternalLink, MessageCircle } from 'lucide-react';
+import { Crown, Check, X, Loader2, Sparkles, ArrowRightLeft, ShieldAlert, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Plan { id: string; key: string; name: string; description: string; sort_order: number; }
@@ -19,7 +19,6 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const [loading, setLoading] = useState(true);
   const [showChange, setShowChange] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState<string>('');
 
   const load = async () => {
@@ -38,10 +37,10 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
     setPlans((ps as any) || []);
     setFeatures((fs as any) || []);
     setValorPlano(Number((sys as any)?.valor_plano_padrao ?? 197));
-    // Prioridade: WhatsApp da loja → WhatsApp central do Super Master
+    // Cobrança/alteração de plano deve falar primeiro com o atendimento central.
     const lojaWpp = ((st as any)?.whatsapp_number || '').replace(/\D/g, '');
     const masterWpp = ((sys as any)?.whatsapp_suporte || '').replace(/\D/g, '');
-    setWhatsappNumber(lojaWpp || masterWpp);
+    setWhatsappNumber(masterWpp || lojaWpp);
     const map: Record<string, boolean> = {};
     (pfs as unknown as PlanFeatureRow[] | null)?.forEach(r => { map[`${r.plan_id}:${r.feature_id}`] = r.enabled; });
     setMatrix(map);
@@ -93,20 +92,14 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
   const liberadas = featuresForPlan(currentPlanId);
   const todasOrdenadas = [...features].sort((a, b) => a.sort_order - b.sort_order);
 
-  const assinar = async () => {
-    if (!organizationId) return;
-    setSubscribing(true);
-    const { data, error } = await supabase.functions.invoke('mp-create-subscription', {
-      body: { organization_id: organizationId },
-    });
-    setSubscribing(false);
-    if (error || (data as any)?.error) {
-      toast.error((data as any)?.error || error?.message || 'Falha ao iniciar assinatura');
+  const solicitarRegularizacao = () => {
+    if (!whatsappNumber) {
+      toast.error('WhatsApp central de atendimento não configurado.');
       return;
     }
-    const url = (data as any)?.init_point;
-    if (url) window.location.href = url;
-    else toast.error('Link de pagamento não recebido');
+    const digits = whatsappNumber.length <= 11 ? `55${whatsappNumber}` : whatsappNumber;
+    const msg = `Olá, preciso regularizar/ativar a assinatura da minha loja no VisionFood. Status atual: ${statusAssinatura}.`;
+    window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   const statusColor = statusAssinatura === 'ativo' ? 'success'
@@ -151,11 +144,10 @@ const AssinaturaPanel = ({ organizationId }: Props) => {
         </div>
 
         {statusAssinatura !== 'ativo' && (
-          <button onClick={assinar} disabled={subscribing}
-            className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50">
-            {subscribing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-            Assinar Plano · R$ {valorPlano.toFixed(2)}/mês
-            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+          <button onClick={solicitarRegularizacao}
+            className="touch-btn w-full bg-success text-white py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 hover:opacity-90">
+            <MessageCircle className="w-4 h-4" />
+            Falar com o suporte para regularizar
           </button>
         )}
 

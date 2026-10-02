@@ -43,6 +43,7 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const pushedRef = useRef<Set<string>>(new Set());
+  const pushInFlightRef = useRef<Set<string>>(new Set());
 
   const carregar = async () => {
     if (!organizationId) return;
@@ -79,7 +80,9 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
       const dia = fmtDate(new Date(o.created_at));
       for (const it of items as any[]) {
         const pid = it?.product_id || it?.product?.id || it?.id;
-        const qty = Number(it?.quantity || 1);
+        const weightKg = Number(it?.weight_kg || 0);
+        const isWeighted = it?.sold_by_weight === true && weightKg > 0;
+        const qty = isWeighted ? weightKg : Number(it?.quantity || 1);
         if (!pid) continue;
         const receitas = byProduct.get(pid);
         if (!receitas) continue;
@@ -140,9 +143,20 @@ const EstoquePreditivPanel = ({ organizationId }: { organizationId: string | nul
       if (s.risco === 'critico' || s.risco === 'alto') {
         if (s.mediaDia < 1) continue; // baixo giro, ignora
         const key = `${s.ingrediente.id}:${Math.ceil(s.diasRestantes)}`;
-        if (pushedRef.current.has(key)) continue;
-        pushedRef.current.add(key);
-        triggerPredictiveStockAlert(s.ingrediente.nome, Math.max(1, Math.ceil(s.diasRestantes)));
+        if (pushedRef.current.has(key) || pushInFlightRef.current.has(key)) continue;
+        pushInFlightRef.current.add(key);
+        try {
+          const queued = await triggerPredictiveStockAlert(
+            organizationId,
+            s.ingrediente.nome,
+            Math.max(1, Math.ceil(s.diasRestantes)),
+          );
+          if (queued) {
+            pushedRef.current.add(key);
+          }
+        } finally {
+          pushInFlightRef.current.delete(key);
+        }
       }
     }
   };

@@ -1,0 +1,19 @@
+name: Verification Round 2 Fix
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test and build
+        run: |
+          npm test -- --run
+          npm run build

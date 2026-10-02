@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame, ShoppingCart, Heart, Share2, MessageSquare } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Plus, Minus, Plug, Scale, AlertTriangle, Star, Clock, Flame, ShoppingCart, Share2, MessageSquare } from 'lucide-react';
 import { Product, CartItem, formatCurrency, isByWeight } from '@/data/store';
 import { useBalanca } from '@/hooks/useBalanca';
 import { useOrgId } from '@/contexts/OrgContext';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -11,18 +12,18 @@ interface ProductModalProps {
   onAdd: (item: CartItem) => void;
   onClose: () => void;
   baudRate?: number;
+  deviceOwnedKiosk?: boolean;
 }
 
 interface ReviewRow {
   id: string;
-  user_id: string;
   rating: number;
   comment: string;
   created_at: string;
   author_name?: string;
 }
 
-const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModalProps) => {
+const ProductModal = ({ product, onAdd, onClose, baudRate = 9600, deviceOwnedKiosk = false }: ProductModalProps) => {
   const orgId = useOrgId();
   const [quantity, setQuantity] = useState(1);
   const [removedIngredients, setRemovedIngredients] = useState<string[]>([]);
@@ -36,7 +37,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   const [myRating, setMyRating] = useState(5);
   const [myComment, setMyComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [favorite, setFavorite] = useState(false);
+  const addLockedRef = useRef(false);
 
   const byWeight = isByWeight(product);
   const balanca = useBalanca(baudRate);
@@ -44,57 +45,63 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   // Tempo base da loja
   useEffect(() => {
     if (!orgId) return;
-    supabase.from('settings').select('delivery_tempo_base_min').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => { if (data?.delivery_tempo_base_min) setTempoBase(Number(data.delivery_tempo_base_min)); });
+    fetchPublicStorefrontConfig(orgId)
+      .then(data => { if (data.delivery_tempo_base_min) setTempoBase(Number(data.delivery_tempo_base_min)); })
+      .catch(error => console.warn('[ProductModal] storefront config error:', error));
   }, [orgId]);
 
   // Carrega avaliações
   const fetchReviews = async () => {
-    const { data } = await supabase
-      .from('product_reviews' as any)
-      .select('id,user_id,rating,comment,created_at')
-      .eq('product_id', product.id)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    if (!data) return;
-    const rows = data as any as ReviewRow[];
-    // Tenta enriquecer com nome do profile
-    const ids = Array.from(new Set(rows.map(r => r.user_id)));
-    if (ids.length) {
-      const { data: profs } = await supabase.from('profiles').select('id,full_name').in('id', ids);
-      const map = new Map<string, string>();
-      (profs || []).forEach((p: any) => map.set(p.id, p.full_name || ''));
-      rows.forEach(r => { r.author_name = map.get(r.user_id) || 'Cliente'; });
+    const { data, error } = await supabase.rpc(
+      'visionfood_public_product_reviews',
+      { _product_id: product.id, _limit: 20 },
+    );
+    if (error) {
+      console.warn('[reviews] public list', error);
+      setReviews([]);
+      return;
     }
+    const rows = (Array.isArray(data) ? data : []) as unknown as ReviewRow[];
+    // Não consulta perfis de terceiros: avaliações públicas exibem um rótulo neutro.
+    rows.forEach(r => { r.author_name = 'Cliente'; });
     setReviews(rows);
   };
 
-  useEffect(() => { fetchReviews(); }, [product.id]);
+  useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setReviews([]);
+      return;
+    }
+    void fetchReviews();
+  }, [product.id, deviceOwnedKiosk]);
 
   // Verifica sessão e elegibilidade pra avaliar
   useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setUserId(null);
+      setCanReview(false);
+      setEligibleOrderId(null);
+      return;
+    }
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUserId(user?.id || null);
       if (!user) { setCanReview(false); return; }
-      // Procura pedido concluído deste cliente que contenha este produto
-      const { data: orders } = await supabase
-        .from('orders')
-        .select('id,items,status')
-        .eq('user_id', user.id)
-        .in('status', ['delivered', 'completed', 'ready'])
-        .order('created_at', { ascending: false })
-        .limit(50);
-      const eligible = (orders || []).find((o: any) => {
-        const items = Array.isArray(o.items) ? o.items : [];
-        return items.some((it: any) => it?.product?.id === product.id || it?.productId === product.id);
-      });
-      if (eligible) {
-        setEligibleOrderId(eligible.id);
-        setCanReview(true);
+      const { data: eligibleOrderId, error: eligibilityError } = await supabase.rpc(
+        'product_review_eligible_order' as any,
+        { _product_id: product.id },
+      );
+      if (eligibilityError) {
+        console.error('[reviews] eligibility', eligibilityError);
+        setEligibleOrderId(null);
+        setCanReview(false);
+        return;
       }
+      const eligibleId = (eligibleOrderId as string | null) || null;
+      setEligibleOrderId(eligibleId);
+      setCanReview(Boolean(eligibleId));
     })();
-  }, [product.id]);
+  }, [product.id, deviceOwnedKiosk]);
 
   const avg = useMemo(() => {
     if (!reviews.length) return 0;
@@ -110,8 +117,9 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
 
   const extrasTotal = selectedExtras.reduce((sum, e) => sum + e.price, 0);
   const unitPrice = product.price + extrasTotal;
-  const total = byWeight ? unitPrice * (balanca.pesoAtual || 0) : unitPrice * quantity;
-  const canAdd = byWeight ? balanca.pesoAtual > 0 : quantity > 0;
+  const measuredWeight = byWeight && balanca.balancaConectada ? (balanca.pesoAtual || 0) : 0;
+  const total = byWeight ? unitPrice * measuredWeight : unitPrice * quantity;
+  const canAdd = byWeight ? measuredWeight > 0 : quantity > 0;
 
   // Tempo estimado
   const prepPerUnit = Math.max(0, Number(product.prepTimeMin || 0));
@@ -120,30 +128,39 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
   const tempoMax = tempoMin + 10;
 
   const handleAdd = () => {
-    if (!canAdd) return;
-    onAdd({
-      id: crypto.randomUUID(),
-      product,
-      quantity: byWeight ? 1 : quantity,
-      removedIngredients,
-      selectedExtras,
-      weightKg: byWeight ? balanca.pesoAtual : undefined,
-    });
+    if (!canAdd || addLockedRef.current) return;
+    addLockedRef.current = true;
+    try {
+      onAdd({
+        id: crypto.randomUUID(),
+        product,
+        quantity: byWeight ? 1 : quantity,
+        removedIngredients,
+        selectedExtras,
+        weightKg: byWeight ? measuredWeight : undefined,
+      });
+    } catch (error) {
+      addLockedRef.current = false;
+      throw error;
+    }
   };
 
   const submitReview = async () => {
     if (!userId || !eligibleOrderId) return;
     setSubmitting(true);
-    const { error } = await supabase.from('product_reviews' as any).upsert({
-      product_id: product.id,
-      organization_id: orgId,
-      user_id: userId,
-      order_id: eligibleOrderId,
-      rating: myRating,
-      comment: myComment.trim(),
-    }, { onConflict: 'product_id,user_id,order_id' });
+    const { data, error } = await supabase.rpc('submit_product_review' as any, {
+      _product_id: product.id,
+      _order_id: eligibleOrderId,
+      _rating: myRating,
+      _comment: myComment.trim(),
+    });
     setSubmitting(false);
-    if (error) { toast.error('Não foi possível salvar a avaliação.'); return; }
+    const result = data as any;
+    if (error || !result?.ok) {
+      console.error('[reviews] submit', error || result);
+      toast.error('Não foi possível salvar a avaliação.');
+      return;
+    }
     toast.success('Avaliação enviada — obrigado!');
     setShowReviewForm(false);
     setMyComment('');
@@ -174,7 +191,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
           ) : (
             <div className="w-full h-full flex items-center justify-center text-8xl bg-gradient-to-br from-zinc-900 to-zinc-800">{product.image}</div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-zinc-950/95 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-transparent to-transparent pointer-events-none" />
 
           {/* Top actions */}
           <div className="absolute top-4 left-4 right-4 flex items-center justify-between">
@@ -184,9 +201,6 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
             <div className="flex items-center gap-2">
               <button onClick={handleShare} className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center text-white active:scale-90">
                 <Share2 className="w-5 h-5" />
-              </button>
-              <button onClick={() => setFavorite(f => !f)} className="w-11 h-11 rounded-full bg-black/60 backdrop-blur-md border border-white/10 flex items-center justify-center active:scale-90">
-                <Heart className={`w-5 h-5 ${favorite ? 'fill-orange-500 text-orange-500' : 'text-white'}`} />
               </button>
             </div>
           </div>
@@ -259,7 +273,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
                   {balanca.balancaConectada ? 'Conectada' : 'Conectar'}
                 </button>
               </div>
-              <p className="text-amber-400 font-bold text-3xl tabular-nums">{balanca.pesoAtual.toFixed(3)} <span className="text-xl text-amber-500/70">kg</span></p>
+              <p className="text-amber-400 font-bold text-3xl tabular-nums">{measuredWeight.toFixed(3)} <span className="text-xl text-amber-500/70">kg</span></p>
               {!balanca.supported && (
                 <div className="flex items-start gap-2 text-[11px] text-amber-300/80"><AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />Use Chrome/Edge em HTTPS.</div>
               )}
@@ -439,7 +453,7 @@ const ProductModal = ({ product, onAdd, onClose, baudRate = 9600 }: ProductModal
           >
             <span className="text-lg tabular-nums">{formatCurrency(total)}</span>
             <span className="flex items-center gap-2 text-base">
-              {byWeight && balanca.pesoAtual <= 0 ? 'Coloque na balança' : 'Adicionar ao carrinho'}
+              {byWeight && !balanca.balancaConectada ? 'Conecte a balança' : byWeight && measuredWeight <= 0 ? 'Coloque na balança' : 'Adicionar ao carrinho'}
               <span className="w-9 h-9 rounded-xl bg-black/25 flex items-center justify-center">
                 <ShoppingCart className="w-4 h-4" />
               </span>

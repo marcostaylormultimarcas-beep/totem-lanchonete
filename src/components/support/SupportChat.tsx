@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import { useOrg } from '@/contexts/OrgContext';
 import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
@@ -9,7 +10,6 @@ interface Msg { role: 'user' | 'assistant'; content: string }
 
 const FUNCTION_URL = getSupabaseFunctionUrl('support-chat');
 
-const ORG_FIELDS = 'id,name,slug,paused,categoria,cnpj,telefone,instagram,endereco_cep,endereco_rua,endereco_numero,endereco_bairro,endereco_estado,city';
 
 const SupportChat = () => {
   const { orgId: ctxOrgId } = useOrg();
@@ -17,6 +17,9 @@ const SupportChat = () => {
   const location = useLocation();
   const [orgCtx, setOrgCtx] = useState<Record<string, any> | null>(null);
   const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(() => {
+    try { return localStorage.getItem('vf_support_chat_minimized') === '1'; } catch { return false; }
+  });
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Msg[]>([
     { role: 'assistant', content: 'Olá! 👋 Sou o suporte Vision Tech. Como posso ajudar?' },
@@ -28,6 +31,17 @@ const SupportChat = () => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages, streaming]);
 
+  const minimizeChat = () => {
+    setOpen(false);
+    setMinimized(true);
+    try { localStorage.setItem('vf_support_chat_minimized', '1'); } catch {}
+  };
+
+  const restoreChatButton = () => {
+    setMinimized(false);
+    try { localStorage.removeItem('vf_support_chat_minimized'); } catch {}
+  };
+
   // Resolve org context dinamicamente: contexto > slug na URL > localStorage
   useEffect(() => {
     let cancelled = false;
@@ -36,15 +50,14 @@ const SupportChat = () => {
         const slug = (params as any)?.slug
           || location.pathname.match(/\/(?:loja|cardapio|pdv|painel-senhas)\/([^/]+)/)?.[1]
           || null;
-        let query = supabase.from('organizations').select(ORG_FIELDS).limit(1);
-        if (ctxOrgId) query = query.eq('id', ctxOrgId);
-        else if (slug) query = query.eq('slug', slug);
+        let data = null;
+        if (ctxOrgId) data = await fetchPublicOrganization({ id: ctxOrgId });
+        else if (slug) data = await fetchPublicOrganization({ slug });
         else {
           const stored = localStorage.getItem('kiosk_org_id');
-          if (stored) query = query.eq('id', stored);
+          if (stored) data = await fetchPublicOrganization({ id: stored });
           else { setOrgCtx(null); return; }
         }
-        const { data } = await query.maybeSingle();
         if (!cancelled) setOrgCtx((data as any) || null);
       } catch {
         if (!cancelled) setOrgCtx(null);
@@ -122,17 +135,39 @@ const SupportChat = () => {
   return (
     <>
       {/* Balão flutuante */}
-      {!open && (
+      {!open && !minimized && (
+        <div className="fixed bottom-24 right-4 sm:bottom-5 sm:right-5 z-[100] group">
+          <button
+            onClick={() => setOpen(true)}
+            aria-label="Abrir suporte Vision Tech"
+            className="relative block"
+          >
+            <span className="absolute inset-0 rounded-full bg-primary/40 blur-xl group-hover:bg-primary/60 transition" />
+            <span className="relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-2xl border border-primary/40 hover:scale-105 transition">
+              <MessageCircle className="w-6 h-6" />
+              <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
+            </span>
+          </button>
+          <button
+            onClick={minimizeChat}
+            aria-label="Minimizar assistente"
+            title="Minimizar assistente"
+            className="absolute -top-2 -left-2 w-7 h-7 rounded-full bg-zinc-900 border border-white/10 text-zinc-300 shadow-lg flex items-center justify-center hover:text-white hover:bg-zinc-800 transition"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {!open && minimized && (
         <button
-          onClick={() => setOpen(true)}
-          aria-label="Abrir suporte Vision Tech"
-          className="fixed bottom-5 right-5 z-[100] group"
+          onClick={restoreChatButton}
+          aria-label="Reabrir assistente"
+          title="Reabrir assistente"
+          className="fixed bottom-24 right-0 sm:bottom-5 sm:right-2 z-[100] rounded-l-xl border border-r-0 border-primary/30 bg-card/95 backdrop-blur px-2.5 py-2 shadow-xl text-primary hover:bg-muted transition flex items-center gap-1.5"
         >
-          <span className="absolute inset-0 rounded-full bg-primary/40 blur-xl group-hover:bg-primary/60 transition" />
-          <span className="relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary to-secondary text-primary-foreground shadow-2xl border border-primary/40 hover:scale-105 transition">
-            <MessageCircle className="w-6 h-6" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-success animate-pulse" />
-          </span>
+          <Sparkles className="w-4 h-4" />
+          <span className="text-[11px] font-bold">IA</span>
         </button>
       )}
 

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { CreditCard, Save, Loader2, ShieldCheck, KeyRound, DollarSign, Link as LinkIcon, Copy, MessageCircle } from 'lucide-react';
+import { CreditCard, Save, Loader2, ShieldCheck, KeyRound, DollarSign, MessageCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 
 const MasterBillingPanel = () => {
   const [loading, setLoading] = useState(true);
@@ -13,9 +12,6 @@ const MasterBillingPanel = () => {
   const [whatsapp, setWhatsapp] = useState('');
   const [token, setToken] = useState('');
   const [hasToken, setHasToken] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-
-  const webhookUrl = getSupabaseFunctionUrl('mp-webhook');
 
   const load = async () => {
     setLoading(true);
@@ -43,11 +39,12 @@ const MasterBillingPanel = () => {
     const digits = whatsapp.replace(/\D/g, '');
     if (digits.length < 10) { toast.error('Informe o número com DDD (ex: 11999998888)'); return; }
     setSavingWpp(true);
-    const { error } = await supabase
-      .from('system_settings')
-      .upsert({ id: 'global', whatsapp_suporte: digits } as any, { onConflict: 'id' });
+    const { data, error } = await supabase.rpc('set_system_whatsapp_suporte' as any, { _whatsapp: digits });
     setSavingWpp(false);
-    if (error) { toast.error(error.message || 'Erro ao salvar WhatsApp'); return; }
+    if (error || !(data as any)?.ok) {
+      toast.error((data as any)?.reason || error?.message || 'Erro ao salvar WhatsApp');
+      return;
+    }
     setWhatsapp(digits);
     toast.success('WhatsApp central de atendimento salvo!');
   };
@@ -77,7 +74,7 @@ const MasterBillingPanel = () => {
           </div>
           <div>
             <h3 className="font-black text-lg leading-tight">Valor do Plano (Padrão)</h3>
-            <p className="text-xs text-muted-foreground">Cobrado dinamicamente dos novos lojistas que assinam.</p>
+            <p className="text-xs text-muted-foreground">Valor de referência exibido no painel de assinatura das lojas.</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -157,20 +154,13 @@ const MasterBillingPanel = () => {
           Salvar com criptografia
         </button>
 
-        <button onClick={() => setShowHelp(s => !s)} className="text-xs text-primary underline">
-          {showHelp ? 'Ocultar' : 'Como configurar o Webhook no Mercado Pago?'}
-        </button>
-        {showHelp && webhookUrl && (
-          <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-xs">
-            <p>No painel do Mercado Pago → <b>Aplicação → Webhooks</b>, cadastre esta URL e marque os eventos <b>preapproval</b> e <b>payment</b>:</p>
-            <div className="flex items-center gap-2 bg-background rounded p-2 font-mono break-all">
-              <LinkIcon className="w-3 h-3 flex-shrink-0 text-primary" />
-              <span className="flex-1">{webhookUrl}</span>
-              <button onClick={() => { navigator.clipboard.writeText(webhookUrl); toast.success('Copiado!'); }}
-                className="p-1 hover:text-primary"><Copy className="w-3 h-3" /></button>
-            </div>
-          </div>
-        )}
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-200 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>
+            A credencial Master está preparada no Vault. A cobrança recorrente automática ainda não está publicada;
+            atualmente contratação e regularização são concluídas pelo atendimento via WhatsApp.
+          </span>
+        </div>
       </div>
     </div>
   );

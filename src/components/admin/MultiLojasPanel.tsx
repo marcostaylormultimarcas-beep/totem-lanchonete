@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { formatCurrency } from '@/data/store';
 import {
@@ -28,6 +28,7 @@ interface LowStockRow {
   name: string;
   stock_quantity: number;
   low_stock_threshold: number;
+  sold_by_weight: boolean;
 }
 
 const daysAgoISO = (days: number) => {
@@ -44,6 +45,34 @@ const MultiLojasPanel = ({ tier, userId }: { tier: 'master' | 'super'; userId: s
   const [loading, setLoading] = useState(true);
   const [from, setFrom] = useState(daysAgoISO(30));
   const [to, setTo] = useState(todayISO());
+  const lowStockRefreshSeq = useRef(0);
+
+  const refreshLowStock = useCallback(async (ids: string[]) => {
+    const seq = ++lowStockRefreshSeq.current;
+
+    if (ids.length === 0) {
+      setLowStock([]);
+      return;
+    }
+
+    const { data: prods, error } = await (supabase.from('products') as any)
+      .select('id, organization_id, name, stock_quantity, low_stock_threshold, manage_stock, sold_by_weight')
+      .in('organization_id', ids)
+      .eq('manage_stock', true);
+
+    if (error) {
+      console.error('[MultiLojas] refreshLowStock failed', error);
+      return;
+    }
+
+    if (seq !== lowStockRefreshSeq.current) return;
+
+    const low = ((prods as any[]) || []).filter(
+      p => Number(p.stock_quantity) <= Number(p.low_stock_threshold),
+    );
+    low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
+    setLowStock(low as any);
+  }, []);
 
   const orgsById = useMemo(() => {
     const m = new Map<string, OrgRow>();
@@ -62,36 +91,78 @@ const MultiLojasPanel = ({ tier, userId }: { tier: 'master' | 'super'; userId: s
     load();
   }, [tier, userId]);
 
-  // 2) Load orders + low-stock for those orgs
+  // 2) Load period orders; direct-stock alerts are refreshed independently.
   useEffect(() => {
-    if (orgs.length === 0) { setOrders([]); setLowStock([]); setLoading(false); return; }
+    if (orgs.length === 0) {
+      setOrders([]);
+      void refreshLowStock([]);
+      setLoading(false);
+      return;
+    }
+
     const ids = orgs.map(o => o.id);
+    let cancelled = false;
+
     const run = async () => {
       setLoading(true);
       const fromDate = new Date(from + 'T00:00:00').toISOString();
       const toDate = new Date(to + 'T23:59:59').toISOString();
 
-      const [{ data: ord }, { data: prods }] = await Promise.all([
-        supabase.from('orders')
-          .select('organization_id, total, status, created_at')
-          .in('organization_id', ids)
-          .gte('created_at', fromDate)
-          .lte('created_at', toDate)
-          .neq('status', 'cancelled'),
-        (supabase.from('products') as any)
-          .select('id, organization_id, name, stock_quantity, low_stock_threshold, manage_stock')
-          .in('organization_id', ids)
-          .eq('manage_stock', true),
-      ]);
+      const { data: ord } = await supabase.from('orders')
+        .select('organization_id, total, status, created_at')
+        .in('organization_id', ids)
+        .gte('created_at', fromDate)
+        .lte('created_at', toDate)
+        .neq('status', 'cancelled');
+
+      if (cancelled) return;
 
       setOrders((ord as any) || []);
-      const low = ((prods as any[]) || []).filter(p => Number(p.stock_quantity) <= Number(p.low_stock_threshold));
-      low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
-      setLowStock(low as any);
-      setLoading(false);
+      await refreshLowStock(ids);
+      if (!cancelled) setLoading(false);
     };
-    run();
-  }, [orgs, from, to]);
+
+    void run();
+    return () => { cancelled = true; };
+  }, [orgs, from, to, refreshLowStock]);
+
+  // 3) Keep derived direct-stock alerts fresh for every store currently in scope.
+  useEffect(() => {
+    const ids = [...new Set(orgs.map(o => o.id))].sort();
+
+    if (ids.length === 0) {
+      void refreshLowStock([]);
+      return;
+    }
+
+    // Re-read once while subscriptions are being attached to close the stale initial-load gap.
+    void refreshLowStock(ids);
+
+    const channels = ids.map((organizationId) =>
+      supabase
+        .channel(`multi-lojas-products-${userId}-${organizationId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'products',
+            filter: `organization_id=eq.${organizationId}`,
+          },
+          () => {
+            void refreshLowStock(ids);
+          },
+        )
+        .subscribe(),
+    );
+
+    return () => {
+      ++lowStockRefreshSeq.current;
+      channels.forEach((ch) => {
+        void supabase.removeChannel(ch);
+      });
+    };
+  }, [orgs, userId, refreshLowStock]);
 
   // Aggregates
   const totals = useMemo(() => {
@@ -263,7 +334,7 @@ const MultiLojasPanel = ({ tier, userId }: { tier: 'master' | 'super'; userId: s
                     <p className="text-[10px] text-muted-foreground truncate">{org?.name || '—'}</p>
                   </div>
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${esgotado ? 'bg-destructive/20 text-destructive' : 'bg-amber-500/20 text-amber-400'}`}>
-                    {esgotado ? 'Esgotado' : `${p.stock_quantity} restante${p.stock_quantity !== 1 ? 's' : ''}`}
+                    {esgotado ? 'Esgotado' : (p.sold_by_weight ? `${p.stock_quantity} kg` : `${p.stock_quantity} un`)}
                   </span>
                 </div>
               );

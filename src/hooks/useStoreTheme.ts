@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { fetchPublicTheme } from '@/lib/publicTheme';
 
 export interface StoreTheme {
-  primary_color: string;   // HSL ex: "25 95% 53%"
+  primary_color: string;
   secondary_color: string;
   mode: 'dark' | 'light';
 }
@@ -13,7 +13,6 @@ export const DEFAULT_THEME: StoreTheme = {
   mode: 'dark',
 };
 
-/** Aplica as cores e o modo no <html> via CSS variables */
 export function applyThemeToRoot(theme: StoreTheme) {
   const root = document.documentElement;
   root.style.setProperty('--primary', theme.primary_color);
@@ -41,43 +40,62 @@ export function applyThemeToRoot(theme: StoreTheme) {
     root.style.setProperty('--sidebar-border', '0 0% 88%');
   } else {
     root.classList.remove('theme-light');
-    // Reset para os valores do index.css (dark)
     ['--background','--foreground','--card','--card-foreground','--popover','--popover-foreground',
      '--muted','--muted-foreground','--border','--input','--sidebar-background','--sidebar-foreground',
      '--sidebar-accent','--sidebar-accent-foreground','--sidebar-border'].forEach(v => root.style.removeProperty(v));
   }
 }
 
-/** Busca o tema da loja (orgId) e aplica globalmente */
 export function useStoreTheme(orgId: string | null) {
   const [theme, setTheme] = useState<StoreTheme>(DEFAULT_THEME);
   const [loading, setLoading] = useState(false);
+  const loadVersionRef = useRef(0);
 
   const load = useCallback(async () => {
+    const loadVersion = ++loadVersionRef.current;
+
     if (!orgId) {
+      setLoading(false);
       applyThemeToRoot(DEFAULT_THEME);
       setTheme(DEFAULT_THEME);
       return;
     }
+
     setLoading(true);
-    const { data } = await supabase
-      .from('loja_temas' as any)
-      .select('primary_color, secondary_color, mode')
-      .eq('organization_id', orgId)
-      .maybeSingle();
-    const next: StoreTheme = data
-      ? {
-          primary_color: (data as any).primary_color || DEFAULT_THEME.primary_color,
-          secondary_color: (data as any).secondary_color || DEFAULT_THEME.secondary_color,
-          mode: ((data as any).mode === 'light' ? 'light' : 'dark'),
-        }
-      : DEFAULT_THEME;
-    setTheme(next);
-    applyThemeToRoot(next);
-    setLoading(false);
+    try {
+      const d = await fetchPublicTheme(orgId);
+      if (loadVersion !== loadVersionRef.current) return;
+
+      const hasTheme = Object.keys(d).length > 0;
+      const next: StoreTheme = hasTheme
+        ? {
+            primary_color: d.primary_color || DEFAULT_THEME.primary_color,
+            secondary_color: d.secondary_color || DEFAULT_THEME.secondary_color,
+            mode: (d.mode === 'light' ? 'light' : 'dark'),
+          }
+        : DEFAULT_THEME;
+      setTheme(next);
+      applyThemeToRoot(next);
+    } catch (error) {
+      if (loadVersion !== loadVersionRef.current) return;
+
+      console.warn('[theme] public theme error:', error);
+      setTheme(DEFAULT_THEME);
+      applyThemeToRoot(DEFAULT_THEME);
+    } finally {
+      if (loadVersion === loadVersionRef.current) {
+        setLoading(false);
+      }
+    }
   }, [orgId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    void load();
+
+    return () => {
+      loadVersionRef.current += 1;
+    };
+  }, [load]);
 
   return { theme, setTheme, loading, reload: load };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -18,7 +18,6 @@ import {
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { getSupabaseFunctionUrl } from '@/config/supabaseConfig';
 import { CATEGORIAS_LOJA } from '@/lib/categorias';
 import { CARDAPIO_TEMPLATES, CardapioTemplateKey, getTemplate } from '@/lib/cardapioTemplates';
 import { uploadProductImage } from '@/lib/imageUpload';
@@ -37,7 +36,7 @@ const cardCls = 'bg-zinc-900 border border-amber-500/15 rounded-2xl';
 const inputCls =
   'w-full px-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 focus:border-amber-500/60 outline-none text-zinc-100 placeholder-zinc-600';
 
-type HelpId = null | 'os_app' | 'os_key' | 'mp_pub' | 'mp_tok' | 'mp_webhook';
+type HelpId = null | 'os_app' | 'os_key' | 'mp_pub' | 'mp_tok';
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -58,12 +57,7 @@ export default function Onboarding() {
   // step 2
   const [template, setTemplate] = useState<CardapioTemplateKey | null>(null);
 
-  // step 3
-  const [appId, setAppId] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [osValidated, setOsValidated] = useState(false);
-  const [osError, setOsError] = useState<string>('');
-  const [osTesting, setOsTesting] = useState(false);
+  // step 3: OneSignal é configuração global do Super Admin (Vault).
 
   // step 4
   const [mpPub, setMpPub] = useState('');
@@ -90,65 +84,18 @@ export default function Onboarding() {
         setNome(org.name || '');
         setCategoria(org.categoria || 'lanchonete');
         setLogoPreview(org.logo_url || '');
-        // pré-carrega chaves já salvas da loja (se houver)
+        // Segredos de OneSignal/Mercado Pago ficam no Vault e nunca são pré-carregados.
         const { data: s } = await supabase
           .from('settings')
-          .select('onesignal_app_id, onesignal_api_key, mp_public_key, mp_access_token, whatsapp_number')
+          .select('whatsapp_number')
           .eq('organization_id', org.id)
           .maybeSingle();
         if (s) {
-          setAppId(s.onesignal_app_id || '');
-          setApiKey(s.onesignal_api_key || '');
-          setMpPub(s.mp_public_key || '');
-          setMpTok(s.mp_access_token || '');
           setTelefone(s.whatsapp_number || '');
         }
       }
     })();
   }, [navigate]);
-
-  // Reseta validação quando chaves mudam
-  useEffect(() => {
-    setOsValidated(false);
-    setOsError('');
-  }, [appId, apiKey]);
-
-  const webhookUrl = useMemo(() => {
-    const base = getSupabaseFunctionUrl('mp-webhook');
-    return orgId ? `${base}?store_id=${orgId}` : base;
-  }, [orgId]);
-
-  async function testarOneSignal() {
-    if (!appId.trim() || !apiKey.trim()) {
-      setOsError('Preencha App ID e REST API Key.');
-      toast.error('Preencha App ID e REST API Key.');
-      return;
-    }
-    setOsTesting(true);
-    setOsError('');
-    try {
-      const { data, error } = await supabase.functions.invoke('onesignal-validate', {
-        body: { app_id: appId.trim(), api_key: apiKey.trim() },
-      });
-      if (error) throw error;
-      if (data?.valid) {
-        setOsValidated(true);
-        toast.success('Chaves do OneSignal validadas com sucesso ✅');
-      } else {
-        setOsValidated(false);
-        const msg = data?.error || 'Credenciais inválidas.';
-        setOsError(msg);
-        toast.error(`OneSignal: ${msg}`);
-      }
-    } catch (e: any) {
-      setOsValidated(false);
-      setOsError(e.message || 'Falha ao validar.');
-      toast.error('Falha ao validar OneSignal: ' + (e.message || ''));
-    } finally {
-      setOsTesting(false);
-    }
-  }
-
 
   const onLogo = (f: File | null) => {
     setLogoFile(f);
@@ -158,20 +105,11 @@ export default function Onboarding() {
   const canAdvance = () => {
     if (step === 1) return nome.trim().length >= 2 && !!categoria;
     if (step === 2) return !!template;
-    if (step === 3) {
-      // Se preencheu chaves, exige validação real antes de avançar.
-      const filled = appId.trim() || apiKey.trim();
-      if (!filled) return true; // pode pular esta etapa
-      return osValidated;
-    }
+    if (step === 3) return true;
     return true;
   };
 
   const next = async () => {
-    if (step === 3 && (appId.trim() || apiKey.trim()) && !osValidated) {
-      toast.error('Teste e valide as chaves do OneSignal antes de avançar.');
-      return;
-    }
     if (!canAdvance()) {
       toast.error('Preencha os campos obrigatórios para continuar.');
       return;
@@ -225,26 +163,36 @@ export default function Onboarding() {
         .update({ name: nome, categoria, logo_url: logoUrl || '' })
         .eq('id', oid);
 
-      // settings upsert (telefone + mp)
-      const { data: existingSettings } = await supabase
+      // Configuração pública da loja. Segredos ficam exclusivamente no Vault.
+      const { data: existingSettings, error: settingsLookupError } = await supabase
         .from('settings')
         .select('id')
         .eq('organization_id', oid)
         .maybeSingle();
+      if (settingsLookupError) throw settingsLookupError;
+
       const settingsPayload: any = {
         organization_id: oid,
         store_name: nome,
         whatsapp_number: telefone,
-        mp_public_key: mpPub.trim(),
-        mp_access_token: mpTok.trim(),
-        pay_pix_enabled: true,
-        onesignal_app_id: appId.trim(),
-        onesignal_api_key: apiKey.trim(),
       };
-      if (existingSettings?.id) {
-        await supabase.from('settings').update(settingsPayload).eq('id', existingSettings.id);
-      } else {
-        await supabase.from('settings').insert(settingsPayload);
+      const settingsWrite = existingSettings?.id
+        ? await supabase.from('settings').update(settingsPayload).eq('id', existingSettings.id)
+        : await supabase.from('settings').insert(settingsPayload);
+      if (settingsWrite.error) throw settingsWrite.error;
+
+      // Mercado Pago: Access Token/Public Key entram somente pelo RPC seguro (Vault).
+      if (mpPub.trim() || mpTok.trim()) {
+        const { data: mpResult, error: mpError } = await supabase.rpc('set_mp_credentials' as any, {
+          _org: oid,
+          _access_token: mpTok.trim(),
+          _client_id: '',
+          _public_key: mpPub.trim(),
+        });
+        if (mpError) throw mpError;
+        if (!(mpResult as any)?.ok) {
+          throw new Error((mpResult as any)?.reason || 'Não foi possível salvar as credenciais do Mercado Pago.');
+        }
       }
 
       // template products
@@ -479,57 +427,25 @@ export default function Onboarding() {
               </div>
             </div>
           )}
-
           {step === 3 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2 mb-2">
                 <Bell className="w-5 h-5 text-amber-400" />
-                <h2 className="text-lg font-bold">Integração de Notificações (OneSignal)</h2>
+                <h2 className="text-lg font-bold">Notificações Push</h2>
               </div>
-              <FieldWithHelp
-                label="App ID"
-                value={appId}
-                onChange={setAppId}
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                onHelp={() => setHelp('os_app')}
-              />
-              <FieldWithHelp
-                label="REST API Key"
-                value={apiKey}
-                onChange={setApiKey}
-                placeholder="Sua chave REST"
-                type="password"
-                onHelp={() => setHelp('os_key')}
-              />
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  onClick={testarOneSignal}
-                  disabled={osTesting || !appId.trim() || !apiKey.trim()}
-                  className="px-4 py-2.5 rounded-xl border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40 inline-flex items-center gap-2 text-sm font-semibold"
-                >
-                  {osTesting ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <ShieldCheck className="w-4 h-4" />
-                  )}
-                  Testar conexão
-                </button>
-                {osValidated && (
-                  <span className="inline-flex items-center gap-1 text-sm text-emerald-400">
-                    <CheckCircle2 className="w-4 h-4" /> Validado
-                  </span>
-                )}
-                {osError && (
-                  <span className="inline-flex items-center gap-1 text-xs text-rose-400">
-                    <AlertTriangle className="w-3.5 h-3.5" /> {osError}
-                  </span>
-                )}
+              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-2">
+                <div className="flex items-center gap-2 text-amber-200 font-semibold">
+                  <ShieldCheck className="w-4 h-4" />
+                  Configuração protegida no painel Master
+                </div>
+                <p className="text-sm text-zinc-400">
+                  O OneSignal é configurado uma única vez pelo Super Admin. A App API Key fica protegida no Vault
+                  e nunca é salva neste cadastro nem devolvida ao navegador.
+                </p>
+                <p className="text-xs text-zinc-500">
+                  Depois, cada administrador ou cliente ativa as notificações no próprio dispositivo quando desejar.
+                </p>
               </div>
-              <p className="text-xs text-zinc-500">
-                Pode pular agora e configurar depois em Painel → Notificações Push. Se preencher,
-                validamos as chaves diretamente com o OneSignal antes de avançar.
-              </p>
-
             </div>
           )}
 
@@ -556,32 +472,13 @@ export default function Onboarding() {
               />
 
               <div className="mt-2 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="text-sm font-semibold text-amber-300">
-                    Webhook automático
-                  </div>
-                  <button
-                    onClick={() => setHelp('mp_webhook')}
-                    className="text-xs text-amber-300 inline-flex items-center gap-1 hover:underline"
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" /> Como ativar
-                  </button>
+                <div className="text-sm font-semibold text-amber-300 mb-2">
+                  Credenciais protegidas no Vault
                 </div>
-                <p className="text-xs text-zinc-400 mb-2">
-                  Cole esta URL no painel do Mercado Pago em Notificações → Webhooks:
+                <p className="text-xs text-zinc-400">
+                  Essas credenciais são usadas pelo fluxo seguro de Pix do PDV. O checkout recorrente de assinatura
+                  e o webhook Master ainda não estão publicados, então não é necessário cadastrar URL de webhook nesta etapa.
                 </p>
-                <div className="flex gap-2">
-                  <input readOnly value={webhookUrl} className={`${inputCls} font-mono text-xs`} />
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(webhookUrl);
-                      toast.success('Link copiado!');
-                    }}
-                    className="px-4 rounded-xl bg-amber-500 text-zinc-950 font-semibold text-sm"
-                  >
-                    Copiar
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -616,7 +513,7 @@ export default function Onboarding() {
         </div>
       </div>
 
-      <HelpModal id={help} onClose={() => setHelp(null)} webhookUrl={webhookUrl} />
+      <HelpModal id={help} onClose={() => setHelp(null)} />
     </div>
   );
 }
@@ -661,11 +558,9 @@ function FieldWithHelp({
 function HelpModal({
   id,
   onClose,
-  webhookUrl,
 }: {
   id: HelpId;
   onClose: () => void;
-  webhookUrl: string;
 }) {
   if (!id) return null;
   const guides: Record<Exclude<HelpId, null>, { title: string; steps: string[]; link?: string }> = {
@@ -704,17 +599,6 @@ function HelpModal({
         'Esse token é privado – mantenha-o seguro.',
       ],
       link: 'https://www.mercadopago.com.br/developers/panel',
-    },
-    mp_webhook: {
-      title: 'Como ativar o Webhook do Mercado Pago',
-      steps: [
-        'No painel de desenvolvedor, abra sua aplicação.',
-        'Vá em "Notificações" → "Webhooks".',
-        `Cole a URL: ${webhookUrl}`,
-        'Marque os eventos "payment" e "subscription_preapproval".',
-        'Salve. Pronto, pagamentos serão confirmados automaticamente.',
-      ],
-      link: 'https://www.mercadopago.com.br/developers/panel/notifications/webhooks',
     },
   };
   const g = guides[id];

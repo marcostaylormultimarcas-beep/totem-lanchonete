@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Trash2, Ticket, CheckCircle2, X, Loader2, Crown, Sparkles, CalendarClock, Clock } from 'lucide-react';
 import { CartItem, getItemTotal, formatCurrency } from '@/data/store';
@@ -6,7 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoyaltyCard from './LoyaltyCard';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
-import { useStoreStatus } from '@/hooks/useStoreStatus';
+import { getSpecialClosure, useStoreStatus } from '@/hooks/useStoreStatus';
 import StoreStatusBadge from './StoreStatusBadge';
 
 export interface AppliedCoupon {
@@ -26,13 +26,17 @@ interface CartScreenProps {
   orgId: string | null;
   appliedCoupon: AppliedCoupon | null;
   onApplyCoupon: (c: AppliedCoupon | null) => void;
+  deviceOwnedKiosk?: boolean;
+  openScheduleOnMount?: boolean;
+  onScheduleOpened?: () => void;
+  onScheduleCancelled?: () => void;
 }
 
-const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon }: CartScreenProps) => {
+const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = false, orgId, appliedCoupon, onApplyCoupon, deviceOwnedKiosk = false, openScheduleOnMount = false, onScheduleOpened, onScheduleCancelled }: CartScreenProps) => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
-  const { config: primeCfg } = useVisionPrimeConfig(orgId);
-  const { status: primeStatus } = useVisionPrimeStatus(orgId);
+  const { config: primeCfg } = useVisionPrimeConfig(orgId, !deviceOwnedKiosk);
+  const { status: primeStatus } = useVisionPrimeStatus(orgId, !deviceOwnedKiosk);
 
   const subtotal = cart.reduce((sum, item) => sum + getItemTotal(item), 0);
   const couponDiscount = appliedCoupon ? Math.min(appliedCoupon.discount, subtotal) : 0;
@@ -50,18 +54,105 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   const [scheduleMode, setScheduleMode] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>('');
   const [scheduledTime, setScheduledTime] = useState<string>('');
+  const [checkingSchedule, setCheckingSchedule] = useState(false);
+  const scheduleConfirmingRef = useRef(false);
+
+  useEffect(() => {
+    if (!openScheduleOnMount) return;
+    setScheduleMode(true);
+    onScheduleOpened?.();
+  }, [openScheduleOnMount, onScheduleOpened]);
 
   // Defaults para o agendamento = próximo horário de abertura
-  useMemo(() => {
+  useEffect(() => {
     if (storeStatus.nextOpenAt && !scheduledDate) {
-      const d = storeStatus.nextOpenAt;
+      const d = new Date(storeStatus.nextOpenAt);
+      const slot = storeStatus.schedulingSlotMinutes || 30;
+      const minute = d.getMinutes();
+      const alignedMinute = Math.ceil(minute / slot) * slot;
+      if (alignedMinute >= 60) {
+        d.setHours(d.getHours() + 1, 0, 0, 0);
+      } else {
+        d.setMinutes(alignedMinute, 0, 0);
+      }
       const pad = (n: number) => String(n).padStart(2, '0');
       setScheduledDate(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
       setScheduledTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
     }
-  }, [storeStatus.nextOpenAt]);
+  }, [storeStatus.nextOpenAt, storeStatus.schedulingSlotMinutes, scheduledDate]);
+
+  const confirmSchedule = async () => {
+    if (scheduleConfirmingRef.current) return;
+    if (!scheduledDate || !scheduledTime) {
+      toast.error('Escolha data e hora.');
+      return;
+    }
+    if (!orgId) {
+      toast.error('Loja não identificada.');
+      return;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('O agendamento precisa de internet para confirmar a disponibilidade do horário.');
+      return;
+    }
+
+    const localScheduled = new Date(`${scheduledDate}T${scheduledTime}:00`);
+    if (Number.isNaN(localScheduled.getTime()) || localScheduled <= new Date()) {
+      toast.error('Escolha uma data futura.');
+      return;
+    }
+
+    const slotMinutes = storeStatus.schedulingSlotMinutes || 30;
+    if (localScheduled.getMinutes() % slotMinutes !== 0) {
+      toast.error(`Escolha um horário em intervalos de ${slotMinutes} minutos.`);
+      return;
+    }
+
+    const closure = getSpecialClosure(localScheduled, storeStatus.specialClosures);
+    if (closure) {
+      toast.error(`A loja estará fechada nessa data: ${closure.reason}.`);
+      return;
+    }
+
+    scheduleConfirmingRef.current = true;
+    setCheckingSchedule(true);
+    try {
+      const { data, error } = await supabase.rpc('visionfood_schedule_availability' as any, {
+        _organization_id: orgId,
+        _scheduled_for: localScheduled.toISOString(),
+      });
+      const result: any = data;
+      if (error) {
+        console.error('visionfood_schedule_availability', error);
+        toast.error('Não foi possível confirmar esse horário agora. Tente novamente.');
+        return;
+      }
+      if (!result?.ok) {
+        const reason = String(result?.reason || '');
+        const messages: Record<string, string> = {
+          schedule_slot_full: 'Esse horário atingiu o limite de pedidos. Escolha outro horário.',
+          schedule_slot_alignment: `Escolha um horário em intervalos de ${Number(result?.slot_minutes || slotMinutes)} minutos.`,
+          schedule_outside_business_hours: 'A loja não funciona nesse horário. Escolha outro.',
+          store_closed_special_date: 'A loja estará fechada nessa data.',
+          scheduling_disabled: 'A loja desativou os agendamentos.',
+          schedule_must_be_future: 'Escolha uma data e horário futuros.',
+        };
+        toast.error(messages[reason] || 'Esse horário não está disponível para agendamento.');
+        return;
+      }
+
+      onCheckout(localScheduled.toISOString());
+    } finally {
+      scheduleConfirmingRef.current = false;
+      setCheckingSchedule(false);
+    }
+  };
 
   useEffect(() => {
+    if (deviceOwnedKiosk) {
+      setCustomerPhone('');
+      return;
+    }
     let cancelled = false;
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user || cancelled) return;
@@ -69,61 +160,64 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       if (!cancelled && data?.phone) setCustomerPhone(data.phone);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [deviceOwnedKiosk]);
 
-  // Auto-aplica cupom pendente vindo de notificação (sininho)
+  const validateCoupon = async (code: string, successMessage: string) => {
+    if (!orgId) return false;
+    if (deviceOwnedKiosk && typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast.error('Cupom exige validação online. Nenhum desconto foi aplicado offline.');
+      return false;
+    }
+    const { data, error } = await supabase.rpc('validate_checkout_coupon', {
+      _organization_id: orgId, _codigo: code, _subtotal: subtotal,
+    });
+    const result: any = data;
+    if (error) {
+      const message = String(error.message || '');
+      if (message.includes('coupon_rate_limited')) {
+        toast.error('Muitas tentativas de cupom. Aguarde alguns minutos e tente novamente.');
+      } else {
+        toast.error('Não foi possível validar o cupom agora. Tente novamente.');
+      }
+      return false;
+    }
+    if (!result?.ok || !result?.cupom) {
+      const reason = result?.reason;
+      const messages: Record<string,string> = {
+        expired: 'Este cupom já expirou.', not_started: 'Este cupom ainda não está ativo.',
+        inactive: 'Este cupom está inativo.', minimum_not_met: 'O pedido não atingiu o valor mínimo deste cupom.',
+      };
+      toast.error(messages[reason] || 'Cupom inválido para esta loja.');
+      return false;
+    }
+    const c = result.cupom;
+    const percent = ['percentual','porcentagem','percent','percentage'].includes(String(c.tipo).toLowerCase());
+    onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: percent ? 'porcentagem' : 'valor_fixo', valor: Number(c.valor), discount: Number(c.discount) });
+    toast.success(successMessage);
+    return true;
+  };
+
+  // Auto-aplica cupom pendente vindo de notificação (sininho), sempre validado no servidor.
   useEffect(() => {
-    if (!orgId || appliedCoupon) return;
+    if (!orgId || appliedCoupon || deviceOwnedKiosk) return;
     let pending = '';
     try { pending = localStorage.getItem('pending_coupon') || ''; } catch { /* ignore */ }
     if (!pending) return;
-    (async () => {
-      const code = pending.trim().toUpperCase();
-      const { data } = await supabase.from('cupons' as any)
-        .select('*').eq('organization_id', orgId).eq('codigo', code).eq('status', 'ativo').maybeSingle();
-      try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
-      if (!data) return;
-      const c: any = data;
-      const now = new Date();
-      if (c.data_inicio && now < new Date(c.data_inicio)) return;
-      if (c.data_fim && now > new Date(c.data_fim)) return;
-      const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
-      onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
-      toast.success(`Cupom ${code} aplicado da sua notificação!`);
-    })();
-  }, [orgId, appliedCoupon, subtotal, onApplyCoupon]);
-
+    try { localStorage.removeItem('pending_coupon'); } catch { /* ignore */ }
+    const code = pending.trim().toUpperCase();
+    validateCoupon(code, `Cupom ${code} aplicado da sua notificação!`);
+  }, [orgId, appliedCoupon, deviceOwnedKiosk]);
 
   const applyCoupon = async () => {
     const code = couponCode.trim().toUpperCase();
     if (!code || !orgId) return;
     setValidating(true);
-    const { data, error } = await supabase
-      .from('cupons' as any)
-      .select('*')
-      .eq('organization_id', orgId)
-      .eq('codigo', code)
-      .eq('status', 'ativo')
-      .maybeSingle();
-    setValidating(false);
-    if (error || !data) {
-      toast.error('Cupom inválido para esta loja.');
-      return;
+    try {
+      const ok = await validateCoupon(code, 'Cupom aplicado com sucesso!');
+      if (ok) setCouponCode('');
+    } finally {
+      setValidating(false);
     }
-    const c: any = data;
-    const now = new Date();
-    if (c.data_inicio && now < new Date(c.data_inicio)) {
-      toast.error('Este cupom ainda não está ativo.');
-      return;
-    }
-    if (c.data_fim && now > new Date(c.data_fim)) {
-      toast.error('Este cupom já expirou.');
-      return;
-    }
-    const calc = c.tipo === 'porcentagem' ? (subtotal * Number(c.valor)) / 100 : Number(c.valor);
-    onApplyCoupon({ id: c.id, codigo: c.codigo, tipo: c.tipo, valor: Number(c.valor), discount: calc });
-    setCouponCode('');
-    toast.success('Cupom aplicado com sucesso!');
   };
 
   const removeCoupon = () => {
@@ -140,13 +234,13 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
   );
 
   return (
-    <div className="min-h-screen flex flex-col pb-40 max-w-[1200px] mx-auto">
+    <div className={`min-h-screen flex flex-col max-w-[1200px] mx-auto ${scheduleMode ? 'pb-[34rem]' : 'pb-72'}`}>
       <div className="flex items-center gap-4 p-4 border-b border-border">
         <button onClick={onBack} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft className="w-7 h-7" />
         </button>
         <h2 className="text-xl font-bold">Seu Pedido</h2>
-        {primeBadge}
+        {!deviceOwnedKiosk && primeBadge}
         <div className="ml-auto"><StoreStatusBadge orgId={orgId} compact /></div>
       </div>
 
@@ -160,9 +254,9 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
         </div>
       ) : (
         <div className="flex-1 p-4 space-y-3">
-          <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />
+          {!deviceOwnedKiosk && <LoyaltyCard organizationId={orgId} customerPhone={customerPhone} />}
 
-          {primeCfg?.ativo && !primeStatus.active && (
+          {!deviceOwnedKiosk && primeCfg?.ativo && !primeStatus.active && (
             <button onClick={goPrime}
               className="w-full text-left rounded-xl p-3 border-2 flex items-center gap-3"
               style={{ borderColor: '#d4a04c', background: 'linear-gradient(135deg, rgba(246,197,96,0.12), rgba(212,136,30,0.08))' }}>
@@ -186,7 +280,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                 <span className="text-3xl w-16 h-16 flex items-center justify-center flex-shrink-0">{item.product.image}</span>
               )}
               <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-sm">{item.quantity}x {item.product.name}</h4>
+                <h4 className="font-bold text-sm">{item.weightKg && item.weightKg > 0 ? `${item.weightKg.toFixed(3)} kg` : `${item.quantity}x`} {item.product.name}</h4>
                 {item.removedIngredients.length > 0 && (
                   <p className="text-xs text-secondary mt-1">Sem: {item.removedIngredients.join(', ')}</p>
                 )}
@@ -240,7 +334,7 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
       )}
 
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 space-y-2">
+        <div className="fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border p-4 space-y-2 max-h-[72dvh] overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Subtotal</span>
             <span>{formatCurrency(subtotal)}</span>
@@ -261,10 +355,14 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
             <span>Total</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
-          {/* Status da loja → libera, agenda ou bloqueia o checkout */}
-          {storeStatus.open ? (
+          {/* Status da loja → nunca concluir aberto/fechado antes da configuração terminar de carregar */}
+          {storeStatus.loading ? (
+            <button disabled className="touch-btn w-full bg-muted text-muted-foreground py-4 rounded-xl text-lg cursor-wait flex items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin" /> Verificando horário da loja…
+            </button>
+          ) : storeStatus.open ? (
             <button onClick={() => onCheckout(null)} className="touch-btn cta-breath w-full bg-primary text-primary-foreground py-4 rounded-xl text-lg">
-              {isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
+              {deviceOwnedKiosk || isAuthenticated ? 'Finalizar Pedido' : 'Entrar para Finalizar Pedido'}
             </button>
           ) : (
             <div className="space-y-2">
@@ -288,23 +386,45 @@ const CartScreen = ({ cart, onRemove, onCheckout, onBack, isAuthenticated = fals
                 ) : (
                   <div className="rounded-xl border border-primary/40 p-3 space-y-2 bg-primary/5">
                     <p className="text-sm font-bold flex items-center gap-2"><CalendarClock className="w-4 h-4 text-primary" /> Agendar para:</p>
-                    <div className="flex gap-2">
-                      <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)}
-                        className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
-                      <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)}
-                        className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={scheduledDate}
+                        onChange={e => setScheduledDate(e.target.value)}
+                        className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none text-sm"
+                      />
+                      <input
+                        type="time"
+                        step={storeStatus.schedulingSlotMinutes * 60}
+                        value={scheduledTime}
+                        onChange={e => setScheduledTime(e.target.value)}
+                        className="w-28 px-3 py-2 bg-muted rounded-lg outline-none text-sm"
+                      />
+                    </div>
+                    <div className="text-[11px] text-muted-foreground rounded-lg bg-muted/40 px-3 py-2">
+                      Horários de {storeStatus.schedulingSlotMinutes} em {storeStatus.schedulingSlotMinutes} minutos.
+                      {storeStatus.schedulingCapacityEnabled && storeStatus.schedulingMaxOrdersPerSlot > 0
+                        ? ` Limite: ${storeStatus.schedulingMaxOrdersPerSlot} pedido(s) por intervalo.`
+                        : ' Sem limite de quantidade por horário.'}
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => setScheduleMode(false)} className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1">Cancelar</button>
                       <button
                         onClick={() => {
-                          if (!scheduledDate || !scheduledTime) { toast.error('Escolha data e hora'); return; }
-                          const iso = new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString();
-                          if (new Date(iso) <= new Date()) { toast.error('Escolha uma data futura'); return; }
-                          onCheckout(iso);
+                          setScheduleMode(false);
+                          onScheduleCancelled?.();
                         }}
-                        className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold">
-                        Confirmar Agendamento
+                        disabled={checkingSchedule}
+                        className="touch-btn bg-muted px-3 py-2 rounded-lg text-sm flex-1 disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={confirmSchedule}
+                        disabled={checkingSchedule}
+                        className="touch-btn bg-primary text-primary-foreground px-3 py-2 rounded-lg text-sm flex-[2] font-bold disabled:opacity-50 flex items-center justify-center gap-2">
+                        {checkingSchedule ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarClock className="w-4 h-4" />}
+                        {checkingSchedule ? 'Verificando...' : 'Confirmar horário e continuar'}
                       </button>
                     </div>
                   </div>

@@ -12,6 +12,7 @@ interface ReadyOrder {
   delivery_address: string | null;
   bairro_nome: string | null;
   total: number;
+  scheduled_for?: string | null;
 }
 
 interface Entregador {
@@ -24,6 +25,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
   const [mode, setMode] = useState<Mode>('manual');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [schedulingLeadMin, setSchedulingLeadMin] = useState(30);
 
   // Roteirização por região (lógica simples)
   const [readyOrders, setReadyOrders] = useState<ReadyOrder[]>([]);
@@ -40,11 +42,12 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       setLoading(true);
       const { data } = await supabase
         .from('settings')
-        .select('delivery_assignment_mode')
+        .select('delivery_assignment_mode, scheduling_preparation_lead_min')
         .eq('organization_id', organizationId)
         .maybeSingle();
       const m = ((data as any)?.delivery_assignment_mode || 'manual') as Mode;
       setMode(m === 'free' ? 'free' : 'manual');
+      setSchedulingLeadMin(Math.max(0, Math.min(360, Number((data as any)?.scheduling_preparation_lead_min ?? 30))));
       setLoading(false);
     })();
   }, [organizationId]);
@@ -71,7 +74,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
     const [ordersRes, entRes] = await Promise.all([
       supabase
         .from('orders')
-        .select('id, order_number, customer_name, delivery_address, bairro_nome, total, status, order_type, entregador_id')
+        .select('id, order_number, customer_name, delivery_address, bairro_nome, total, status, order_type, entregador_id, scheduled_for')
         .eq('organization_id', organizationId)
         .eq('status', 'ready')
         .is('entregador_id', null)
@@ -84,9 +87,14 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
         .order('name'),
     ]);
     // Mantém apenas pedidos com endereço/bairro (entregas)
-    const rows = ((ordersRes.data as any[]) || []).filter(
-      (o) => o.delivery_address || o.bairro_nome
-    );
+    const now = Date.now();
+    const rows = ((ordersRes.data as any[]) || []).filter((o) => {
+      if (!(o.delivery_address || o.bairro_nome)) return false;
+      if (!o.scheduled_for) return true;
+      const scheduledAt = new Date(o.scheduled_for).getTime();
+      if (Number.isNaN(scheduledAt)) return true;
+      return now >= scheduledAt - schedulingLeadMin * 60000;
+    });
     setReadyOrders(rows as any);
     setEntregadores(((entRes.data as any[]) || []) as any);
     setLoadingRoutes(false);
@@ -140,21 +148,28 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
       return;
     }
     setDispatching(true);
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        entregador_id: entregadorId,
-        status: 'out_for_delivery',
-        updated_at: new Date().toISOString(),
-      } as any)
-      .in('id', ids);
+    const { data, error } = await supabase.rpc('visionfood_dispatch_orders', {
+      _order_ids: ids,
+      _entregador_id: entregadorId,
+    });
     setDispatching(false);
-    if (error) {
-      toast.error('Erro ao despachar lote: ' + error.message);
+    const result: any = data;
+    if (error || !result?.ok) {
+      const reasons: Record<string, string> = {
+        status_changed: 'Um dos pedidos mudou de status. Atualize a lista e tente novamente.',
+        not_delivery_order: 'O lote contém pedido que não é de entrega.',
+        cross_organization_order: 'O lote contém pedido de outra organização.',
+        order_not_found: 'Um dos pedidos não foi encontrado.',
+        entregador_invalid: 'Entregador inválido ou inativo.',
+        already_assigned: 'Um dos pedidos já está atribuído a outro entregador.',
+        forbidden: 'Sem permissão para despachar estes pedidos.',
+      };
+      toast.error(error ? 'Erro ao despachar lote: ' + error.message : (reasons[result?.reason] || 'Não foi possível despachar o lote.'));
+      await fetchRouting();
       return;
     }
     const entNome = entregadores.find((e) => e.id === entregadorId)?.name || 'entregador';
-    toast.success(`🛵 ${ids.length} pedido(s) do bairro ${bairro} enviados para ${entNome}.`);
+    toast.success(`🛵 ${ids.length} pedido(s) do bairro ${bairro} reservados para ${entNome}. O entregador inicia a rota após a retirada.`);
     // remove despachados da lista
     setReadyOrders((prev) => prev.filter((o) => !ids.includes(o.id)));
     setSelectedIds((prev) => {
@@ -247,7 +262,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
           )}
         </div>
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Agrupa automaticamente todos os pedidos <span className="text-success font-semibold">prontos para entrega</span> pelo bairro de destino e permite atribuir um lote inteiro a um único entregador.
+          Agrupa automaticamente todos os pedidos <span className="text-success font-semibold">prontos para entrega</span> pelo bairro de destino e permite reservar um lote inteiro para um único entregador. O status só muda para “Saiu para entrega” quando o entregador confirmar a retirada no app.
         </p>
 
         <button
@@ -306,6 +321,11 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
                             {o.delivery_address && (
                               <p className="text-muted-foreground truncate">{o.delivery_address}</p>
                             )}
+                            {o.scheduled_for && (
+                              <p className="text-violet-300 font-semibold">
+                                📅 {new Date(o.scheduled_for).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            )}
                           </div>
                           <span className="text-primary font-bold text-xs">
                             R$ {Number(o.total || 0).toFixed(2)}
@@ -333,7 +353,7 @@ const LogisticaPanel = ({ organizationId }: { organizationId: string | null }) =
                         className="bg-success hover:bg-success/90 text-success-foreground font-bold px-4 py-2 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50"
                       >
                         <Send className="w-4 h-4" />
-                        Despachar Lote ({selectedCount})
+                        Reservar Lote ({selectedCount})
                       </button>
                     </div>
                   </div>

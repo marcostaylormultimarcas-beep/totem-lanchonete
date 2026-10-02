@@ -1,0 +1,28 @@
+name: Verification Round 22 Atomic Checkout
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Atomic checkout assertions
+        run: |
+          grep -q "rpc('create_order_checkout'" src/components/kiosk/PaymentScreen.tsx
+          ! grep -q "rpc('next_order_number'" src/components/kiosk/PaymentScreen.tsx
+          grep -q 'create or replace function public.create_order_checkout' supabase/migrations/20260917205504_visionfood_v2_atomic_checkout_phase43.sql
+          grep -q "insert into public.orders" supabase/migrations/20260917205504_visionfood_v2_atomic_checkout_phase43.sql
+          grep -q 'return query select _id, _candidate' supabase/migrations/20260917205504_visionfood_v2_atomic_checkout_phase43.sql
+          grep -q 'revoke all on function public.create_order_checkout' supabase/migrations/20260917205504_visionfood_v2_atomic_checkout_phase43.sql
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

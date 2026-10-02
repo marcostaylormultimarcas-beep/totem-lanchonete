@@ -1,0 +1,29 @@
+name: Verification Round 17 - Senhas Atomic Counter
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Assert atomic senha RPC cutover
+        run: |
+          grep -q "chamar_proxima_senha" src/components/admin/SenhasPanel.tsx
+          grep -q "reset_senha_counter" src/components/admin/SenhasPanel.tsx
+          ! grep -q "SENHA_COUNTER_KEY" src/components/admin/SenhasPanel.tsx
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --package-lock=false
+      - name: Test
+        run: npm test -- --run
+      - name: Build
+        run: npm run build

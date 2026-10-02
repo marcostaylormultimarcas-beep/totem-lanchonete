@@ -9,7 +9,7 @@ const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-agent-token',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-agent-token, x-app-origin',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -89,6 +89,7 @@ function buildReceipt(opts: {
   const typeLabel = order.order_type === 'delivery' || order.order_type === 'viagem'
     ? 'DELIVERY' : order.order_type === 'retirada' ? 'RETIRADA' : 'COMER NO LOCAL';
   ep.ln(`Tipo: ${typeLabel}`);
+  if (order.table_label) ep.bold(true).ln(`Mesa: ${order.table_label}`).bold(false);
   if ((order.order_type === 'delivery' || order.order_type === 'viagem') && order.delivery_address) {
     ep.ln(`Endereco: ${order.delivery_address}`);
     if (order.delivery_reference) ep.ln(`Ref: ${order.delivery_reference}`);
@@ -103,7 +104,16 @@ function buildReceipt(opts: {
     const qty = Number(it.quantity || 1);
     const tot = Number(it.total || 0);
     subtotal += tot;
-    ep.ln(line(`${qty}x ${String(it.name || '').slice(0, W - 12)}`, brl(tot)));
+
+    const weightKg = Number(it.weight_kg || 0);
+    const quantityLabel = it.sold_by_weight && Number.isFinite(weightKg) && weightKg > 0
+      ? `${weightKg.toFixed(3)} kg`
+      : `${qty}x`;
+    const amount = brl(tot);
+    const itemNameBudget = Math.max(0, W - quantityLabel.length - amount.length - 1);
+    const itemName = String(it.name || '').slice(0, Math.max(0, itemNameBudget - 1));
+    ep.ln(line(`${quantityLabel} ${itemName}`, amount));
+
     const unit = qty > 0 ? tot / qty : tot;
     ep.ln(`   un: ${brl(unit)}`);
     const removed: string[] = it.removedIngredients || [];
@@ -171,10 +181,19 @@ Deno.serve(async (req) => {
       const storeName = (setRow?.store_name || 'Pedido').toString();
       const paperWidth = Number(cfgRow?.paper_width || 48);
       const slug = orgRow?.slug || '';
-      const origin = req.headers.get('origin') || 'https://app';
+      const rawOrigin = req.headers.get('x-app-origin') || req.headers.get('origin') || 'https://app';
+      let origin = 'https://app';
+      try {
+        const parsedOrigin = new URL(rawOrigin);
+        if (parsedOrigin.protocol === 'http:' || parsedOrigin.protocol === 'https:') {
+          origin = parsedOrigin.origin;
+        }
+      } catch {
+        // Keep the legacy fallback for previously downloaded agents.
+      }
 
       const jobs = (claim.jobs || []).map((order: any) => {
-        const trackUrl = `${origin}/acompanhar/${order.order_number}`;
+        const trackUrl = `${origin}/acompanhar/${order.id}`;
         const bytes = buildReceipt({ storeName, order, paperWidth, trackUrl });
         return {
           order_id: order.id,

@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Boxes, Plus, Trash2, Loader2, AlertTriangle, Link2, RefreshCw, CheckCircle2, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
-import { triggerRupturaNotification } from '@/lib/onesignal';
 import { vencimentoStatus, vencimentoLabel } from '@/lib/validade';
 
 interface Ingrediente {
@@ -38,6 +37,9 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const [recs, setRecs] = useState<Receita[]>([]);
   const [prods, setProds] = useState<Produto[]>([]);
   const [alerts, setAlerts] = useState<Alerta[]>([]);
+  const alertsRefreshSeq = useRef(0);
+  const alertsOrganizationRef = useRef<string | null>(organizationId);
+  alertsOrganizationRef.current = organizationId;
 
   const [novoNome, setNovoNome] = useState('');
   const [novaUnidade, setNovaUnidade] = useState('un');
@@ -51,50 +53,92 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
   const [linkIng, setLinkIng] = useState<string>('');
   const [linkQty, setLinkQty] = useState<number>(1);
 
-  const [webhook, setWebhook] = useState('');
+  const refreshAlerts = useCallback(async (targetOrganizationId: string) => {
+    const seq = ++alertsRefreshSeq.current;
+    const { data, error } = await supabase
+      .from('alertas_estoque' as any)
+      .select('*')
+      .eq('organization_id', targetOrganizationId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (
+      seq !== alertsRefreshSeq.current ||
+      alertsOrganizationRef.current !== targetOrganizationId
+    ) {
+      return;
+    }
+
+    if (error) {
+      console.error('[EstoqueInteligente] alert refresh failed', error);
+      return;
+    }
+
+    setAlerts(data || []);
+  }, []);
 
   const load = async () => {
     if (!organizationId) return;
+    const targetOrganizationId = organizationId;
     setLoading(true);
-    const [i, r, p, a, s] = await Promise.all([
-      supabase.from('ingredientes' as any).select('*').eq('organization_id', organizationId).order('nome'),
-      supabase.from('receitas' as any).select('*').eq('organization_id', organizationId),
-      supabase.from('products').select('id,name,available').eq('organization_id', organizationId).order('name'),
-      supabase.from('alertas_estoque' as any).select('*').eq('organization_id', organizationId).order('created_at', { ascending: false }).limit(20),
-      supabase.from('settings').select('estoque_webhook_url').eq('organization_id', organizationId).maybeSingle(),
+    const [i, r, p] = await Promise.all([
+      supabase.from('ingredientes' as any).select('*').eq('organization_id', targetOrganizationId).order('nome'),
+      supabase.from('receitas' as any).select('*').eq('organization_id', targetOrganizationId),
+      supabase.from('products').select('id,name,available').eq('organization_id', targetOrganizationId).order('name'),
     ]);
+
+    if (alertsOrganizationRef.current !== targetOrganizationId) return;
+
     setIngs((i.data as any) || []);
     setRecs((r.data as any) || []);
     setProds((p.data as any) || []);
-    setAlerts((a.data as any) || []);
-    setWebhook(((s.data as any)?.estoque_webhook_url) || '');
     setLoading(false);
+    void refreshAlerts(targetOrganizationId);
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [organizationId]);
 
-  // Dispara push via OneSignal quando um ingrediente zerar (realtime)
-  const notifiedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!organizationId) return;
+    alertsRefreshSeq.current++;
+
+    if (!organizationId) {
+      setAlerts([]);
+      return;
+    }
+
+    setAlerts([]);
+
     const channel = supabase
-      .channel(`ruptura-${organizationId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'ingredientes',
-        filter: `organization_id=eq.${organizationId}`,
-      }, (payload: any) => {
-        const novo = payload.new; const antigo = payload.old;
-        const zerouAgora = Number(antigo?.estoque_atual ?? 0) > 0 && Number(novo?.estoque_atual ?? 0) <= 0;
-        if (zerouAgora && !notifiedRef.current.has(novo.id)) {
-          notifiedRef.current.add(novo.id);
-          triggerRupturaNotification(novo.nome);
-        }
-        // libera reenvio quando reabastecer
-        if (Number(novo?.estoque_atual ?? 0) > 0) notifiedRef.current.delete(novo.id);
-      })
+      .channel(`estoque-alertas-${organizationId}-${Math.random().toString(36).slice(2, 10)}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'alertas_estoque',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        () => { void refreshAlerts(organizationId); },
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'alertas_estoque',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        () => { void refreshAlerts(organizationId); },
+      )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [organizationId]);
+
+    void refreshAlerts(organizationId);
+
+    return () => {
+      alertsRefreshSeq.current++;
+      supabase.removeChannel(channel);
+    };
+  }, [organizationId, refreshAlerts]);
 
   const recsByProduct = useMemo(() => {
     const m = new Map<string, Receita[]>();
@@ -165,14 +209,6 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
     if (error) { toast.error(error.message); load(); }
   };
 
-  const saveWebhook = async () => {
-    if (!organizationId) return;
-    const { error } = await supabase.from('settings').update({ estoque_webhook_url: webhook } as any)
-      .eq('organization_id', organizationId);
-    if (error) { toast.error(error.message); return; }
-    toast.success('Webhook salvo');
-  };
-
   return (
     <div className="space-y-6">
       <div className="bg-card rounded-2xl p-6 border border-border">
@@ -184,19 +220,6 @@ const EstoqueInteligentePanel = ({ organizationId }: { organizationId: string | 
           Cadastre ingredientes, vincule receitas aos produtos e o sistema desconta automaticamente a cada pedido.
           Quando um ingrediente acaba, os produtos relacionados são bloqueados no totem.
         </p>
-      </div>
-
-      {/* Webhook */}
-      <div className="bg-card rounded-2xl p-6 border border-border">
-        <h3 className="font-semibold mb-2">Alerta de ruptura (Webhook)</h3>
-        <p className="text-xs text-muted-foreground mb-3">
-          URL chamada quando um produto for desativado por falta de ingrediente. Suporta Push, WhatsApp ou qualquer endpoint próprio.
-        </p>
-        <div className="flex gap-2">
-          <input className="flex-1 px-3 py-2 rounded-lg bg-background border border-input text-sm"
-            placeholder="https://seu-webhook.com/alerta" value={webhook} onChange={(e) => setWebhook(e.target.value)} />
-          <button onClick={saveWebhook} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm">Salvar</button>
-        </div>
       </div>
 
       {/* Cadastro de ingrediente */}

@@ -525,10 +525,10 @@ export type Database = {
           active: boolean
           created_at: string
           id: string
-          last_lat: number | null
-          last_lng: number | null
-          last_location_at: string | null
-          last_location_order_id: string | null
+          ultima_lat: number | null
+          ultima_lng: number | null
+          ultima_localizacao_at: string | null
+          ultima_localizacao_pedido_id: string | null
           name: string
           organization_id: string
           password: string
@@ -539,10 +539,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          last_lat?: number | null
-          last_lng?: number | null
-          last_location_at?: string | null
-          last_location_order_id?: string | null
+          ultima_lat?: number | null
+          ultima_lng?: number | null
+          ultima_localizacao_at?: string | null
+          ultima_localizacao_pedido_id?: string | null
           name: string
           organization_id: string
           password: string
@@ -553,10 +553,10 @@ export type Database = {
           active?: boolean
           created_at?: string
           id?: string
-          last_lat?: number | null
-          last_lng?: number | null
-          last_location_at?: string | null
-          last_location_order_id?: string | null
+          ultima_lat?: number | null
+          ultima_lng?: number | null
+          ultima_localizacao_at?: string | null
+          ultima_localizacao_pedido_id?: string | null
           name?: string
           organization_id?: string
           password?: string
@@ -818,9 +818,17 @@ export type Database = {
           customer_cpf: string
           customer_name: string
           customer_phone: string
+          client_request_id: string | null
           data_reembolso: string | null
           delivery_address: string | null
+          delivery_accuracy_m: number | null
+          delivery_assigned_at: string | null
           delivery_cep: string
+          delivery_issue_at: string | null
+          delivery_issue_reason: string | null
+          delivery_started_at: string | null
+          delivery_lat: number | null
+          delivery_lng: number | null
           delivery_code: string
           delivery_distance_km: number | null
           delivery_fee: number
@@ -844,6 +852,9 @@ export type Database = {
           scheduled_for: string | null
           status: string
           status_reembolso: string
+          table_id: string | null
+          table_label: string
+          table_session_id: string | null
           total: number
           updated_at: string
           user_id: string | null
@@ -855,9 +866,17 @@ export type Database = {
           customer_cpf?: string
           customer_name: string
           customer_phone?: string
+          client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_accuracy_m?: number | null
+          delivery_assigned_at?: string | null
           delivery_cep?: string
+          delivery_issue_at?: string | null
+          delivery_issue_reason?: string | null
+          delivery_started_at?: string | null
+          delivery_lat?: number | null
+          delivery_lng?: number | null
           delivery_code?: string
           delivery_distance_km?: number | null
           delivery_fee?: number
@@ -881,6 +900,9 @@ export type Database = {
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
+          table_id?: string | null
+          table_label?: string
+          table_session_id?: string | null
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -892,9 +914,17 @@ export type Database = {
           customer_cpf?: string
           customer_name?: string
           customer_phone?: string
+          client_request_id?: string | null
           data_reembolso?: string | null
           delivery_address?: string | null
+          delivery_accuracy_m?: number | null
+          delivery_assigned_at?: string | null
           delivery_cep?: string
+          delivery_issue_at?: string | null
+          delivery_issue_reason?: string | null
+          delivery_started_at?: string | null
+          delivery_lat?: number | null
+          delivery_lng?: number | null
           delivery_code?: string
           delivery_distance_km?: number | null
           delivery_fee?: number
@@ -918,6 +948,9 @@ export type Database = {
           scheduled_for?: string | null
           status?: string
           status_reembolso?: string
+          table_id?: string | null
+          table_label?: string
+          table_session_id?: string | null
           total?: number
           updated_at?: string
           user_id?: string | null
@@ -1316,6 +1349,7 @@ export type Database = {
           available: boolean
           category: string
           codigo_barras: string | null
+          cost_price: number | null
           created_at: string
           data_vencimento: string | null
           description: string
@@ -1327,6 +1361,7 @@ export type Database = {
           lote: string | null
           low_stock_threshold: number
           manage_stock: boolean
+          markup_percent: number | null
           name: string
           organization_id: string | null
           prep_time_min: number
@@ -1341,6 +1376,7 @@ export type Database = {
           available?: boolean
           category?: string
           codigo_barras?: string | null
+          cost_price?: number | null
           created_at?: string
           data_vencimento?: string | null
           description?: string
@@ -1352,6 +1388,7 @@ export type Database = {
           lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
+          markup_percent?: number | null
           name: string
           organization_id?: string | null
           prep_time_min?: number
@@ -1366,6 +1403,7 @@ export type Database = {
           available?: boolean
           category?: string
           codigo_barras?: string | null
+          cost_price?: number | null
           created_at?: string
           data_vencimento?: string | null
           description?: string
@@ -1377,6 +1415,7 @@ export type Database = {
           lote?: string | null
           low_stock_threshold?: number
           manage_stock?: boolean
+          markup_percent?: number | null
           name?: string
           organization_id?: string | null
           prep_time_min?: number
@@ -1610,15 +1649,18 @@ export type Database = {
           mp_public_key: string
           mp_public_key_secret_id: string | null
           mp_terminal_id: string
-          onesignal_api_key: string
-          onesignal_app_id: string
           organization_id: string | null
           pay_card_online_enabled: boolean
           pay_card_terminal_enabled: boolean
           pay_cash_enabled: boolean
           pay_pix_enabled: boolean
           pix_key_manual: string
+          scheduling_capacity_enabled: boolean
           scheduling_enabled: boolean
+          scheduling_max_orders_per_slot: number
+          scheduling_preparation_lead_min: number
+          scheduling_slot_minutes: number
+          special_closures: Json
           share_image: string
           store_name: string
           taxa_vision_percent: number
@@ -1667,15 +1709,18 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_capacity_enabled?: boolean
           scheduling_enabled?: boolean
+          scheduling_max_orders_per_slot?: number
+          scheduling_preparation_lead_min?: number
+          scheduling_slot_minutes?: number
+          special_closures?: Json
           share_image?: string
           store_name?: string
           taxa_vision_percent?: number
@@ -1724,15 +1769,18 @@ export type Database = {
           mp_public_key?: string
           mp_public_key_secret_id?: string | null
           mp_terminal_id?: string
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           organization_id?: string | null
           pay_card_online_enabled?: boolean
           pay_card_terminal_enabled?: boolean
           pay_cash_enabled?: boolean
           pay_pix_enabled?: boolean
           pix_key_manual?: string
+          scheduling_capacity_enabled?: boolean
           scheduling_enabled?: boolean
+          scheduling_max_orders_per_slot?: number
+          scheduling_preparation_lead_min?: number
+          scheduling_slot_minutes?: number
+          special_closures?: Json
           share_image?: string
           store_name?: string
           taxa_vision_percent?: number
@@ -1751,28 +1799,25 @@ export type Database = {
       }
       system_settings: {
         Row: {
+          created_at: string | null
           id: string
-          mp_master_token_secret_id: string | null
-          onesignal_api_key: string
-          onesignal_app_id: string
           updated_at: string
           valor_plano_padrao: number
+          whatsapp_suporte: string
         }
         Insert: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Update: {
+          created_at?: string | null
           id?: string
-          mp_master_token_secret_id?: string | null
-          onesignal_api_key?: string
-          onesignal_app_id?: string
           updated_at?: string
           valor_plano_padrao?: number
+          whatsapp_suporte?: string
         }
         Relationships: []
       }
@@ -1962,6 +2007,15 @@ export type Database = {
         Args: { _motivo?: string; _order_id: string }
         Returns: Json
       }
+      chamar_proxima_senha: {
+        Args: { _organization_id: string; _prefixo?: string; _tipo?: string }
+        Returns: {
+          called_at: string
+          id: string
+          numero: string
+          tipo: string
+        }[]
+      }
       confirm_delivery_with_code: {
         Args: {
           _code: string
@@ -1971,6 +2025,37 @@ export type Database = {
         }
         Returns: Json
       }
+      create_order_checkout_v4: {
+        Args: {
+          _organization_id: string
+          _customer_name: string
+          _customer_phone?: string
+          _customer_cpf?: string
+          _order_type?: string
+          _delivery_address?: string
+          _delivery_reference?: string
+          _delivery_recipient?: string
+          _bairro_id?: string | null
+          _bairro_nome?: string
+          _delivery_fee?: number
+          _items?: Json
+          _total?: number
+          _payment_method?: string
+          _scheduled_for?: string | null
+          _coupon_code?: string
+          _delivery_context?: Json
+          _table_token?: string | null
+          _client_request_id?: string | null
+        }
+        Returns: {
+          id: string
+          order_number: string
+          delivery_code: string
+          table_label: string
+          table_session_id: string | null
+          idempotent: boolean
+        }[]
+      }
       email_already_registered: { Args: { _email: string }; Returns: boolean }
       entregador_available_orders: {
         Args: { _entregador_id: string; _password: string }
@@ -1978,6 +2063,22 @@ export type Database = {
       }
       entregador_claim_order: {
         Args: { _entregador_id: string; _order_id: string; _password: string }
+        Returns: Json
+      }
+      entregador_claim_order_session: {
+        Args: { _order_id: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_decline_order_session: {
+        Args: { _order_id: string; _reason: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_report_delivery_issue_session: {
+        Args: { _order_id: string; _reason: string; _session_token: string }
+        Returns: Json
+      }
+      entregador_start_delivery_session: {
+        Args: { _order_id: string; _session_token: string }
         Returns: Json
       }
       entregador_login: {
@@ -2141,6 +2242,10 @@ export type Database = {
         Returns: Json
       }
       redeem_loyalty_prize: { Args: { _resgate_id: string }; Returns: Json }
+      reset_senha_counter: {
+        Args: { _organization_id: string; _prefixo?: string }
+        Returns: undefined
+      }
       restock_from_items: {
         Args: { _items: Json; _org: string }
         Returns: undefined
@@ -2155,7 +2260,24 @@ export type Database = {
         }
         Returns: Json
       }
+      set_onesignal_config: {
+        Args: { _api_key?: string; _app_id: string }
+        Returns: Json
+      }
+      set_system_whatsapp_suporte: {
+        Args: { _whatsapp: string }
+        Returns: Json
+      }
       set_valor_plano_padrao: { Args: { _valor: number }; Returns: Json }
+      submit_product_review: {
+        Args: {
+          _comment?: string
+          _order_id: string
+          _product_id: string
+          _rating: number
+        }
+        Returns: Json
+      }
       toggle_plan_feature: {
         Args: { _enabled: boolean; _feature_id: string; _plan_id: string }
         Returns: Json
@@ -2165,8 +2287,100 @@ export type Database = {
         Args: { _cep: string; _lat?: number; _lng?: number; _org: string }
         Returns: Json
       }
+      validate_checkout_coupon: {
+        Args: { _codigo: string; _organization_id: string; _subtotal?: number }
+        Returns: Json
+      }
       vision_prime_my_status: { Args: { _org: string }; Returns: Json }
+      vision_prime_public_config: {
+        Args: { _org: string }
+        Returns: {
+          ativo: boolean
+          desconto_percentual: number
+          frete_gratis_minimo: number
+          valor_mensalidade: number
+        }[]
+      }
       vision_prime_subscribe: { Args: { _org: string }; Returns: Json }
+      visionfood_checkout_payment_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
+      visionfood_delivery_history: {
+        Args: { _limit?: number; _org: string }
+        Returns: Json
+      }
+      visionfood_dispatch_orders: {
+        Args: { _entregador_id: string; _order_ids: string[] }
+        Returns: Json
+      }
+      visionfood_order_receipt: {
+        Args: { _order_id: string }
+        Returns: Json
+      }
+      visionfood_admin_tables: { Args: { _org: string }; Returns: Json }
+      visionfood_close_table_session: { Args: { _session_id: string }; Returns: Json }
+      visionfood_link_google_profile: {
+        Args: { _organization_id: string }
+        Returns: boolean
+      }
+      visionfood_profile_count: { Args: { _org: string }; Returns: number }
+      visionfood_return_delivery_to_queue: {
+        Args: { _order_id: string; _reason: string }
+        Returns: Json
+      }
+      visionfood_public_called_tickets: {
+        Args: { _limit?: number; _org: string }
+        Returns: Json
+      }
+      visionfood_public_catalog: { Args: { _org: string }; Returns: Json }
+      visionfood_public_delivery_areas: { Args: { _org: string }; Returns: Json }
+      visionfood_public_loyalty_config: { Args: { _org: string }; Returns: Json }
+      visionfood_public_order_tracking: {
+        Args: { _order_id: string }
+        Returns: Json
+      }
+      visionfood_public_organization: {
+        Args: { _org_id?: string; _slug?: string }
+        Returns: Json
+      }
+      visionfood_public_product_reviews: {
+        Args: { _limit?: number; _product_id: string }
+        Returns: Json
+      }
+      visionfood_public_storefront_config: {
+        Args: { _org: string }
+        Returns: Json
+      }
+      visionfood_public_table_context: {
+        Args: { _organization_id: string; _table_token: string }
+        Returns: Json
+      }
+      visionfood_public_theme: { Args: { _org: string }; Returns: Json }
+      visionfood_push_predictive_stock: {
+        Args: {
+          _days_remaining: number
+          _ingredient_name: string
+          _org: string
+        }
+        Returns: Json
+      }
+      visionfood_rotate_table_token: {
+        Args: { _org: string; _table_id: string }
+        Returns: Json
+      }
+      visionfood_upsert_table: {
+        Args: { _label: string; _org: string; _table_id?: string | null }
+        Returns: Json
+      }
+      visionfood_update_order_status: {
+        Args: {
+          _expected_status: string
+          _next_status: string
+          _order_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "super_admin" | "master_admin"

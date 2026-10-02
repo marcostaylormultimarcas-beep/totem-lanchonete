@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    manifest: 'vite-manifest.json',
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',

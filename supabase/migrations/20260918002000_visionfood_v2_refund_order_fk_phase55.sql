@@ -1,0 +1,4 @@
+-- Phase 55: refunds use caixa_movimentos.pedido_id as the canonical order relation.
+-- Applied to public.pdv_devolver_pedido_v2:
+-- 1) prior refunds are summed with pedido_id = o.id instead of JSON metadata lookup.
+-- 2) new refund movements persist pedido_id = o.id (metadata remains audit detail).

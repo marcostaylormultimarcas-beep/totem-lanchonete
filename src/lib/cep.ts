@@ -14,6 +14,10 @@ export interface GeoCoords {
   lng: number;
 }
 
+export interface ReverseGeocodeResult extends ViaCepResult {
+  numero: string;
+}
+
 export const normalizeCep = (input: string): string =>
   (input || '').replace(/\D/g, '').slice(0, 8);
 
@@ -56,6 +60,66 @@ export async function geocodeAddress(query: string): Promise<GeoCoords | null> {
     return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
   } catch (e) {
     console.warn('[CEP] erro geocode:', e);
+    return null;
+  }
+}
+
+export async function reverseGeocodeCoords(lat: number, lng: number): Promise<ReverseGeocodeResult | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return null;
+  }
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&lat=${encodeURIComponent(String(lat))}&lon=${encodeURIComponent(String(lng))}`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const address = data?.address;
+    if (!address || typeof address !== 'object') return null;
+
+    const isoRegion = String(address['ISO3166-2-lvl4'] || address['ISO3166-2-lvl6'] || '');
+    const isoUf = isoRegion.startsWith('BR-') ? isoRegion.slice(3).toUpperCase() : '';
+    const uf = String(address.state_code || isoUf || '').toUpperCase().slice(0, 2);
+    const cep = normalizeCep(String(address.postcode || ''));
+    const logradouro = String(
+      address.road
+      || address.pedestrian
+      || address.residential
+      || address.footway
+      || address.cycleway
+      || address.path
+      || '',
+    );
+    const bairro = String(
+      address.suburb
+      || address.neighbourhood
+      || address.quarter
+      || address.city_district
+      || '',
+    );
+    const cidade = String(
+      address.city
+      || address.town
+      || address.village
+      || address.municipality
+      || address.county
+      || '',
+    );
+    const numero = String(address.house_number || '');
+
+    if (!logradouro && !bairro && !cidade) return null;
+
+    return {
+      cep,
+      logradouro,
+      bairro,
+      cidade,
+      uf,
+      numero,
+    };
+  } catch (e) {
+    console.warn('[CEP] erro reverse geocode:', e);
     return null;
   }
 }

@@ -1,44 +1,17 @@
-import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Crown, Check, Sparkles, Loader2, ArrowLeft, ShieldCheck, Truck, Percent } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { Crown, Loader2, ArrowLeft, ShieldCheck, Truck, Percent } from 'lucide-react';
 import { useOrgId } from '@/contexts/OrgContext';
 import { useVisionPrimeConfig, useVisionPrimeStatus } from '@/hooks/useVisionPrime';
 import { formatCurrency } from '@/data/store';
-import { toast } from 'sonner';
 
 const VisionPrime = () => {
   const navigate = useNavigate();
   const { slug } = useParams<{ slug: string }>();
   const orgId = useOrgId();
   const { config, loading } = useVisionPrimeConfig(orgId);
-  const { status, refresh } = useVisionPrimeStatus(orgId);
-  const [authed, setAuthed] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setAuthed(Boolean(data.session)));
-  }, []);
+  const { status } = useVisionPrimeStatus(orgId);
 
   const back = () => navigate(slug ? `/loja/${slug}` : '/');
-
-  const subscribe = async () => {
-    if (!authed) {
-      toast.info('Faça login para assinar o Vision Prime.');
-      navigate(`/auth?returnTo=${encodeURIComponent(slug ? `/loja/${slug}/prime` : '/')}`);
-      return;
-    }
-    if (!orgId) return;
-    setSubscribing(true);
-    const { data, error } = await supabase.rpc('vision_prime_subscribe' as any, { _org: orgId });
-    setSubscribing(false);
-    if (error || (data as any)?.ok === false) {
-      toast.error((data as any)?.reason || error?.message || 'Erro ao assinar');
-      return;
-    }
-    toast.success('Bem-vindo ao Vision Prime!');
-    refresh();
-  };
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
@@ -97,13 +70,12 @@ const VisionPrime = () => {
               </p>
             </div>
 
-            <button onClick={subscribe} disabled={subscribing}
-              className="w-full py-4 rounded-xl font-black text-lg text-black flex items-center justify-center gap-2 disabled:opacity-60"
-              style={{ background: gold, boxShadow: '0 10px 30px -10px #d4881e' }}>
-              {subscribing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              {subscribing ? 'Ativando...' : 'Assinar Agora'}
+            <button disabled
+              className="w-full py-4 rounded-xl font-black text-lg text-black flex items-center justify-center gap-2 opacity-60 cursor-not-allowed"
+              style={{ background: gold }}>
+              Assinatura temporariamente indisponível
             </button>
-            <p className="text-[11px] text-amber-100/50 text-center">Cobrança simulada por 30 dias. Você pode cancelar a qualquer momento.</p>
+            <p className="text-[11px] text-amber-100/50 text-center">A ativação ficará disponível quando o pagamento seguro do Vision Prime estiver configurado.</p>
           </div>
         )}
       </div>

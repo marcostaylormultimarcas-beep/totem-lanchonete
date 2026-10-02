@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, User, Phone, MapPin, Navigation, UserCheck, FileText, Building, Search, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { maskCpf, isValidCpf } from '@/lib/cpf';
 import { supabase } from '@/integrations/supabase/client';
 import { useOrgId } from '@/contexts/OrgContext';
 import { formatCurrency } from '@/data/store';
-import { fetchViaCep, geocodeAddress, maskCep, normalizeCep } from '@/lib/cep';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicDeliveryAreas } from '@/lib/publicDeliveryAreas';
+import { fetchViaCep, maskCep, normalizeCep } from '@/lib/cep';
 import { toast } from 'sonner';
 
 interface Bairro {
@@ -17,6 +19,43 @@ interface Bairro {
 
 type DeliveryMode = 'bairros' | 'raio_km' | 'lista_ceps';
 
+const splitDeliveryAddress = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return { address: '', number: '' };
+
+  // Formato novo usado nesta tela: "Rua / bairro / cidade, nº 123".
+  const canonical = trimmed.match(/^(.*),\s*n[º°o.]?\s*([^,]+)$/i);
+  if (canonical) {
+    return { address: canonical[1].trim(), number: canonical[2].trim() };
+  }
+
+  // Compatibilidade com o formato já salvo pelo fluxo de CEP:
+  // "Rua, 123 - Bairro, Cidade/UF".
+  const legacy = trimmed.match(/^(.+?),\s*([^,]+?)\s+-\s+(.+)$/);
+  const legacyNumber = legacy?.[2]?.trim() || '';
+  if (legacy && (/\d/.test(legacyNumber) || /^s\/?n$/i.test(legacyNumber))) {
+    return {
+      address: `${legacy[1].trim()} - ${legacy[3].trim()}`,
+      number: legacyNumber,
+    };
+  }
+
+  return { address: trimmed, number: '' };
+};
+
+const joinDeliveryAddress = (address: string, number: string) => {
+  const base = address.trim();
+  const houseNumber = number.trim();
+  if (!base) return '';
+  return houseNumber ? `${base}, nº ${houseNumber}` : base;
+};
+
+const normalizeAreaName = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
 
 interface CheckoutScreenProps {
   name: string;
@@ -27,7 +66,10 @@ interface CheckoutScreenProps {
   deliveryReference: string;
   deliveryRecipient: string;
   bairroId: string;
+  bairroNome?: string;
+  deliveryCep: string;
   onBairroChange: (id: string, nome: string, taxa: number, tempo: number) => void;
+  onDeliveryCepChange: (cep: string) => void;
   onNameChange: (v: string) => void;
   onPhoneChange: (v: string) => void;
   onCpfChange: (v: string) => void;
@@ -36,49 +78,92 @@ interface CheckoutScreenProps {
   onDeliveryRecipientChange: (v: string) => void;
   onContinue: () => void;
   onBack: () => void;
+  deviceOwnedKiosk?: boolean;
 }
 
 const CheckoutScreen = ({
   name, phone, cpf, orderType,
   deliveryAddress, deliveryReference, deliveryRecipient,
-  bairroId, onBairroChange,
+  bairroId, bairroNome = '', deliveryCep, onBairroChange, onDeliveryCepChange,
   onNameChange, onPhoneChange, onCpfChange,
   onDeliveryAddressChange, onDeliveryReferenceChange, onDeliveryRecipientChange,
-  onContinue, onBack,
+  onContinue, onBack, deviceOwnedKiosk = false,
 }: CheckoutScreenProps) => {
   const orgId = useOrgId();
   const [bairros, setBairros] = useState<Bairro[]>([]);
   const [loadingBairros, setLoadingBairros] = useState(false);
+  const [showKioskIdentification, setShowKioskIdentification] = useState(false);
 
   // CEP / modo de entrega
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>('bairros');
-  const [cep, setCep] = useState('');
   const [validandoCep, setValidandoCep] = useState(false);
   const [cepResultado, setCepResultado] = useState<
     | { ok: true; taxa: number | null; tempo_min: number | null; distancia_km: number | null; endereco: string }
     | { ok: false; motivo: string }
     | null
   >(null);
+  const autoValidatedCepRef = useRef('');
 
   useEffect(() => {
-    if (!orgId || orderType !== 'viagem') return;
+    if (!orgId || orderType !== 'viagem') {
+      setBairros([]);
+      return;
+    }
+
+    let cancelled = false;
     setLoadingBairros(true);
-    supabase.from('settings').select('delivery_mode').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => setDeliveryMode((((data as any)?.delivery_mode) || 'bairros') as DeliveryMode));
-    supabase.from('taxas_entrega' as any)
-      .select('id,nome_bairro,valor_taxa,tempo_estimado,ativo')
-      .eq('organization_id', orgId)
-      .eq('ativo', true)
-      .order('nome_bairro', { ascending: true })
-      .then(({ data }) => {
-        setBairros(((data as any[]) || []) as Bairro[]);
-        setLoadingBairros(false);
-      });
+
+    const loadDeliveryData = async () => {
+      try {
+        const [storefront, areas] = await Promise.all([
+          fetchPublicStorefrontConfig(orgId),
+          fetchPublicDeliveryAreas(orgId),
+        ]);
+
+        if (cancelled) return;
+        setDeliveryMode((storefront.delivery_mode || 'bairros') as DeliveryMode);
+        setBairros(areas as Bairro[]);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[Checkout] delivery data error:', error);
+          setBairros([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingBairros(false);
+      }
+    };
+
+    void loadDeliveryData();
+    return () => { cancelled = true; };
   }, [orgId, orderType]);
+
+  useEffect(() => {
+    if (orderType !== 'viagem' || deliveryMode !== 'bairros' || bairroId || !bairroNome || bairros.length === 0) {
+      return;
+    }
+
+    const expected = normalizeAreaName(bairroNome);
+    if (!expected) return;
+
+    const match = bairros.find((item) => normalizeAreaName(item.nome_bairro) === expected);
+    if (match) {
+      onBairroChange(match.id, match.nome_bairro, Number(match.valor_taxa), match.tempo_estimado);
+    }
+  }, [bairroId, bairroNome, bairros, deliveryMode, onBairroChange, orderType]);
 
   const validarCep = async () => {
     if (!orgId) return;
-    const n = normalizeCep(cep);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setCepResultado({ ok: false, motivo: 'offline_indisponivel' });
+      toast.error('A validação de CEP exige internet. Nenhum endereço ou frete foi presumido.');
+      return;
+    }
+    if (deliveryMode === 'raio_km') {
+      setCepResultado({ ok: false, motivo: 'modo_indisponivel' });
+      toast.error('Entrega por raio temporariamente indisponível. A loja deve usar bairros ou lista de CEPs.');
+      return;
+    }
+    const n = normalizeCep(deliveryCep);
     if (n.length !== 8) { toast.error('Digite um CEP válido'); return; }
     setValidandoCep(true);
     setCepResultado(null);
@@ -92,15 +177,8 @@ const CheckoutScreen = ({
     }
     const enderecoStr = `${via.logradouro}, ${via.bairro}, ${via.cidade} - ${via.uf}`;
 
-    let lat: number | null = null;
-    let lng: number | null = null;
-    if (deliveryMode === 'raio_km') {
-      const coords = await geocodeAddress(`${enderecoStr}, Brasil`);
-      if (coords) { lat = coords.lat; lng = coords.lng; }
-    }
-
     const { data, error } = await supabase.rpc('validar_cep_entrega' as any, {
-      _org: orgId, _cep: n, _lat: lat, _lng: lng,
+      _org: orgId, _cep: n, _lat: null, _lng: null,
     });
     setValidandoCep(false);
     if (error) { toast.error(error.message); return; }
@@ -111,6 +189,7 @@ const CheckoutScreen = ({
       setCepResultado({ ok: false, motivo: r?.motivo || 'fora_da_area' });
       return;
     }
+    onDeliveryCepChange(maskCep(n));
     setCepResultado({
       ok: true,
       taxa: r.taxa != null ? Number(r.taxa) : null,
@@ -126,15 +205,31 @@ const CheckoutScreen = ({
     }
   };
 
+  useEffect(() => {
+    if (!orgId || deliveryMode !== 'lista_ceps' || validandoCep || cepResultado !== null) return;
+    const normalized = normalizeCep(deliveryCep);
+    if (normalized.length !== 8 || autoValidatedCepRef.current === normalized) return;
+    autoValidatedCepRef.current = normalized;
+    void validarCep();
+  }, [cepResultado, deliveryCep, deliveryMode, orgId, validandoCep]);
+
   const selectedBairro = bairros.find(b => b.id === bairroId);
-  const baseValid = name.trim().length >= 2 && phone.trim().length >= 8;
+  const deliveryAddressParts = splitDeliveryAddress(deliveryAddress);
+  const identifiedCustomerValid = name.trim().length >= 2 && phone.replace(/\D/g, '').length >= 8;
+  const baseValid = deviceOwnedKiosk
+    ? (!showKioskIdentification || identifiedCustomerValid)
+    : identifiedCustomerValid;
   const cpfValid = !cpf || isValidCpf(cpf);
   const usaCep = orderType === 'viagem' && deliveryMode !== 'bairros';
   const cepValid = !usaCep || (cepResultado !== null && cepResultado.ok === true);
   const bairroNeeded = orderType === 'viagem' && deliveryMode === 'bairros' && bairros.length > 0;
   const bairroValid = !bairroNeeded || !!selectedBairro;
   const deliveryValid = orderType === 'viagem'
-    ? deliveryAddress.trim().length >= 5 && deliveryRecipient.trim().length >= 2 && bairroValid && cepValid
+    ? deliveryAddressParts.address.trim().length >= 5
+      && deliveryAddressParts.number.trim().length > 0
+      && deliveryRecipient.trim().length >= 2
+      && bairroValid
+      && cepValid
     : true;
   const isValid = baseValid && deliveryValid && cpfValid;
 
@@ -150,53 +245,87 @@ const CheckoutScreen = ({
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 max-w-md mx-auto w-full py-6">
         <div className="text-center space-y-2">
-          <span className="text-5xl">👤</span>
-          <h3 className="text-2xl font-bold">Quase lá!</h3>
-          <p className="text-muted-foreground">Informe seus dados para o pedido</p>
+          <span className="text-5xl">{deviceOwnedKiosk ? '⚡' : '👤'}</span>
+          <h3 className="text-2xl font-bold">{deviceOwnedKiosk ? 'Pedido rápido' : 'Quase lá!'}</h3>
+          <p className="text-muted-foreground">
+            {deviceOwnedKiosk
+              ? 'Não precisa criar conta nem fazer login. Informe nome e telefone apenas se quiser identificar o pedido e acumular pontos.'
+              : 'Informe seus dados para o pedido'}
+          </p>
         </div>
 
         <div className="w-full space-y-4">
-          <div className="relative">
-            <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Seu nome"
-              value={name}
-              onChange={e => onNameChange(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-              maxLength={100}
-            />
-          </div>
-          <div className="relative">
-            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="tel"
-              placeholder="Seu telefone"
-              value={phone}
-              onChange={e => onPhoneChange(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-              maxLength={20}
-            />
-          </div>
+          {deviceOwnedKiosk && !showKioskIdentification && (
+            <button
+              type="button"
+              onClick={() => setShowKioskIdentification(true)}
+              className="touch-btn w-full rounded-xl border border-border bg-card px-4 py-4 text-left hover:border-primary transition"
+            >
+              <p className="font-bold flex items-center gap-2"><UserCheck className="w-5 h-5 text-primary" /> Acumular pontos neste pedido <span className="text-xs text-muted-foreground font-normal">(opcional)</span></p>
+              <p className="text-xs text-muted-foreground mt-1">Nome e telefone vinculam este pedido à fidelidade. Sem preencher, você continua como visitante normalmente.</p>
+            </button>
+          )}
 
-          <div className="relative">
-            <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="CPF na Nota (opcional)"
-              value={cpf}
-              onChange={e => onCpfChange(maskCpf(e.target.value))}
-              className={`w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 transition-all ${cpf && !cpfValid ? 'ring-2 ring-destructive' : 'focus:ring-primary'}`}
-              maxLength={14}
-            />
-            {cpf && !cpfValid && (
-              <p className="text-destructive text-xs mt-1 ml-1">CPF inválido</p>
-            )}
-            {!cpf && (
-              <p className="text-muted-foreground text-[11px] mt-1 ml-1">Preencha para receber a Nota Fiscal vinculada ao pedido</p>
-            )}
-          </div>
+          {(!deviceOwnedKiosk || showKioskIdentification) && (
+            <>
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Seu nome"
+                  value={name}
+                  onChange={e => onNameChange(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={100}
+                />
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="tel"
+                  placeholder="Seu telefone"
+                  value={phone}
+                  onChange={e => onPhoneChange(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={20}
+                />
+              </div>
+
+              <div className="relative">
+                <FileText className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="CPF na Nota (opcional)"
+                  value={cpf}
+                  onChange={e => onCpfChange(maskCpf(e.target.value))}
+                  className={`w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 transition-all ${cpf && !cpfValid ? 'ring-2 ring-destructive' : 'focus:ring-primary'}`}
+                  maxLength={14}
+                />
+                {cpf && !cpfValid && (
+                  <p className="text-destructive text-xs mt-1 ml-1">CPF inválido</p>
+                )}
+                {!cpf && (
+                  <p className="text-muted-foreground text-[11px] mt-1 ml-1">Preencha somente se quiser vincular CPF ao pedido.</p>
+                )}
+              </div>
+
+              {deviceOwnedKiosk && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNameChange('');
+                    onPhoneChange('');
+                    onCpfChange('');
+                    setShowKioskIdentification(false);
+                  }}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground underline underline-offset-4"
+                >
+                  Prefiro continuar como visitante
+                </button>
+              )}
+            </>
+          )}
 
           {orderType === 'viagem' && (
             <>
@@ -211,10 +340,10 @@ const CheckoutScreen = ({
                   <label className="text-xs font-bold text-muted-foreground ml-1 flex items-center gap-1">
                     <MapPin className="w-3 h-3" /> Informe seu CEP para verificarmos a entrega
                   </label>
-                  <div className="flex gap-2">
-                    <input value={cep} onChange={e => { setCep(maskCep(e.target.value)); setCepResultado(null); }}
-                      placeholder="00000-000" maxLength={9}
-                      className="flex-1 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
+                  <div className="flex gap-2 min-w-0">
+                    <input value={deliveryCep} onChange={e => { onDeliveryCepChange(maskCep(e.target.value)); setCepResultado(null); }}
+                      placeholder="00000-000" maxLength={9} inputMode="numeric" autoComplete="postal-code"
+                      className="flex-1 min-w-0 px-4 py-3 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary" />
                     <button onClick={validarCep} disabled={validandoCep}
                       className="touch-btn px-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center gap-2 disabled:opacity-50">
                       {validandoCep ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Validar
@@ -247,6 +376,9 @@ const CheckoutScreen = ({
                           {cepResultado.motivo === 'fora_do_raio' && 'Este endereço está fora do nosso raio de entrega.'}
                           {cepResultado.motivo === 'sem_coordenadas' && 'Não foi possível localizar o endereço. Tente novamente.'}
                           {cepResultado.motivo === 'sem_configuracao' && 'A loja ainda não configurou a área de atendimento.'}
+                          {cepResultado.motivo === 'loja_indisponivel' && 'A loja está temporariamente indisponível para pedidos.'}
+                          {cepResultado.motivo === 'modo_indisponivel' && 'A entrega por raio está temporariamente indisponível. Entre em contato com a loja.'}
+                          {cepResultado.motivo === 'offline_indisponivel' && 'A validação deste CEP exige internet. Nenhum endereço ou frete foi assumido offline.'}
                         </p>
                       </div>
                     </div>
@@ -294,17 +426,35 @@ const CheckoutScreen = ({
               )}
 
 
-              <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+                <div className="relative">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Rua / endereço"
+                    value={deliveryAddressParts.address}
+                    onChange={e => onDeliveryAddressChange(joinDeliveryAddress(e.target.value, deliveryAddressParts.number))}
+                    className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                    maxLength={200}
+                  />
+                </div>
                 <input
                   type="text"
-                  placeholder="Endereço completo (rua, nº)"
-                  value={deliveryAddress}
-                  onChange={e => onDeliveryAddressChange(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
-                  maxLength={200}
+                  inputMode="text"
+                  autoComplete="address-line2"
+                  aria-label="Número do endereço"
+                  placeholder="Número *"
+                  value={deliveryAddressParts.number}
+                  onChange={e => onDeliveryAddressChange(joinDeliveryAddress(deliveryAddressParts.address, e.target.value))}
+                  className="w-full px-3 py-4 bg-muted rounded-xl text-lg outline-none focus:ring-2 focus:ring-primary transition-all"
+                  maxLength={20}
                 />
               </div>
+              {!deliveryAddressParts.number && (
+                <p className="text-[11px] text-muted-foreground -mt-2 ml-1">
+                  Informe o número do imóvel para continuar.
+                </p>
+              )}
               <div className="relative">
                 <Navigation className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
@@ -338,7 +488,9 @@ const CheckoutScreen = ({
             isValid ? 'bg-primary text-primary-foreground cta-breath' : 'bg-muted text-muted-foreground cursor-not-allowed'
           }`}
         >
-          Ir para Pagamento
+          {deviceOwnedKiosk
+            ? (showKioskIdentification ? 'Continuar com identificação' : 'Continuar como visitante')
+            : 'Ir para Pagamento'}
         </button>
       </div>
     </div>

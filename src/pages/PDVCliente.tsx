@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { Receipt, QrCode, Copy, Check, Loader2 } from "lucide-react";
 
-type CartItem = { id: string; name: string; price: number; quantity: number };
+type CartItem = {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  weight_kg?: number | null;
+  price_per_kg?: number | null;
+  sold_by_weight?: boolean;
+  total?: number;
+};
 type Payload = {
   storeName: string;
   items: CartItem[];
@@ -16,6 +25,30 @@ type Payload = {
 
 const fmt = (n: number) =>
   Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function itemLineTotal(item: CartItem) {
+  if (
+    typeof item.total === "number" &&
+    Number.isFinite(item.total) &&
+    item.total >= 0 &&
+    Number.isSafeInteger(Math.round(item.total * 100))
+  ) return item.total;
+
+  const priceCents = Math.round(item.price * 100);
+  if (!Number.isSafeInteger(priceCents) || priceCents < 0) return 0;
+
+  if (item.sold_by_weight) {
+    const weight = typeof item.weight_kg === "number" ? item.weight_kg : Number.NaN;
+    const milliKg = Math.round(weight * 1000);
+    if (!Number.isFinite(weight) || weight <= 0 || !Number.isSafeInteger(milliKg) || milliKg <= 0) return 0;
+    const numerator = priceCents * milliKg;
+    return Number.isSafeInteger(numerator) ? Math.round(numerator / 1000) / 100 : 0;
+  }
+
+  return Number.isSafeInteger(item.quantity) && item.quantity > 0
+    ? (priceCents * item.quantity) / 100
+    : 0;
+}
 
 const STORAGE_KEY = "pdv_cliente_mirror_v1";
 
@@ -36,10 +69,6 @@ export default function PDVCliente() {
       if (raw) setData(JSON.parse(raw));
     } catch {}
 
-    const bc = new BroadcastChannel("pdv-cliente");
-    bc.onmessage = (ev) => {
-      if (ev.data?.type === "update") setData(ev.data.payload);
-    };
     const onStorage = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
@@ -48,9 +77,18 @@ export default function PDVCliente() {
       }
     };
     window.addEventListener("storage", onStorage);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel("pdv-cliente");
+      bc.onmessage = (ev) => {
+        if (ev.data?.type === "update") setData(ev.data.payload);
+      };
+    } catch {}
+
     return () => {
-      bc.close();
       window.removeEventListener("storage", onStorage);
+      try { bc?.close(); } catch {}
     };
   }, []);
 
@@ -174,11 +212,16 @@ export default function PDVCliente() {
                   <div>
                     <div className="font-semibold text-lg">{it.name}</div>
                     <div className="text-sm text-zinc-400">
-                      {it.quantity} × {fmt(it.price)}
+                      {it.sold_by_weight &&
+                      typeof it.weight_kg === "number" &&
+                      Number.isFinite(it.weight_kg) &&
+                      it.weight_kg > 0
+                        ? `${it.weight_kg.toFixed(3)} kg × ${fmt(it.price_per_kg ?? it.price)}/kg`
+                        : `${it.quantity} × ${fmt(it.price)}`}
                     </div>
                   </div>
                   <div className="text-amber-400 font-bold text-xl">
-                    {fmt(it.price * it.quantity)}
+                    {fmt(itemLineTotal(it))}
                   </div>
                 </li>
               ))}

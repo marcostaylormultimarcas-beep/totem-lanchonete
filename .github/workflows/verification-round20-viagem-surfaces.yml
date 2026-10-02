@@ -1,0 +1,21 @@
+name: Verification Round 20 - Viagem Delivery Surfaces
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Assert viagem delivery surfaces
+        run: |
+          grep -q "order.order_type === 'delivery' || order.order_type === 'viagem'" src/pages/OrderHistory.tsx
+          grep -q "order.order_type === 'delivery' || order.order_type === 'viagem'" src/components/admin/OrderPrintReceipt.tsx
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

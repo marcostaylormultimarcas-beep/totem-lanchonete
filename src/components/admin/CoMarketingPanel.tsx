@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Handshake, Loader2, Send, Check, X, Pause, Play, Save, Building2, Bell, Settings2, Sparkles, ShieldCheck } from 'lucide-react';
 import { CATEGORIAS_LOJA } from '@/lib/categorias';
 
-interface Org { id: string; name: string; slug: string; city: string; categoria?: string; logo_url?: string }
+interface Org { id: string; name: string; slug: string; cidade: string; categoria?: string; logo_url?: string }
 interface Parceria {
   id: string;
   org_origem: string; org_parceira: string;
@@ -36,29 +36,16 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
   const reload = async () => {
     if (!organizationId) return;
     setLoading(true);
-    const { data: meRow } = await supabase.from('organizations')
-      .select('id,name,slug,city,categoria,logo_url').eq('id', organizationId).maybeSingle();
-    const me = meRow as Org | null;
-    setMyOrg(me);
-
-    const { data: othersRows } = await supabase.from('organizations')
-      .select('id,name,slug,city,categoria,logo_url').neq('id', organizationId);
-    const others = ((othersRows || []) as Org[]).filter(o => !me?.city || (o.city || '').toLowerCase() === me.city.toLowerCase());
-    setAvailable(others);
-
-    const { data: pRows } = await supabase.from('parcerias' as any).select('*')
-      .or(`org_origem.eq.${organizationId},org_parceira.eq.${organizationId}`);
-    const list = ((pRows || []) as any[]) as Parceria[];
-    // enrich names
-    const ids = Array.from(new Set(list.flatMap(p => [p.org_origem, p.org_parceira])));
-    if (ids.length) {
-      const { data: namesRows } = await supabase.from('organizations').select('id,name').in('id', ids);
-      const map = new Map((namesRows || []).map((r: any) => [r.id, r.name]));
-      list.forEach(p => {
-        p.org_origem_name = map.get(p.org_origem) as string;
-        p.org_parceira_name = map.get(p.org_parceira) as string;
-      });
+    const { data: panel, error } = await supabase.rpc('comarketing_panel_data' as any, { _org: organizationId });
+    if (error || !(panel as any)?.ok) {
+      if (error) console.error('Co-Marketing panel:', error);
+      setMyOrg(null); setAvailable([]); setParcerias([]); setLoading(false); return;
     }
+    const payload = panel as any;
+    const me = payload.organization as Org;
+    setMyOrg(me);
+    setAvailable((payload.available || []) as Org[]);
+    const list = (payload.parcerias || []) as Parceria[];
     // Detect transitions to 'active' to surface a toast
     list.forEach(p => {
       const prev = prevStatusRef.current.get(p.id);
@@ -86,10 +73,13 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
     return () => { supabase.removeChannel(ch); };
   }, [organizationId]);
 
-  const saveCity = async (city: string) => {
+  const saveCity = async (cidade: string) => {
     if (!organizationId) return;
-    await supabase.from('organizations').update({ city }).eq('id', organizationId);
-    setMyOrg(m => m ? { ...m, city } : m);
+    const { data, error } = await supabase.rpc('comarketing_update_identity' as any, {
+      _org: organizationId, _cidade: cidade, _categoria: myOrg?.categoria || 'outro', _logo_url: myOrg?.logo_url || '',
+    });
+    if (error || !(data as any)?.ok) return toast.error(error?.message || 'Não foi possível atualizar a cidade');
+    setMyOrg(m => m ? { ...m, cidade } : m);
     toast.success('Cidade atualizada');
     reload();
   };
@@ -187,7 +177,8 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
               value={myOrg?.categoria || 'outro'}
               onChange={async e => {
                 const v = e.target.value;
-                await supabase.from('organizations').update({ categoria: v } as any).eq('id', organizationId!);
+                const { data, error } = await supabase.rpc('comarketing_update_identity' as any, { _org: organizationId, _cidade: myOrg?.cidade || '', _categoria: v, _logo_url: myOrg?.logo_url || '' });
+                if (error || !(data as any)?.ok) return toast.error(error?.message || 'Não foi possível atualizar a categoria');
                 setMyOrg(m => m ? { ...m, categoria: v } : m);
                 toast.success('Categoria atualizada');
               }}
@@ -211,7 +202,8 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
                 onBlur={async e => {
                   const v = e.target.value.trim();
                   if (v === (myOrg?.logo_url || '')) return;
-                  await supabase.from('organizations').update({ logo_url: v } as any).eq('id', organizationId!);
+                  const { data, error } = await supabase.rpc('comarketing_update_identity' as any, { _org: organizationId, _cidade: myOrg?.cidade || '', _categoria: myOrg?.categoria || 'outro', _logo_url: v });
+                  if (error || !(data as any)?.ok) return toast.error(error?.message || 'Não foi possível atualizar a logo');
                   setMyOrg(m => m ? { ...m, logo_url: v } : m);
                   toast.success('Logo atualizada');
                 }}
@@ -227,9 +219,9 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
         <label className="text-xs text-muted-foreground mb-1 block">Cidade da minha loja (usada para listar parceiros)</label>
         <div className="flex gap-2">
           <input
-            defaultValue={myOrg?.city || ''}
+            defaultValue={myOrg?.cidade || ''}
             placeholder="Ex: São Paulo"
-            onBlur={e => { if ((e.target.value || '') !== (myOrg?.city || '')) saveCity(e.target.value.trim()); }}
+            onBlur={e => { if ((e.target.value || '') !== (myOrg?.cidade || '')) saveCity(e.target.value.trim()); }}
             className="flex-1 px-3 py-2 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
@@ -266,16 +258,16 @@ const CoMarketingPanel = ({ organizationId }: { organizationId: string | null })
       {enabled && (
         <>
           <section>
-            <h3 className="font-bold mb-2 flex items-center gap-2"><Building2 className="w-4 h-4" /> Lojistas Disponíveis {myOrg?.city && <span className="text-xs text-muted-foreground font-normal">em {myOrg.city}</span>}</h3>
+            <h3 className="font-bold mb-2 flex items-center gap-2"><Building2 className="w-4 h-4" /> Lojistas Disponíveis {myOrg?.cidade && <span className="text-xs text-muted-foreground font-normal">em {myOrg.cidade}</span>}</h3>
             {available.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma outra loja encontrada {myOrg?.city ? `em ${myOrg.city}` : ''}.</p>
+              <p className="text-sm text-muted-foreground">Nenhuma outra loja encontrada {myOrg?.cidade ? `em ${myOrg.cidade}` : ''}.</p>
             ) : (
               <div className="grid sm:grid-cols-2 gap-2">
                 {available.map(o => (
                   <div key={o.id} className="kiosk-card p-3 flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <p className="font-bold truncate">{o.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{o.city || 'Sem cidade'} · /{o.slug}</p>
+                      <p className="text-xs text-muted-foreground truncate">{o.cidade || 'Sem cidade'} · /{o.slug}</p>
                     </div>
                     {alreadyInPartnership(o.id) ? (
                       <span className="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">Já existe</span>

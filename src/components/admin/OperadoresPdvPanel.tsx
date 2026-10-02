@@ -7,7 +7,6 @@ interface Operador {
   id: string;
   name: string;
   username: string;
-  password: string;
   active: boolean;
 }
 
@@ -27,7 +26,7 @@ export default function OperadoresPdvPanel({
     setLoading(true);
     const { data, error } = await supabase
       .from("operadores_pdv")
-      .select("id,name,username,password,active")
+      .select("id,name,username,active")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
     setLoading(false);
@@ -126,7 +125,8 @@ export default function OperadoresPdvPanel({
           value={form.password}
           onChange={(e) => setForm({ ...form, password: e.target.value })}
           placeholder="Senha"
-          type="text"
+          type="password"
+          autoComplete="new-password"
           className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:border-amber-500 outline-none"
         />
         <button
@@ -143,7 +143,6 @@ export default function OperadoresPdvPanel({
             <tr>
               <th className="text-left px-4 py-2.5">Nome</th>
               <th className="text-left px-4 py-2.5">Usuário</th>
-              <th className="text-left px-4 py-2.5">Senha</th>
               <th className="text-left px-4 py-2.5">Status</th>
               <th className="text-right px-4 py-2.5">Ações</th>
             </tr>
@@ -151,14 +150,14 @@ export default function OperadoresPdvPanel({
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
+                <td colSpan={4} className="px-4 py-6 text-center text-zinc-500">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && list.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
+                <td colSpan={4} className="px-4 py-8 text-center text-zinc-500">
                   Nenhum operador cadastrado ainda.
                 </td>
               </tr>
@@ -167,7 +166,6 @@ export default function OperadoresPdvPanel({
               <tr key={op.id} className="border-t border-zinc-800/70">
                 <td className="px-4 py-3 text-white font-medium">{op.name}</td>
                 <td className="px-4 py-3 text-zinc-300">{op.username}</td>
-                <td className="px-4 py-3 text-zinc-500 font-mono">{op.password}</td>
                 <td className="px-4 py-3">
                   <span
                     className={`px-2 py-1 rounded-md text-xs font-semibold border ${

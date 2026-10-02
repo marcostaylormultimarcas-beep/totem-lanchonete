@@ -1,197 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Ticket, Loader2, Calendar } from 'lucide-react';
+import { Plus, Trash2, Ticket, Loader2, Pencil, X, Calendar } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-
-interface Cupom {
-  id: string;
-  codigo: string;
-  tipo: 'porcentagem' | 'valor_fixo';
-  valor: number;
-  ativo: boolean;
-  data_inicio: string | null;
-  data_fim: string | null;
-}
-
-interface Props {
-  organizationId: string | null;
-}
-
-const formatBR = (iso: string) => {
-  const d = new Date(iso);
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+interface Cupom { id:string; codigo:string; tipo:'porcentagem'|'valor_fixo'; valor:number; status:boolean|null; ativo:boolean|null; data_fim:string|null; validade:string|null; }
+interface Props { organizationId:string|null; }
+const CouponsPanel=({organizationId}:Props)=>{
+ const[cupons,setCupons]=useState<Cupom[]>([]),[loading,setLoading]=useState(false),[loadError,setLoadError]=useState<string|null>(null),[saving,setSaving]=useState(false),[codigo,setCodigo]=useState(''),[tipo,setTipo]=useState<'porcentagem'|'valor_fixo'>('porcentagem'),[valor,setValor]=useState(''),[ativo,setAtivo]=useState(true),[dataFim,setDataFim]=useState(''),[editingId,setEditingId]=useState<string|null>(null);
+ const showDbError=(prefix:string,error:any)=>{const parts=[error?.message,error?.details,error?.hint,error?.code?`código: ${error.code}`:null].filter(Boolean);console.error(prefix,error);toast.error(`${prefix}: ${parts.join(' | ')||'erro desconhecido'}`)};
+ const reset=()=>{setEditingId(null);setCodigo('');setValor('');setAtivo(true);setDataFim('');setTipo('porcentagem')};
+ const dateInputValue=(iso:string|null)=>{if(!iso)return'';const d=new Date(iso);if(Number.isNaN(d.getTime()))return'';const p=(n:number)=>String(n).padStart(2,'0');return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
+ const expiryIso=()=>dataFim?new Date(`${dataFim}T23:59:59.999`).toISOString():null;
+ const formatExpiry=(iso:string)=>new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+ const couponExpiry=(c:Cupom)=>c.data_fim||c.validade;
+ const isExpired=(iso:string|null)=>Boolean(iso&&new Date(iso).getTime()<Date.now());
+ const load=async()=>{if(!organizationId){setCupons([]);setLoadError(null);setLoading(false);return}setLoading(true);setLoadError(null);try{const{data,error}=await supabase.from('cupons' as any).select('id,codigo,tipo,valor,status,ativo,data_fim,validade').eq('organization_id',organizationId).order('created_at',{ascending:false});if(error)throw error;setCupons((data as any)||[])}catch(error:any){showDbError('Erro ao carregar cupons',error);setLoadError('Não foi possível carregar os cupons desta loja.')}finally{setLoading(false)}};
+ useEffect(()=>{void load()},[organizationId]);
+ const edit=(c:Cupom)=>{setEditingId(c.id);setCodigo(c.codigo);setTipo(c.tipo);setValor(String(c.valor));setAtivo(c.status != null ? c.status : c.ativo !== false);setDataFim(dateInputValue(couponExpiry(c)));window.scrollTo({top:0,behavior:'smooth'})};
+ const save=async()=>{if(!organizationId){toast.error('Nenhuma loja selecionada.');return}const code=codigo.trim().toUpperCase(),v=parseFloat(valor);if(!code||!v||v<=0||(tipo==='porcentagem'&&v>100)){toast.error('Preencha código e valor válidos.');return}const expiresAt=expiryIso();if(ativo&&expiresAt&&new Date(expiresAt).getTime()<Date.now()){toast.error('Para manter o cupom ativo, escolha uma data de expiração de hoje em diante.');return}const payload={codigo:code,tipo,valor:v,status:ativo,ativo,data_fim:expiresAt,validade:expiresAt};setSaving(true);try{const q=editingId?supabase.from('cupons' as any).update(payload).eq('id',editingId).eq('organization_id',organizationId):supabase.from('cupons' as any).insert({organization_id:organizationId,...payload});const{error}=await q;if(error){if((error.message||'').includes('duplicate'))toast.error('Já existe um cupom com este código.');else showDbError(editingId?'Erro ao editar cupom':'Erro ao criar cupom',error);return}toast.success(editingId?'Cupom atualizado!':'Cupom criado!');reset();void load()}catch(error:any){showDbError(editingId?'Erro ao editar cupom':'Erro ao criar cupom',error)}finally{setSaving(false)}};
+ const toggleStatus=async(c:Cupom)=>{if(!organizationId)return;const status=!(c.status != null ? c.status : c.ativo !== false);const{error}=await supabase.from('cupons' as any).update({status,ativo:status}).eq('id',c.id).eq('organization_id',organizationId);if(error){showDbError('Erro ao atualizar cupom',error);return}setCupons(p=>p.map(x=>x.id===c.id?{...x,status,ativo:status}:x))};
+ const remove=async(c:Cupom)=>{if(!organizationId||!confirm(`Excluir o cupom "${c.codigo}"?`))return;const{error}=await supabase.from('cupons' as any).delete().eq('id',c.id).eq('organization_id',organizationId);if(error){showDbError('Erro ao excluir cupom',error);return}setCupons(p=>p.filter(x=>x.id!==c.id));if(editingId===c.id)reset();toast.success('Cupom excluído.')};
+ return <div className="px-4 space-y-4"><div className="kiosk-card p-4 space-y-3"><div className="flex items-center justify-between"><h3 className="font-bold flex items-center gap-2"><Ticket className="w-5 h-5 text-primary"/>{editingId?'Editar Cupom':'Novo Cupom'}</h3>{editingId&&<button onClick={reset} className="p-2 text-muted-foreground"><X className="w-4 h-4"/></button>}</div><div><label className="text-xs text-muted-foreground mb-1 block">Código do Cupom</label><input value={codigo} onChange={e=>setCodigo(e.target.value.toUpperCase())} placeholder="Ex: GANHE10" className="w-full px-3 py-3 bg-muted rounded-lg uppercase" maxLength={30}/></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className="text-xs text-muted-foreground mb-1 block">Tipo</label><select value={tipo} onChange={e=>setTipo(e.target.value as any)} className="w-full px-3 py-3 bg-muted rounded-lg"><option value="porcentagem">Desconto em %</option><option value="valor_fixo">Valor Fixo R$</option></select></div><div><label className="text-xs text-muted-foreground mb-1 block">Valor</label><input type="number" step="0.01" min="0" max={tipo==='porcentagem'?100:undefined} value={valor} onChange={e=>setValor(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg"/></div></div><div><label className="text-xs text-muted-foreground mb-1 block">Data de expiração (opcional)</label><input type="date" value={dataFim} min={ativo?new Date().toISOString().slice(0,10):undefined} onChange={e=>setDataFim(e.target.value)} className="w-full px-3 py-3 bg-muted rounded-lg"/><p className="text-[11px] text-muted-foreground mt-1">O cupom fica válido até 23:59 do dia escolhido. Deixe em branco para não expirar.</p></div><label className="flex items-center gap-3"><input type="checkbox" checked={ativo} onChange={e=>setAtivo(e.target.checked)} className="w-5 h-5 accent-primary"/><span className="text-sm">Ativo</span></label><button onClick={save} disabled={saving} className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">{saving?<Loader2 className="w-4 h-4 animate-spin"/>:editingId?<Pencil className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}{editingId?'Salvar alterações':'Criar Cupom'}</button></div><div className="space-y-2"><h3 className="font-bold text-sm text-muted-foreground">Cupons Cadastrados</h3>{loading?<div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary"/></div>:loadError?<div className="kiosk-card p-4 text-center space-y-3"><p className="text-sm text-destructive">{loadError}</p><button type="button" onClick={()=>void load()} className="touch-btn px-3 py-2 rounded-lg border text-sm">Tentar novamente</button></div>:cupons.length===0?<p className="text-sm text-muted-foreground text-center py-6">Nenhum cupom cadastrado.</p>:cupons.map(c=><div key={c.id} className="kiosk-card p-3 flex flex-wrap items-center gap-2"><div className="flex-1 min-w-[150px]"><p className="font-bold">{c.codigo}</p><p className="text-xs text-muted-foreground">{c.tipo==='porcentagem'?`${c.valor}% de desconto`:`R$ ${Number(c.valor).toFixed(2)} fixo`}</p>{couponExpiry(c)&&<p className={`text-[11px] flex items-center gap-1 mt-1 ${isExpired(couponExpiry(c))?'text-destructive':'text-muted-foreground'}`}><Calendar className="w-3 h-3"/>{isExpired(couponExpiry(c))?`Expirou em ${formatExpiry(couponExpiry(c)!)}`:`Expira em ${formatExpiry(couponExpiry(c)!)}`}</p>}</div><button onClick={()=>void toggleStatus(c)} className={`text-xs px-3 py-1.5 rounded-full font-semibold ${isExpired(couponExpiry(c))?'bg-destructive/10 text-destructive':(c.status != null ? c.status : c.ativo !== false)?'bg-success/20 text-success':'bg-muted text-muted-foreground'}`}>{isExpired(couponExpiry(c))?'Expirado':(c.status != null ? c.status : c.ativo !== false)?'Ativo':'Inativo'}</button><button onClick={()=>edit(c)} className="p-2 text-muted-foreground hover:text-primary" aria-label={`Editar ${c.codigo}`}><Pencil className="w-4 h-4"/></button><button onClick={()=>void remove(c)} className="p-2 text-muted-foreground hover:text-destructive" aria-label={`Excluir ${c.codigo}`}><Trash2 className="w-4 h-4"/></button></div>)}</div></div>;
 };
-
-const CouponsPanel = ({ organizationId }: Props) => {
-  const [cupons, setCupons] = useState<Cupom[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [codigo, setCodigo] = useState('');
-  const [tipo, setTipo] = useState<'porcentagem' | 'valor_fixo'>('porcentagem');
-  const [valor, setValor] = useState('');
-  const [ativo, setAtivo] = useState(true);
-  const [dataInicio, setDataInicio] = useState('');
-  const [dataFim, setDataFim] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const showDbError = (prefix: string, error: any) => {
-    const parts = [error?.message, error?.details, error?.hint, error?.code ? `código: ${error.code}` : null]
-      .filter(Boolean);
-    console.error(prefix, error);
-    toast.error(`${prefix}: ${parts.join(' | ') || 'erro desconhecido'}`);
-  };
-
-  const load = async () => {
-    if (!organizationId) { setCupons([]); return; }
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('cupons' as any)
-      .select('*')
-      .eq('organization_id', organizationId)
-      .order('created_at', { ascending: false });
-    if (error) showDbError('Erro ao carregar cupons', error);
-    setCupons((data as any) || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, [organizationId]);
-
-  const handleCreate = async () => {
-    if (!organizationId) {
-      toast.error('Nenhuma loja selecionada. Selecione uma loja antes de criar cupons.');
-      return;
-    }
-    const code = codigo.trim().toUpperCase();
-    const v = parseFloat(valor);
-    if (!code || !v || v <= 0) {
-      toast.error('Preencha código e valor válidos.');
-      return;
-    }
-    if (dataInicio && dataFim && new Date(dataInicio) >= new Date(dataFim)) {
-      toast.error('A data de início deve ser anterior à data de expiração.');
-      return;
-    }
-    setSaving(true);
-    const { error } = await supabase.from('cupons' as any).insert({
-      organization_id: organizationId,
-      codigo: code,
-      tipo,
-      valor: v,
-      ativo: ativo,
-      data_inicio: dataInicio ? new Date(dataInicio).toISOString() : null,
-      data_fim: dataFim ? new Date(dataFim).toISOString() : null,
-    });
-    setSaving(false);
-    if (error) {
-      if ((error.message || '').includes('duplicate')) {
-        toast.error('Já existe um cupom com este código.');
-      } else {
-        showDbError('Erro ao criar cupom', error);
-      }
-      return;
-    }
-    toast.success('Cupom criado!');
-    setCodigo(''); setValor(''); setAtivo(true); setTipo('porcentagem');
-    setDataInicio(''); setDataFim('');
-    load();
-  };
-
-  const toggleStatus = async (c: Cupom) => {
-    const novo = !c.ativo;
-    const { error } = await supabase.from('cupons' as any).update({ ativo: novo }).eq('id', c.id);
-    if (error) { showDbError('Erro ao atualizar cupom', error); return; }
-    setCupons(prev => prev.map(x => x.id === c.id ? { ...x, ativo: novo } : x));
-  };
-
-  const remove = async (c: Cupom) => {
-    if (!confirm(`Excluir o cupom "${c.codigo}"?`)) return;
-    const { error } = await supabase.from('cupons' as any).delete().eq('id', c.id);
-    if (error) { showDbError('Erro ao excluir cupom', error); return; }
-    setCupons(prev => prev.filter(x => x.id !== c.id));
-    toast.success('Cupom excluído.');
-  };
-
-
-  return (
-    <div className="px-4 space-y-4">
-      <div className="kiosk-card p-4 space-y-3">
-        <h3 className="font-bold flex items-center gap-2"><Ticket className="w-5 h-5 text-primary" /> Novo Cupom</h3>
-        <div>
-          <label className="text-xs text-muted-foreground mb-1 block">Código do Cupom</label>
-          <input value={codigo} onChange={e => setCodigo(e.target.value.toUpperCase())} placeholder="Ex: GANHE10"
-            className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary uppercase" maxLength={30} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
-            <select value={tipo} onChange={e => setTipo(e.target.value as any)}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary">
-              <option value="porcentagem">Desconto em %</option>
-              <option value="valor_fixo">Valor Fixo R$</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Valor</label>
-            <input type="number" step="0.01" value={valor} onChange={e => setValor(e.target.value)}
-              placeholder={tipo === 'porcentagem' ? 'Ex: 10' : 'Ex: 5.00'}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Válido a partir de (opcional)</label>
-            <input type="datetime-local" value={dataInicio} onChange={e => setDataInicio(e.target.value)}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Válido até (opcional)</label>
-            <input type="datetime-local" value={dataFim} onChange={e => setDataFim(e.target.value)}
-              className="w-full px-3 py-3 bg-muted rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-          </div>
-        </div>
-        <label className="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-5 h-5 accent-primary" />
-          <span className="text-sm">Ativo</span>
-        </label>
-        <button onClick={handleCreate} disabled={saving}
-          className="touch-btn w-full bg-primary text-primary-foreground py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Criar Cupom
-        </button>
-      </div>
-
-      <div className="space-y-2">
-        <h3 className="font-bold text-sm text-muted-foreground">Cupons Cadastrados</h3>
-        {loading ? (
-          <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
-        ) : cupons.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Nenhum cupom cadastrado.</p>
-        ) : cupons.map(c => (
-          <div key={c.id} className="kiosk-card p-3 flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="font-bold">{c.codigo}</p>
-              <p className="text-xs text-muted-foreground">
-                {c.tipo === 'porcentagem' ? `${c.valor}% de desconto` : `R$ ${Number(c.valor).toFixed(2)} fixo`}
-              </p>
-              {(c.data_inicio || c.data_fim) && (
-                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Calendar className="w-3 h-3" />
-                  {c.data_inicio && !c.data_fim && `Inicia em: ${formatBR(c.data_inicio)}`}
-                  {!c.data_inicio && c.data_fim && `Expira em: ${formatBR(c.data_fim)}`}
-                  {c.data_inicio && c.data_fim && `${formatBR(c.data_inicio)} → ${formatBR(c.data_fim)}`}
-                </p>
-              )}
-            </div>
-            <button onClick={() => toggleStatus(c)}
-              className={`text-xs px-3 py-1.5 rounded-full font-semibold ${c.ativo ? 'bg-success/20 text-success' : 'bg-muted text-muted-foreground'}`}>
-              {c.ativo ? 'Ativo' : 'Inativo'}
-            </button>
-            <button onClick={() => remove(c)} className="p-2 text-muted-foreground hover:text-destructive">
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
 export default CouponsPanel;

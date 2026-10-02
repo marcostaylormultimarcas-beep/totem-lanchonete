@@ -7,6 +7,8 @@ import {
   Repeat, PackageCheck, Lock, Undo2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { fetchPublicStorefrontConfig } from '@/lib/publicStorefrontConfig';
+import { fetchPublicOrganization } from '@/lib/publicOrganization';
 import heroTotem from '@/assets/home-hero-totem.jpg';
 import cardMenu from '@/assets/home-card-menu.jpg';
 import cardPix from '@/assets/home-card-pix.jpg';
@@ -41,26 +43,20 @@ const useWhatsappLink = (username?: string) => {
     let cancelled = false;
 
     const fetchWaFromOrg = async (orgId: string) => {
-      const { data: cfg, error } = await supabase
-        .from('settings')
-        .select('whatsapp_number')
-        .eq('organization_id', orgId)
-        .maybeSingle();
-      if (error) console.warn('[Home/WA] settings error', error);
-      return cfg?.whatsapp_number || null;
+      try {
+        const cfg = await fetchPublicStorefrontConfig(orgId);
+        return cfg.whatsapp_number || null;
+      } catch (error) {
+        console.warn('[Home/WA] storefront config error', error);
+        return null;
+      }
     };
 
     const resolveByUsername = async (rawUsername: string) => {
       const slug = normalizeUsername(rawUsername);
       console.log('[Home/WA] resolvendo username:', slug);
 
-      const { data: org, error: orgErr } = await supabase
-        .from('organizations')
-        .select('id, slug, name')
-        .ilike('slug', slug)
-        .limit(1)
-        .maybeSingle();
-      if (orgErr) console.warn('[Home/WA] org by slug error', orgErr);
+      const org = await fetchPublicOrganization({ slug });
 
       if (!org?.id) {
         console.warn('[Home/WA] nenhuma organização encontrada para slug:', slug, '— usando fallback');
@@ -81,29 +77,23 @@ const useWhatsappLink = (username?: string) => {
       if (!user) return null;
 
       const ownedOrg = await supabase.from('organizations').select('id').eq('owner_id', user.id).maybeSingle();
-      const [rolesRes, ownedSettingsRes, masterOrgRes] = await Promise.all([
+      const [rolesRes, ownedPhone, masterOrgRes] = await Promise.all([
         supabase.from('user_roles' as any).select('role').eq('user_id', user.id),
-        ownedOrg.data?.id
-          ? supabase.from('settings').select('whatsapp_number').eq('organization_id', ownedOrg.data.id).maybeSingle()
-          : Promise.resolve({ data: null } as any),
+        ownedOrg.data?.id ? fetchWaFromOrg(ownedOrg.data.id) : Promise.resolve(null),
         supabase.from('organizations').select('id').eq('master_id', user.id).limit(1).maybeSingle(),
       ]);
 
       const roles = (rolesRes.data || []).map((r: any) => r.role);
-      let phone: string | null = ownedSettingsRes.data?.whatsapp_number || null;
+      let phone: string | null = ownedPhone;
 
       if (!phone && (roles.includes('master_admin') || roles.includes('super_admin')) && masterOrgRes.data?.id) {
-        const { data } = await supabase
-          .from('settings').select('whatsapp_number')
-          .eq('organization_id', masterOrgRes.data.id).maybeSingle();
-        phone = data?.whatsapp_number || null;
+        phone = await fetchWaFromOrg(masterOrgRes.data.id);
       }
       return phone;
     };
 
     const resolveFallback = async () => {
-      const { data: org } = await supabase
-        .from('organizations').select('id').eq('slug', DEFAULT_DEMO_SLUG).maybeSingle();
+      const org = await fetchPublicOrganization({ slug: DEFAULT_DEMO_SLUG });
       if (!org?.id) return null;
       return fetchWaFromOrg(org.id);
     };

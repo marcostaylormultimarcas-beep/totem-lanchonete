@@ -13,63 +13,100 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotPin, setForgotPin] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
   const submitForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = forgotEmail.trim().toLowerCase();
     if (!cleanEmail) { toast.error('Informe seu e-mail'); return; }
+
     setForgotLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-    setForgotLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
+      setShowForgot(false);
+      setForgotEmail('');
+    } catch (error) {
+      console.error('[admin-login] password reset request failed:', error);
+      toast.error('Não foi possível enviar o link agora. Tente novamente.');
+    } finally {
+      setForgotLoading(false);
     }
-    toast.success('E-mail de recuperação enviado! Verifique sua caixa de entrada.');
-    setShowForgot(false);
-    setForgotEmail('');
-    setForgotPin('');
   };
 
   const routeUser = async (_userId: string) => {
     // Autenticação limpa: após login válido, vai direto ao painel administrativo.
-    // A criação do registro em `profiles` é feita pelo trigger `handle_new_user`
-    // no Supabase quando o usuário ainda não existe na tabela real.
+    // A autorização real é revalidada no bootstrapSession do Admin.
     navigate('/admin', { replace: true });
   };
 
   useEffect(() => {
     let mounted = true;
-    // Listener primeiro (síncrono) para capturar SIGNED_IN sem race condition
+
+    // Listener primeiro (síncrono) para capturar SIGNED_IN sem race condition.
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       if (event === 'SIGNED_IN' && session?.user) {
-        // defer p/ não bloquear o callback
-        setTimeout(() => routeUser(session.user.id), 0);
+        // Defer para não bloquear o callback interno do Supabase.
+        setTimeout(() => {
+          if (mounted) void routeUser(session.user.id);
+        }, 0);
       }
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted && session) routeUser(session.user.id);
-    });
-    return () => { mounted = false; sub.subscription.unsubscribe(); };
+
+    void supabase.auth.getSession()
+      .then(({ data: { session }, error }) => {
+        if (!mounted) return;
+        if (error) {
+          console.error('[admin-login] session recovery failed:', error);
+          return;
+        }
+        if (session) void routeUser(session.user.id);
+      })
+      .catch((error) => {
+        if (mounted) console.error('[admin-login] session recovery request failed:', error);
+      });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      toast.error(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
-      setLoading(false);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
+      toast.error('Informe email e senha');
       return;
     }
-    if (data.user) await routeUser(data.user.id);
-    setLoading(false);
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (error) {
+        toast.error(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message);
+        return;
+      }
+
+      if (data.user) await routeUser(data.user.id);
+    } catch (error) {
+      console.error('[admin-login] password login request failed:', error);
+      toast.error('Não foi possível entrar agora. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -166,24 +203,6 @@ const Login = () => {
                 placeholder="seu@email.com"
                 className="w-full bg-muted border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary"
               />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground mb-1 block flex items-center gap-1">
-                PIN de Recuperação <span className="text-[10px] font-normal text-muted-foreground/70">(apenas Master Admin)</span>
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="\d{4,6}"
-                maxLength={6}
-                value={forgotPin}
-                onChange={e => setForgotPin(e.target.value.replace(/\D/g, ''))}
-                placeholder="Opcional — 4 a 6 dígitos"
-                className="w-full bg-muted border border-border rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary text-center font-mono tracking-widest"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                O PIN é usado pelo suporte para confirmar a sua identidade quando aplicável.
-              </p>
             </div>
             <button
               type="submit"

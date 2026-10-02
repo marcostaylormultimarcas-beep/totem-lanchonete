@@ -1,37 +1,31 @@
-import { useState, useEffect } from 'react';
 import { X, Lock, Sparkles } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useOrgId } from '@/contexts/OrgContext';
-import { ComboSettings } from '@/data/store';
+import type { Product } from '@/data/store';
 
 interface UpsellPopupProps {
+  combo: Product;
   onAccept: () => void;
   onDecline: () => void;
 }
 
-const DEFAULT_COMBO: ComboSettings = { name: 'Batata + Refri', description: 'Batata + Refri', price: 15, emoji: '🍟🥤', image: '' };
-
-const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
-  const orgId = useOrgId();
-  const [combo, setCombo] = useState<ComboSettings>(DEFAULT_COMBO);
-
-  useEffect(() => {
-    if (!orgId) return;
-    supabase.from('settings').select('combo').eq('organization_id', orgId).maybeSingle()
-      .then(({ data }) => { if (data?.combo) setCombo(data.combo as unknown as ComboSettings); });
-  }, [orgId]);
+const UpsellPopup = ({ combo, onAccept, onDecline }: UpsellPopupProps) => {
 
   const isUrl = (s: string) => !!s && (s.startsWith('http') || s.startsWith('/'));
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 animate-fade-in"
-      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-3 sm:p-4 animate-fade-in"
+      style={{
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        paddingTop: 'max(12px, env(safe-area-inset-top))',
+        paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+      }}
       onClick={onDecline}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-[90%] max-w-sm overflow-hidden text-center"
+        className="relative my-auto w-[90%] max-w-sm overflow-hidden text-center"
         style={{
           background: '#18181B',
           borderRadius: '24px',
@@ -68,7 +62,7 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
             />
           ) : (
             <div className="text-[7rem] leading-none drop-shadow-[0_10px_40px_rgba(255,122,0,0.5)]">
-              {combo.emoji}
+              {combo.image || '🍟🥤'}
             </div>
           )}
         </div>
@@ -96,7 +90,7 @@ const UpsellPopup = ({ onAccept, onDecline }: UpsellPopupProps) => {
 
           {/* Descrição */}
           <p className="text-base text-white/60 leading-relaxed">
-            Adicione <span className="font-bold" style={{ color: '#FF7A00' }}>{combo.description}</span> à sua pizza e aproveite por apenas
+            Adicione <span className="font-bold" style={{ color: '#FF7A00' }}>{combo.description || combo.name.replace(/^Combo:\s*/i, '')}</span> e aproveite por apenas
           </p>
 
           {/* Card de preço com glow */}

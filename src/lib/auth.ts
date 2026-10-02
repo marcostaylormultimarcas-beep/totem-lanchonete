@@ -1,8 +1,10 @@
 import { supabase } from '@/integrations/supabase/client';
+import { logoutOneSignalUser } from '@/lib/onesignal';
 
 export type RoleTier = 'super' | 'master' | 'admin' | null;
 
 export async function signOutCompletely(redirectTo: string = '/') {
+  await logoutOneSignalUser();
   try {
     await supabase.auth.signOut();
   } catch (e) {

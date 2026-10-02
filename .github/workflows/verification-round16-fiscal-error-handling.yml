@@ -1,0 +1,25 @@
+name: Verification Round 16 Fiscal Error Handling
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Assertions
+        run: |
+          grep -q 'error: fiscalError' src/components/kiosk/PaymentScreen.tsx
+          grep -q 'if (fiscalError)' src/components/kiosk/PaymentScreen.tsx
+          grep -q 'Pedido registrado, mas o documento fiscal não foi vinculado' src/components/kiosk/PaymentScreen.tsx
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install --legacy-peer-deps --package-lock=false
+      - run: npm test -- --run
+      - run: npm run build

@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.onesignal-validate]
 verify_jwt = true
+
+[functions.crm-generate-message]
+verify_jwt = true

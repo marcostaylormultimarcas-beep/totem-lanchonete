@@ -14,7 +14,14 @@ interface OrderRow {
   total: number;
   status: string;
   created_at: string;
-  items: Array<{ name: string; quantity: number; total?: number; price?: number }>;
+  items: Array<{
+    name: string;
+    quantity: number;
+    total?: number;
+    price?: number;
+    sold_by_weight?: boolean;
+    weight_kg?: number;
+  }>;
 }
 
 interface LowStockProduct {
@@ -22,6 +29,7 @@ interface LowStockProduct {
   name: string;
   stock_quantity: number;
   low_stock_threshold: number;
+  sold_by_weight: boolean;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -50,63 +58,104 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
   const [from, setFrom] = useState(daysAgoISO(30));
   const [to, setTo] = useState(todayISO());
   const [periodOrders, setPeriodOrders] = useState<OrderRow[]>([]);
+  const [periodError, setPeriodError] = useState<string | null>(null);
   const [todayOrders, setTodayOrders] = useState<OrderRow[]>([]);
   const [recentOrders, setRecentOrders] = useState<OrderRow[]>([]);
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([]);
   const [productCount, setProductCount] = useState<number>(0);
   const [customerCount, setCustomerCount] = useState<number>(0);
   const [loading, setLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
 
   const loadPeriod = async () => {
-    if (!organizationId) { setPeriodOrders([]); return; }
-    const fromDate = new Date(from + 'T00:00:00').toISOString();
-    const toDate = new Date(to + 'T23:59:59').toISOString();
-    const { data } = await supabase
-      .from('orders')
-      .select('id, order_number, customer_name, total, status, created_at, items')
-      .eq('organization_id', organizationId)
-      .gte('created_at', fromDate)
-      .lte('created_at', toDate)
-      .order('created_at', { ascending: false });
-    setPeriodOrders((data as any) || []);
+    if (!organizationId) {
+      setPeriodOrders([]);
+      setPeriodError(null);
+      return;
+    }
+
+    try {
+      setPeriodError(null);
+      const fromDate = new Date(from + 'T00:00:00').toISOString();
+      const toDate = new Date(to + 'T23:59:59').toISOString();
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id, order_number, customer_name, total, status, created_at, items')
+        .eq('organization_id', organizationId)
+        .gte('created_at', fromDate)
+        .lte('created_at', toDate)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPeriodOrders((data as any) || []);
+    } catch (error) {
+      console.error('[Dashboard] loadPeriod failed', error);
+      setPeriodOrders([]);
+      setPeriodError('Não foi possível carregar o relatório deste período.');
+    }
   };
 
   const loadOverview = async () => {
     if (!organizationId) {
       setTodayOrders([]); setRecentOrders([]); setLowStock([]); setProductCount(0); setCustomerCount(0);
+      setOverviewError(null);
+      setLoading(false);
       return;
     }
+
     setLoading(true);
-    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    setOverviewError(null);
 
-    const [{ data: today }, { data: recent }, { data: products }, prodCount, custCount] = await Promise.all([
-      supabase.from('orders')
-        .select('id, order_number, customer_name, total, status, created_at, items')
-        .eq('organization_id', organizationId)
-        .gte('created_at', startOfToday.toISOString())
-        .neq('status', 'cancelled')
-        .order('created_at', { ascending: false }),
-      supabase.from('orders')
-        .select('id, order_number, customer_name, total, status, created_at, items')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false })
-        .limit(6),
-      (supabase.from('products') as any)
-        .select('id, name, stock_quantity, low_stock_threshold, manage_stock')
-        .eq('organization_id', organizationId)
-        .eq('manage_stock', true),
-      supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
-      (supabase.from('profiles') as any).select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
-    ]);
+    try {
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
 
-    setTodayOrders((today as any) || []);
-    setRecentOrders((recent as any) || []);
-    const low = ((products as any[]) || []).filter(p => Number(p.stock_quantity) <= Number(p.low_stock_threshold));
-    low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
-    setLowStock(low);
-    setProductCount(prodCount.count || 0);
-    setCustomerCount(custCount.count || 0);
-    setLoading(false);
+      const [todayRes, recentRes, productsRes, prodCount, custCount] = await Promise.all([
+        supabase.from('orders')
+          .select('id, order_number, customer_name, total, status, created_at, items')
+          .eq('organization_id', organizationId)
+          .gte('created_at', startOfToday.toISOString())
+          .neq('status', 'cancelled')
+          .order('created_at', { ascending: false }),
+        supabase.from('orders')
+          .select('id, order_number, customer_name, total, status, created_at, items')
+          .eq('organization_id', organizationId)
+          .order('created_at', { ascending: false })
+          .limit(6),
+        (supabase.from('products') as any)
+          .select('id, name, stock_quantity, low_stock_threshold, manage_stock, sold_by_weight')
+          .eq('organization_id', organizationId)
+          .eq('manage_stock', true),
+        supabase.from('products').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId),
+        supabase.rpc('visionfood_profile_count', { _org: organizationId }),
+      ]);
+
+      const firstError =
+        todayRes.error ||
+        recentRes.error ||
+        productsRes.error ||
+        prodCount.error ||
+        custCount.error;
+
+      if (firstError) throw firstError;
+
+      const today = todayRes.data;
+      const recent = recentRes.data;
+      const products = productsRes.data;
+
+      setTodayOrders((today as any) || []);
+      setRecentOrders((recent as any) || []);
+      const low = ((products as any[]) || []).filter(p => Number(p.stock_quantity) <= Number(p.low_stock_threshold));
+      low.sort((a, b) => Number(a.stock_quantity) - Number(b.stock_quantity));
+      setLowStock(low);
+      setProductCount(prodCount.count || 0);
+      setCustomerCount(Number(custCount.data || 0));
+    } catch (error) {
+      console.error('[Dashboard] loadOverview failed', error);
+      setOverviewError('Não foi possível carregar a visão geral agora.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { loadOverview(); }, [organizationId]);
@@ -129,12 +178,24 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
 
   const periodStats = useMemo(() => {
     const totalRevenue = periodOrders.reduce((s, o) => s + Number(o.total || 0), 0);
-    const productMap = new Map<string, { name: string; quantity: number; revenue: number }>();
+    const productMap = new Map<string, { name: string; quantity: number; revenue: number; soldByWeight: boolean }>();
     periodOrders.forEach(o => {
       (o.items || []).forEach(it => {
-        const cur = productMap.get(it.name) || { name: it.name, quantity: 0, revenue: 0 };
-        cur.quantity += Number(it.quantity || 0);
-        cur.revenue += Number(it.total || (it.price || 0) * (it.quantity || 0));
+        const weightKg = Number(it.weight_kg || 0);
+        const isWeighted = it.sold_by_weight === true && weightKg > 0;
+        const rankingQuantity = isWeighted ? weightKg : Number(it.quantity || 0);
+        const cur = productMap.get(it.name) || {
+          name: it.name,
+          quantity: 0,
+          revenue: 0,
+          soldByWeight: isWeighted,
+        };
+        cur.quantity += rankingQuantity;
+        const itemRevenue = it.total != null
+          ? Number(it.total)
+          : isWeighted ? 0 : Number(it.price || 0) * Number(it.quantity || 0);
+        cur.revenue += Number.isFinite(itemRevenue) ? itemRevenue : 0;
+        if (isWeighted) cur.soldByWeight = true;
         productMap.set(it.name, cur);
       });
     });
@@ -237,6 +298,18 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
             <Loader2 className="w-5 h-5 animate-spin text-[#FF7A00]" />
             <p className="text-xs text-zinc-500">Carregando…</p>
           </div>
+        ) : overviewError ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center gap-3">
+            <AlertTriangle className="w-6 h-6 text-amber-400" />
+            <p className="text-sm font-semibold text-white">{overviewError}</p>
+            <button
+              type="button"
+              onClick={() => void loadOverview()}
+              className="px-3 py-2 rounded-xl border border-white/10 text-xs font-bold text-[#FF7A00]"
+            >
+              Tentar novamente
+            </button>
+          </div>
         ) : recentOrders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4 shadow-inner">
@@ -307,7 +380,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   p.stock_quantity <= 0 ? 'bg-red-500/15 text-red-400' : 'bg-[#FF7A00]/15 text-[#FF7A00]'
                 }`}>
-                  {p.stock_quantity <= 0 ? 'Esgotado' : `${p.stock_quantity} restante${p.stock_quantity !== 1 ? 's' : ''}`}
+                  {p.stock_quantity <= 0 ? 'Esgotado' : (p.sold_by_weight ? `${p.stock_quantity} kg` : `${p.stock_quantity} un`)}
                 </span>
               </div>
             ))}
@@ -347,6 +420,12 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
               className="w-full px-3 py-2.5 bg-white/[0.04] border border-white/10 rounded-xl outline-none focus:border-[#FF7A00]/60 focus:ring-2 focus:ring-[#FF7A00]/20 text-sm text-white" />
           </div>
         </div>
+        {periodError && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3 text-xs text-amber-200 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{periodError}</span>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#FF7A00]/15 flex items-center justify-center"><ShoppingBag className="w-4 h-4 text-[#FF7A00]" /></div>
@@ -376,7 +455,7 @@ const DashboardPanel = ({ organizationId, onNavigate }: DashboardPanelProps) => 
                     <span className="text-[#FF7A00] mr-1.5 font-black">#{i + 1}</span>{p.name}
                   </span>
                   <span className="text-zinc-400 ml-2 whitespace-nowrap">
-                    {p.quantity}x · <span className="text-emerald-400">{formatCurrency(p.revenue)}</span>
+                    {p.soldByWeight ? `${p.quantity.toFixed(3)} kg` : `${p.quantity}x`} · <span className="text-emerald-400">{formatCurrency(p.revenue)}</span>
                   </span>
                 </div>
                 <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">

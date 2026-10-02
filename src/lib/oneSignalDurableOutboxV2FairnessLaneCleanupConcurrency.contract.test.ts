@@ -216,7 +216,7 @@ describe('OneSignal Durable Outbox V2 phase 16 fairness lane cleanup concurrency
     expect(claim).toContain("o.status in ('pending','retry')");
     expect(claim).toContain('for update of o skip locked');
     expect(claim).toContain('from claimed effective_claim');
-    expect(claim).toContain('last_organization_id=pg_catalog.coalesce(');
+    expect(claim).toContain('last_organization_id=coalesce(');
   });
 
   it('keeps lane creation and cleanup transaction-scoped for rollback/crash safety', () => {

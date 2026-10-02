@@ -28,7 +28,7 @@ begin
   where s.organization_id=_org
     and s.client_instance_id is not null
     and s.updated_at > pg_catalog.clock_timestamp() - interval '30 days'
-    and public.usuario_dono_org(_org,s.user_id);
+    and private.usuario_dono_org(_org,s.user_id);
 
   return subscription_ids;
 end

@@ -467,12 +467,20 @@ create table if not exists private.onesignal_brin_rescue_cursor (
   tail_page bigint check (tail_page>=0),
   -- Set when a saturated/deadline-bound tick gave history no scheduling
   -- opportunity. The next tick repays one historical visit before tail bulk.
-  history_due boolean not null default false
+  history_due boolean not null default false,
+  -- Phase 37 scheduler-independent cross-index priority rotation. The cleanup
+  -- advisory lock serializes increments, so queued/delayed executions cannot
+  -- collapse onto the same wall-clock bucket and repeatedly choose one index.
+  priority_first_count bigint not null default 0
+    check (priority_first_count>=0)
 );
 alter table private.onesignal_brin_rescue_cursor
   add column if not exists tail_page bigint check (tail_page>=0);
 alter table private.onesignal_brin_rescue_cursor
   add column if not exists history_due boolean not null default false;
+alter table private.onesignal_brin_rescue_cursor
+  add column if not exists priority_first_count bigint not null default 0
+    check (priority_first_count>=0);
 alter table private.onesignal_brin_rescue_cursor enable row level security;
 revoke all on private.onesignal_brin_rescue_cursor from public,anon,authenticated,service_role;
 
@@ -513,6 +521,8 @@ declare
   summarized_outbox_ranges integer:=0;
   summarized_attempt_ranges integer:=0;
   rescue_name text;
+  rescue_first_name text;
+  rescue_second_name text;
   rescue_index regclass;
   rescue_heap regclass;
   rescue_ppr integer;
@@ -768,28 +778,62 @@ begin
   -- may still overrun after lock acquisition, but once that pushes the
   -- aggregate envelope past its boundary the second index cannot authorize
   -- another multi-minute call and compound the retention commit delay.
-  rescue_total_deadline:=pg_catalog.clock_timestamp()+interval '500 milliseconds';
-  -- Phase 36: the 500ms aggregate envelope is intentionally shared, so a
-  -- modest completion overrun by whichever index runs first can consume the
-  -- remainder and leave the second index with no call-start opportunity. Rotate
-  -- first position on the existing 10-minute cadence so sustained pressure
-  -- cannot starve the same BRIN index indefinitely. statement_timestamp() is
-  -- stable for the invocation; no new state, timeout, or transaction boundary.
-  foreach rescue_name in array array[
+  -- Phase 37: phase 36 rotated by 10-minute wall-clock bucket. pg_cron may
+  -- queue a run and start it later, so several pending executions can begin in
+  -- one bucket and repeatedly choose the same first BRIN. Reuse the existing
+  -- rescue cursor state to count first-position assignments instead. The
+  -- cleanup advisory lock above already serializes this update, making the
+  -- order depend on execution sequence rather than delayed wall-clock start.
+  insert into private.onesignal_brin_rescue_cursor(
+    index_name,index_oid,next_page,tail_page
+  )
+  select
+    v.index_name,
+    pg_catalog.to_regclass(v.index_name)::oid,
+    0,
+    null
+  from (
+    values
+      ('private.onesignal_outbox_health_created_idx'::text),
+      ('private.onesignal_outbox_attempts_health_created_idx'::text)
+  ) as v(index_name)
+  where pg_catalog.to_regclass(v.index_name) is not null
+  on conflict (index_name) do nothing;
+
+  select c.index_name
+    into rescue_first_name
+  from private.onesignal_brin_rescue_cursor c
+  where c.index_name in (
+      'private.onesignal_outbox_health_created_idx',
+      'private.onesignal_outbox_attempts_health_created_idx'
+    )
+    and pg_catalog.to_regclass(c.index_name) is not null
+  order by
+    c.priority_first_count,
     case
-      when (
-        pg_catalog.floor(extract(epoch from pg_catalog.statement_timestamp())/600)::bigint%2
-      )=0
-        then 'private.onesignal_outbox_health_created_idx'
-      else 'private.onesignal_outbox_attempts_health_created_idx'
-    end,
-    case
-      when (
-        pg_catalog.floor(extract(epoch from pg_catalog.statement_timestamp())/600)::bigint%2
-      )=0
-        then 'private.onesignal_outbox_attempts_health_created_idx'
-      else 'private.onesignal_outbox_health_created_idx'
+      when c.index_name='private.onesignal_outbox_health_created_idx' then 0
+      else 1
     end
+  limit 1;
+
+  rescue_first_name:=coalesce(
+    rescue_first_name,
+    'private.onesignal_outbox_health_created_idx'
+  );
+  rescue_second_name:=case
+    when rescue_first_name='private.onesignal_outbox_health_created_idx'
+      then 'private.onesignal_outbox_attempts_health_created_idx'
+    else 'private.onesignal_outbox_health_created_idx'
+  end;
+
+  update private.onesignal_brin_rescue_cursor c
+     set priority_first_count=c.priority_first_count+1
+   where c.index_name=rescue_first_name;
+
+  rescue_total_deadline:=pg_catalog.clock_timestamp()+interval '500 milliseconds';
+  foreach rescue_name in array array[
+    rescue_first_name,
+    rescue_second_name
   ] loop
     rescue_count:=0;
     rescue_visits:=0;

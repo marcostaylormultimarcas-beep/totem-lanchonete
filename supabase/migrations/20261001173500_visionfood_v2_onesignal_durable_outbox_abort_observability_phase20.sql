@@ -211,15 +211,15 @@ begin
         (
           d.status not in ('succeeded','running')
           and (
-            pg_catalog.position(
+            position(
               'could not serialize access'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'serialization failure'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'sqlstate 40001'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
@@ -228,11 +228,11 @@ begin
         (
           d.status not in ('succeeded','running')
           and (
-            pg_catalog.position(
+            position(
               'deadlock detected'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'sqlstate 40p01'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
@@ -292,23 +292,23 @@ begin
         (
           d.status not in ('succeeded','running')
           and (
-            pg_catalog.position(
+            position(
               'could not serialize access'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'serialization failure'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'sqlstate 40001'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'deadlock detected'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
-            or pg_catalog.position(
+            or position(
               'sqlstate 40p01'
               in pg_catalog.lower(coalesce(d.return_message,''))
             )>0
